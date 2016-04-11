@@ -3,6 +3,8 @@ require './models/release_file.rb'
 require './models/vulnerability.rb'
 require 'rugged'
 require 'csv'
+require 'open3'
+require 'json'
 
 #Load in bug data
 bugs = {}
@@ -114,6 +116,33 @@ def update_file_vulnerabilities(files, c)
     end
 end
 
+def count_sloc(releases, tag)
+    repo = Rugged::Repository.new('../httpd');
+    releases[tag] ||= FileTable.new(tag)
+    puts "Checking out tag #{tag} to calculate sloc..."
+    repo.checkout(repo.tags[tag.to_s].target.oid)
+    cmd = "cloc --by-file --progress-rate=0 --quiet --json --skip-uniqueness ."
+    puts "Done. Running `#{cmd}`..."
+    Open3.popen3(cmd, :chdir=>"../httpd") do |stdin, stdout, stderr, wait_thr|
+        results = JSON.parse(stdout.read)
+        results[:SUM] = nil
+        results[:header] = nil
+        results.each do |key, data|
+            # strip leading ./ from path
+            path = key[2..-1]
+            if data
+                sloc = data[:code]
+                if !should_ignore_file(path)
+                    file = releases[tag].get_file(path)
+                    file.sloc = sloc.to_i
+                    file.save
+                end
+            end
+        end
+    end
+    puts "Done."
+end
+
 def walk_repo_between(releases, bugs, start_tag, end_tag)
     # We expect httpd to be checked out at ../httpd
     repo = Rugged::Repository.new('../httpd');
@@ -177,8 +206,11 @@ end
 
 
 # Generate bug data
+count_sloc(releases, :"2.0.1")
 walk_repo_between(releases, bugs, :"2.2.1", :"2.0.1")
+count_sloc(releases, :"2.2.1")
 walk_repo_between(releases, bugs, :"2.4.1", :"2.2.1")
+count_sloc(releases, :"2.4.1")
 walk_repo_between(releases, bugs, :head, :"2.4.1")
 
 repo = Rugged::Repository.new('../httpd');
