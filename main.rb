@@ -125,16 +125,16 @@ def count_sloc(releases, tag)
     puts "Done. Running `#{cmd}`..."
     Open3.popen3(cmd, :chdir=>"../httpd") do |stdin, stdout, stderr, wait_thr|
         results = JSON.parse(stdout.read)
-        results[:SUM] = nil
-        results[:header] = nil
+        results["SUM"] = nil
+        results["header"] = nil
         results.each do |key, data|
             # strip leading ./ from path
             path = key[2..-1]
             if data
-                sloc = data[:code]
+                sloc = data["code"]
                 if !should_ignore_file(path)
                     file = releases[tag].get_file(path)
-                    file.sloc = sloc.to_i
+                    file.sloc = sloc
                     file.save
                 end
             end
