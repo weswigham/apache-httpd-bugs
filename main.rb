@@ -148,7 +148,7 @@ def walk_repo_between(releases, bugs, start_tag, end_tag)
     repo = Rugged::Repository.new('../httpd')
     bugid_regexp = /\s+(\d\d\d\d\d?)|PR(\d\d\d\d\d?)|Fix(?:es)?(\d\d\d\d\d?)|Bug(\d\d\d\d\d?)/i
     git_svn_id_regexp = /^git-svn-id:/
-    releases[end_tag] = FileTable.new(end_tag)
+    releases[end_tag] ||= FileTable.new(end_tag)
     walker = Rugged::Walker.new(repo)
     walker.sorting(Rugged::SORT_TOPO | Rugged::SORT_REVERSE)
     if start_tag == :head
