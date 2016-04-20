@@ -40,7 +40,7 @@ class Bug
         bug.is_old = true
         bug.id = id
 
-        File.new("#{gnats_data_location}/#{id}.txt").each do |line|
+        File.new("#{$gnats_data_location}/#{id}.txt").each do |line|
             if line =~ /^>Arrival-Date:\s+(.*)$/i
                 bug.opened = $1
             elsif line =~ /^>Severity:\s+(.*)$/i
