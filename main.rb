@@ -208,14 +208,17 @@ def walk_repo_between(releases, bugs, start_tag, end_tag, should_churn)
     end
 end
 
+FIRST_VERSION = :"2.0.1"
+SECOND_VERSION = :"2.2.0"
+THIRD_VERSION = :"2.4.0"
 
 # Generate bug data
 count_sloc(releases, :"2.0.1")
-walk_repo_between(releases, bugs, :tail, :"2.0.1", false)
+walk_repo_between(releases, bugs, :tail, FIRST_VERSION, false)
 count_sloc(releases, :"2.2.0")
-walk_repo_between(releases, bugs, :"2.0.1", :"2.2.0", false)
+walk_repo_between(releases, bugs, FIRST_VERSION, SECOND_VERSION, false)
 count_sloc(releases, :"2.4.0")
-walk_repo_between(releases, bugs, :"2.2.0", :"2.4.0", false)
+walk_repo_between(releases, bugs, SECOND_VERSION, THIRD_VERSION, false)
 
 repo = Rugged::Repository.new('../httpd');
 # Add in the vulnerability data
@@ -226,13 +229,13 @@ vulnerabilities.each do |cve, vulnerability|
             # Conceivably, this method of adding vulnerabilities could be bilked by a renamed file between versions which is vulnerable
             # Fixing that would require tracking down backport commits - likely by mining commit messages for CVE references again
             if vulnerability.versions_present.include?("2.0")
-                update_file_vulnerabilities(releases[:"2.0.1"], fix);
+                update_file_vulnerabilities(releases[FIRST_VERSION], fix);
             end
             if vulnerability.versions_present.include?("2.2")
-                update_file_vulnerabilities(releases[:"2.2.1"], fix);
+                update_file_vulnerabilities(releases[SECOND_VERSION], fix);
             end
             if vulnerability.versions_present.include?("2.4")
-                update_file_vulnerabilities(releases[:"2.4.1"], fix);
+                update_file_vulnerabilities(releases[THIRD_VERSION], fix);
             end
         end
     end
