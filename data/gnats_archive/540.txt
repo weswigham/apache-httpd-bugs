@@ -1,0 +1,425 @@
+From nobody@hyperreal.com  Sun May  4 05:51:39 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id FAA01179;
+	Sun, 4 May 1997 05:51:39 -0700 (PDT)
+Message-Id: <199705041251.FAA01179@hyperreal.com>
+Date: Sun, 4 May 1997 05:51:39 -0700 (PDT)
+From: <joe@hexmac.com>
+Reply-To: joe@hexmac.com
+To: apbugs@hyperreal.com
+Subject: mod_dld corrupts module count
+X-Send-Pr-Version: 3.2
+
+>Number:         540
+>Category:       mod_dld
+>Synopsis:       mod_dld corrupts module count
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun May  4 06:00:02 1997
+>Last-Modified:  Sat Jul 19 03:37:15 PDT 1997
+>Originator:     joe@hexmac.com
+>Organization:
+>Release:        1.2b7
+>Environment:
+Irix, version: 5.3
+[entered on behalf of user from a mail message]
+>Description:
+I have written a replacement for the mod_dld Module,
+allowing modules in shared libraries.
+(will be availible when tested somewhat more)
+While testing this, a bug in http_config.c showed
+up that most likely will also prevent mod_dld
+from working and could cause funny things
+together with 'AddModule/ClearModuleList'
+
+The static varible 'num_modules' from http_config.c
+is intended to hold the number of active modules.
+'add_module' should increase it when a module
+is activated, but that never happens because
+of http_config.c:398
+      (*m)->module_index = total_modules;
+I recommend to completely remove this line of code.
+Otherwise, any call to add_module for
+modules not preloaded (i.e. dynamic ones)
+will corrupt the data.
+
+By the way, to make dynamic modules work
+I also needed a way to increase the static
+variable total_modules.
+I added a call named 'register_module' to
+http_config.c, that increases the counter and
+then calls add_module. It would be great if
+something like this could be added to the
+distribution.
+
+Note:
+The original module mod_dld seems to have quite
+a lot of problems. I recomend to remove it from
+the distribution, unless you have some reports
+that it works correctly. (I'm just judging from
+the sourcecode: It fails to increase 'total_modules'
+when loading new modules, causing memory corruption)
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+
+From: coar@decus.org (Rodent of Unusual Size)
+To: apbugs@apache.org, jo@hexmac.com, Coar@decus.org
+Subject: Re: mod_dld/540: mod_dld corrupts module count
+Date: Sun, 04 May 1997 09:00:22 -0400
+
+ 
+ [Additional information, also from mail]
+ From the fingers of Johannes Deisenhofer flowed the following:
+ >
+ >I have done some more research. I have built and tested a patch
+ >that should fix my problem and the problem with mod_dld.
+ >The patch is included. 
+ >
+ >Justifikation for the changes:
+ >1.) interpreting total_modules as the numer of *statically* linked
+ >    modules makes changes to total_modules unnecessary.
+ >2.) But then, we have to allocate extra space, which was
+ >    only partly done.
+ >3.) Removing the check around module numbering ensures that
+ >    num_modules is increased. (Which did not happen before since
+ >    the index was already set in setup_prelinked_modules)
+ >
+ >Furthermore, I have included my mod_dynamic module, replacing
+ >mod_dld for COFF and ELF systems. It requires this patch to work.
+ >
+ >Please give me a short note if this module has any chance of being in
+ >the distribution, since I'll otherwise make it availible by myself.
+ >
+ >Keep up the good work!
+ >-- 
+ >// Johannes Deisenhofer jo@hexmac.com
+ >
+ >--------------167E2781446B
+ >Content-Type: TEXT/PLAIN; CHARSET=us-ascii; NAME="http_config.diff"
+ >Content-ID: <Pine.NEB.3.95.970315215558.12699D@localhost.imdb.com>
+ >Content-Description: 
+ >
+ >*** http_config.c	Sun Jan 26 02:15:11 1997
+ >--- /mvwg/hb13/src/subsys/apache_1.2/http_config.c	Sat Mar 15 20:21:00 1997
+ >***************
+ >*** 86,90 ****
+ >  /* num_modules is the number of currently active modules.  */
+ >  static int num_modules = 0;    
+ >! /* total_modules is the number of modules linked in.  */
+ >  static int total_modules = 0;
+ >  module *top_module = NULL;
+ >--- 86,90 ----
+ >  /* num_modules is the number of currently active modules.  */
+ >  static int num_modules = 0;    
+ >! /* total_modules is the number of modules statically linked in.  */
+ >  static int total_modules = 0;
+ >  module *top_module = NULL;
+ >***************
+ >*** 123,127 ****
+ >  create_empty_config (pool *p)
+ >  {
+ >!    void **conf_vector = (void **)pcalloc(p, sizeof(void*) * total_modules);
+ >     return (void *)conf_vector;
+ >  }
+ >--- 123,127 ----
+ >  create_empty_config (pool *p)
+ >  {
+ >!    void **conf_vector = (void **)pcalloc(p, sizeof(void*) * (total_modules+DYNAMIC_MODULE_LIMIT));
+ >     return (void *)conf_vector;
+ >  }
+ >***************
+ >*** 145,149 ****
+ >  merge_per_dir_configs (pool *p, void *base, void *new)
+ >  {
+ >!    void **conf_vector = (void **)pcalloc(p, sizeof(void*) * total_modules);
+ >     void **base_vector = (void **) base;
+ >     void **new_vector = (void **) new;
+ >--- 145,149 ----
+ >  merge_per_dir_configs (pool *p, void *base, void *new)
+ >  {
+ >!    void **conf_vector = (void **)pcalloc(p, sizeof(void*) * (total_modules+DYNAMIC_MODULE_LIMIT));
+ >     void **base_vector = (void **) base;
+ >     void **new_vector = (void **) new;
+ >***************
+ >*** 383,389 ****
+ >  	top_module = m;
+ >      }
+ >-     if (m->module_index == -1) {
+ >  	m->module_index = num_modules++;
+ >-     }
+ >  }
+ >  
+ >--- 383,387 ----
+ >
+ >--------------167E2781446B
+ >Content-Type: TEXT/PLAIN; CHARSET=us-ascii; NAME="mod_dynamic.c"
+ >Content-ID: <Pine.NEB.3.95.970315215558.12699E@localhost.imdb.com>
+ >Content-Description: 
+ >
+ >/* ====================================================================
+ > * Copyright (c) 1995-1997 The Apache Group.  All rights reserved.
+ > *
+ > * Redistribution and use in source and binary forms, with or without
+ > * modification, are permitted provided that the following conditions
+ > * are met:
+ > *
+ > * 1. Redistributions of source code must retain the above copyright
+ > *    notice, this list of conditions and the following disclaimer. 
+ > *
+ > * 2. Redistributions in binary form must reproduce the above copyright
+ > *    notice, this list of conditions and the following disclaimer in
+ > *    the documentation and/or other materials provided with the
+ > *    distribution.
+ > *
+ > * 3. All advertising materials mentioning features or use of this
+ > *    software must display the following acknowledgment:
+ > *    "This product includes software developed by the Apache Group
+ > *    for use in the Apache HTTP server project (http://www.apache.org/)."
+ > *
+ > * 4. The names "Apache Server" and "Apache Group" must not be used to
+ > *    endorse or promote products derived from this software without
+ > *    prior written permission.
+ > *
+ > * 5. Redistributions of any form whatsoever must retain the following
+ > *    acknowledgment:
+ > *    "This product includes software developed by the Apache Group
+ > *    for use in the Apache HTTP server project (http://www.apache.org/)."
+ > *
+ > * THIS SOFTWARE IS PROVIDED BY THE APACHE GROUP ``AS IS'' AND ANY
+ > * EXPRESSED OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ > * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ > * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE APACHE GROUP OR
+ > * ITS CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ > * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ > * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ > * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ > * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+ > * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ > * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
+ > * OF THE POSSIBILITY OF SUCH DAMAGE.
+ > * ====================================================================
+ > *
+ > * This software consists of voluntary contributions made by many
+ > * individuals on behalf of the Apache Group and was originally based
+ > * on public domain software written at the National Center for
+ > * Supercomputing Applications, University of Illinois, Urbana-Champaign.
+ > * For more information on the Apache Group and the Apache HTTP server
+ > * project, please see <http://www.apache.org/>.
+ > *
+ > */
+ >
+ >#include "httpd.h"
+ >#include "http_config.h"
+ >
+ >#include <dlfcn.h>
+ >
+ >static int loading_done = 0; /* Loaded the modules yet? */
+ >
+ >static const char *
+ >load_module (cmd_parms *cmd, void *dummy, char *modname, char *filename)
+ >{
+ >    module *modp;
+ >	void *dlhandle;
+ >
+ >    if (loading_done) return NULL;
+ >	if (strstr(filename,"/"))
+ >    	filename = server_root_relative(cmd->pool,filename);
+ >    dlhandle = dlopen(filename,RTLD_NOW);
+ >    if (dlhandle==NULL) {
+ >	return pstrcat (cmd->pool, "Cannot load '", filename,
+ >			           "' as a module\n", dlerror(), NULL);
+ >    }
+ >    if (!(modp = (module *)dlsym (dlhandle,modname))) {
+ >	return pstrcat (cmd->pool, "Can't find symbol ", modname,
+ >			           " in file ", filename, "\n", 
+ >				   dlerror(), NULL);
+ >    }
+ >
+ >    add_module (modp);
+ >
+ >    /* Alethea Patch (rws,djw2) - need to run configuration functions
+ >       in new modules */
+ >
+ >    if (modp->create_server_config)
+ >      ((void**)cmd->server->module_config)[modp->module_index]=
+ >    (*modp->create_server_config)(cmd->pool, cmd->server);
+ >
+ >    if (modp->create_dir_config)
+ >      ((void**)cmd->server->lookup_defaults)[modp->module_index]=
+ >    (*modp->create_dir_config)(cmd->pool, NULL);
+ >
+ >	return NULL;
+ >}
+ >
+ >static const char 
+ >*load_file (cmd_parms *cmd, void *dummy, char *filename)
+ >{
+ >    char *errname;
+ >	void *dlhandle;
+ >
+ >    if (loading_done) return NULL;
+ >	if (strstr(filename,"/"))
+ >		filename = server_root_relative(cmd->pool,filename);
+ >   	dlhandle = dlopen(filename,RTLD_NOW);
+ >    if (dlhandle==NULL) {
+ >	return pstrcat (cmd->pool, "Cannot load '", filename,
+ >			           "' as a module\n", dlerror(), NULL);
+ >    }
+ >
+ >    return NULL;
+ >}
+ >
+ >static void 
+ >dld_init (server_rec *dummy, pool *p)
+ >{
+ >    loading_done = 1;
+ >}
+ >
+ >static command_rec 
+ >dld_cmds[] = {
+ >{ "LoadModule", load_module, NULL, RSRC_CONF, TAKE2,
+ >  "a module name, and the name of a file to load it from"},
+ >{ "LoadFile", load_file, NULL, RSRC_CONF, ITERATE,
+ >  "files or libraries to link into the server at runtime"},
+ >{ NULL }
+ >};
+ >
+ >module dynamic_module = {
+ >   STANDARD_MODULE_STUFF,
+ >   dld_init,			/* initializer */
+ >   NULL,			/* create per-dir config */
+ >   NULL,			/* merge per-dir config */
+ >   NULL,			/* server config */
+ >   NULL,			/* merge server config */
+ >   dld_cmds,			/* command table */
+ >   NULL,			/* handlers */
+ >   NULL,			/* filename translation */
+ >   NULL,			/* check_user_id */
+ >   NULL,			/* check auth */
+ >   NULL,			/* check access */
+ >   NULL,			/* type_checker */
+ >   NULL				/* logger */
+ >};
+ >
+ >--------------167E2781446B
+ >Content-Type: TEXT/PLAIN; CHARSET=us-ascii; NAME="mod_dynamic.txt"
+ >Content-ID: <Pine.NEB.3.95.970315215558.12699F@localhost.imdb.com>
+ >Content-Description: 
+ >
+ >mod_dynamic:
+ >
+ >Load Apache modules at runtime. 
+ >
+ >This is beta code!
+ >
+ >This module makes it possible  to put modules into shared libraries, that
+ >can be loaded at runtime. You no longer have to recompile apache to
+ >customize it.
+ >This code is based on the apache module mod_dld. It uses native calls and 
+ >does not require GNU dld, which does not work for most current systems.
+ >This should work for all systems using an ELF or COFF executable format.
+ >
+ >Advantages:
+ >	- You don't have to recompile apache if you want to add or try a new
+ >	  module
+ >	- Nice for precompiled binaries and commercial add-ons.
+ >
+ >Disadvantages:
+ >	- Only works for systems having dlopen/dlsym calls. (This at least includes 
+ >	  SUN-OS, Solaris, IRIX, Linux and FreeBSD: check your man pages)
+ >	- Minor speed decrease (shouldn't be noticable)
+ >	- Requires some fiddling with compiler/linker options when compiling
+ >
+ >* WARNING *
+ >Dynamic Modules are, for now, not supported by apache's configuration 
+ >mechanism. Therefore, you have to know your way around in a Makefile, and 
+ >know the necessary compiler and linker options for building shared libraries
+ >on your system. 
+ >This can be tricky. Ever heard of PIC and symbol tables? Good.
+ >
+ >Compiling Apache:
+ >Configure Apache just to include the preconfigured modules, and this module.
+ >Do not configure modules that you want to add dynamically.
+ >
+ >For some systems, you have to add a linker option to keep your
+ >symbols in the executable. For linux/gcc, this is '-export-dynamic'
+ >
+ >Compiling modules:
+ >You have to compile your modules into a shared libary. Details should be in 
+ >your manuals.
+ >Try something like cc -shared -o module.so module.c
+ >
+ >Runtime Configuration:
+ >Put your modules somewhere below server root.  
+ >For every module, add something like
+ >
+ >LoadModule my_module modules/mod_mymod.so
+ >
+ >to http.conf. This has to appear *before* any configuration item for 
+ >dynamically loaded modules. Otherwise, you will get a syntax error.
+ >
+ >modules/mod_mymod.so is the relative or absolute path to the 
+ >module's shared_library.
+ >
+ >my_module is the name of the module's function table.
+ >Find 'STANDARD_MODULE_STUFF' in the module's source code, and take
+ >the symbol one line above, after 'module'.
+ >Why is that required? Because its compatible with mod_dld, and doesn't
+ >require any changes to existing modules.
+ >
+ >Example: Configure all of apache 1.2b7's standard modules dynamically
+ >
+ >LoadModule headers_module       modules/mod_headers.so
+ >LoadModule rewrite_module       modules/mod_rewrite.so
+ >LoadModule status_module        modules/mod_status.so
+ >LoadModule info_module          modules/mod_info.so
+ >LoadModule usertrack_module     modules/mod_usertrack.so
+ >LoadModule digest_module        modules/mod_digest.so
+ >LoadModule expires_module       modules/mod_expires.so
+ >LoadModule agent_log_module     modules/mod_log_agent.so
+ >LoadModule referer_log_module   modules/mod_log_referer.so
+ >LoadModule proxy_module         modules/mod_proxy.so
+ >
+ >CookieExpires "2 weeks"
+ > ... more of module configuration
+ >
+ >If you just give the modules name without any path, 
+ >LD_LIBRARY_PATH is searched for the module.
+ >
+ >Apache will not reload or add modules after a SIGHUP to the
+ >running process. This would require to unload modules, and there is 
+ >currently no way to do it.
+ >
+ >There is also an Configuration option 'LoadFile somelibrary.so'.
+ >It will link the named library in. Didn't ever need it.
+ >
+ >Have Fun
+ >Johannes Deisenhofer
+ >joe@hexmac.com, joe@dillingen.de
+ >
+ >--------------167E2781446B--
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sun May  4 13:15:05 PDT 1997
+State-Changed-Why:
+Dirk is working on this.
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Jul 19 03:37:14 PDT 1997
+State-Changed-Why:
+A fix for this was committed to the 1.3-dev tree.  If you want
+to grab a snapshot of it, then visit http://dev.apache.org/.
+
+Dean
+>Unformatted:
+
+
+

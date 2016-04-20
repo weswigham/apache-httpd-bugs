@@ -1,0 +1,132 @@
+Received: (qmail 77418 invoked by uid 501); 28 Aug 2000 23:20:47 -0000
+Message-Id: <20000828232047.77417.qmail@locus.apache.org>
+Date: 28 Aug 2000 23:20:47 -0000
+From: Bernie <bht@actrix.gen.nz>
+Reply-To: bht@actrix.gen.nz
+To: submit@bugz.apache.org
+Subject: ServletException not logged when thrown from within init()
+X-Send-Pr-Version: 3.110
+
+>Number:         6479
+>Category:       mod_jserv
+>Synopsis:       ServletException not logged when thrown from within init()
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Aug 28 16:30:00 PDT 2000
+>Closed-Date:    
+>Last-Modified:  Fri Nov 10 14:40:00 PST 2000
+>Originator:     bht@actrix.gen.nz
+>Release:        
+>Organization:
+apache
+>Environment:
+UNIX and Win32
+>Description:
+If a ServletException is thrown inside the init() method, then the output
+of the exception is not logged anywhere at all.
+This makes it very difficult to debug startup problems.
+A very fundamental flaw that needs to be fixed urgently.
+>How-To-Repeat:
+in init():
+throw new ServletException("Please log this somewhere")
+>Fix:
+On application level, a possible workaround may contain this:
+config.getServletContext().log(ex, this.getClass().getName()
+//where
+//"config" is the config parameter of the init() method
+//"this" is the servlet instance
+//"ex" is a ServletException
+
+As I said it is on application level and really only demonstrates
+what kind of output would be expected in the log.
+>Release-Note:
+>Audit-Trail:
+
+From: Bernie <bht@actrix.gen.nz>
+To: gnats-admin@bugz.apache.org, jserv-bugdb@apache.org
+Cc: <apbugs@Apache.Org>
+Subject: Re: mod_jserv/6479: ServletException not logged when thrown from within init()
+Date: Sat, 11 Nov 2000 11:34:55 +1300
+
+ Marc Connolly <mdconnol@us.oracle.com>
+ suggested in java-apache-users@list.working-dogs.com
+ on Date: Fri, 25 Aug 2000 23:13:31 -0400
+ 
+    Found an appropriate place to put a quick hack (JServServletManager
+ - >
+ loadStartupServlets) as folllows:
+ 
+    Original
+    =3D=3D=3D=3D=3D=3D=3D=3D
+     private void loadStartupServlets(JServSendError se) {
+         if (startups =3D=3D null) {
+             return;
+         }
+ 
+         for(int i =3D 0; i < startups.length; i++) {
+             String servname =3D startups[i];
+ 
+             if (servname =3D=3D null) {
+                 continue;
+             }
+ 
+             try {
+                 loadServlet(servname, se);
+             } catch (ServletException initError) {
+                 se.sendError(initError);                      <----
+ this guy was
+ doing nothing
+             }
+         }
+     }
+ 
+    Hack
+    =3D=3D=3D=3D=3D=3D=3D=3D
+     private void loadStartupServlets(JServSendError se) {
+         if (startups =3D=3D null) {
+             return;
+         }
+ 
+         for(int i =3D 0; i < startups.length; i++) {
+             String servname =3D startups[i];
+ 
+             if (servname =3D=3D null) {
+                 continue;
+             }
+ 
+             try {
+                 loadServlet(servname, se);
+             } catch (ServletException initError) {
+                 JServ.log.log(CH_SERVLET_EXCEPTION,
+ "(loadStartupServlets)
+ initialization failed for servlet: '"
+                     + servname + "'; initError.getMessage()=3D" +
+ initError.getMessage());
+                 se.sendError(initError); // leave him in for now...
+             }
+         }
+     }
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

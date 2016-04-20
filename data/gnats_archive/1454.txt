@@ -1,0 +1,732 @@
+Received: (qmail 21955 invoked by uid 2012); 22 Nov 1997 10:30:26 -0000
+Message-Id: <19971122103026.21954.qmail@hyperreal.org>
+Date: 22 Nov 1997 10:30:26 -0000
+From: Anand Kumria <wildfire@progsoc.uts.edu.au>
+Reply-To: wildfire@progsoc.uts.edu.au
+To: apbugs@hyperreal.org
+Subject: Apache doesn't always understand requests with the absoluteURI in them
+X-Send-Pr-Version: 3.2
+
+>Number:         1454
+>Category:       protocol
+>Synopsis:       Apache doesn't always understand requests with the absoluteURI in them
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Nov 22 02:40:00 PST 1997
+>Last-Modified:  Sat Nov 22 14:20:01 PST 1997
+>Originator:     wildfire@progsoc.uts.edu.au
+>Organization:
+>Release:        1.2.4
+>Environment:
+tested on multiple - SunOS4.1.4U1/ GCC 2.7.2.1, Debian Linux 1.3.1
+>Description:
+According to RFC2068 section 5.1.2 the Request-URI is:
+
+	Request-URI    = "*" | absoluteURI | abs_path
+
+It goes to on to say further that:
+
+	"To allow for transition to absoluteURIs in all requests in future
+   versions of HTTP, all HTTP/1.1 servers MUST accept the absoluteURI
+   form in requests, even though HTTP/1.1 clients will only generate
+   them in requests to proxies."
+
+Under Apache 1.2.4 this only works if you provide a Host: header.
+>How-To-Repeat:
+Section 5.1.2 has the following example request line.
+
+	GET http://www.w3.org/pub/WWW/TheProject.html HTTP/1.1
+
+This results in:
+
+---
+
+akumria@caliban [~] 316 $telnet www.w3.org http
+Trying 18.23.0.22...
+Connected to www.w3.org.
+Escape character is '^]'.
+GET http://www.w3.org/pub/WWW/TheProject.html HTTP/1.1
+
+HTTP/1.1 400 Bad Request
+Date: Sat, 22 Nov 1997 10:26:04 GMT
+Server: Apache/1.2.4
+Connection: close
+Transfer-Encoding: chunked
+Content-Type: text/html119
+<HTML><HEAD>
+<TITLE>400 Bad Request</TITLE>
+</HEAD><BODY>
+<H1>Bad Request</H1>
+Your browser sent a request that
+this server could not understand.<P>
+<P>Additionally, a 400 Bad Request
+error was encountered while trying to use an ErrorDocument to handle the request.
+</BODY></HTML>
+
+0
+
+---
+
+However it should have worked. The following does:
+
+---
+
+akumria@caliban [~] 317 $telnet www.w3.org http
+Trying 18.23.0.23...
+Connected to www.w3.org.
+Escape character is '^]'.
+GET http://www.w3.org/pub/WWW/TheProject.html HTTP/1.1
+Host: www.w3.org
+
+HTTP/1.1 301 Moved Permanently
+Date: Sat, 22 Nov 1997 10:27:54 GMT
+Server: Apache/1.2.4
+Location: http://www.w3.org/TheProject.html
+Transfer-Encoding: chunked
+Content-Type: text/html
+
+ba 
+<HTML><HEAD>
+<TITLE>301 Moved Permanently</TITLE>
+</HEAD><BODY>
+<H1>Moved Permanently</H1>
+The document has moved <A HREF="http://www.w3.org/TheProject.html">here</A>.<P>
+</BODY></HTML>
+
+0
+
+^]
+
+telnet> quit
+Connection closed.
+
+---
+
+The Host: header isn't required.
+
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: akosut
+State-Changed-When: Sat Nov 22 03:03:24 PST 1997
+State-Changed-Why:
+Apache 1.2 and later does fully support full URIs. However,
+HTTP/1.1 also *requires* that if the Host: header is not
+present, a 400 response be sent. Apache adheres to this.
+
+Note that if you send Apache a full-URI request with a protocol
+indication greater than HTTP/1.1, this requirement is waived.
+e.g., a HTTP/1.2 request with a full URI and no Host: header
+will be processed correctly.
+
+Thanks for using Apache.
+
+From: Alexei Kosut <akosut@leland.Stanford.EDU>
+To: Anand Kumria <wildfire@progsoc.uts.edu.au>
+Cc: apbugs@apache.org
+Subject: Re: protocol/1454: Apache doesn't always understand requests with the absoluteURI in them
+Date: Sat, 22 Nov 1997 03:38:38 -0800 (PST)
+
+ On Sat, 22 Nov 1997, Anand Kumria wrote:
+ 
+ > However this processing strategy is contrary to Section 5.2 which states:
+ > 
+ > 
+ >      1. If Request-URI is an absoluteURI, the host is part of the
+ >         Request-URI. Any Host header field value in the request MUST be
+ >         ignored.
+ > 
+ >      2. If the Request-URI is not an absoluteURI, and the request
+ >         includes a Host header field, the host is determined by the Host
+ >         header field value.
+ > 
+ >      3. If the host as determined by rule 1 or 2 is not a valid host on
+ >         the server, the response MUST be a 400 (Bad Request) error
+ >         message.
+ 
+ I refer you to section 14.23:
+ 
+   "All Internet-based HTTP/1.1 servers
+    MUST respond with a 400 status code to any HTTP/1.1 request message
+    which lacks a Host header field."
+ 
+ These two quotes are regerring to different things. Section 5.2, which you
+ quoted, *assumes* that the Host: header is present, and simply dictates
+ the precedence of the full URI's host vs. the Host: header. The 400
+ response mentioned refers to what happens if the named host does not match
+ one the server is configured for. Section 14.23 and 5.1.2 are what
+ dictate the server's behavior in the case we are discussing.
+ 
+ The fact is, all HTTP/1.1 requests must contain a Host: header (section
+ 5.1.2), regardless of the type of URI used. And Apache is certainly
+ allowed to behave critically when faced with an uncompliant
+ implementation. The fact that the spec in fact requires this behavior
+ simply makes this more evident.
+ 
+ 
+ > Essentially the canocial form of a request is
+ > 
+ > <method> <aboluteURI> <version>
+ > 
+ > however HTTP/1.1 server must ALSO understand:
+ > 
+ > <method> <pathURI> <versioN>
+ > Host: <host>
+ > 
+ > which can easily be canonicalised.
+ 
+ Nope. That's incorrect. HTTP/1.1 does not allow the use of full URIs in
+ origin server requests, only proxy requests. Servers are required to
+ *accept* them for origin requests, to allow for that possibility in future
+ versions of HTTP. And all HTTP/1.1 requests must contain a Host: header,
+ regardless of whether they are origin or proxy.
+ 
+ > Additionally you have not addressed the second half of my bug report -
+ > where I show that an absoluteURI AND a host header works.  The Host:
+ > header should have no impact, it is implied by the absolute URI.
+ 
+ Of course it works. It has to, if Apache is to be compliant with HTTP/1.1.
+ And the Host: header does not have any impact. Try it yourself; Apache
+ ignores its content. However, in order to be a valid HTTP/1.1 request, it
+ has to contain that header. Apache is required to reject it with a 400
+ response if it does not.
+ 
+ -- Alexei Kosut <akosut@stanford.edu> <http://www.stanford.edu/~akosut/>
+    Stanford University, Class of 2001 * Apache <http://www.apache.org> *
+ 
+ 
+ 
+
+From: Anand Kumria <wildfire@progsoc.uts.edu.au>
+To: Alexei Kosut <akosut@leland.Stanford.EDU>
+Cc: apbugs@apache.org
+Subject: Re: protocol/1454: Apache doesn't always understand requests with the absoluteURI in them
+Date: Sat, 22 Nov 1997 23:56:09 +1100 (EST)
+
+ On Sat, 22 Nov 1997, Alexei Kosut wrote:
+ 
+ > On Sat, 22 Nov 1997, Anand Kumria wrote:
+ > 
+ > > However this processing strategy is contrary to Section 5.2 which states:
+ > > 
+ > > 
+ > >      1. If Request-URI is an absoluteURI, the host is part of the
+ > >         Request-URI. Any Host header field value in the request MUST be
+ > >         ignored.
+ > > 
+ > >      2. If the Request-URI is not an absoluteURI, and the request
+ > >         includes a Host header field, the host is determined by the Host
+ > >         header field value.
+ > > 
+ > >      3. If the host as determined by rule 1 or 2 is not a valid host on
+ > >         the server, the response MUST be a 400 (Bad Request) error
+ > >         message.
+ > 
+ > I refer you to section 14.23:
+ > 
+ >   "All Internet-based HTTP/1.1 servers
+ >    MUST respond with a 400 status code to any HTTP/1.1 request message
+ >    which lacks a Host header field."
+ > 
+ > These two quotes are regerring to different things. Section 5.2, which you
+ > quoted, *assumes* that the Host: header is present, and simply dictates
+ > the precedence of the full URI's host vs. the Host: header. The 400
+ > response mentioned refers to what happens if the named host does not match
+ > one the server is configured for. Section 14.23 and 5.1.2 are what
+ > dictate the server's behavior in the case we are discussing.
+ 
+ Perhaps; but I believe the processing strategy should be:
+ 
+ 1. Is it an absoluteURI? Yes? Cool, we ignore a Host: header, if *any*
+ ("Any host header field value in the request MUST be ignored.") and use
+ what was specified in the absoluteURI.
+ 
+ 2. Hmm, must have been a pathURI. Is there a host header? Yes, everything
+ is okay.
+ 
+ 3. Hmm: either no Host: header on previous requests or the host that was
+ specified isn't valid (as far as we are converned). Error 400, ogo away.
+  
+ I think this makes Apache more robust ("Be liberal in what you receive, be
+ conservative in what you send"). However it is hard to argue the point
+ properly without seeing an accept grammar for HTTP/1.1, but the Apache
+ team seems fortunate enough to have one of the document authors (R.
+ Fielding) on your team, perhaps he can provide more insights.
+ 
+ > The fact is, all HTTP/1.1 requests must contain a Host: header (section
+ > 5.1.2), regardless of the type of URI used. And Apache is certainly
+ > allowed to behave critically when faced with an uncompliant
+ > implementation. The fact that the spec in fact requires this behavior
+ > simply makes this more evident.
+ 
+ As I have tried to explain above the rules for processing requests don't
+ consider the absence of the Host: header until rule 3. Apache is rejecting
+ the document too early in its request parsing process.
+ 
+ > 
+ > > Essentially the canocial form of a request is
+ > > 
+ > > <method> <aboluteURI> <version>
+ > > 
+ > > however HTTP/1.1 server must ALSO understand:
+ > > 
+ > > <method> <pathURI> <versioN>
+ > > Host: <host>
+ > > 
+ > > which can easily be canonicalised.
+ > 
+ > Nope. That's incorrect. HTTP/1.1 does not allow the use of full URIs in
+ > origin server requests, only proxy requests. Servers are required to
+ > *accept* them for origin requests, to allow for that possibility in future
+ > versions of HTTP. And all HTTP/1.1 requests must contain a Host: header,
+ > regardless of whether they are origin or proxy.
+ 
+ The processing rules in section 5.2 don't consider the absence of the
+ Host: header until rule 3. You can regard the absence of a host header as
+ host which is invalid.
+ 
+ > 
+ > > Additionally you have not addressed the second half of my bug report -
+ > > where I show that an absoluteURI AND a host header works.  The Host:
+ > > header should have no impact, it is implied by the absolute URI.
+ > 
+ > Of course it works. It has to, if Apache is to be compliant with HTTP/1.1.
+ > And the Host: header does not have any impact. Try it yourself; Apache
+ > ignores its content. However, in order to be a valid HTTP/1.1 request, it
+ > has to contain that header. Apache is required to reject it with a 400
+ > response if it does not.
+ 
+ I think you are rejecting the request too early on - rule 3 is the last
+ thing in the request process.
+ 
+ Anand.
+ 
+ --
+  `When any government, or any church for that matter, undertakes to say to
+   its subjects, "This you may not read, this you must not see, this you are
+   forbidden to know," the end result is tyranny and oppression no matter how
+   holy the motives' -- Robert A Heinlein, "If this goes on --"
+ 
+
+From: Lars Eilebrecht <Lars.Eilebrecht@unix-ag.org>
+To: Anand Kumria <wildfire@progsoc.uts.edu.au>
+Cc: apbugs@apache.org
+Subject: Re: protocol/1454: Apache doesn't always understand requests wit
+Date: Sat, 22 Nov 1997 18:05:04 +0100 (CET)
+
+ According to Anand Kumria:
+ 
+ [...]
+ >   As I have tried to explain above the rules for processing requests don't
+ >   consider the absence of the Host: header until rule 3. Apache is
+ >   rejecting the document too early in its request parsing process.
+ 
+ But a client sending a HTTP/1.1 fullURI request *must* send a Host:
+ header. If the client doesn't send such a header it is broken and should
+ be fixed.
+ 
+ Apache provides some workarounds for specific versions of broken popular
+ browsers (eg. Netscape Navigator or Microsoft Explorer), but providing
+ a general 'workaround' for broken HTTP/1.1 clients is IMHO not useful.
+ 
+ 
+ ciao...
+ -- 
+ Lars Eilebrecht           - RFC 1925: "It is more complicated than you think."
+ sfx@unix-ag.org
+ http://www.si.unix-ag.org/~sfx/
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Anand Kumria <wildfire@progsoc.uts.edu.au>
+Cc: apbugs@apache.org
+Subject: Re: protocol/1454: Apache doesn't always understand requests with the absoluteURI in them
+Date: Sat, 22 Nov 1997 14:08:16 -0800 (PST)
+
+ On 22 Nov 1997, Anand Kumria wrote:
+ 
+ >  1. Is it an absoluteURI? Yes? Cool, we ignore a Host: header, if *any*
+ >  ("Any host header field value in the request MUST be ignored.") and use
+ >  what was specified in the absoluteURI.
+ 
+ This is how it works ...
+ 
+ >  I think this makes Apache more robust ("Be liberal in what you receive, be
+ >  conservative in what you send"). However it is hard to argue the point
+ >  properly without seeing an accept grammar for HTTP/1.1, but the Apache
+ >  team seems fortunate enough to have one of the document authors (R.
+ >  Fielding) on your team, perhaps he can provide more insights.
+ 
+ "Be liberal in what you receive, be conservative in what you send" does
+ not really apply to this situation.  Client authors would be foolish to
+ not test their HTTP/1.1 clients against Apache 1.2.x; given that it has
+ such widespread usage.  When they do test them as such they will discover
+ that they really do have to follow section 9:
+ 
+    The Host request-header field (section 14.23) MUST accompany all
+    HTTP/1.1 requests.
+ 
+ and section 14.23: 
+ 
+    A client MUST include a Host header field in all HTTP/1.1 request
+    messages on the Internet (i.e., on any message corresponding to a
+    request for a URL which includes an Internet host address for the
+    service being requested). If the Host field is not already present,
+    an HTTP/1.1 proxy MUST add a Host field to the request message prior
+    to forwarding it on the Internet. All Internet-based HTTP/1.1 servers
+    MUST respond with a 400 status code to any HTTP/1.1 request message
+    which lacks a Host header field.
+ 
+ Given that it's stated twice in the standard there really is no excuse. 
+ 
+ >  As I have tried to explain above the rules for processing requests don't
+ >  consider the absence of the Host: header until rule 3. Apache is rejecting
+ >  the document too early in its request parsing process.
+ 
+ That's irrelevent and wrong.  If you look at the code flow you will
+ discover in http_main that read_request() is called before
+ process_request(), and you'll see that read_request() does the absURI and
+ Host: processing, and that process_request() does the rejection due to
+ absence of Host: header.  So we are following the standard.  (Although
+ there is a comment in the code which is a bit misleading, I'm about to go
+ correct it.)
+ 
+ Dean
+ 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: protocol/1454: Apache doesn't always understand requests with the absoluteURI in them (fwd)
+Date: Sat, 22 Nov 1997 14:08:26 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ Date: 22 Nov 1997 14:10:01 -0000
+ From: Anand Kumria <wildfire@progsoc.uts.edu.au>
+ To: apache-bugdb@apache.org
+ Cc: apache-bugdb@apache.org,
+ Subject: Re: protocol/1454: Apache doesn't always understand requests with the absoluteURI in them
+ 
+ The following reply was made to PR protocol/1454; it has been noted by GNATS.
+ 
+ From: Anand Kumria <wildfire@progsoc.uts.edu.au>
+ To: Alexei Kosut <akosut@leland.Stanford.EDU>
+ Cc: apbugs@apache.org
+ Subject: Re: protocol/1454: Apache doesn't always understand requests with the absoluteURI in them
+ Date: Sat, 22 Nov 1997 23:56:09 +1100 (EST)
+ 
+  On Sat, 22 Nov 1997, Alexei Kosut wrote:
+  
+  > On Sat, 22 Nov 1997, Anand Kumria wrote:
+  > 
+  > > However this processing strategy is contrary to Section 5.2 which states:
+  > > 
+  > > 
+  > >      1. If Request-URI is an absoluteURI, the host is part of the
+  > >         Request-URI. Any Host header field value in the request MUST be
+  > >         ignored.
+  > > 
+  > >      2. If the Request-URI is not an absoluteURI, and the request
+  > >         includes a Host header field, the host is determined by the Host
+  > >         header field value.
+  > > 
+  > >      3. If the host as determined by rule 1 or 2 is not a valid host on
+  > >         the server, the response MUST be a 400 (Bad Request) error
+  > >         message.
+  > 
+  > I refer you to section 14.23:
+  > 
+  >   "All Internet-based HTTP/1.1 servers
+  >    MUST respond with a 400 status code to any HTTP/1.1 request message
+  >    which lacks a Host header field."
+  > 
+  > These two quotes are regerring to different things. Section 5.2, which you
+  > quoted, *assumes* that the Host: header is present, and simply dictates
+  > the precedence of the full URI's host vs. the Host: header. The 400
+  > response mentioned refers to what happens if the named host does not match
+  > one the server is configured for. Section 14.23 and 5.1.2 are what
+  > dictate the server's behavior in the case we are discussing.
+  
+  Perhaps; but I believe the processing strategy should be:
+  
+  1. Is it an absoluteURI? Yes? Cool, we ignore a Host: header, if *any*
+  ("Any host header field value in the request MUST be ignored.") and use
+  what was specified in the absoluteURI.
+  
+  2. Hmm, must have been a pathURI. Is there a host header? Yes, everything
+  is okay.
+  
+  3. Hmm: either no Host: header on previous requests or the host that was
+  specified isn't valid (as far as we are converned). Error 400, ogo away.
+   
+  I think this makes Apache more robust ("Be liberal in what you receive, be
+  conservative in what you send"). However it is hard to argue the point
+  properly without seeing an accept grammar for HTTP/1.1, but the Apache
+  team seems fortunate enough to have one of the document authors (R.
+  Fielding) on your team, perhaps he can provide more insights.
+  
+  > The fact is, all HTTP/1.1 requests must contain a Host: header (section
+  > 5.1.2), regardless of the type of URI used. And Apache is certainly
+  > allowed to behave critically when faced with an uncompliant
+  > implementation. The fact that the spec in fact requires this behavior
+  > simply makes this more evident.
+  
+  As I have tried to explain above the rules for processing requests don't
+  consider the absence of the Host: header until rule 3. Apache is rejecting
+  the document too early in its request parsing process.
+  
+  > 
+  > > Essentially the canocial form of a request is
+  > > 
+  > > <method> <aboluteURI> <version>
+  > > 
+  > > however HTTP/1.1 server must ALSO understand:
+  > > 
+  > > <method> <pathURI> <versioN>
+  > > Host: <host>
+  > > 
+  > > which can easily be canonicalised.
+  > 
+  > Nope. That's incorrect. HTTP/1.1 does not allow the use of full URIs in
+  > origin server requests, only proxy requests. Servers are required to
+  > *accept* them for origin requests, to allow for that possibility in future
+  > versions of HTTP. And all HTTP/1.1 requests must contain a Host: header,
+  > regardless of whether they are origin or proxy.
+  
+  The processing rules in section 5.2 don't consider the absence of the
+  Host: header until rule 3. You can regard the absence of a host header as
+  host which is invalid.
+  
+  > 
+  > > Additionally you have not addressed the second half of my bug report -
+  > > where I show that an absoluteURI AND a host header works.  The Host:
+  > > header should have no impact, it is implied by the absolute URI.
+  > 
+  > Of course it works. It has to, if Apache is to be compliant with HTTP/1.1.
+  > And the Host: header does not have any impact. Try it yourself; Apache
+  > ignores its content. However, in order to be a valid HTTP/1.1 request, it
+  > has to contain that header. Apache is required to reject it with a 400
+  > response if it does not.
+  
+  I think you are rejecting the request too early on - rule 3 is the last
+  thing in the request process.
+  
+  Anand.
+  
+  --
+   `When any government, or any church for that matter, undertakes to say to
+    its subjects, "This you may not read, this you must not see, this you are
+    forbidden to know," the end result is tyranny and oppression no matter how
+    holy the motives' -- Robert A Heinlein, "If this goes on --"
+  
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: protocol/1454: Apache doesn't always understand requests with the absoluteURI in them (fwd)
+Date: Sat, 22 Nov 1997 14:08:33 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ Date: Sat, 22 Nov 1997 22:24:36 +1100 (EST)
+ From: Anand Kumria <wildfire@progsoc.uts.edu.au>
+ To: akosut@hyperreal.org
+ Cc: akosut@apache.org, apache-bugdb@apache.org
+ Subject: Re: protocol/1454: Apache doesn't always understand requests with the absoluteURI in them
+ 
+ On 22 Nov 1997 akosut@hyperreal.org wrote:
+ 
+ > State-Changed-Why:
+ > Apache 1.2 and later does fully support full URIs. However,
+ > HTTP/1.1 also *requires* that if the Host: header is not
+ > present, a 400 response be sent. Apache adheres to this.
+ > 
+ > Note that if you send Apache a full-URI request with a protocol
+ > indication greater than HTTP/1.1, this requirement is waived.
+ 
+ However this processing strategy is contrary to Section 5.2 which states:
+ 
+ 
+      1. If Request-URI is an absoluteURI, the host is part of the
+         Request-URI. Any Host header field value in the request MUST be
+         ignored.
+ 
+      2. If the Request-URI is not an absoluteURI, and the request
+         includes a Host header field, the host is determined by the Host
+         header field value.
+ 
+      3. If the host as determined by rule 1 or 2 is not a valid host on
+         the server, the response MUST be a 400 (Bad Request) error
+         message.
+ 
+ Essentially the canocial form of a request is
+ 
+ <method> <aboluteURI> <version>
+ 
+ however HTTP/1.1 server must ALSO understand:
+ 
+ <method> <pathURI> <versioN>
+ Host: <host>
+ 
+ which can easily be canonicalised.
+ 
+ Additionally you have not addressed the second half of my bug report -
+ where I show that an absoluteURI AND a host header works.  The Host:
+ header should have no impact, it is implied by the absolute URI.
+ 
+ Anand.
+ 
+ --
+  `When any government, or any church for that matter, undertakes to say to
+   its subjects, "This you may not read, this you must not see, this you are
+   forbidden to know," the end result is tyranny and oppression no matter how
+   holy the motives' -- Robert A Heinlein, "If this goes on --"
+ 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: protocol/1454: Apache doesn't always understand requests with the absoluteURI in them (fwd)
+Date: Sat, 22 Nov 1997 14:08:40 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ Date: 22 Nov 1997 11:40:00 -0000
+ From: Alexei Kosut <akosut@leland.Stanford.EDU>
+ To: apache-bugdb@apache.org
+ Cc: apache-bugdb@apache.org,
+ Subject: Re: protocol/1454: Apache doesn't always understand requests with the absoluteURI in them
+ 
+ The following reply was made to PR protocol/1454; it has been noted by GNATS.
+ 
+ From: Alexei Kosut <akosut@leland.Stanford.EDU>
+ To: Anand Kumria <wildfire@progsoc.uts.edu.au>
+ Cc: apbugs@apache.org
+ Subject: Re: protocol/1454: Apache doesn't always understand requests with the absoluteURI in them
+ Date: Sat, 22 Nov 1997 03:38:38 -0800 (PST)
+ 
+  On Sat, 22 Nov 1997, Anand Kumria wrote:
+  
+  > However this processing strategy is contrary to Section 5.2 which states:
+  > 
+  > 
+  >      1. If Request-URI is an absoluteURI, the host is part of the
+  >         Request-URI. Any Host header field value in the request MUST be
+  >         ignored.
+  > 
+  >      2. If the Request-URI is not an absoluteURI, and the request
+  >         includes a Host header field, the host is determined by the Host
+  >         header field value.
+  > 
+  >      3. If the host as determined by rule 1 or 2 is not a valid host on
+  >         the server, the response MUST be a 400 (Bad Request) error
+  >         message.
+  
+  I refer you to section 14.23:
+  
+    "All Internet-based HTTP/1.1 servers
+     MUST respond with a 400 status code to any HTTP/1.1 request message
+     which lacks a Host header field."
+  
+  These two quotes are regerring to different things. Section 5.2, which you
+  quoted, *assumes* that the Host: header is present, and simply dictates
+  the precedence of the full URI's host vs. the Host: header. The 400
+  response mentioned refers to what happens if the named host does not match
+  one the server is configured for. Section 14.23 and 5.1.2 are what
+  dictate the server's behavior in the case we are discussing.
+  
+  The fact is, all HTTP/1.1 requests must contain a Host: header (section
+  5.1.2), regardless of the type of URI used. And Apache is certainly
+  allowed to behave critically when faced with an uncompliant
+  implementation. The fact that the spec in fact requires this behavior
+  simply makes this more evident.
+  
+  
+  > Essentially the canocial form of a request is
+  > 
+  > <method> <aboluteURI> <version>
+  > 
+  > however HTTP/1.1 server must ALSO understand:
+  > 
+  > <method> <pathURI> <versioN>
+  > Host: <host>
+  > 
+  > which can easily be canonicalised.
+  
+  Nope. That's incorrect. HTTP/1.1 does not allow the use of full URIs in
+  origin server requests, only proxy requests. Servers are required to
+  *accept* them for origin requests, to allow for that possibility in future
+  versions of HTTP. And all HTTP/1.1 requests must contain a Host: header,
+  regardless of whether they are origin or proxy.
+  
+  > Additionally you have not addressed the second half of my bug report -
+  > where I show that an absoluteURI AND a host header works.  The Host:
+  > header should have no impact, it is implied by the absolute URI.
+  
+  Of course it works. It has to, if Apache is to be compliant with HTTP/1.1.
+  And the Host: header does not have any impact. Try it yourself; Apache
+  ignores its content. However, in order to be a valid HTTP/1.1 request, it
+  has to contain that header. Apache is required to reject it with a 400
+  response if it does not.
+  
+  -- Alexei Kosut <akosut@stanford.edu> <http://www.stanford.edu/~akosut/>
+     Stanford University, Class of 2001 * Apache <http://www.apache.org> *
+  
+  
+  
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: Anand Kumria <wildfire@progsoc.uts.edu.au>,
+        Apache bugs database <apbugs@apache.org>
+Subject: Re: protocol/1454: Apache doesn't always understand requests with the absoluteURI in them
+Date: Sat, 22 Nov 1997 15:16:03 -0700 (MST)
+
+ On 22 Nov 1997, Dean Gaudet wrote:
+ 
+ >  "Be liberal in what you receive, be conservative in what you send" does
+ >  not really apply to this situation.  Client authors would be foolish to
+ >  not test their HTTP/1.1 clients against Apache 1.2.x; given that it has
+ >  such widespread usage.  When they do test them as such they will discover
+ >  that they really do have to follow section 9:
+ >  
+ >     The Host request-header field (section 14.23) MUST accompany all
+ >     HTTP/1.1 requests.
+ >  
+ >  and section 14.23: 
+ >  
+ >     A client MUST include a Host header field in all HTTP/1.1 request
+ >     messages on the Internet (i.e., on any message corresponding to a
+ >     request for a URL which includes an Internet host address for the
+ >     service being requested). If the Host field is not already present,
+ >     an HTTP/1.1 proxy MUST add a Host field to the request message prior
+ >     to forwarding it on the Internet. All Internet-based HTTP/1.1 servers
+ >     MUST respond with a 400 status code to any HTTP/1.1 request message
+ >     which lacks a Host header field.
+ >  
+ >  Given that it's stated twice in the standard there really is no excuse. 
+ 
+ I agree that the spec, as written, does not imply that any request without
+ a Host: header is valid; just because you ignore it for the purposes of
+ figuring out what host it is for doesn't mean it doesn't have to be there. 
+ It may or may not be desirable if things did work that way, however I
+ can't interpret the spec to suggest they do.
+ 
+ FYI, on a sidenote, a while back I tested half a dozen or so HTTP/1.1
+ servers and about half accepted such requests without Host: headers and
+ about half didn't.
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

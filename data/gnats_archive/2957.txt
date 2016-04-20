@@ -1,0 +1,124 @@
+Received: (qmail 614 invoked by uid 2012); 5 Sep 1998 02:49:02 -0000
+Message-Id: <19980905024902.613.qmail@hyperreal.org>
+Date: 5 Sep 1998 02:49:02 -0000
+From: Brian Thomas <wolfie@mpath.com>
+Reply-To: wolfie@mpath.com
+To: apbugs@hyperreal.org
+Subject: DirectoryMatch/Directory authorization conflicts.
+X-Send-Pr-Version: 3.2
+
+>Number:         2957
+>Category:       general
+>Synopsis:       DirectoryMatch/Directory authorization conflicts.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          mistaken
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Sep  4 19:50:00 PDT 1998
+>Last-Modified:  Sun Sep  6 09:31:28 PDT 1998
+>Originator:     wolfie@mpath.com
+>Organization:
+>Release:        1.3.1
+>Environment:
+Solaris 2.5.1 at most recent recommended patch suite.
+>Description:
+I ran into a situation today with Apache that I'm 99% sure is a bug.
+I'm not sure WHICH part of it is the bug though, since the documentation
+is a bit unclear.
+
+Consider the following httpd.conf snippet:
+
+<DirectoryMatch ^/opt/web/.*/docroot>
+Options FollowSymLinks Includes
+AllowOverride None
+order allow,deny
+allow from all
+</DirectoryMatch>
+
+<Directory /opt/web/mpath/docroot/foundation/partners/docs>
+AuthType basic
+AuthName "Documentation"
+AuthUserFile /opt/web/mpath/private/developers.pw
+AuthGroupFile /opt/web/mpath/private/developers.group
+<Limit GET POST PUT>
+satisfy any
+order deny,allow
+deny from all</Limit>
+</Directory>
+
+Yes yes yes, I know "FollowSymLinks" won't work in a DirectoryMatch directive,
+I already logged that as a bug. :) But the problem I'm having is follows:
+
+In the situation above, the directory
+/opt/web/mpath/docroot/foundation/partners/docs (Henceforth referred to as
+'docs') has no authentication required for it at all. Despite the allow
+from .mpath.com and require group developers, it does not in fact require
+either. The two fixes are to A) Fix the DirectoryMatch directive so it
+matches on  ^/opt/web/.*/docroot$, or remove the 'satisfy any' directive.
+
+Here're what I think are either bugs, or confusing:
+
+1) It should be specified in the documentation that the DirectoryMatch is
+not an absolute match, but a partial like grep or sed. This is the least
+of my concerns, as anyone with regexp experience would probably assume this
+anyway.
+
+2) What I think is breaking here is this: Directory directives are
+matched prior to DirectoryMatch directives. Which means the
+DirectoryMatch section is superseding the Directory section in
+deciding what sort of authentication is required. But the removal of
+the 'satisfy any' directive should NOT then result in authentication
+being on the directory, instead the rules of precedence should be the
+same, and there should be no permissions on the directory. Instead what
+is occuring is removal of the satisfy any directive triggers the
+implicit satisfy all, and suddenly there IS permissions on directory.
+
+Whew. This took forever to track down.
+
+Brian
+
+>How-To-Repeat:
+Use entries in the httpd.conf file similar to the snippet above.
+>Fix:
+With GOOD CODERS! Which luckily the Apache group has in abundant supply. :)
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: lars
+State-Changed-When: Sun Sep  6 09:31:28 PDT 1998
+State-Changed-Why:
+
+What you describe is no bug, but simply the way things
+are supposed to work.
+
+The document at http://www.apache.org/docs/sections.html
+should help you to understand the interaction of
+<Directory> and <DirectoryMatch>.
+
+Release-Changed-From-To: 1.3.X-1.3.1
+Release-Changed-By: lars
+Release-Changed-When: Sun Sep  6 09:31:28 PDT 1998
+Class-Changed-From-To: sw-bug-mistaken
+Class-Changed-By: lars
+Class-Changed-When: Sun Sep  6 09:31:28 PDT 1998
+Severity-Changed-From-To: serious-non-critical
+Severity-Changed-By: lars
+Severity-Changed-When: Sun Sep  6 09:31:28 PDT 1998
+Category-Changed-From-To: mod_auth-any-general
+Category-Changed-By: lars
+Category-Changed-When: Sun Sep  6 09:31:28 PDT 1998
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

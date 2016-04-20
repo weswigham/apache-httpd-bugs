@@ -1,0 +1,112 @@
+Received: (qmail 41194 invoked by uid 501); 19 Feb 2001 05:16:49 -0000
+Message-Id: <20010219051649.41189.qmail@apache.org>
+Date: 19 Feb 2001 05:16:49 -0000
+From: Daniel Good <dg@about-inc.com>
+Reply-To: dg@about-inc.com
+To: submit@bugz.apache.org
+Subject: patch for RewriteCond string test preventing apache startup
+X-Send-Pr-Version: 3.110
+
+>Number:         7272
+>Category:       mod_rewrite
+>Synopsis:       patch for RewriteCond string test preventing apache startup
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Feb 18 21:20:00 PST 2001
+>Closed-Date:    
+>Last-Modified:  Mon Mar 12 15:20:00 PST 2001
+>Originator:     dg@about-inc.com
+>Release:        1.3.17
+>Organization:
+apache
+>Environment:
+Linux
+>Description:
+*** mod_rewrite.c.orig  Sun Feb 18 21:04:05 2001
+--- mod_rewrite.c       Sun Feb 18 21:37:26 2001
+***************
+*** 607,612 ****
+--- 607,629 ----
+          cp++;
+      }
+   
++     /* CondPattern is not always a regular expression, such
++        as the ">string" case or the "=string" case.  It is
++        possible in these non-regex cases to have a sequence
++        of characters that represent an illegal regex, for
++        example "=**" (admittedly contrived :).  Let's return
++        here for the non-regex cases, since a failed regex
++        compile means apache will refuse to startup. */
++     switch (*cp) {
++         case '-':
++         case '>':
++         case '<':
++         case '=':
++             new->pattern = ap_pstrdup(cmd->pool, cp);
++             new->regexp  = NULL;
++             return NULL;
++     }
++
+      /* now be careful: Under the POSIX regex library
+         we can compile the pattern for case-insensitive matching,
+         under the old V8 library we have to do it self via a hack */
+>How-To-Repeat:
+RewriteCond %{QUERY_STRING} =**
+
+3# apachectl start
+Syntax error on line 217 of /usr/local/apache/conf/httpd.conf:
+RewriteCond: cannot compile regular expression '=**'
+
+/usr/local/bin/apachectl start: httpd could not be started
+>Fix:
+see description
+>Release-Note:
+>Audit-Trail:
+
+From: Daniel Ashley Good  <dg@about-inc.com>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc:  
+Subject: Re: mod_rewrite/7272: patch for RewriteCond string test preventing 
+ apache startup
+Date: Mon, 12 Mar 2001 18:13:46 -0500
+
+ -----BEGIN PGP SIGNED MESSAGE-----
+ Hash: SHA1
+ 
+ Content-Type: text/plain; charset=us-ascii
+ 
+ Did anyone consider the patch I submitted?  The ticket still looks untouched.
+ Thanks  -Dan
+ 
+ -----BEGIN PGP SIGNATURE-----
+ Version: GnuPG v1.0.2 (GNU/Linux)
+ Comment: Exmh version 2.2 06/23/2000
+ 
+ iD8DBQE6rVgqPANpGt5KUCkRAi/2AKCol/AXA1dokciS7pn+ugtxKa23KwCcCZmL
+ kLi4QTrTJGwN22UPFuIrWlo=
+ =xdVM
+ -----END PGP SIGNATURE-----
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,98 @@
+Received: (qmail 18712 invoked by uid 2012); 10 Jun 1998 02:08:12 -0000
+Message-Id: <19980610020812.18711.qmail@hyperreal.org>
+Date: 10 Jun 1998 02:08:12 -0000
+From: Kristian K.Nielsen <jkkn@ctav.com>
+Reply-To: jkkn@ctav.com
+To: apbugs@hyperreal.org
+Subject: Two small mistakes in the source, truncating in mod_usertrack and "nogroup"
+X-Send-Pr-Version: 3.2
+
+>Number:         2398
+>Category:       general
+>Synopsis:       Two small mistakes in the source, truncating in mod_usertrack and "nogroup"
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jun  9 19:10:01 PDT 1998
+>Last-Modified:  Tue Jul  7 17:12:11 PDT 1998
+>Originator:     jkkn@ctav.com
+>Organization:
+>Release:        1.3
+>Environment:
+Not important in this matter.
+>Description:
+This patch fixes two small bugs in the Apache 1.3.0 sourcecode:
+
+1. The time that Randy Terbush decided to change the default group from
+   "nouser" to "nogroup", he forgot to change it one time in conf.h.
+ 
+2. Another small mistake appears in mod_usertrack, where the generation
+   of the unique cookie happens. mod_usertrack simply forget to double
+   the remote servername before it truncates it, therefore only a bit 
+   of the remote servername is available the rest of the server process,
+   this by example means that the remove servername would appear wrong
+   in logfiles and thereby confuse logsystems even instead of helping
+   them.
+>How-To-Repeat:
+1. Some systems like BSDI BSD/OS 3.0 with the Virtual Kernel gets annoyed when trying to use "nouser" when it doesn't exist.
+2. The problem appears when you're using mod_usertrack, everytime a new user that doesn't have a cookie enter your server.
+   It's easy to see in e.x. an access-logfile
+>Fix:
+--- apache_1.3.0/src/CHANGES	Sat May 30 12:15:37 1998
++++ apache_1.3.0fix/src/CHANGES	Tue Jun  9 18:41:57 1998
+@@ -1,3 +1,12 @@
++Changes with Apache 1.3
++
++  *) Completed the default group change to "nogroup" instead of "nobody"
++     [Kristian Kraemmer Nielsen <jkkn@ctav.com>]
++
++  *) Fixed a small bug in mod_usertrack that caused the remote hostname
++     to be truncated in the rest of the server process, e.x. hostname would
++     appear wrong in logfiles. [Kristian Kraemmer Nielsen <jkkn@ctav.com>]
++
+ Changes with Apache 1.3b8
+ 
+   *) Using a type map file as a custom error document was not possible.
+--- apache_1.3.0/src/include/conf.h	Thu May 28 17:15:56 1998
++++ apache_1.3.0fix/src/include/conf.h	Tue Jun  9 18:17:49 1998
+@@ -242,7 +242,7 @@
+ #define USE_MMAP_FILES
+ #define HAVE_SYSLOG 1
+ #ifndef DEFAULT_GROUP
+-#define DEFAULT_GROUP "nobody"
++#define DEFAULT_GROUP "nogroup"
+ #endif
+ #endif
+ #ifndef DEFAULT_USER
+--- apache_1.3.0/src/modules/standard/mod_usertrack.c	Sat Apr 11 05:00:53 1998
++++ apache_1.3.0fix/src/modules/standard/mod_usertrack.c	Tue Jun  9 18:34:14 1998
+@@ -138,8 +138,8 @@
+     char cookiebuf[1024];
+     char *new_cookie;
+     char *dot;
+-    const char *rname = ap_get_remote_host(r->connection, r->per_dir_config,
+-					REMOTE_NAME);
++    const char *rname = ap_pstrdup(r->pool,ap_get_remote_host(r->connection, r->per_dir_config,
++					REMOTE_NAME));
+ 
+     if ((dot = strchr(rname, '.')))
+         *dot = '\0';            /* First bit of hostname */
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: jim
+State-Changed-When: Tue Jul  7 17:12:11 PDT 1998
+State-Changed-Why:
+The 'nogroup' fix applied to 1.3.1-dev. Other patch did
+not apply
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

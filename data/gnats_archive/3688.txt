@@ -1,0 +1,96 @@
+Received: (qmail 27966 invoked by uid 2012); 16 Jan 1999 07:24:30 -0000
+Message-Id: <19990116072430.27965.qmail@hyperreal.org>
+Date: 16 Jan 1999 07:24:30 -0000
+From: James Treacy <treacy@debian.org>
+Reply-To: treacy@debian.org
+To: apbugs@hyperreal.org
+Subject: Handling of LanguagePriority still not quite right
+X-Send-Pr-Version: 3.2
+
+>Number:         3688
+>Category:       mod_negotiation
+>Synopsis:       Handling of LanguagePriority still not quite right
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jan 15 23:30:01 PST 1999
+>Last-Modified:  Sat Feb  6 06:39:15 PST 1999
+>Originator:     treacy@debian.org
+>Organization:
+>Release:        1.3.4
+>Environment:
+Debian 2.0
+>Description:
+After translations to a few more languages were added, I discovered that the
+previous patch I sent in for mod_negotiation.c only fixed half the problem.
+It is still possible for a language which is not listed in the LanguagePriority
+option to be treated as being as good as a language which is in the list.
+
+The problem is easy to see. In the function is_variant_better, if 
+  best->lang_index == 0
+and
+  variant->lang_index == -1
+the function will not return at line 1889 as it should, but continue as
+if the variant is as good as the current best.
+
+The previous patch fixed the case where
+  best->lang_index == -1
+and
+  variant->lang_index == 0
+didn't get set the variant as being the new best.
+
+It is amazing that it has taken so many attempts to get these few lines correct.
+I'm quite sure the patch given fixes the last of this problem.
+>How-To-Repeat:
+
+>Fix:
+The following patch will fix the problem
+
+*** mod_negotiation.c   Fri Jan 15 16:48:07 1999
+--- mod_negotiation.c.orig      Fri Jan 15 15:21:43 1999
+***************
+*** 1885,1892 ****
+      /* XXX: TODO: there is a slight discrepancy between how this
+       * behaves and how it described in the documentation        
+       */                                                 
+!     if (best->lang_index != -1 &&
+!         (variant->lang_index > best->lang_index || variant->lang_index == -1)) {
+          return 0;
+      }            
+      if (variant->lang_index != -1 &&
+--- 1885,1891 ----
+      /* XXX: TODO: there is a slight discrepancy between how this
+       * behaves and how it described in the documentation        
+       */                                                 
+!     if (best->lang_index != -1 && variant->lang_index > best->lang_index) {
+          return 0;
+      }            
+      if (variant->lang_index != -1 &&
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: fielding
+State-Changed-When: Sat Feb  6 06:39:14 PST 1999
+State-Changed-Why:
+
+A form of this patch, along with the change from PR 3299,
+has been applied to the 1.3.5-dev source repository and
+will appear in the next release.
+
+Thanks for the fix!
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

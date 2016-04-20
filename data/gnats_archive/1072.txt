@@ -1,0 +1,365 @@
+From apwww@hyperreal.org  Thu Aug 28 13:57:04 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id NAA18236;
+	Thu, 28 Aug 1997 13:57:04 -0700 (PDT)
+Message-Id: <199708282057.NAA18236@hyperreal.org>
+Date: Thu, 28 Aug 1997 13:57:04 -0700 (PDT)
+From: Robin Laing <admin@tst-medhat.com>
+Reply-To: admin@tst-medhat.com
+To: apbugs@hyperreal.org
+Subject: http servers die until only one left in process list
+X-Send-Pr-Version: 3.2
+
+>Number:         1072
+>Category:       general
+>Synopsis:       http servers die until only one left in process list
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Aug 28 14:40:02 1997
+>Last-Modified:  Sat Feb 14 13:50:00 PST 1998
+>Originator:     admin@tst-medhat.com
+>Organization:
+>Release:        1.2.3
+>Environment:
+Linux 2.0.30 (Red Hat 4.2)
+128 Meg Ram
+Pentium 90
+>Description:
+We have upgraded to 1.2.2 and then 1.2.3 this last month and we have had the same problem.
+
+The number of servers dies until only the original server started is running.  A SIGHUP will correct the problem for a short period of time and then it will stop again.
+
+We have set the MinSpareServers to 10 and StartServers to 15.  Once the servers start dieing, the only way to get the dynamic servers to work again is to restart the server using -SIGHUP or kill and a full restart.
+
+There are no messages in the error_log in regards to this problem. 
+
+I could not find anything in any of your bug reports on this problem either.
+>How-To-Repeat:
+I don't know.
+>Fix:
+We are now running a cron job that checks the number of servers and if ti drops below a set level, we do an automatic -SIGHUP and this seems to fix the problem for a couple of hours.  Last night (97-08-28) this had to be done 5 times.
+
+%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Sep 12 16:49:31 PDT 1997
+State-Changed-Why:
+This sounds like you're killing the parent process somehow.
+Possibly a cron job or something.  The parent is responsible
+for spawning more children ... and I haven't seen this problem
+on other linux boxes yet.
+
+If you are absolutely certain the parent is still running
+(take a look in logs/httpd.pid to find out the parent's pid)
+then try running "strace -p <pid>" against it to see what 
+it's up to.
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Subject: Re: general/1072: http servers die until only one left in process list (fwd)
+Date: Fri, 12 Sep 1997 23:31:09 -0700 (PDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Fri, 12 Sep 1997 22:10:20 -0600 (MDT)
+ From: TST System Administrator <admin@TST-MedHat.com>
+ To: dgaudet@hyperreal.org
+ Cc: apache-bugdb@apache.org
+ Subject: Re: general/1072: http servers die until only one left in process list
+ 
+ Parent process is alive and running.  It doesn't die, it is the only 
+ process left running.
+ 
+ I have a cron job that counts the number of httpd processes and then 
+ restarts the main process by using the following if the count is to low.
+ 
+    kill -HUP `cat /var/run/httpd.pid` 
+ 
+ I will run the strace command and see what else is happening.
+ 
+ This has happened twice in the last day.  It seems to be intermittent.  
+ Sep 06 it happened 6 times while twice between then and today.
+ 
+ 
+ This is what I see when I run the strace -p 
+ 
+    --- SIGALRM (Alarm clock) ---                                
+    sigreturn()                             = ? (mask now [ALRM])
+    time(NULL)                              = 874122780          
+    sigaction(SIGALRM, {SIG_DFL}, NULL)     = 0                  
+    alarm(0)                                = 0                  
+    sigprocmask(SIG_SETMASK, [], NULL)      = 0                  
+    wait4(-1, NULL, WNOHANG, NULL)          = 0                  
+    sigprocmask(SIG_BLOCK, [ALRM], [])      = 0                  
+    sigaction(SIGALRM, {0x40082ef0, [], 0}, {SIG_DFL}) = 0       
+    time(NULL)                              = 874122780          
+    alarm(1)                                = 0                  
+    sigsuspend([] <unfinished ...>                               
+ 
+ and it just repeats.
+ 
+ Here is strace -i -p 305
+ 
+ 
+ [40082d88] --- SIGALRM (Alarm clock) ---
+ [40082ef0] <... sigsuspend resumed> )   = -1 EINTR (Interrupted system call)
+ [bffffca4] sigreturn()                  = ? (mask now [ALRM])
+ [4009823a] time(NULL)                   = 874123584
+ [4002e627] sigaction(SIGALRM, {SIG_DFL}, NULL) = 0
+ [4002fd7a] alarm(0)                     = 0
+ [4002e70c] sigprocmask(SIG_SETMASK, [], NULL) = 0
+ [4002ed43] wait4(-1, NULL, WNOHANG, NULL) = 0
+ [4002e70c] sigprocmask(SIG_BLOCK, [ALRM], []) = 0
+ [4002e627] sigaction(SIGALRM, {0x40082ef0, [], 0}, {SIG_DFL}) = 0
+ [4009823a] time(NULL)                   = 874123584
+ [4002fd7a] alarm(1)                     = 0
+ [40082d88] sigsuspend([] <unfinished ...>
+ 
+ 
+ >From our httpd.conf
+ 
+ StartServers 15
+ MinSpareServers 10
+ MaxSpareServers 30
+ 
+ Hope this helps.
+ 
+ 
+ TST Consulting Inc.             |  Voice: 403.529.1560         |
+ Box 1599 C153                   |   Fax: 403.526.1560          |
+ Medicine Hat, Alberta, Canada   |  Office: 877 17 Street SW    |
+ T1A 7Y5                         |  Email: admin@TST-MedHat.com |
+ 
+ 
+ 
+ On Fri, 12 Sep 1997 dgaudet@hyperreal.org wrote:
+ 
+ > Synopsis: http servers die until only one left in process list
+ > 
+ > State-Changed-From-To: open-analyzed
+ > State-Changed-By: dgaudet
+ > State-Changed-When: Fri Sep 12 16:49:31 PDT 1997
+ > State-Changed-Why:
+ > This sounds like you're killing the parent process somehow.
+ > Possibly a cron job or something.  The parent is responsible
+ > for spawning more children ... and I haven't seen this problem
+ > on other linux boxes yet.
+ > 
+ > If you are absolutely certain the parent is still running
+ > (take a look in logs/httpd.pid to find out the parent's pid)
+ > then try running "strace -p <pid>" against it to see what 
+ > it's up to.
+ > 
+ > Dean
+ > 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: TST System Administrator <admin@TST-MedHat.com>
+Subject: Re: general/1072: http servers die until only one left in process list
+Date: Fri, 12 Sep 1997 23:36:59 -0700 (PDT)
+
+ 
+ Were those strace results from a server that had stopped spawning new
+ children?  I need them from a server that has stopped spawning new
+ children ... The ones you sent looked really normal.
+ 
+ Dean
+ 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Subject: Re: general/1072: http servers die until only one left in process list (fwd)
+Date: Sun, 14 Sep 1997 20:51:55 -0700 (PDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Fri, 12 Sep 1997 22:10:20 -0600 (MDT)
+ From: TST System Administrator <admin@TST-MedHat.com>
+ To: dgaudet@hyperreal.org
+ Cc: apache-bugdb@apache.org
+ Subject: Re: general/1072: http servers die until only one left in process list
+ 
+ Parent process is alive and running.  It doesn't die, it is the only 
+ process left running.
+ 
+ I have a cron job that counts the number of httpd processes and then 
+ restarts the main process by using the following if the count is to low.
+ 
+    kill -HUP `cat /var/run/httpd.pid` 
+ 
+ I will run the strace command and see what else is happening.
+ 
+ This has happened twice in the last day.  It seems to be intermittent.  
+ Sep 06 it happened 6 times while twice between then and today.
+ 
+ 
+ This is what I see when I run the strace -p 
+ 
+    --- SIGALRM (Alarm clock) ---                                
+    sigreturn()                             = ? (mask now [ALRM])
+    time(NULL)                              = 874122780          
+    sigaction(SIGALRM, {SIG_DFL}, NULL)     = 0                  
+    alarm(0)                                = 0                  
+    sigprocmask(SIG_SETMASK, [], NULL)      = 0                  
+    wait4(-1, NULL, WNOHANG, NULL)          = 0                  
+    sigprocmask(SIG_BLOCK, [ALRM], [])      = 0                  
+    sigaction(SIGALRM, {0x40082ef0, [], 0}, {SIG_DFL}) = 0       
+    time(NULL)                              = 874122780          
+    alarm(1)                                = 0                  
+    sigsuspend([] <unfinished ...>                               
+ 
+ and it just repeats.
+ 
+ Here is strace -i -p 305
+ 
+ 
+ [40082d88] --- SIGALRM (Alarm clock) ---
+ [40082ef0] <... sigsuspend resumed> )   = -1 EINTR (Interrupted system call)
+ [bffffca4] sigreturn()                  = ? (mask now [ALRM])
+ [4009823a] time(NULL)                   = 874123584
+ [4002e627] sigaction(SIGALRM, {SIG_DFL}, NULL) = 0
+ [4002fd7a] alarm(0)                     = 0
+ [4002e70c] sigprocmask(SIG_SETMASK, [], NULL) = 0
+ [4002ed43] wait4(-1, NULL, WNOHANG, NULL) = 0
+ [4002e70c] sigprocmask(SIG_BLOCK, [ALRM], []) = 0
+ [4002e627] sigaction(SIGALRM, {0x40082ef0, [], 0}, {SIG_DFL}) = 0
+ [4009823a] time(NULL)                   = 874123584
+ [4002fd7a] alarm(1)                     = 0
+ [40082d88] sigsuspend([] <unfinished ...>
+ 
+ 
+ >From our httpd.conf
+ 
+ StartServers 15
+ MinSpareServers 10
+ MaxSpareServers 30
+ 
+ Hope this helps.
+ 
+ 
+ TST Consulting Inc.             |  Voice: 403.529.1560         |
+ Box 1599 C153                   |   Fax: 403.526.1560          |
+ Medicine Hat, Alberta, Canada   |  Office: 877 17 Street SW    |
+ T1A 7Y5                         |  Email: admin@TST-MedHat.com |
+ 
+ 
+ 
+ On Fri, 12 Sep 1997 dgaudet@hyperreal.org wrote:
+ 
+ > Synopsis: http servers die until only one left in process list
+ > 
+ > State-Changed-From-To: open-analyzed
+ > State-Changed-By: dgaudet
+ > State-Changed-When: Fri Sep 12 16:49:31 PDT 1997
+ > State-Changed-Why:
+ > This sounds like you're killing the parent process somehow.
+ > Possibly a cron job or something.  The parent is responsible
+ > for spawning more children ... and I haven't seen this problem
+ > on other linux boxes yet.
+ > 
+ > If you are absolutely certain the parent is still running
+ > (take a look in logs/httpd.pid to find out the parent's pid)
+ > then try running "strace -p <pid>" against it to see what 
+ > it's up to.
+ > 
+ > Dean
+ > 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Subject: Re: general/1072: http servers die until only one left in process list (fwd)
+Date: Thu, 18 Sep 1997 13:09:33 -0700 (PDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Sat, 13 Sep 1997 13:44:59 -0600 (MDT)
+ From: TST System Administrator <admin@TST-MedHat.com>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: general/1072: http servers die until only one left in process list
+ 
+ I guess I will have to stop the cron job and wait until it does stop.
+ 
+ It could take a couple of days.
+ 
+ I will get back to you with it as soon as I can get a set.
+ 
+ Robin
+ 
+ TST Consulting Inc.             |  Voice: 403.529.1560         |
+ Box 1599 C153                   |   Fax: 403.526.1560          |
+ Medicine Hat, Alberta, Canada   |  Office: 877 17 Street SW    |
+ T1A 7Y5                         |  Email: admin@TST-MedHat.com |
+ 
+ On Fri, 12 Sep 1997, Dean Gaudet wrote:
+ 
+ > Were those strace results from a server that had stopped spawning new
+ > children?  I need them from a server that has stopped spawning new
+ > children ... The ones you sent looked really normal.
+ > 
+ > Dean
+ > 
+ > 
+ 
+State-Changed-From-To: analyzed-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Sat Feb 14 05:10:53 PST 1998
+State-Changed-Why:
+I'm not sure if you're still having this problem.  But you
+may want to visit
+
+http://www.apache.org/docs/misc/FAQ.html#redhat
+
+Since you may be affected by the problem described there.
+
+Dean
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Feb 14 13:46:14 PST 1998
+State-Changed-Why:
+User solved problem with upgrade.
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: general/1072: http servers die until only one left in process list (fwd)
+Date: Sat, 14 Feb 1998 13:45:29 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ Date: Sat, 14 Feb 1998 12:58:22 -0700 (MST)
+ From: TST System Administrator <admin@TST-MedHat.com>
+ To: dgaudet@hyperreal.org
+ Subject: Re: general/1072: http servers die until only one left in process list
+ 
+ Thanks for the pointer but I did an upgrade of the server shortly after 
+ the problems occured and all is well now.
+ 
+ Robin
+ 
+ TST Consulting Inc.             |  Voice: 403.529.1560         |
+ Box 1599 C153                   |   Fax: 403.526.1560          |
+ Medicine Hat, Alberta, Canada   |  Office: 877 17 Street SW    |
+ T1A 7Y5                         |  Email: admin@TST-MedHat.com |
+ 
+>Unformatted:
+
+
+
+
+
+

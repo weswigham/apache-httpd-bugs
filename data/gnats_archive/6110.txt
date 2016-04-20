@@ -1,0 +1,156 @@
+Received: (qmail 33347 invoked by uid 501); 23 May 2000 15:09:05 -0000
+Message-Id: <20000523150905.33346.qmail@locus.apache.org>
+Date: 23 May 2000 15:09:05 -0000
+From: Xin Jiang <xjiang@cn.oracle.com>
+Reply-To: xjiang@cn.oracle.com
+To: submit@bugz.apache.org
+Subject: ORA-12154 raised when trying to connect to Oracle RDBMS, no network connection made
+X-Send-Pr-Version: 3.110
+
+>Number:         6110
+>Category:       mod_jserv
+>Synopsis:       ORA-12154 raised when trying to connect to Oracle RDBMS, no network connection made
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue May 23 08:10:01 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     xjiang@cn.oracle.com
+>Release:        ApacheJServ-1.1.1
+>Organization:
+apache
+>Environment:
+Redhat 6.1 (Linux 2.2.12-20), Apache 1.3.9, Apache JServ 1.1.1, JSDK2.0, JDK 1.2.2 (Blackdown.org Version)
+Oracle 8.0.5.1.0, JDBC OCI8
+>Description:
+Hi, Apache Support Team:
+
+I created the environment to use servlet to access Oracle 8.0.5.1.0 by using
+Apache Jserv 1.1.1. The thin jdbc driver runs fine, but I want to use oci8
+(thick) driver, because I should deal with BLOB and BFILEs.
+
+I configured jserv.properties and set java run time path
+"-Djava.library.path=/usr/oracle/lib" which is my jdbc native library's path.
+
+Now, jserver is started. I use following java servlet to connect to oracle rdbms
+and the error occurs, and stack trace is as following:
+
+-------------------------------------
+import java.io.*;
+
+import javax.servlet.*;
+import javax.servlet.http.*;
+import java.sql.*;
+
+
+/**
+ * This is a simple example of an HTTP Servlet.  It responds to the GET
+ * and HEAD methods of the HTTP protocol.
+ */
+public class Dictionary1 extends HttpServlet
+{ 
+    /**
+     * Handle the GET and HEAD methods by building a simple web page.
+     * HEAD is just like GET, except that the server returns only the
+     * headers (including content length) not the body we write.
+     */
+	static private String errString;
+	static Connection conn;
+	public void init (ServletConfig config)
+	throws ServletException
+	{
+		super.init(config);
+		errString=null;
+	}	
+    public void doGet (HttpServletRequest request,
+                       HttpServletResponse response) 
+        throws ServletException, IOException
+        {
+            PrintWriter out;
+            String title = "Example Apache JServ Servlet";
+
+            // set content type and other response header fields first
+            response.setContentType("text/html");
+
+            // then write the data of the response
+            out = response.getWriter();
+            
+            out.println("<HTML><HEAD><TITLE>");
+            out.println(title);
+            out.println("</TITLE></HEAD><BODY bgcolor=\"#FFFFFF\">");
+            out.println("<H1>" + title + "</H1>");
+            out.println("<H2> Congratulations, ApacheJServ 1.1 is working!</H2><br>");
+			try {
+				DriverManager.registerDriver(new oracle.jdbc.driver.OracleDriver());
+				conn= DriverManager.getConnection("jdbc:oracle:oci8:@o8051","scott","tiger");
+				Statement stmt = conn.createStatement();
+				out.println("<table>");
+				ResultSet rset = stmt.executeQuery("select TABLE_NAME, COMMENTS from DICTIONARY");
+				while (rset.next())
+						out.println("<tr><td>"+rset.getString(1)+"<td>"+rset.getString(2));
+				out.println("</table>");
+				rset.close();
+				stmt.close();
+        		conn.close();
+				} catch(SQLException e) {
+					out.println("<pre>");
+					e.printStackTrace(out);
+					out.println("</pre>");
+				} catch(NullPointerException e) {
+					out.println(e + "<br>");
+				}
+            out.println("</BODY></HTML>");
+            out.close();
+		}
+}
+--------------------------------------
+java.sql.SQLException: Error while trying to retrieve text for error ORA-12154
+		at oracle.jdbc.oci7.OCIDBAccess.check_error(OCIDBAccess.java, Compiled Code)
+		at oracle.jdbc.oci7.OCIDBAccess.logon(OCIDBAccess.java, Compiled Code)
+		at oracle.jdbc.driver.OracleConnection.(OracleConnection.java, Compiled Code)
+		at oracle.jdbc.driver.OracleDriver.connect(OracleDriver.java, Compiled Code)
+		at java.sql.DriverManager.getConnection(DriverManager.java, Compiled Code)
+		at java.sql.DriverManager.getConnection(DriverManager.java, Compiled Code)
+		at Dictionary1.doGet(Dictionary1.java, Compiled Code)
+		at javax.servlet.http.HttpServlet.service(HttpServlet.java, Compiled Code)
+		at javax.servlet.http.HttpServlet.service(HttpServlet.java, Compiled Code)
+		at org.apache.jserv.JServConnection.processRequest(JServConnection.java, Compiled Code)
+		at org.apache.jserv.JServConnection.run(JServConnection.java, Compiled Code)
+		at java.lang.Thread.run(Thread.java, Compiled Code)
+
+---------------------------
+Using the absolutely same environment, this servlet works fine on Netscape Enterprise 4.0's servlet engine
+ 
+
+>How-To-Repeat:
+Could you please use above java servlet source code to test, please change the
+connection string (here is o8051) for your testing environment.
+>Fix:
+When I failed, I checked "netstat -na" to see if this servlet tried to connect
+to Oracle DB server, but no any active connection made. I wonder if Apache Jserv
+engine forbidded the running servlet to open socket, or Jserv does not support
+java native interface very well.
+
+Your help will be highly appreciated.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,167 @@
+Received: (qmail 84158 invoked by uid 65534); 18 Mar 2000 02:31:47 -0000
+Message-Id: <20000318023147.84157.qmail@locus.apache.org>
+Date: 18 Mar 2000 02:31:47 -0000
+From: Eric Wedel <wedel@wenet.net>
+Reply-To: wedel@wenet.net
+To: submit@bugz.apache.org
+Subject: This is a fix for PR5107, and possibly PR2014 as well.
+X-Send-Pr-Version: 3.110
+
+>Number:         5899
+>Category:       mod_proxy
+>Synopsis:       This is a fix for PR5107, and possibly PR2014 as well.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Mar 17 18:40:00 PST 2000
+>Closed-Date:    Wed Jun 14 22:34:31 PDT 2000
+>Last-Modified:  Wed Jun 14 22:34:31 PDT 2000
+>Originator:     wedel@wenet.net
+>Release:        1.3
+>Organization:
+>Environment:
+Windows NT 4.0, Microsoft Visual C++ 6.0.
+>Description:
+The CONNECT method fails when Apache's proxy is run under win32;
+SSL connection proxying is not possible.
+>How-To-Repeat:
+Any SSL URL will do (https:, snews:, etc).  Make sure that the test proxy
+is running on a win32 host machine.
+>Fix:
+The following patch works for me.  Note also the FIXME: note added about
+general SSL proxy issues that I encountered some years ago.  I'm not now
+in a position to work on it, but at least if someone has the problem the
+pointer should help them out.
+
+--- proxy_connect.c	Tue Apr 27 16:36:34 1999
++++ ../proxy_connect.c	Fri Mar 17 18:29:31 2000
+@@ -67,6 +67,12 @@
+ 
+ DEF_Explain
+ 
++
++/* some win32-safe helpers (should be generic routines some place???) */
++static int PortableRead (SOCKET s, char *buf, int cbMax);
++static int PortableWrite (SOCKET s, char *buf, int cb);
++
++
+ /*  
+  * This handles Netscape CONNECT method secure proxy requests.
+  * A connection is opened to the specified host and data is
+@@ -95,6 +101,18 @@
+  * FIXME: should allow authentication, but hopefully the
+  *        generic proxy authentication is good enough.
+  * FIXME: no check for r->assbackwards, whatever that is.
++ * FIXME: Although this code doesn't block on reads, it does
++ *        (appear to) block on writes.  Some years ago, this
++ *        posed a problem when proxying snews through a
++ *        TIS fwtk-based ssl gateway.  The solution was to fold
++ *        Ari Luotonen's "SSL tunneling patch for W3C httpd"
++ *        into the gateway source.  This provided non-blocking
++ *        reads and writes, and worked for all SSL traffic
++ *        thrown at it.  The patch is available (March 2000) at
++ *          http://www.w3.org/Daemon/User/Patch/SSL.patch
++ *        If someone has need (and access to enough test systems)
++ *        this patch provides a good example of symmetrical
++ *        "non-blocking" read/write handling.
+  */
+ 
+ static int
+@@ -252,10 +270,10 @@
+ 	if (i) {
+ 	    if (FD_ISSET(sock, &fds)) {
+ 		Explain0("sock was set");
+-		if ((nbytes = read(sock, buffer, HUGE_STRING_LEN)) != 0) {
++		if ((nbytes = PortableRead(sock, buffer, HUGE_STRING_LEN)) != 0) {
+ 		    if (nbytes == -1)
+ 			break;
+-		    if (write(r->connection->client->fd, buffer, nbytes) == EOF)
++		    if (PortableWrite(r->connection->client->fd, buffer, nbytes) == EOF)
+ 			break;
+ 		    Explain1("Wrote %d bytes to client", nbytes);
+ 		}
+@@ -264,11 +282,11 @@
+ 	    }
+ 	    else if (FD_ISSET(r->connection->client->fd, &fds)) {
+ 		Explain0("client->fd was set");
+-		if ((nbytes = read(r->connection->client->fd, buffer,
++		if ((nbytes = PortableRead(r->connection->client->fd, buffer,
+ 				   HUGE_STRING_LEN)) != 0) {
+ 		    if (nbytes == -1)
+ 			break;
+-		    if (write(sock, buffer, nbytes) == EOF)
++		    if (PortableWrite(sock, buffer, nbytes) == EOF)
+ 			break;
+ 		    Explain1("Wrote %d bytes to server", nbytes);
+ 		}
+@@ -286,3 +304,38 @@
+ 
+     return OK;
+ }
++
++/* PortableRead (s, buf, cbMax)
++     Provides *nix read() functionality in a win32-friendly way.
++     Returns count of bytes read, zero if socket was closed "nicely",
++     or -1 in traumatic error cases.
++*/
++
++static int PortableRead (SOCKET s, char *buf, int cbMax)
++{
++
++#if defined (WIN32)
++   /* win32's read() doesn't support socket handles, so use recv() */
++   return (recv (s, buf, cbMax, 0));
++#else
++   return (read (s, buf, cbMax));
++#endif
++}
++
++/* PortableWrite (s, buf, cbMax)
++     Provides *nix write() functionality in a win32-friendly way.
++     Returns count of bytes written, or -1 (EOF) in error cases.
++*/
++
++static int PortableWrite (SOCKET s, char *buf, int cb)
++{
++
++#if defined (WIN32)
++   /* win32's write() doesn't support socket handles, so use send() */
++   return (send (s, buf, cb, 0));
++#else
++   return (write (s, buf, cb));
++#endif
++}
++
++
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Wed Jun 14 22:34:30 PDT 2000
+State-Changed-Why:
+Thank you for taking the time to submit not only your bugs,
+but solutions as well!  These errors have been addressed
+in the forthcoming release of Apache 1.3.13.  Thank you for
+your interest in the Apache project!
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

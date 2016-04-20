@@ -1,0 +1,166 @@
+Received: (qmail 74522 invoked by uid 501); 2 Oct 2000 16:22:32 -0000
+Message-Id: <20001002162231.74517.qmail@locus.apache.org>
+Date: 2 Oct 2000 16:22:31 -0000
+From: Jonathan J.Miner <miner@doit.wisc.edu>
+Reply-To: miner@doit.wisc.edu
+To: submit@bugz.apache.org
+Subject: Include X-Forwarded-For information in short_score structure
+X-Send-Pr-Version: 3.110
+
+>Number:         6616
+>Category:       general
+>Synopsis:       Include X-Forwarded-For information in short_score structure
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Oct 02 09:30:03 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     miner@doit.wisc.edu
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+NetBSD indy.doit.wisc.edu 1.4.1 NetBSD 1.4.1 (GENERIC) #1: Tue Aug 10 00:03:09 MEST 1999     fvdl@struis:/usr/src/sys/arch/i386/compile/GENERIC i386
+>Description:
+X-Forwarded-For is inserted by most web caches, this patch creates a --with-forward configure option that will cause the server to log this data in a fwdclient field of short_score.  Also included are modifications to mod_status to display the forwarded-client information.
+>How-To-Repeat:
+
+>Fix:
+(this patch is available at: http://indy.doit.wisc.edu/~miner/apache/apachesrc.diff )
+
+diff -ur -x *.o -x *.orig -x Makefile* -x *.apaci -x ap_config_auto.h -x config.status apache_1.3.12/configure apache_1.3.12.jmx2/configure
+--- apache_1.3.12/configure	Sat Feb  5 08:28:59 2000
++++ apache_1.3.12.jmx2/configure	Fri Sep 29 18:01:52 2000
+@@ -451,6 +451,7 @@
+             echo " --without-execstrip    disable the stripping of executables on installation"
+             echo " --server-uid=UID       set the user ID the web server should run as [nobody]"
+             echo " --server-gid=GID       set the group ID the web server UID is a memeber of [#-1]"
++            echo " --with-forward         enable tracking of cache-forwarded requests"
+             echo ""
+             echo "suEXEC options:"
+             echo " --enable-suexec        enable the suEXEC feature"
+@@ -951,6 +952,10 @@
+             ;;
+         --with-port=*)
+             port="$apc_optarg"
++            ;;
++        --with-forward)
++            forward=1
++            CFLAGS="$CFLAGS -DRECORD_FORWARD"
+             ;;
+         --without-support)
+             support=0
+diff -ur -x *.o -x *.orig -x Makefile* -x *.apaci -x ap_config_auto.h -x config.status apache_1.3.12/src/include/scoreboard.h apache_1.3.12.jmx2/src/include/scoreboard.h
+--- apache_1.3.12/src/include/scoreboard.h	Wed Jan 12 09:54:56 2000
++++ apache_1.3.12.jmx2/src/include/scoreboard.h	Fri Sep 29 14:12:42 2000
+@@ -157,6 +157,9 @@
+     time_t last_used;
+ #endif
+     char client[32];		/* Keep 'em small... */
++#ifdef RECORD_FORWARD
++    char fwdclient[32];     /* Client that the req is forwarded for */
++#endif
+     char request[64];		/* We just want an idea... */
+     server_rec *vhostrec;	/* What virtual host is being accessed? */
+                                 /* SEE ABOVE FOR SAFE USAGE! */
+diff -ur -x *.o -x *.orig -x Makefile* -x *.apaci -x ap_config_auto.h -x config.status apache_1.3.12/src/main/http_main.c apache_1.3.12.jmx2/src/main/http_main.c
+--- apache_1.3.12/src/main/http_main.c	Sat Feb  5 06:01:52 2000
++++ apache_1.3.12.jmx2/src/main/http_main.c	Fri Sep 29 14:15:04 2000
+@@ -2207,6 +2207,9 @@
+ {
+     int old_status;
+     short_score *ss;
++#ifdef RECORD_FORWARD
++    char * address;
++#endif
+ 
+     if (child_num < 0)
+ 	return -1;
+@@ -2244,6 +2247,15 @@
+ 	    conn_rec *c = r->connection;
+ 	    ap_cpystrn(ss->client, ap_get_remote_host(c, r->per_dir_config,
+ 				  REMOTE_NOLOOKUP), sizeof(ss->client));
++
++#ifdef RECORD_FORWARD
++        if ((address = ap_table_get(r->headers_in, "X-Forwarded-For")) == NULL) {
++            ap_cpystrn(ss->fwdclient, "", sizeof(ss->client));
++        } else {
++            ap_cpystrn(ss->fwdclient, address, sizeof(ss->client));
++        } 
++#endif
++
+ 	    if (r->the_request == NULL) {
+ 		    ap_cpystrn(ss->request, "NULL", sizeof(ss->request));
+ 	    } else if (r->parsed_uri.password == NULL) {
+diff -ur -x *.o -x *.orig -x Makefile* -x *.apaci -x ap_config_auto.h -x config.status apache_1.3.12/src/modules/standard/mod_status.c apache_1.3.12.jmx2/src/modules/standard/mod_status.c
+--- apache_1.3.12/src/modules/standard/mod_status.c	Sat Feb  5 06:33:16 2000
++++ apache_1.3.12.jmx2/src/modules/standard/mod_status.c	Fri Sep 29 14:26:32 2000
+@@ -477,9 +477,17 @@
+ 	    else
+ #ifdef NO_TIMES
+ 		/* Allow for OS/2 not having CPU stats */
++#ifdef RECORD_FORWARD
++		ap_rputs("<p>\n\n<table border=0><tr><th>Srv<th>PID<th>Acc<th>M\n<th>SS<th>Req<th>Conn<th>Child<th>Slot<th>Client (Fwd)<th>VHost<th>Request</tr>\n\n", r);
++#else
+ 		ap_rputs("<p>\n\n<table border=0><tr><th>Srv<th>PID<th>Acc<th>M\n<th>SS<th>Req<th>Conn<th>Child<th>Slot<th>Client<th>VHost<th>Request</tr>\n\n", r);
++#endif // RECORD_FORWARD
++#else
++#ifdef RECORD_FORWARD
++		ap_rputs("<p>\n\n<table border=0><tr><th>Srv<th>PID<th>Acc<th>M<th>CPU\n<th>SS<th>Req<th>Conn<th>Child<th>Slot<th>Client (Fwd)<th>VHost<th>Request</tr>\n\n", r);
+ #else
+ 		ap_rputs("<p>\n\n<table border=0><tr><th>Srv<th>PID<th>Acc<th>M<th>CPU\n<th>SS<th>Req<th>Conn<th>Child<th>Slot<th>Client<th>VHost<th>Request</tr>\n\n", r);
++#endif // RECORD_FORWARD
+ #endif
+ 	}
+ 
+@@ -664,13 +672,18 @@
+ 			if (score_record.status == SERVER_BUSY_READ)
+ 			    ap_rprintf(r,
+ 			     "<td>?<td nowrap>?<td nowrap>..reading.. </tr>\n\n");
+-			else
+-			    ap_rprintf(r,
+-			     "<td>%s<td nowrap>%s<td nowrap>%s</tr>\n\n",
+-			     ap_escape_html(r->pool, score_record.client),
+-			     vhost ? ap_escape_html(r->pool, 
+-				vhost->server_hostname) : "(unavailable)",
+-			     ap_escape_html(r->pool, score_record.request));
++			else {
++                ap_rprintf(r,"<td>%s",ap_escape_html(r->pool, score_record.client));
++#ifdef RECORD_FORWARD
++                if (strlen(score_record.fwdclient) != 0)
++			    ap_rprintf(r,
++                               " (%s)", ap_escape_html(r->pool, score_record.fwdclient));
++#endif
++			    ap_rprintf(r, "<td nowrap>%s<td nowrap>%s</tr>\n\n",
++                           vhost ? ap_escape_html(r->pool, vhost->server_hostname) : "(unavailable)",
++                           ap_escape_html(r->pool, score_record.request));
++
++            } /* if (! score_record.status == SERVER_BUSY_READ) */
+ 		    }		/* no_table_report */
+ 		}			/* !short_report */
+ 	    }			/* if (<active child>) */
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

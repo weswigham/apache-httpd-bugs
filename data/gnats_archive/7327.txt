@@ -1,0 +1,129 @@
+Received: (qmail 34553 invoked by uid 501); 27 Feb 2001 22:15:58 -0000
+Message-Id: <20010227221558.34552.qmail@apache.org>
+Date: 27 Feb 2001 22:15:58 -0000
+From: Jerry Zhou <zhou@ugsolutions.com>
+Reply-To: zhou@ugsolutions.com
+To: submit@bugz.apache.org
+Subject: WriteClient doesn't work
+X-Send-Pr-Version: 3.110
+
+>Number:         7327
+>Category:       mod_isapi
+>Synopsis:       WriteClient doesn't work
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Feb 27 14:20:00 PST 2001
+>Closed-Date:    Mon Dec 03 11:59:33 PST 2001
+>Last-Modified:  Mon Dec 03 11:59:33 PST 2001
+>Originator:     zhou@ugsolutions.com
+>Release:        2.0a9
+>Organization:
+>Environment:
+Windows NT 4.0 Service Pack 6
+Visual Studio 6.0
+>Description:
+First, it failed to create bucket (see code below). After I fixed the bug, WriteClient works only for buffer less than 4096 bytes. 
+
+If I provide a buffer larger than 4096 bytes (defined as DEFAULT_BUCKET_SIZE in ap_buckets_heap.c), it will be chopped. The Content-Length is still correct, causing the client to wait for more data that will never arrive. 
+
+If I divide the buffer into small sizes and call WriteClient multiple times, the data will be all send out, but the Content-Length was put into a bucket the first time it reaches an eos, causing the client to read only the first buffer and discard all the remaining buffers.
+>How-To-Repeat:
+Call WriteClient with a buffer larger than 4096 bytes.
+Or, devide the buffer into small ones and call WriteClient multiple times.
+>Fix:
+Here is my suggestion. It works as I tested.
+
+BOOL WINAPI WriteClient (HCONN ConnID, LPVOID Buffer, LPDWORD lpwdwBytes,
+                         DWORD dwReserved)
+{
+    request_rec *r = ((isapi_cid *)ConnID)->r;
+    ap_bucket_brigade *bb;
+    ap_bucket *b;
+
+    if (dwReserved == HSE_IO_SYNC)
+        ; /* XXX: Fake it */
+
+    bb = ap_brigade_create(r->pool);
+	/***************** JJZ: Is this a bug?
+    b = ap_bucket_create_transient(Buffer, (apr_size_t)lpwdwBytes);
+	******************/
+    b = ap_bucket_create_transient(Buffer, (apr_size_t)*lpwdwBytes);
+    AP_BRIGADE_INSERT_TAIL(bb, b);
+	/***************** JJZ: eos caused Content-Length less than total of WriteClient
+    b = ap_bucket_create_eos();
+    AP_BRIGADE_INSERT_TAIL(bb, b);
+	******************/
+    ap_pass_brigade(r->output_filters, bb);
+
+    return TRUE;
+}
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: rbb
+State-Changed-When: Sun Mar 25 11:15:04 PST 2001
+State-Changed-Why:
+A lot has changed since the 2.0a9 releasae.  Could you please try the latest version of Apache with the attached patch?
+
+I believe this will solve the problem that you are seeing.
+
+Thank you for using Apache and working to improve it.
+
+Index: mod_isapi.c
+===================================================================
+RCS file: /home/cvs/httpd-2.0/modules/arch/win32/mod_isapi.c,v
+retrieving revision 1.40
+diff -u -d -b -w -u -r1.40 mod_isapi.c
+--- mod_isapi.c 2001/02/28 15:31:29     1.40
++++ mod_isapi.c 2001/03/25 19:13:40
+@@ -649,17 +649,11 @@
+ {
+     request_rec *r = ((isapi_cid *)ConnID)->r;
+     apr_bucket_brigade *bb;
+-    apr_bucket *b;
+ 
+     if (dwReserved == HSE_IO_SYNC)
+         ; /* XXX: Fake it */
+ 
+-    bb = apr_brigade_create(r->pool);
+-    b = apr_bucket_transient_create(Buffer, (apr_size_t)lpwdwBytes);
+-    APR_BRIGADE_INSERT_TAIL(bb, b);
+-    b = apr_bucket_eos_create();
+-    APR_BRIGADE_INSERT_TAIL(bb, b);
+-    ap_pass_brigade(r->output_filters, bb);
++    ap_rwrite(r, Buffer, (apr_size_t)lpwdwBytes);
+ 
+     return TRUE;
+ }
+State-Changed-From-To: feedback-closed
+State-Changed-By: wrowe
+State-Changed-When: Mon Dec  3 11:59:33 PST 2001
+State-Changed-Why:
+This should be fixed some good time ago.  The buckets API
+has changed several times, at a9 it was out-of-sync with
+the mod_isapi (which unix bucket hackers can't test.)
+
+Thanks for your report and interest in the Apache 2.0 Beta!
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

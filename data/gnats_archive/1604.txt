@@ -1,0 +1,84 @@
+Received: (qmail 7049 invoked by uid 2012); 29 Dec 1997 02:22:19 -0000
+Message-Id: <19971229022219.7048.qmail@hyperreal.org>
+Date: 29 Dec 1997 02:22:19 -0000
+From: Stephen Scheck <sscheck@infonex.net>
+Reply-To: sscheck@infonex.net
+To: apbugs@hyperreal.org
+Subject: function table_unset in alloc.c appears to be buggy
+X-Send-Pr-Version: 3.2
+
+>Number:         1604
+>Category:       general
+>Synopsis:       function table_unset in alloc.c appears to be buggy
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Dec 28 18:30:00 PST 1997
+>Last-Modified:  Mon Dec 29 09:47:59 PST 1997
+>Originator:     sscheck@infonex.net
+>Organization:
+>Release:        1.2.4
+>Environment:
+Linux neuralcore.infonex.net 2.0.30 #1 Wed Jun 4 15:02:33 EDT 1997 i486 unknown
+GCC 2.7???
+>Description:
+It appears the table_unset(table *t, const char *key) function
+in alloc.c is intended to remove all entries with the same key. If so,
+the code is buggy, since the second key of a sequence of duplicate key
+names will be preserved each time the for loop in the function iterates
+through and moves the keys up by one array index.
+>How-To-Repeat:
+Modify Apache source and perform table_unset() somewhere there is a
+struct table which has duplicate keys. A good example would be to remove
+"Set-Cookie" headers from request_rec->headers_out in a module using
+table_unset() 
+>Fix:
+Here is a patch to alloc.c for the table_unset() function:
+
+void table_unset( table *t, const char *key ) 
+{
+    register int i, j, k;   
+    table_entry *elts = (table_entry *)t->elts;
+ 
+    i = 0;
+
+    while (i < t->nelts)
+        if (!strcasecmp (elts[i].key, key)) {
+ 
+            /* found an element to skip over
+             * there are any number of ways to remove an element from
+             * a contiguous block of memory.  I've chosen one that
+             * doesn't do a memcpy/bcopy/array_delete, *shrug*...
+             */
+            for (j = i, k = i + 1; k < t->nelts; ++j, ++k) {
+                elts[j].key = elts[k].key;
+                elts[j].val = elts[k].val;
+            }
+            --t->nelts;
+        }
+        else ++i; /* only increment if an item is not deleted. This is
+                   * necessary because we might have shifted a matching
+                   * item up, which will be skipped from deletion if we
+                   * increment every time through the loop.
+                   */
+%7
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: ben
+State-Changed-When: Mon Dec 29 09:47:59 PST 1997
+State-Changed-Why:
+Quite so. In fact, table_set() also suffers from this problem
+(though I'd guess you'd be less likely to ever run into it).
+A fix will appear in 1.3b4.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

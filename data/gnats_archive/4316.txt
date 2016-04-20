@@ -1,0 +1,109 @@
+Received: (qmail 17360 invoked by uid 2012); 27 Apr 1999 18:40:03 -0000
+Message-Id: <19990427184003.17359.qmail@hyperreal.org>
+Date: 27 Apr 1999 18:40:03 -0000
+From: Victor Pulver <victor.pulver@latimes.com>
+Reply-To: victor.pulver@latimes.com
+To: apbugs@hyperreal.org
+Subject: proposed fix for excessive forking in proxy_cache.c for garbage collection (see #3161 and #3202)
+X-Send-Pr-Version: 3.2
+
+>Number:         4316
+>Category:       mod_proxy
+>Synopsis:       proposed fix for excessive forking in proxy_cache.c for garbage collection (see #3161 and #3202)
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Apr 27 11:50:00 PDT 1999
+>Last-Modified:
+>Originator:     victor.pulver@latimes.com
+>Organization:
+apache
+>Release:        1.3.6
+>Environment:
+SunOS 5.6 Generic_105181-08 sun4u sparc SUNW,Ultra-Enterprise
+
+Apache 1.3.6
+>Description:
+For environments other than WIN32 / OS2 / MPE, proxy_cache uses 
+detached_proxy_garbage_coll, which forks (twice) prior to calling 
+help_proxy_garbage_coll, which determines if garbage collection should be done.
+This results in two extra processes being created and killed for each request
+through the proxy.
+
+The suggested fix checks if garbage collection should be done prior to forking.
+
+-----
+
+Note... I'm wondering about the use of the request_rec in garbage collection 
+when detached_proxy_garbage_coll is used. Specifically, I see that ap_palloc
+is called to allocate memory after the double fork. I'm guessing that the
+memory will be released when the grandparent exits and could result in 
+problems during garbage collection. I'm going to do some tests to see if this
+is in fact true. 
+>How-To-Repeat:
+
+>Fix:
+Diff of changes to proxy_cache.c:
+
+108a109,110
+> /* 4/26/99 lastcheck moved to file scope for use in detached_proxy_garbage_coll */
+> static time_t lastcheck = BAD_DATE;		/* static (per-process) data!!! */
+200a203
+> 
+207a211,245
+> /* 4/26/99 added: make Garbage Collection time checks prior to forking */
+> 
+>     void *sconf = r->server->module_config;
+>     proxy_server_conf *pconf =
+>     (proxy_server_conf *) ap_get_module_config(sconf, &proxy_module);
+>     const struct cache_conf *conf = &pconf->cache;
+>     const char *cachedir;
+>     struct stat buf;
+> 
+>     cachedir = conf->root;
+>     every = conf->gcinterval;
+> 
+>     if ((conf->root == NULL) || (every == -1))
+> 	return;
+> 
+>     garbage_now = time(NULL);
+> 
+> /* If we don't have a garbage collection time, get the cache's timestamp */
+> 
+>     if (lastcheck == BAD_DATE) {
+> 	filename = ap_palloc(r->pool, strlen(cachedir) + 7);
+> 	strcpy(filename, cachedir);
+> 	strcat(filename, "/.time");
+> 	if (stat(filename, &buf) != -1) {
+> 	    lastcheck = buf.st_mtime;
+> 	    }
+> 	}
+> 
+>     if (garbage_now != -1 && lastcheck != BAD_DATE && garbage_now < lastcheck + every)
+> 	return;
+> 
+> /* Reset lastcheck to force obtaining timestamp next time through */
+> 
+>     lastcheck = BAD_DATE;
+> 
+249a288
+> 
+278d316
+<     static time_t lastcheck = BAD_DATE;		/* static (per-process) data!!! */
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

@@ -1,0 +1,481 @@
+Received: (qmail 4686 invoked by uid 2012); 23 Apr 1998 14:05:23 -0000
+Message-Id: <19980423140523.4685.qmail@hyperreal.org>
+Date: 23 Apr 1998 14:05:23 -0000
+From: Ray Zimmerman <rz10@cornell.edu>
+Reply-To: rz10@cornell.edu
+To: apbugs@hyperreal.org
+Subject: Impossible to detect browser disconnect from CGI
+X-Send-Pr-Version: 3.2
+
+>Number:         2127
+>Category:       mod_cgi
+>Synopsis:       Impossible to detect browser disconnect from CGI
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Apr 23 07:10:00 PDT 1998
+>Last-Modified:  Mon Jun  8 13:10:00 PDT 1998
+>Originator:     rz10@cornell.edu
+>Organization:
+>Release:        1.3b5
+>Environment:
+SunOS blackbird 5.5.1 Generic_103640-08 sun4u sparc SUNW,Ultra-2
+gcc version 2.7.2.2
+>Description:
+Sorry about the bad e-mail address in the previous bug report :-(
+This report is identical to PR 2125, but has my correct e-mail address.
+
+I am trying to detect a browser disconnect from my Perl CGI and it appears to be
+impossible with Apache 1.3 (b5 at least). I believe that typically, when the
+connection to the browser is broken (such as the user hitting the <stop> button)
+a SIGTERM is sent to the CGI the next time Apache tries to send something to the
+browser.
+
+In Apache 1.2, it was possible to detect a browser disconnect by making sure that
+the CGI printed something to the browser periodically using an unbuffered
+connection. The unbuffered connection could be provided by using a nph script,
+or by a patch to Apache (see the cgiAbort package and corresponding patch at:
+http://wwwtest.gdb.org/browser/abort/cgiAbort.html).
+
+Apache 1.3, according to the docs, "now provides an effectively unbuffered
+connection for CGI scripts."  This appears to be true while the connection is
+in place, but does not appear to be true with regards to detecting a browser
+disconnect.
+
+In summary, with Apache 1.3b5 it appears to be impossible for a CGI to check
+whether or not the connection to the browser is still in place.
+
+Please see the example code in the next field.
+>How-To-Repeat:
+Here is a simple Perl test CGI which illustrates the problem. It prints a
+timer count on a single line every 5 seconds, forever. This is printed both to
+the browser and the web server log. Everything appears unbuffered (with a new
+line appearing every 5 seconds in both browser and log) while the browser
+connection is in place. Now, hit the <stop> button on the browser. The CGI
+will continue to run, as evidenced by entries in the server log, for about
+another 75 seconds, then it receives a SIGTERM.
+
+Here's the Perl source for my test.cgi:
+
+#!/usr/local/bin/perl -w
+
+use strict;
+
+my $i;
+
+$| = 1;     ## unbuffered output
+
+$SIG{'TERM'}    = \&DISCONNECT;
+
+print "Content-Type: text/html\n\n";
+print "<HTML>\n<BODY><PRE>\n";
+
+$i = 0;
+while (1) {
+    print STDERR "test.cgi $i\n";
+    print "$i\n";
+    $i += 5;
+    sleep(5);
+}
+
+print "</PRE></BODY>\n</HTML>\n";
+
+
+sub DISCONNECT {
+    my $sig = shift;
+
+    die "test.cgi caught a SIG$sig\n";
+
+    1;
+}
+
+1;
+>Fix:
+Not really. Maybe change that 75 second timeout to something much smaller, but
+I don't know the other ramifications of that.
+%0
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Ray Zimmerman <rz10@cornell.edu>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_cgi/2127: Impossible to detect browser disconnect from CGI
+Date: Thu, 23 Apr 1998 23:55:11 -0700 (PDT)
+
+ Known; this is unchanged from 1.2.  It's non-trivial to fix.
+ 
+ Dean
+ 
+
+From: rz10@cornell.edu (Ray Zimmerman)
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_cgi/2127: Impossible to detect browser disconnect from CGI
+Date: Fri, 24 Apr 1998 09:34:21 -0400
+
+ I suppose this should be added to:
+ 
+ 	http://www.apache.org/docs/misc/known_bugs.html
+ 
+ At least in 1.2 you could use a nph script and get a direct connection to
+ the browser. In 1.3, I believe an nph script doesn't give you direct
+ connection anymore (for me it behaves just like a non-nph).
+ 
+ So in 1.2 it was possible to write a CGI which could detect a browser
+ disconnect (using nph). In 1.3 it is now impossible.
+ 
+ Correct?
+ 
+ You say it's non-trivial to fix. There is a patch available (for 1.2.4) on
+ the cgiAbort page at:
+ 
+ 	http://wwwtest.gdb.org/browser/abort/cgiAbort.html
+ 
+ Is there a problem with this fix?
+ 
+ Thanks,
+ 
+ 	Ray
+ 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Ray Zimmerman <rz10@cornell.edu>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_cgi/2127: Impossible to detect browser disconnect from CGI
+Date: Fri, 24 Apr 1998 12:15:56 -0700 (PDT)
+
+ nph also means that the server isn't HTTP/1.1 compliant; and therefore it
+ is broken. 
+ 
+ On Fri, 24 Apr 1998, Ray Zimmerman wrote:
+ 
+ > You say it's non-trivial to fix. There is a patch available (for 1.2.4) on
+ > the cgiAbort page at:
+ > 
+ > 	http://wwwtest.gdb.org/browser/abort/cgiAbort.html
+ > 
+ > Is there a problem with this fix?
+ 
+ Yeah, it doesn't work.  Consider the case where the CGI blocks forever but
+ the client disappears.  Consider the case where the client blocks forever
+ but the CGI disappears.  Either way you end up stuck in a read() or a
+ write()  call which won't return; and you can't detect that the other has
+ disappeared.  You either need to fork() another process to watch things;
+ use another thread; or write a select() based loop.
+ 
+ But if you read the documentation:
+ 
+     The solution to this problem is for CGI scripts to write data
+     periodically to the client browser's socket while a query is
+     taking place. It turns out that CGI scripts do not write their
+     output directly to a client browser's socket, but instead write
+     (via a Unix pipe) to another process that buffers the output and
+     sends it along to the client browser (there is a special class of
+     scripts called "nph-scripts" that do write directly to the client,
+     but that's another story). If a web server line buffers the output
+     from a CGI script, when a single newline is written, it will be
+     passed directly to the client browser.
+ 
+ You'll discover that we already support this in 1.3.  If you write your CGI
+ to periodically send data then you will discover that your CGI is killed off.
+ Notice that this patch only works for text/* content_types... and furthermore
+ requires modification of the CGI -- not of apache.
+ 
+ Dean
+ 
+
+From: rz10@cornell.edu (Ray Zimmerman)
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_cgi/2127: Impossible to detect browser disconnect from CGI
+Date: Fri, 24 Apr 1998 15:43:12 -0400
+
+ At 3:15 PM -0400 4/24/98, Dean Gaudet wrote:
+ >nph also means that the server isn't HTTP/1.1 compliant; and therefore it
+ >is broken.
+ 
+ OK. So nph is out. I didn't want to go that route anyway.
+ 
+ [snip]
+ 
+ >Yeah, it doesn't work.  Consider the case where the CGI blocks forever but
+ >the client disappears.  Consider the case where the client blocks forever
+ >but the CGI disappears.  Either way you end up stuck in a read() or a
+ >write()  call which won't return; and you can't detect that the other has
+ >disappeared.  You either need to fork() another process to watch things;
+ >use another thread; or write a select() based loop.
+ 
+ I thought the patch we're talking about just caused Apache (1.2) to flush
+ the buffer when it saw a single newline by itself. Apparently, according to
+ the cgiAbort docs, that made the browser disconnect detectable from the
+ CGI, assuming the CGI printed a single newline once in a while. I'm not
+ sure I understand why that "doesn't work".
+ 
+ >But if you read the documentation:
+   [snip]
+ >You'll discover that we already support this in 1.3.  If you write your CGI
+ >to periodically send data then you will discover that your CGI is killed off.
+ 
+ It appears you may not have read the initial bug report closely enough. Did
+ you look at the example CGI I included?  It *does* periodically send data
+ (and yes Apache *does* pass it on to the client, when it's connected). But
+ when the connection is broken, Apache waits 75 seconds to kill off the CGI,
+ even though the CGI continues sending data every 5 seconds. It should be
+ very easy to try it to verify that Apache does NOT kill the CGI immediately
+ even though it does continue sending data.
+ 
+ So it still appears to me that there is nothing a CGI can do to determine
+ whether the browser is still connected (with Apache 1.3). It can try
+ sending some data, but at best it won't find out until 75 seconds later if
+ it's still connected.
+ 
+ Is this true or am I still missing something (sorry for being dense if I am)?
+ 
+ >Notice that this patch only works for text/* content_types... and furthermore
+ >requires modification of the CGI -- not of apache.
+ 
+ The patch *is* a modification of Apache 1.2, to make it unbuffer the output
+ so that a CGI can print a single newline to detect if the browser is still
+ there, right? Apparently, with Apache 1.2 and this patch, it *is* possible
+ to detect a browser disconnect immediately. So, my real question is, why
+ the 75 second delay with 1.3?
+ 
+ 'preciate your time,
+ 
+ 	Ray
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: Apache bugs database <apbugs@apache.org>, Ray Zimmerman <rz10@cornell.edu>
+Subject: Re: mod_cgi/2127: Impossible to detect browser disconnect from CGI
+Date: Fri, 24 Apr 1998 13:55:30 -0600 (MDT)
+
+ On 24 Apr 1998, Dean Gaudet wrote:
+ 
+ >  You'll discover that we already support this in 1.3.  If you write your CGI
+ >  to periodically send data then you will discover that your CGI is killed off.
+ [...]
+ 
+ But the reporter is saying that this _doesn't_ work for him in 1.3.  I
+ can't duplicate his results, but I haven't tried on Solaris.
+ 
+ Look at the sample CGI he supplied.
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Marc Slemko <marcs@znep.com>
+Cc: Apache bugs database <apbugs@apache.org>, Ray Zimmerman <rz10@cornell.edu>
+Subject: Re: mod_cgi/2127: Impossible to detect browser disconnect from CGI
+Date: Fri, 24 Apr 1998 13:02:28 -0700 (PDT)
+
+ How about you deal with it then, I've got far too much to do this week.
+ 
+ Dean
+ 
+ On Fri, 24 Apr 1998, Marc Slemko wrote:
+ 
+ > On 24 Apr 1998, Dean Gaudet wrote:
+ > 
+ > >  You'll discover that we already support this in 1.3.  If you write your CGI
+ > >  to periodically send data then you will discover that your CGI is killed off.
+ > [...]
+ > 
+ > But the reporter is saying that this _doesn't_ work for him in 1.3.  I
+ > can't duplicate his results, but I haven't tried on Solaris.
+ > 
+ > Look at the sample CGI he supplied.
+ > 
+ > 
+ 
+
+From: Lars Eilebrecht <Lars.Eilebrecht@unix-ag.org>
+To: (Apache GNATS) <apbugs@apache.org>
+Cc:  Subject: Re: mod_cgi/2127: Impossible to detect browser disconnect from C
+Date: Sun, 26 Apr 1998 14:48:43 +0200 (CEST)
+
+ According to Marc Slemko:
+ 
+ >  For me it aborts within one or two output statements after disconnecting.
+ 
+ Same with me when I test it on my Linux-box.
+ 
+ 
+ ciao...
+ -- 
+ Lars Eilebrecht                        - Windows: You bought the Bill to
+ sfx@unix-ag.org                                     the Gates of hell.
+ http://www.home.unix-ag.org/sfx/
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: mod_cgi/2127: Impossible to detect browser disconnect from CGI (fwd)
+Date: Wed, 29 Apr 1998 13:08:23 -0600 (MDT)
+
+ ---------- Forwarded message ----------
+ Date: Wed, 29 Apr 1998 15:02:08 -0400
+ From: Ray Zimmerman <rz10@cornell.edu>
+ To: Marc Slemko <marcs@znep.com>, Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: mod_cgi/2127: Impossible to detect browser disconnect from CGI
+ 
+ Just thought I should let you guys know ... I'll be on vacation until the
+ first week of June, so I won't be available for a while to help you track
+ down this bug.
+ 
+ Thanks,
+ 	Ray
+ 
+ ------------------------------------------
+ 
+ >On 24 Apr 1998, Dean Gaudet wrote:
+ >
+ >>  You'll discover that we already support this in 1.3.  If you write your CGI
+ >>  to periodically send data then you will discover that your CGI is
+ >>killed off.
+ >[...]
+ >
+ >But the reporter is saying that this _doesn't_ work for him in 1.3.  I
+ >can't duplicate his results, but I haven't tried on Solaris.
+ >
+ >Look at the sample CGI he supplied.
+ 
+ 
+ 
+State-Changed-From-To: open-analyzed
+State-Changed-By: brian
+State-Changed-When: Wed May 20 05:23:26 PDT 1998
+State-Changed-Why:
+(analyzed is the proper state for this report)
+
+
+From: Brian Behlendorf <brian@hyperreal.org>
+To: rz10@cornell.edu (Ray Zimmerman)
+Cc: apbugs@apache.org
+Subject: Re: mod_cgi/2127: Impossible to detect browser disconnect from
+  CGI
+Date: Sun, 07 Jun 1998 09:57:24 -0700
+
+ At 11:18 AM 6/5/98 -0400, Ray Zimmerman wrote:
+ >I just got back from a month of vacation ... I was wondering about the
+ >status of this report. I see you changed it from "open" to "analyzed" and
+ >was wondering what the conclusion of the analysis was.
+ 
+ The analysis was that thread of discussion that went on about it, which was
+ Cc'd to you I believe.  You can see it all at
+ 
+   http://bugs.apache.org/index/full/2127
+ 
+ >Is it a bug?
+ 
+ Well, it doesn't appear that folks seem to think it is, at least not a
+ serious one.  As you can see, neither Marc (who's probably testing it on
+ FreeBSD) or Lars (who tested Linux) can see this; they claim the CGI is
+ killed fairly quickly if it writes an output and the client disappears.
+ 
+ >If so, who's working on fixing it?  And can I be of help?
+ 
+ The 75 seconds certainly is not anything in the Apache code; it could be
+ that Apache doesn't detect the disconnect from the client for 75 seconds
+ after you hit "stop" due to something in Solaris's TCP stack.  
+ 
+ Look in the error logs.  Do you see entries like:
+ 
+ [Sun Jun  7 09:46:22 1998] [info] 205.134.240.74 client stopped connection
+ before send body completed
+ 
+ Well you should (given you're using a low-enough loglevel setting),
+ everyone does, that's the sign that Apache has been told the connection has
+ been closed, and the CGI script should have been killed right after that.
+ If Apache doesn't get that signal for 75 seconds after the "stop" button
+ had been hit, there's not much that it can do.  If you're saying there's 75
+ seconds (or however many) between the time you see that entry in the error
+ logs, there's an error in Apache.  But otherwise, it sounds like a Solaris
+ and TCP issue...
+ 
+ 	Brian
+ 
+ 
+ --=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=--
+ pure chewing satisfaction                                  brian@apache.org
+                                                         brian@hyperreal.org
+
+From: rz10@cornell.edu (Ray Zimmerman)
+To: Brian Behlendorf <brian@hyperreal.org>
+Cc: apbugs@apache.org
+Subject: Re: mod_cgi/2127: Impossible to detect browser disconnect from  
+ CGI
+Date: Mon, 8 Jun 1998 10:21:13 -0400
+
+ Brian Behlendorf wrote:
+ 
+ <snip>
+ 
+ >The 75 seconds certainly is not anything in the Apache code; it could be
+ >that Apache doesn't detect the disconnect from the client for 75 seconds
+ >after you hit "stop" due to something in Solaris's TCP stack.
+ 
+ <snip>
+ 
+ Arrgg! I think I've verified that it is a Solaris problem. I tried an nph
+ script with Apache 1.2.5 (which should give the CGI a direct connection to
+ the client, right?) ... in this case, the CGI gets a SIGPIPE about 75
+ seconds after the client disconnect.  Since Apache is not even in the loop
+ at that point, if I understand correctly, it must be a bug in the Solaris
+ TCP code ...
+ 
+ Thanks to everyone who's helped me get this far ...
+  Ray Zimmerman ::: e-mail: rz10@cornell.edu ::: 428-B Phillips Hall
+                :::  phone: (607) 255-9645   ::: Cornell University
+                :::    FAX: (607) 254-4565   ::: Ithaca, NY  14853
+  
+State-Changed-From-To: analyzed-closed
+State-Changed-By: brian
+State-Changed-When: Mon Jun  8 09:18:09 PDT 1998
+State-Changed-Why:
+looks like a Solaris bug... will update or change this
+report if new evidence suggests otherwise.
+
+
+From: rz10@cornell.edu (Ray Zimmerman)
+To: Brian Behlendorf <brian@hyperreal.org>
+Cc: apbugs@apache.org
+Subject: Re: mod_cgi/2127: Impossible to detect browser disconnect from  
+ CGI
+Date: Mon, 8 Jun 1998 16:05:02 -0400
+
+ Aaaaahhh!
+ 
+ Nevermind, this has nothing to do with Apache or Solaris!  Sorry to bother
+ you guys, but thanks for helping steer me to the real problem.
+ 
+ The real problem is that some versions of Netscape (3 and 4, at least) on
+ some MacOS systems (MacOS 8.1 on a PMac, at least) do NOT close the
+ connection to the web server for 70 seconds or so after hitting the <stop>
+ button. Just happens I use a PMac with MacOS 8.1 and Netscape 4.05 for all
+ my web development :-(
+ 
+ My test CGIs quit just fine immediately after attempting to send output on
+ a connection that is *really* closed (tested from various other browsers
+ and platforms).
+ 
+ Thanks for your time everyone ...
+ 
+  Ray Zimmerman ::: e-mail: rz10@cornell.edu ::: 428-B Phillips Hall
+                :::  phone: (607) 255-9645   ::: Cornell University
+                :::    FAX: (607) 254-4565   ::: Ithaca, NY  14853
+  
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

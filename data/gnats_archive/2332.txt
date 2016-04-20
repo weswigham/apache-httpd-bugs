@@ -1,0 +1,139 @@
+Received: (qmail 26754 invoked by uid 2012); 1 Jun 1998 13:18:25 -0000
+Message-Id: <19980601131825.26753.qmail@hyperreal.org>
+Date: 1 Jun 1998 13:18:25 -0000
+From: M.D.Parker <mdpc@netcom.com>
+Reply-To: mdpc@netcom.com
+To: apbugs@hyperreal.org
+Subject: htpasswd.c --- uses the system() command
+X-Send-Pr-Version: 3.2
+
+>Number:         2332
+>Category:       other
+>Synopsis:       htpasswd.c --- uses the system() command
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun  1 06:20:01 PDT 1998
+>Last-Modified:  Thu Jun  4 13:29:13 PDT 1998
+>Originator:     mdpc@netcom.com
+>Organization:
+>Release:        1.3b7
+>Environment:
+UNIX
+>Description:
+I was attempting to restrict an account to simply being able to use htpasswd
+without a shell available.  I was a bit surprised that the system() call
+using cp, was used over a simple fgets()/fputs() loop.  The fact that the
+operation indicated success but actually failed was my original problem, thus
+this type of coding masks this an error here.
+>How-To-Repeat:
+oh yes...
+>Fix:
+The following is a SIMPLE patch.  Notice there is no error checking but then
+again there is no error checking on any aspect of the original call to the 
+system() command.
+
+*** htpasswd.c.dist     Mon Jun  1 06:07:29 1998
+--- htpasswd.c  Mon Jun  1 06:11:40 1998
+***************
+*** 161,167 ****
+      if (argc == 4) {
+        if (strcmp(argv[1], "-c"))
+            usage();
+!       if (!(tfp = fopen(argv[2], "w"))) {
+            fprintf(stderr, "Could not open passwd file %s for writing.\n",
+                    argv[2]);
+            perror("fopen");
+--- 161,167 ----
+      if (argc == 4) {
+        if (strcmp(argv[1], "-c"))
+            usage();
+!       if (!(tfp = fopen(argv[2], "w+"))) {
+            fprintf(stderr, "Could not open passwd file %s for writing.\n",
+                    argv[2]);
+            perror("fopen");
+***************
+*** 176,187 ****
+        usage();
+
+      tn = tmpnam(NULL);
+!     if (!(tfp = fopen(tn, "w"))) {
+        fprintf(stderr, "Could not open temp file.\n");
+        exit(1);
+      }
+
+!     if (!(f = fopen(argv[1], "r"))) {
+        fprintf(stderr,
+                "Could not open passwd file %s for reading.\n", argv[1]);
+        fprintf(stderr, "Use -c option to create new one.\n");
+--- 176,187 ----
+        usage();
+
+      tn = tmpnam(NULL);
+!     if (!(tfp = fopen(tn, "w+"))) {
+        fprintf(stderr, "Could not open temp file.\n");
+        exit(1);
+      }
+
+!     if (!(f = fopen(argv[1], "r+"))) {
+        fprintf(stderr,
+                "Could not open passwd file %s for reading.\n", argv[1]);
+        fprintf(stderr, "Use -c option to create new one.\n");
+***************
+*** 211,224 ****
+        printf("Adding user %s\n", user);
+        add_password(user, tfp);
+      }
+      fclose(f);
+      fclose(tfp);
+- #if defined(__EMX__) || defined(WIN32)
+-     sprintf(command, "copy \"%s\" \"%s\"", tn, argv[1]);
+- #else
+-     sprintf(command, "cp %s %s", tn, argv[1]);
+- #endif
+-     system(command);
+      unlink(tn);
+      exit(0);
+  }
+--- 211,228 ----
+        printf("Adding user %s\n", user);
+        add_password(user, tfp);
+      }
++ /*
++ * make a copy from the tmp file to the actual file
++ */  
++         rewind(f);
++         rewind(tfp);
++         while ( fgets(command,MAX_STRING_LEN,tfp) != NULL)
++         {
++                 fputs(command,f);
++         } 
++ 
+      fclose(f);
+      fclose(tfp);
+      unlink(tn);
+      exit(0);
+  }
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Jun  4 13:29:13 PDT 1998
+State-Changed-Why:
+I committed your patch to 1.3.1-dev, thanks.  But note, you
+don't check the result of fputs(), so it's still possible
+for an error (disk full) to go undiagnosed... (it's no worse
+than before though).
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

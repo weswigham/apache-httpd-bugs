@@ -1,0 +1,205 @@
+Received: (qmail 38503 invoked by uid 501); 19 Sep 2001 06:38:47 -0000
+Message-Id: <20010919063847.38502.qmail@apache.org>
+Date: 19 Sep 2001 06:38:47 -0000
+From: Karlis Kalviskis <karlo@lanet.lv>
+Reply-To: karlo@lanet.lv
+To: submit@bugz.apache.org
+Subject: Nimda worm and Customizable error response of Apache
+X-Send-Pr-Version: 3.110
+
+>Number:         8362
+>Category:       mod_include
+>Synopsis:       Nimda worm and Customizable error response of Apache
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Sep 18 23:40:00 PDT 2001
+>Closed-Date:    Thu Sep 20 21:01:26 PDT 2001
+>Last-Modified:  Thu Sep 20 21:01:26 PDT 2001
+>Originator:     karlo@lanet.lv
+>Release:        1.3.20 Win32
+>Organization:
+>Environment:
+Number of Processors: 1
+Processor Type: x86 Family 6 Model 8 Stepping 6
+Windows Version: Windows NT 4.0
+Current Build: 1381
+Service Pack: 6a
+>Description:
+During Nimda worm attack, system started to genberate Dr.Watson error messages:
+
+>How-To-Repeat:
+
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+
+From: "William A. Rowe, Jr." <wrowe@rowe-clan.net>
+To: <apache-bugdb@apache.org>, <karlo@lanet.lv>, <submit@bugz.apache.org>
+Cc:  
+Subject: Re: mod_include/8362: Nimda worm and Customizable error response of Apache
+Date: Wed, 19 Sep 2001 14:38:13 -0500
+
+ ----- Original Message -----
+ From: "Thomas"
+ Sent: Wednesday, September 19, 2001 6:38 PM
+ Subject: Re: Nimda causes my Apache 1.3.20/NT to crash
+ 
+ > thanks for the hint about the ErrorDocument directive and
+ > the URL to bug-file by Karlis.
+ >
+ > That was right on, disabling the redirects made Dr. Watson leave for good.
+ >
+ > However, I did some further investigating to pinpoint exactly what made
+ > mod_include blow up and found the the problem occurs at  #include.
+ > Swithing between a file or a virtual attribute doesn't make any difference.
+ >
+ > So concluding for now, to preventing the Nimda related segfaults,
+ > you must remove any #includes from the ErrorDocument catching
+ > the Nimda requests  (e.g. 404)
+ >
+ > I pretty sure this has to to with the malformed Host HTTP header that
+ > comes in with some of the Nimda requests. I remember awhile
+ > ago when fiddling with the Host header apache went crashing
+ > occationally. I didn't pay much attention to it then, but it makes sense
+ > now.
+ >
+ > ---
+ > GET /scripts/root.exe?/c+dir HTTP/1.0
+ > Connection: close
+ > Host: www
+ >  ---
+ 
+ 
+
+From: Jeff Moe <jeff@themoes.org>
+To: apbugs@apache.org
+Cc: karlo@lanet.lv,
+ wrowe@rowe-clan.net,
+ aragon@phat.za.net
+Subject: mod_include/8362:
+Date: Thu, 20 Sep 2001 15:32:23 -0600
+
+ How-To-Repeat:
+ 1) You need to redirect 404s to a 404 document:
+ ErrorDocument 404 /404.shtml
+ 2) You need be doing parsing of that file:
+ AddHandler server-parsed .shtml
+ 3) You need to send it a request like:
+ http://server.org/test%2fing
+ 
+ Reproduced on:
+ Apache 1.3.20 Linux 2.4.9
+ Apache 1.3.11 Solaris 1.3.11 and 1.3.3
+
+From: dean gaudet <dean@arctic.org>
+To: <apache-bugdb@apache.org>,  <karlo@lanet.lv>,  <submit@bugz.apache.org>
+Cc:  
+Subject: Re: mod_include/8362: Nimda worm and Customizable error response of
+ Apache
+Date: Thu, 20 Sep 2001 20:57:27 -0700 (PDT)
+
+ the following patch should fix your problem.
+ 
+ -dean
+ 
+ Index: modules/standard/mod_include.c
+ ===================================================================
+ RCS file: /home/cvs/apache-1.3/src/modules/standard/mod_include.c,v
+ retrieving revision 1.129
+ diff -u -r1.129 mod_include.c
+ --- modules/standard/mod_include.c	2001/07/13 19:45:52	1.129
+ +++ modules/standard/mod_include.c	2001/09/21 02:09:27
+ @@ -718,7 +718,7 @@
+                  for (p = r; p != NULL && !founddupe; p = p->main) {
+  		    request_rec *q;
+  		    for (q = p; q != NULL; q = q->prev) {
+ -			if ( (strcmp(q->filename, rr->filename) == 0) ||
+ +			if ( (q->filename && strcmp(q->filename, rr->filename) == 0) ||
+  			     (strcmp(q->uri, rr->uri) == 0) ){
+  			    founddupe = 1;
+  			    break;
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Sep 20 21:01:26 PDT 2001
+State-Changed-Why:
+should be fixed by patch i committed and sent to bug reporter.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+ >>>
+ Dr.Watson for Windows NT
+ An application error has occureed and an application arror is being generated.
+ Apache.exe
+ Exeption: access violation(0xc0000005), Address: 0x6ff7b422 
+ <<<
+ 
+ Good thing:
+ 
+ Apache continued to work an responded to any queries from Internet. :)
+ 
+ Bad thing:
+ 
+ Computers memory is fullfiled with Dr.Watson's error messages :(
+ 
+ There was no such kind of problem before Nimda worm.
+ It's very likely, that the problem is in
+ Customizable error response, SSI and amount of wrong queries from Internet:
+ 
+ Customizable error response (Apache style) - local redirects is activated:
+ 
+ ErrorDocument 403 /system/errordocs/403.shtml
+ ErrorDocument 404 /system/errordocs/404.shtml
+ ErrorDocument 500 /system/errordocs/500.shtml
+ 
+ The Dr.Watson error messages did not appear any more, after
+ local redirects have been turned off and other error response activated:
+ 
+ ErrorDocument 403 "Ko meklee?
+ ErrorDocument 404 "Nav atrodams!
+ ErrorDocument 500 "Atstaajies!
+ 
+ Here comes the content of 404.shtml:
+ 
+ --------------------
+ <!--#set var="virsraksts" value="Document not found ($REDIRECT_STATUS)" -->
+ <!--#include virtual="/system/Kopejie/kluda.shtml" -->
+ <Big>Atvaino, netika atrasts <i><b><!--#echo encoding="none" var="REQUEST_URI" --></b></i></Big>. 
+ <p>Sâc meklçjumus no pamatlappuses <a href=/ TARGET=_top>http://<!--#echo encoding="none" var="SERVER_NAME" --></a>
+ <br>vai
+ <br>izmanto <a href=/scripts/texis.exe/atrodi/>meklçðanas iespçjas</a>,
+ <br>vai
+ <br>atgriezies iepriekðçjâ lappusç, izmantojot savas pârlûkprogrammas «<i>Back</i>» pogu.
+ <p>Ieteikumus un aizrâdîjumus sûti uz <!--#echo encoding="none" var="SERVER_ADMIN" -->.
+ <p><hr>
+ <Big>Sorry, <i><b><!--#echo encoding="none" var="REQUEST_URI" --></b></i> not found</Big>
+ <p>Start Your search from  <a href=/ TARGET=_top>http://<!--#echo encoding="none" var="SERVER_NAME" --></a>
+ <br>or
+ <br>use <a href=/scripts/texis.exe/Search/>Search engine</a>
+ <br>or
+ <br>use «Back» button from Your browser to return to the previous page.
+ <p>Your comments will be welcomed by <!--#echo encoding="none" var="SERVER_ADMIN" -->.
+ <p><!--#include virtual="/system/Kopejie/priede_bl.shtml" -->
+ </body></html>          
+ --------------------------
+

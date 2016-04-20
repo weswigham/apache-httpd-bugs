@@ -1,0 +1,168 @@
+Received: (qmail 28864 invoked by uid 2012); 14 Nov 1998 19:25:24 -0000
+Message-Id: <19981114192524.28863.qmail@hyperreal.org>
+Date: 14 Nov 1998 19:25:24 -0000
+From: Ullrich von Bassewitz <uz@musoftware.de>
+Reply-To: uz@musoftware.de
+To: apbugs@hyperreal.org
+Subject: CGI output is always buffered
+X-Send-Pr-Version: 3.2
+
+>Number:         3402
+>Category:       os-windows
+>Synopsis:       CGI output is always buffered
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Nov 14 11:30:00 PST 1998
+>Last-Modified:  Sat Nov 14 14:40:00 PST 1998
+>Originator:     uz@musoftware.de
+>Organization:
+>Release:        1.3.3
+>Environment:
+Windows NT 4.0 German with SP 3 installed, ActivePerl build 506
+>Description:
+Under NT, the output of Perl CGI scripts is always buffered. The problem does exist with nph- scripts and with other scripts. Some tests (piping the script output into a file) show that the problem is not caused by the script itself or by the Perl interpreter. In addition, the same scripts work without problems (that is, with unbuffered output) when running them under Linux 2.0.35 with Apache 1.2.5 (as nph- scripts). So the problem seems to be specific to the Apache implementation running on the Windows platform.
+>How-To-Repeat:
+Since the NT server is not connected to the internet, it´s difficult to give an example URL. Just write a little Perl CGI that outputs one line at a time and connect with a browser. Without buffering, your browser should display one line after the other, and this is indeed what´s happening when running such a script under Linux. When running the same script under NT you will get the output in big chunks (many K).
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Sat Nov 14 12:49:42 PST 1998
+State-Changed-Why:
+Yes, this is a known issue already being tracked and there are
+several other PRs on this.
+
+Win32 doesn't support various features which Apache currently
+needs to do unbuffered CGI so, until someone figures out another
+way to implement that on Win32, it won't support unbuffered
+CGI.
+
+From: uz@wuschel.musoftware.de (Ullrich von Bassewitz)
+To: marc@apache.org
+Cc: apbugs@apache.org
+Subject: Re: os-windows/3402: CGI output is always buffered
+Date: Sat, 14 Nov 1998 23:26:28 +0100 (MET)
+
+ >
+ > Synopsis: CGI output is always buffered
+ >
+ > State-Changed-From-To: open-closed
+ > State-Changed-By: marc
+ > State-Changed-When: Sat Nov 14 12:49:42 PST 1998
+ > State-Changed-Why:
+ > Yes, this is a known issue already being tracked and there are
+ > several other PRs on this.
+ 
+ Sorry, I've checked the database but didn't find the relevant entries.
+ 
+ > Win32 doesn't support various features which Apache currently
+ > needs to do unbuffered CGI so, until someone figures out another
+ > way to implement that on Win32, it won't support unbuffered
+ > CGI.
+ 
+ I don't know if I'm allowed to offer a solution here, but I've had a quick
+ look at the apache code (ap_bnonblock) and the problem seems rather easy to
+ solve. Windows has a function to make a socket handle non-blocking, we're
+ using this function in our own (C++) socket library. You have to use a ioctl
+ instead of fcntl. Here is some code straight from our socket library that
+ shows how to use the functions:
+ 
+ 
+     void SocketHandle::SetBlocking (int fd)
+     // Put the given socket file descriptor into blocking mode
+     {
+ 	unsigned long Val = 0;
+ 	CHECK (ioctlsocket (fd, FIONBIO, &Val) == 0);
+     }
+ 
+ 
+ 
+     void SocketHandle::SetNonBlocking (int fd)
+     // Put the given socket file descriptor into non-blocking mode
+     {
+ 	unsigned long Val = 1;
+ 	CHECK (ioctlsocket (fd, FIONBIO, &Val) == 0);
+     }
+ 
+ 
+ So, adding something like
+ 
+     #elif defined(WIN32)
+ 	unsigned long val = 1;
+ 	return ioctlsocket (fd, FIONBIO, &val);
+     #else
+ 
+ to ap_bnonblock in buff.c should solve the problem. Unfortunately I don't have
+ the necessary tools to compile apache for windows, so I cannot test the
+ changes myself. However I can offer to test the changes if someone is able to
+ compile the sources.
+ 
+ Regards
+ 
+ 
+ 	Uz
+ 
+ 
+ --
+ Ullrich von Bassewitz                                  uz@musoftware.de
+ 						  
+
+From: Marc Slemko <marcs@znep.com>
+To: uz@musoftware.de
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: os-windows/3402: CGI output is always buffered
+Date: Sat, 14 Nov 1998 14:32:23 -0800 (PST)
+
+ On Sat, 14 Nov 1998, Ullrich von Bassewitz wrote:
+ 
+ > >
+ > > Synopsis: CGI output is always buffered
+ > >
+ > > State-Changed-From-To: open-closed
+ > > State-Changed-By: marc
+ > > State-Changed-When: Sat Nov 14 12:49:42 PST 1998
+ > > State-Changed-Why:
+ > > Yes, this is a known issue already being tracked and there are
+ > > several other PRs on this.
+ > 
+ > Sorry, I've checked the database but didn't find the relevant entries.
+ > 
+ > > Win32 doesn't support various features which Apache currently
+ > > needs to do unbuffered CGI so, until someone figures out another
+ > > way to implement that on Win32, it won't support unbuffered
+ > > CGI.
+ > 
+ > I don't know if I'm allowed to offer a solution here, but I've had a quick
+ 
+ Of course.
+ 
+ > look at the apache code (ap_bnonblock) and the problem seems rather easy to
+ > solve. Windows has a function to make a socket handle non-blocking, we're
+ > using this function in our own (C++) socket library. You have to use a ioctl
+ > instead of fcntl. Here is some code straight from our socket library that
+ > shows how to use the functions:
+ 
+ Unfortunately, the problem is that the thing we need to have nonblocking
+ isn't a socket.  We need nonblocking reads from the CGI.  Because 
+ Microsoft, in their infinite wisdom, decided that having one type 
+ of file descriptor would be silly so they should have a different type
+ for each thing you could want to do... sigh.
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

@@ -1,0 +1,115 @@
+Received: (qmail 36507 invoked by uid 501); 22 May 2001 15:38:18 -0000
+Message-Id: <20010522153818.36494.qmail@apache.org>
+Date: 22 May 2001 15:38:18 -0000
+From: Bernhard Simon <simon@zid.tuwien.ac.at>
+Reply-To: simon@zid.tuwien.ac.at
+To: submit@bugz.apache.org
+Subject: 1.3.20 fails to build on ULTRIX V4.5
+X-Send-Pr-Version: 3.110
+
+>Number:         7768
+>Category:       os-ultrix
+>Synopsis:       1.3.20 fails to build on ULTRIX V4.5
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue May 22 08:50:11 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     simon@zid.tuwien.ac.at
+>Release:        1.3.20
+>Organization:
+apache
+>Environment:
+ULTRIX/RISC V4.5
+cc (bundeled)
+>Description:
+Undefined symbols when linking httpd due to two configure problems:
+ :
+cc -O -DULTRIX -std ... -o httpd ...
+ld:
+Undefined:
+__ull_div
+__ll_mul
+__ull_rshift
+isinf
+
+1. __*ll_* symbols: long long problem on ULTRIX. AP_TYPE_QUAD is set to 8
+   (src/Configure, line 2176), so src/include/ap_config_auto.h contains
+
+/* determine: longest possible integer type */
+#ifndef AP_LONGEST_LONG
+#define AP_LONGEST_LONG long long
+#endif
+
+2. isinf does not exist on ULTRIX but ./helpers/TestCompile returns zero
+   (src/Configure, line 2195), so src/include/ap_config_auto.h contains
+
+/* determine: isinf() found in libc */
+#ifndef HAVE_ISINF
+#define HAVE_ISINF 1
+#endif
+>How-To-Repeat:
+CC=cc OPTIM=-O ./configure --prefix=/usr/local/lib/apache
+make
+>Fix:
+Problem 1: Compile all files with "-std1" (src/Configure, line 1477), then
+   the compiler will only warn about "long long is not standard ANSI. (3.1.1),
+   AP_TYPE_QUAD is set to 4 and there are no more undefined __*ll_* symbols.
+   But there is one additional issue with "-std1" (strict ANSI C), see 1a.
+
+Problem 2: No fix yet, but a bit more analysis. The ULTRIX Compiler (cc/ld)
+   creates a (non-executable) file, even if there were unresolved symbols.
+   This difference to gcc seems to confuse TestCompile.
+   Output of TestCompile, with an "ls -l $TARGET" inserted before exstat=0:
+
+# ./helpers/TestCompile -v func isinf
+cd ..; cc -O -DULTRIX -std1 -DUSE_HSREGEX -DUSE_EXPAT -I./lib/expat-lite \
+   -DNO_DL_NEEDED `./apaci` -o helpers/testfunc helpers/testfunc.c
+ld:
+Undefined:
+isinf
+*** Error code 1
+Stop.
+-rw-r--r--  1 root     system      17028 May 22 16:28 testfunc
+# echo $?
+0
+
+Problem 1a: With "-std1", compilation of src/ap/ap_getpass.c fails because
+   of a missing "extern char *getpass(const char *);".
+ :
+cc -c ... -O -DULTRIX -std1 ... `../apaci` ap_getpass.c
+cfe: Error: ap_getpass.c, line 191: \
+     Type for rhs of assignment expression is incompatible with lhs (3.3.16.1)
+     pw_got = getpass(prompt);
+ -----------^
+
+Remark: apache 1.3.20 builds out-of-the-box on ULTRIX V4.5 with gcc (2.95.3)
+        and gmake (3.79.1). Only one warning:
+
+ap_getpass.c: In function `ap_getpass':
+ap_getpass.c:191: warning: assignment makes pointer from integer without a cast
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

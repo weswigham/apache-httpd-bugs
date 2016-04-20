@@ -1,0 +1,82 @@
+Received: (qmail 23602 invoked by uid 2012); 8 Nov 1999 22:50:19 -0000
+Message-Id: <19991108225019.23601.qmail@hyperreal.org>
+Date: 8 Nov 1999 22:50:19 -0000
+From: Brad Littlejohn <tyketto@wizard.com>
+Reply-To: tyketto@wizard.com
+To: apbugs@hyperreal.org
+Subject: initgroups() returns an error to error_log
+X-Send-Pr-Version: 3.2
+
+>Number:         5273
+>Category:       os-linux
+>Synopsis:       initgroups() returns an error to error_log
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Nov  8 16:10:09 PST 1999
+>Last-Modified:  Mon Nov  8 16:26:31 PST 1999
+>Originator:     tyketto@wizard.com
+>Organization:
+>Release:        1.3.6, 1.3.9
+>Environment:
+Linux, Slackware 4.0, Slackware 7.0, kernel 2.3.26, kernel 2.2.13, egcs-1.1.2. glibc-2.1.2, libc-5.4.46.
+>Description:
+I've compiled both apache 1.3.6, and Apache 1.3.9, on my machine, to use PHP-4.0B2 with it. Compiles clean, installs clean. When I run 'apachectl start', I get the following:
+
+[Sun Nov 7  21:17:55 1999] [notice] Apache/1.3.9 (PHP4.0B2) configured -- resuming normal operations
+[Sun Nov 7  21:17:55 1999] [alert] (22)Invalid argument: initgroups: unable to set groups for User nobody and Group 449967254
+[Sun Nov 7  21:17:55 1999] [alert] (22)Invalid argument: initgroups: unable to set groups for User nobody and Group 449967254
+[Sun Nov 7  21:17:55 1999] [alert] (22)Invalid argument: initgroups: unable to set groups for User nobody and Group 449967254
+[Sun Nov 7  21:17:55 1999] [alert] (22)Invalid argument: initgroups: unable to set groups for User nobody and Group 449967254
+[Sun Nov 7  21:17:55 1999] [alert] (22)Invalid argument: initgroups: unable to set groups for User nobody and Group 449967254
+[Sun Nov 7  21:17:55 1999] [alert] Child 11987 returned a Fatal error...
+Apache is exiting!
+>How-To-Repeat:
+recompile apache, witht he same setup, as above. glibc-2.1.2 as the main library, and recompile apache, using libc-5.4.46. Same error occurs, on both. egcs-1.1.2 or probably even gcc-2.7.2.3. Either, should give the same error.
+>Fix:
+initgroups() in http_main.c, line 3018, there is:
+if (initgroups(name, ap_group_id) == -1) {
+            ap_log_error(APLOG_MARK, APLOG_ALERT, server_conf,
+                        "initgroups: unable to set groups for User %s "
+                        "and Group %u", name, (unsigned)ap_group_id);
+            clean_child_exit(APEXIT_CHILDFATAL);
+        }
+
+initgroups(3) states:
+The initgroups() function  initializes  the  group  access
+       list  by  reading  the group database /etc/group and using
+       all groups of which user  is  a  member.   The  additional
+       group group is also added to the list.
+
+The  initgroups()  function returns 0 on success, or -1 if
+       an error occurs.
+
+  on most linux boxes, 'nobody' has UID 65534. nogroup, has GID -2. httpd.conf asks to not use any group above 65536. las tI checked, -2 < 65536. So, why should initgroups return -1 in this instance? If true, no linux box, running glibc-2.1.2 will be able to compile and run apache 1.3.6 - 1.3.9. I would suggest checking initgroups() to see what may be happening, for this error to occur.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Mon Nov  8 16:26:30 PST 1999
+State-Changed-Why:
+Please don't submit repeated PRs on the same thing.  I already
+responded to your previous one asking you to set a valid
+Group in your config file.  -2 is NOT less than 65536 when
+-2 is an unsigned number.
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

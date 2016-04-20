@@ -1,0 +1,279 @@
+Received: (qmail 471 invoked by uid 2012); 13 Feb 1998 21:42:56 -0000
+Message-Id: <19980213214256.470.qmail@hyperreal.org>
+Date: 13 Feb 1998 21:42:56 -0000
+From: Gergely Madarasz <gorgo@caesar.elte.hu>
+Reply-To: gorgo@caesar.elte.hu
+To: apbugs@hyperreal.org
+Subject: apache looses children
+X-Send-Pr-Version: 3.2
+
+>Number:         1802
+>Category:       general
+>Synopsis:       Web server loses children
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Feb 13 13:50:00 PST 1998
+>Last-Modified:  Fri Jun 12 07:04:16 PDT 1998
+>Originator:     gorgo@caesar.elte.hu
+>Organization:
+>Release:        1.2.4,1.3b6
+>Environment:
+debian/gnu linux, kernel version 2.0.32, glibc 2.0.5, 2.0.6, 2.0.7pre1
+>Description:
+There are two indications of the problem:
+
+The first: after running for a while the master daemon looses all its children,
+strace shows that it just wait4()'s in an endless loop. Sending it a HUP signal
+corrects the problem. I made a workaround, check for the number of running 
+apache processes from cron and if it is 1, then send it a HUP, but this is 
+not a solution.
+
+The second: I compiled php3 support into apache. From a php3 script I call an
+external program, then I check the return value. When I start apache it works
+0fine, but after a while the return value is always -1. I have a strace log to 
+show this problem:
+
+pipe([5, 6])                            = 0
+fork()                                  = 9904
+close(6)                                = 0
+fstat(5, {st_mode=0, st_size=0, ...})   = 0
+mmap(0, 4096, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x401a4000
+read(5, "", 4096)                       = 0
+--- SIGCHLD (Child exited) ---
+close(5)                                = 0
+wait4(9904, 0xbfffd440, 0, NULL)        = -1 ECHILD (No child processes)
+
+actually these are all handled with the popen() and pclose() libc functions, 
+called from the php module. php has nothing setup to handle SIGCHLD's, and as 
+I see, apache doesn't either. I cannot quite understand what could cause this
+a child exits and then wait4() reports there are no children. It looks as 
+somehow SIGCHLD gets managed by SIG_IGN or something... afaik the child should 
+be in <zombie> state until wait4()-ed, unless the SIGCHLD is handled by SIG_IGN
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Gergely Madarasz <gorgo@caesar.elte.hu>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/1802: apache looses children
+Date: Fri, 13 Feb 1998 15:24:38 -0800 (PST)
+
+ > >Environment:
+ > debian/gnu linux, kernel version 2.0.32, glibc 2.0.5, 2.0.6, 2.0.7pre1
+ 
+ Can you reproduce it with libc 5.x?  I don't trust glibc 2.0.x, and I've
+ never had this problem on a libc 5.c system.
+ 
+ > pipe([5, 6])                            = 0
+ > fork()                                  = 9904
+ > close(6)                                = 0
+ > fstat(5, {st_mode=0, st_size=0, ...})   = 0
+ > mmap(0, 4096, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x401a4000
+ > read(5, "", 4096)                       = 0
+ > --- SIGCHLD (Child exited) ---
+ > close(5)                                = 0
+ > wait4(9904, 0xbfffd440, 0, NULL)        = -1 ECHILD (No child processes)
+ > 
+ > actually these are all handled with the popen() and pclose() libc functions, 
+ > called from the php module. php has nothing setup to handle SIGCHLD's, and as 
+ > I see, apache doesn't either. I cannot quite understand what could cause this
+ > a child exits and then wait4() reports there are no children. It looks as 
+ > somehow SIGCHLD gets managed by SIG_IGN or something... afaik the child should 
+ > be in <zombie> state until wait4()-ed, unless the SIGCHLD is handled by SIG_IGN
+ 
+ This sounds like a broken libc.  Either that or they're interpreting the
+ sigchld semantics using some variant of POSIX or Single Unix which I'm not
+ understanding.  That trace looks completely bogus.  You're right, there is
+ no SIGCHLD handler, so the wait4() is in error. 
+ 
+ I'm still not in any position to change any of my machines to glibc 2.0.x,
+ so I'll have a hard time debugging this.
+ 
+ Any chance you could try to reproduce it with a small test program?  Then
+ we can track down just who is at fault. 
+ 
+ Dean
+ 
+
+From: Gergely Madarasz <gorgo@caesar.elte.hu>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/1802: apache looses children
+Date: Sat, 14 Feb 1998 00:23:56 +0100 (MET)
+
+ On Fri, 13 Feb 1998, Dean Gaudet wrote:
+ 
+ > This sounds like a broken libc.  Either that or they're interpreting the
+ > sigchld semantics using some variant of POSIX or Single Unix which I'm not
+ > understanding.  That trace looks completely bogus.  You're right, there is
+ > no SIGCHLD handler, so the wait4() is in error. 
+ 
+ I'll report this to the glibc people too then...
+ 
+ > Any chance you could try to reproduce it with a small test program?  Then
+ > we can track down just who is at fault. 
+ 
+ I don't think so :( It needs to run several hours to reach this state :(
+ 
+ Greg
+ 
+ --
+ Madarasz Gergely           gorgo@caesar.elte.hu         gorgo@linux.rulez.org
+       It's practically impossible to look at a penguin and feel angry.
+           Egy pingvinre gyakorlatilag lehetetlen haragosan nezni.
+               HuLUG: http://www.cab.u-szeged.hu/local/linux/
+ 
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Feb 21 02:54:57 PST 1998
+State-Changed-Why:
+(GNATS is annoying and requires this field to be non-empty).
+Comment-Added-By: dgaudet
+Comment-Added-When: Sun Mar  1 17:20:32 PST 1998
+Comment-Added:
+How many log files does your server have?  I've got a similar report
+from another glibc user and I'm trying to narrow the differences.
+See http://bugs.apache.org/index/full/1893 for details on the other
+user's system.  If you could tell me about any similarities you
+see with your system that'd be great.
+
+Thanks
+Dean
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: general/1802: apache looses children (fwd)
+Date: Sun, 1 Mar 1998 17:36:49 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ Date: Mon, 2 Mar 1998 02:35:03 +0100 (NFT)
+ From: Gergely Madarasz <gorgo@caesar.elte.hu>
+ To: dgaudet@hyperreal.org
+ Cc: apache-bugdb@apache.org, dgaudet@apache.org
+ Subject: Re: general/1802: apache looses children
+ 
+ On 2 Mar 1998 dgaudet@hyperreal.org wrote:
+ 
+ > Synopsis: apache looses children
+ > 
+ > Comment-Added-By: dgaudet
+ > Comment-Added-When: Sun Mar  1 17:20:32 PST 1998
+ > Comment-Added:
+ > How many log files does your server have?  I've got a similar report
+ > from another glibc user and I'm trying to narrow the differences.
+ > See http://bugs.apache.org/index/full/1893 for details on the other
+ > user's system.  If you could tell me about any similarities you
+ > see with your system that'd be great.
+ 
+ $ grep Log httpd.conf | grep -v ^\# | wc -l
+      33
+ 
+ The kernel is stock 2.0.33, libc is now 2.0.7pre1-1 (from the debian
+ package) but it happened with 2.0.5c and 2.0.6 too.
+ 
+ Btw it really seems to be a SIGCHLD handling problem. In my bugreport I
+ mentioned a problem with PHP too. It is gone now, since I've added a 
+ signal(SIGCHLD,SIG_DFL); to the beginning of the php parser so it resets
+ the SIGCHLD signal handler before every php script. Now there is only a
+ problem with the master server. 
+ 
+ I couldnt find any other significant similarities... just the kernel/glibc
+ versions and PHP... 
+ 
+ Greg
+ 
+ --
+ Madarasz Gergely           gorgo@caesar.elte.hu         gorgo@linux.rulez.org
+       It's practically impossible to look at a penguin and feel angry.
+           Egy pingvinre gyakorlatilag lehetetlen haragosan nezni.
+               HuLUG: http://www.cab.u-szeged.hu/local/linux/
+ 
+ 
+State-Changed-From-To: analyzed-feedback
+State-Changed-By: coar
+State-Changed-When: Wed May 27 13:35:47 PDT 1998
+State-Changed-Why:
+Is this problem well and truly closed now?
+Synopsis-Changed-From: apache looses children
+Synopsis-Changed-To: Web server loses children
+Synopsis-Changed-By: coar
+Synopsis-Changed-When: Wed May 27 13:35:47 PDT 1998
+
+From: Gergely Madarasz <gorgo@caesar.elte.hu>
+To: coar@apache.org
+Cc: apache-bugdb@apache.org, apbugs@apache.org
+Subject: Re: general/1802: apache looses children
+Date: Wed, 27 May 1998 22:39:47 +0200 (METDST)
+
+ On 27 May 1998 coar@apache.org wrote:
+ 
+ > Synopsis: apache looses children
+ > 
+ > State-Changed-From-To: analyzed-feedback
+ > State-Changed-By: coar
+ > State-Changed-When: Wed May 27 13:35:47 PDT 1998
+ > State-Changed-Why:
+ > Is this problem well and truly closed now?
+ 
+ I did not check 1.3b7 yet but 1.3b6 is buggy :(
+ 
+ --
+ Madarasz Gergely           gorgo@caesar.elte.hu         gorgo@linux.rulez.org
+       It's practically impossible to look at a penguin and feel angry.
+           Egy pingvinre gyakorlatilag lehetetlen haragosan nezni.
+               HuLUG: http://www.cab.u-szeged.hu/local/linux/
+ 
+State-Changed-From-To: feedback-analyzed
+State-Changed-By: coar
+State-Changed-When: Wed May 27 15:47:11 PDT 1998
+State-Changed-Why:
+Hmm, 1.3b6 didn't fix it.
+Release-Changed-From-To: 1.2.4, 1.3b3-1.2.4,1.3b6
+Release-Changed-By: coar
+Release-Changed-When: Wed May 27 15:47:11 PDT 1998
+
+From: Gergely Madarasz <gorgo@caesar.elte.hu>
+To: coar@apache.org
+Cc: apache-bugdb@apache.org, apbugs@apache.org
+Subject: Re: general/1802: apache looses children
+Date: Fri, 12 Jun 1998 14:02:23 +0200 (METDST)
+
+ On 27 May 1998 coar@apache.org wrote:
+ 
+ > Is this problem well and truly closed now?
+ 
+ I'm running 1.3.0 for two days now and it seems it works now. With 1.3b6 I
+ got 10-15 reports a day from cron about apache failure, now none :)
+ 
+ Greg
+ 
+ --
+ Madarasz Gergely           gorgo@caesar.elte.hu         gorgo@linux.rulez.org
+       It's practically impossible to look at a penguin and feel angry.
+           Egy pingvinre gyakorlatilag lehetetlen haragosan nezni.
+               HuLUG: http://www.cab.u-szeged.hu/local/linux/
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: coar
+State-Changed-When: Fri Jun 12 07:04:14 PDT 1998
+State-Changed-Why:
+Then it seems to be fixed.  Great!  Thanks for using
+Apache!
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

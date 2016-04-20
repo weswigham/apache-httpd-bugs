@@ -1,0 +1,74 @@
+From nobody@hyperreal.com  Sun Jun 22 03:26:27 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id DAA03286;
+	Sun, 22 Jun 1997 03:26:27 -0700 (PDT)
+Message-Id: <199706221026.DAA03286@hyperreal.com>
+Date: Sun, 22 Jun 1997 03:26:27 -0700 (PDT)
+From: "Sin'ichiro MIYATANI" <siu@phaseone.co.jp>
+Reply-To: siu@phaseone.co.jp
+To: apbugs@hyperreal.com
+Subject: mod_auth_db cannot handle empty password
+X-Send-Pr-Version: 3.2
+
+>Number:         770
+>Category:       mod_auth-any
+>Synopsis:       mod_auth_db cannot handle empty password
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Jun 22 03:30:01 1997
+>Last-Modified:  Sat Jul 19 02:57:17 PDT 1997
+>Originator:     siu@phaseone.co.jp
+>Organization:
+>Release:        1.2
+>Environment:
+BSDI BSD/OS version 3.0 for i386
+>Description:
+When you regist a user with null password, mod_auth_db reject
+that user with cause of `password mistmatch'.
+
+So you cannot regist a user without password.
+>How-To-Repeat:
+Any time you regist a user with null password.
+>Fix:
+here is a context diff for patch;
+*** mod_auth_db.c	1997/06/22 09:15:15	1.1
+--- mod_auth_db.c	1997/06/22 09:15:25
+***************
+*** 210,216 ****
+      colon_pw = strchr(real_pw,':');
+      if (colon_pw) *colon_pw='\0';   
+      /* anyone know where the prototype for crypt is? */
+!     if(strcmp(real_pw,(char *)crypt(sent_pw,real_pw))) {
+          ap_snprintf(errstr, sizeof(errstr), 
+  		"user %s: password mismatch",c->user);
+  	log_reason (errstr, r->uri, r);
+--- 210,216 ----
+      colon_pw = strchr(real_pw,':');
+      if (colon_pw) *colon_pw='\0';   
+      /* anyone know where the prototype for crypt is? */
+!     if(*real_pw && strcmp(real_pw,(char *)crypt(sent_pw,real_pw))) {
+          ap_snprintf(errstr, sizeof(errstr), 
+  		"user %s: password mismatch",c->user);
+  	log_reason (errstr, r->uri, r);
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Jul 19 02:57:17 PDT 1997
+State-Changed-Why:
+There's a difference between an empty password, and an
+empty password that's been crypt()ed.  For example,
+XXUp2ozpdysrQ is "" (without the quotes) crypted.  So your
+patch actually causes it to consider any empty record from
+the db to be an empty password... and I don't think that's
+a good feature.
+
+Dean
+>Unformatted:
+
+

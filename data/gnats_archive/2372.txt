@@ -1,0 +1,194 @@
+Received: (qmail 23970 invoked by uid 2012); 8 Jun 1998 00:28:01 -0000
+Message-Id: <19980608002801.23969.qmail@hyperreal.org>
+Date: 8 Jun 1998 00:28:01 -0000
+From: Steve Baur <steve@calag.com>
+Reply-To: steve@calag.com
+To: apbugs@hyperreal.org
+Subject: If libcrypt is installed, it will be used even if compiling for libc5
+X-Send-Pr-Version: 3.2
+
+>Number:         2372
+>Category:       config
+>Synopsis:       If libcrypt is installed, it will be used even if compiling for libc5
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Jun  7 17:30:00 PDT 1998
+>Last-Modified:  Sun Aug 30 22:10:01 PDT 1998
+>Originator:     steve@calag.com
+>Organization:
+>Release:        1.3.0
+>Environment:
+Linux 2.0.34, Glibc 2.0.7-pre2 as primary libc, Linux libc5 installed
+as secondary libc.  Hand configuring in src/ with the traditional
+method of modifying Configuration and running ./Configure.
+>Description:
++ doing sanity check on compiler and options
+ld: warning: libc.so.6, needed by /usr/lib/libcrypt.so, may conflict with libc.so.5
+
+The Linux test for detecting -lcrypt is too aggressive.  I have all
+compiler options set to values which worked for building against libc5
+on a libc6 system (it worked in 1.2.6), except that -lcrypt gets
+detected (it's there) even when I try to make a libc5 binary.
+>How-To-Repeat:
+Attempt to build apache on a Linux system with both libc5 and libc6
+installed and attempt to build against libc5.
+>Fix:
+Libc6 is not ready for prime time, I'd suggest forcing the installer
+to put -lcrypt in one of the Configuration flags.
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Steve Baur <steve@calag.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: config/2372: If libcrypt is installed, it will be used even if compiling for libc5
+Date: Sun, 7 Jun 1998 22:53:17 -0700 (PDT)
+
+ On 8 Jun 1998, Steve Baur wrote:
+ 
+ > + doing sanity check on compiler and options
+ > ld: warning: libc.so.6, needed by /usr/lib/libcrypt.so, may conflict with libc.so.5
+ > 
+ > The Linux test for detecting -lcrypt is too aggressive.  I have all
+ > compiler options set to values which worked for building against libc5
+ > on a libc6 system (it worked in 1.2.6), except that -lcrypt gets
+ > detected (it's there) even when I try to make a libc5 binary.
+ 
+ Actually, no, I'd be more tempted to say that if your compiler can find a
+ libcrypt which doesn't work with the settings you gave, then that's a
+ problem with the settings you gave.  There's nothing we can do to work
+ around broken compiler settings... 
+ 
+ > Libc6 is not ready for prime time, I'd suggest forcing the installer
+ > to put -lcrypt in one of the Configuration flags.
+ 
+ I would have agreed with you three months ago.  But redhat's 2.0.7-13 has
+ been just fine to me...
+ 
+ We won't remove the libcrypt autodetection.  It's a FAQ for folks building
+ 1.2 on redhat, it wastes our time dealing with people who don't add
+ -lcrypt.  This is a transitional period, yeah it hurts.  Six months from
+ now we'd be flogging a dead horse by still requiring folks to add -lcrypt.
+ 
+ Dean
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sun Jun  7 22:50:25 PDT 1998
+State-Changed-Why:
+reason given in email
+
+From: SL Baur <steve@xemacs.org>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: config/2372: If libcrypt is installed, it will be used even if compiling for libc5
+Date: 07 Jun 1998 22:59:15 -0700
+
+ Dean Gaudet <dgaudet@arctic.org> writes:
+ 
+ > On 8 Jun 1998, Steve Baur wrote:
+ >> + doing sanity check on compiler and options
+ >> ld: warning: libc.so.6, needed by /usr/lib/libcrypt.so, may conflict with libc.so.5
+ >> 
+ >> The Linux test for detecting -lcrypt is too aggressive.  I have all
+ >> compiler options set to values which worked for building against libc5
+ >> on a libc6 system (it worked in 1.2.6), except that -lcrypt gets
+ >> detected (it's there) even when I try to make a libc5 binary.
+ 
+ > Actually, no, I'd be more tempted to say that if your compiler can find a
+ > libcrypt which doesn't work with the settings you gave, then that's a
+ > problem with the settings you gave.  There's nothing we can do to work
+ > around broken compiler settings... 
+ 
+ My compiler settings were not broken though.  After I hand-edited all
+ the Makefiles to remove the spurious -lcrypt's which Configure added, it
+ built (and ran) correctly under libc5.
+ 
+ Oh, well.  Do what you will.
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: SL Baur <steve@xemacs.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: config/2372: If libcrypt is installed, it will be used even if compiling for libc5
+Date: Sun, 7 Jun 1998 23:24:24 -0700 (PDT)
+
+ On 7 Jun 1998, SL Baur wrote:
+ 
+ > My compiler settings were not broken though.  After I hand-edited all
+ > the Makefiles to remove the spurious -lcrypt's which Configure added, it
+ > built (and ran) correctly under libc5.
+ 
+ Yes, your compiler settings are wrong if adding -lcrypt to them causes
+ them to load a crypt library that doesn't work. 
+ 
+ The correct way to do what you're doing is to create a new gcc specs file
+ which does not have /usr/lib in it at all.  It should have
+ /usr/i486-unknown-linux/lib in it only (or wherever you put your libc5). 
+ It should also avoid /usr/include entirely... otherwise you could end up
+ with a header mismatch -- and the result would be far worse than using
+ glibc2 in the first place.
+ 
+ To be honest, I've never been happy with a system with both glibc2 and
+ lib5.  Believe me, I've tried.  I support apache on both platforms, and
+ I'd love to have them both on the same system to simplify development and
+ testing.  But there are just too many little problems that happen that I
+ gave up on it... after wasting a lot of time with specs files, and
+ rebuilding libraries and crap like that. 
+ 
+ You, me, and probably 20 other people use this configuration.  There are
+ thousands that use libc5-only, and thousands more that use glibc2-only.  I
+ have no motivation to support a tiny fraction of the population using an
+ interim solution.
+ 
+ Dean
+ 
+ 
+
+From: SL Baur <steve@xemacs.org>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: config/2372: If libcrypt is installed, it will be used even if compiling for libc5
+Date: 30 Aug 1998 20:56:39 -0700
+
+ Dean Gaudet <dgaudet@arctic.org> writes:
+ 
+ > On 7 Jun 1998, SL Baur wrote:
+ 
+ >> My compiler settings were not broken though.  After I hand-edited all
+ >> the Makefiles to remove the spurious -lcrypt's which Configure added, it
+ >> built (and ran) correctly under libc5.
+ 
+ > Yes, your compiler settings are wrong if adding -lcrypt to them causes
+ > them to load a crypt library that doesn't work. 
+ 
+ You're right.  It took me three months to figure out how to do it, but 
+ with the right gcc specs and ldscript file Apache-1.3.1 configures
+ correctly for both libc5 and libc6 on a mixed Linux system.
+ 
+  ...
+ > You, me, and probably 20 other people use this configuration.  There are
+ > thousands that use libc5-only, and thousands more that use glibc2-only.  I
+ > have no motivation to support a tiny fraction of the population using an
+ > interim solution.
+ 
+ Oh well.  It works with the right magic without any Apache changes,
+ and if someone else happens to wish a similar solution, feel free to
+ point them my direction.
+ 
+ Regards,
+ 
+ -sb
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

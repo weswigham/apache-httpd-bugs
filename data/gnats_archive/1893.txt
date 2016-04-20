@@ -1,0 +1,567 @@
+Received: (qmail 12439 invoked by uid 2012); 1 Mar 1998 19:56:39 -0000
+Message-Id: <19980301195639.12438.qmail@hyperreal.org>
+Date: 1 Mar 1998 19:56:39 -0000
+From: Hansen@hyperreal.org, Jeff <jeff@wipd.com>
+Reply-To: jeff@wipd.com
+To: apbugs@hyperreal.org
+Subject: Server halts for apparently no reason
+X-Send-Pr-Version: 3.2
+
+>Number:         1893
+>Category:       os-linux
+>Synopsis:       Server halts for apparently no reason
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Mar  1 13:10:00 PST 1998
+>Last-Modified:  Sun Mar  1 18:40:00 PST 1998
+>Originator:     jeff@wipd.com
+>Organization:
+>Release:        1.2.5
+>Environment:
+Linux wipd.com 2.0.33 #3 Fri Feb 20 06:25:31 MST 1998 i686 unknown
+GCC 2.7.2.3
+>Description:
+I run a heavily-loaded web server, and everyone once in a while, the web server
+will halt and not spawn any more, so I just have a script that restarts httpd
+automatically.  Lately it has been happening every 20-30 minutes, and I have
+been unable to find a solution so that the web server would be halting at all.
+Here is an strace on the root httpd process when it is halted.
+
+wait4(-1, NULL, WNOHANG, NULL)          = -1 ECHILD (No child processes)
+nanosleep(0xbffffe34, 0xbffffe34, 0x400f8f94, 0xffffffff, 0x80b774c) = 0
+wait4(-1, NULL, WNOHANG, NULL)          = -1 ECHILD (No child processes)
+nanosleep(0xbffffe34, 0xbffffe34, 0x400f8f94, 0xffffffff, 0x80b774c) = 0
+wait4(-1, NULL, WNOHANG, NULL)          = -1 ECHILD (No child processes)
+nanosleep(0xbffffe34, 0xbffffe34, 0x400f8f94, 0xffffffff, 0x80b774c) = 0
+
+Normally you will see getpid's and fork's when it is running properly, like this:
+
+getpid()                                = 29028
+fork()                                  = 29083
+wait4(-1, NULL, WNOHANG, NULL)          = 0
+nanosleep(0xbffffe34, 0xbffffe34, 0x400f8f94, 0xffffffff, 0x80b774c) = 0
+getpid()                                = 29028
+fork()                                  = 29087
+wait4(-1, NULL, WNOHANG, NULL)          = 0
+nanosleep(0xbffffe34, 0xbffffe34, 0x400f8f94, 0xffffffff, 0x80b774c) = 0
+getpid()                                = 29028
+fork()                                  = 29089
+wait4(-1, NULL, WNOHANG, NULL)          = 0
+nanosleep(0xbffffe34, 0xbffffe34, 0x400f8f94, 0xffffffff, 0x80b774c) = 0
+
+I can't have it be doing this all the time obviously...
+>How-To-Repeat:
+Today, you will see my server on and off: www.wipd.com.  It gets to the 
+'contacted www.wipd.com' part, but doesn't go on.
+>Fix:
+If it sees that there are no children, restart. Or if it sees that it is not
+getpid'ing and fork'ing itself, restart (or start forking manually).
+%0
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: jeff@wipd.com
+Cc: apbugs@hyperreal.org
+Subject: Re: os-linux/1893: Server halts for apparently no reason
+Date: Sun, 1 Mar 1998 13:40:06 -0800 (PST)
+
+ RedHat 5.0?  What version of libc?
+ 
+ Dean
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: ROOT <root@wipd.com>
+Cc: apbugs@apache.org
+Subject: Re: os-linux/1893: Server halts for apparently no reason
+Date: Sun, 1 Mar 1998 16:34:34 -0800 (PST)
+
+ Which specific version of glibc?  If it's a redhat system do "rpm -q libc"
+ or "rpm -q glibc" or whatever the package name is.  I need to know because
+ these problems do not appear on non-glibc systems and I'm still trying to
+ isolate a glibc version which does cause it to happen.
+ 
+ Is it a redhat system? 
+ 
+ Dean
+ 
+ On Sun, 1 Mar 1998, ROOT wrote:
+ 
+ > libc-6 aka glibc
+ > 
+ > On Sun, 1 Mar 1998, Dean Gaudet wrote:
+ > 
+ > > RedHat 5.0?  What version of libc?
+ > > 
+ > > Dean
+ > > 
+ > 
+ > 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: os-linux/1893: Server halts for apparently no reason
+Date: Sun, 1 Mar 1998 17:10:41 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ Date: Sun, 1 Mar 1998 17:32:25 -0700 (MST)
+ From: ROOT <root@wipd.com>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: os-linux/1893: Server halts for apparently no reason
+ 
+ Do you find this only on redhat 5.0's?  I believe this same problem
+ happened (not as cmomonly) when I had 4.2, 4.1 and 4.0 (which use libc-5)
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Sun, 1 Mar 1998 17:35:31 -0700 (MST)
+ From: ROOT <root@wipd.com>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: os-linux/1893: Server halts for apparently no reason
+ 
+ It is package glibc-2.0.6-8 for i386.  It is RedHat 5.0
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Sun, 1 Mar 1998 17:54:38 -0700 (MST)
+ From: ROOT <root@wipd.com>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: os-linux/1893: Server halts for apparently no reason
+ 
+ Yes.  This is the server.  btw, I have had a lot of SYN flood warnings in
+ dmesg... a LOT!
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Sun, 1 Mar 1998 17:55:12 -0700 (MST)
+ From: ROOT <root@wipd.com>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: os-linux/1893: Server halts for apparently no reason
+ 
+ No, I run my own 2.0.33.  I told you in my previous message that SYN
+ floods are abundant.
+ 
+ ---------- Forwarded message ----------
+ Date: Sun, 1 Mar 1998 17:56:02 -0700 (MST)
+ From: ROOT <root@wipd.com>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: os-linux/1893: Server halts for apparently no reason
+ 
+ I built apache myself, and have the PHP and frontpage patches on it.
+ 
+ I don't normally send any signals to my server, but a kill -1 pid gets the
+ server back up.
+ 
+ ---------- Forwarded message ----------
+ Date: Sun, 1 Mar 1998 17:57:46 -0700 (MST)
+ From: ROOT <root@wipd.com>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: os-linux/1893: Server halts for apparently no reason
+ 
+ Here is my whole config file! :
+ 
+ # -FrontPage- version=2.0
+ # This is the main server configuration file. See URL
+ # http://www.apache.org/ # for instructions.
+ 
+ # Do NOT simply read the instructions in here without understanding
+ # what they do, if you are unsure consult the online docs. You have been
+ # warned.
+ 
+ # Originally by Rob McCool
+ 
+ # ServerType is either inetd, or standalone.
+ 
+ ServerType standalone
+ 
+ # If you are running from inetd, go to "ServerAdmin".
+ 
+ # Port: The port the standalone listens to. For ports < 1023, you will
+ # need httpd to be run as root initially.
+ 
+ Port 80
+ 
+ # HostnameLookups: Log the names of clients or just their IP numbers
+ #   e.g.   www.apache.org (on) or 204.62.129.132 (off)
+ HostnameLookups on
+ 
+ # If you wish httpd to run as a different user or group, you must run
+ # httpd as root initially and it will switch.  
+ 
+ # User/Group: The name (or #number) of the user/group to run httpd as.
+ #  On SCO (ODT 3) use User nouser and Group nogroup
+ User nobody
+ Group nobody
+ 
+ # ServerAdmin: Your address, where problems with the server should be
+ # e-mailed.
+ 
+ ServerAdmin jeff@wipd.com
+ 
+ # ServerRoot: The directory the server's config, error, and log files
+ # are kept in
+ 
+ ServerRoot /etc/httpd
+ 
+ # BindAddress: You can support virtual hosts with this option. This option
+ # is used to tell the server which IP address to listen to. It can either
+ # contain "*", an IP address, or a fully qualified Internet domain name.
+ # See also the VirtualHost directive.
+ 
+ #BindAddress "*"
+ 
+ # ErrorLog: The location of the error log file. If this does not start
+ # with /, ServerRoot is prepended to it.
+ 
+ ErrorLog logs/error_log
+ 
+ # TransferLog: The location of the transfer log file. If this does not
+ # start with /, ServerRoot is prepended to it.
+ 
+ TransferLog logs/access_log
+ 
+ #AgentLog logs/agent_log
+ 
+ #RefererLog logs/referer_log
+ 
+ # PidFile: The file the server should log its pid to
+ PidFile logs/httpd.pid
+ 
+ # ScoreBoardFile: File used to store internal server process information
+ ScoreBoardFile logs/apache_status
+ 
+ # ServerName allows you to set a host name which is sent back to clients for
+ # your server if it's different than the one the program would get (i.e. use
+ # "www" instead of the host's real name).
+ #
+ # Note: You cannot just invent host names and hope they work. The name you 
+ # define here must be a valid DNS name for your host. If you don't understand
+ # this, ask your network administrator.
+ 
+ ServerName www.wipd.com
+ 
+ # CacheNegotiatedDocs: By default, Apache sends Pragma: no-cache with each
+ # document that was negotiated on the basis of content. This asks proxy
+ # servers not to cache the document. Uncommenting the following line disables
+ # this behavior, and proxies will be allowed to cache the documents.
+ 
+ #CacheNegotiatedDocs
+ 
+ # Timeout: The number of seconds before receives and sends time out
+ #  n.b. the compiled default is 1200 (20 minutes !)
+ 
+ Timeout 400
+ 
+ #BrowserMatch Mozilla/2 nokeepalive
+ 
+ # KeepAlive: The number of Keep-Alive persistent requests to accept
+ # per connection. Set to 0 to deactivate Keep-Alive support
+ 
+ #KeepAlive On
+ #MaxKeepAliveRequests 100
+ KeepAlive 5
+ 
+ # KeepAliveTimeout: Number of seconds to wait for the next request
+ 
+ KeepAliveTimeout 15
+ 
+ # Server-pool size regulation.  Rather than making you guess how many
+ # server processes you need, Apache dynamically adapts to the load it
+ # sees --- that is, it tries to maintain enough server processes to
+ # handle the current load, plus a few spare servers to handle transient
+ # load spikes (e.g., multiple simultaneous requests from a single
+ # Netscape browser).
+ 
+ # It does this by periodically checking how many servers are waiting
+ # for a request.  If there are fewer than MinSpareServers, it creates
+ # a new spare.  If there are more than MaxSpareServers, some of the
+ # spares die off.  These values are probably OK for most sites ---
+ 
+ MinSpareServers 10
+ MaxSpareServers 20
+ 
+ # Number of servers to start --- should be a reasonable ballpark figure.
+ 
+ StartServers 10
+ 
+ # Limit on total number of servers running, i.e., limit on the number
+ # of clients who can simultaneously connect --- if this limit is ever
+ # reached, clients will be LOCKED OUT, so it should NOT BE SET TOO LOW.
+ # It is intended mainly as a brake to keep a runaway server from taking
+ # Unix with it as it spirals down...
+ 
+ MaxClients 150
+ 
+ # MaxRequestsPerChild: the number of requests each child process is
+ #  allowed to process before the child dies.
+ #  The child will exit so as to avoid problems after prolonged use when
+ #  Apache (and maybe the libraries it uses) leak.  On most systems, this
+ #  isn't really needed, but a few (such as Solaris) do have notable leaks
+ #  in the libraries.
+ 
+ MaxRequestsPerChild 30
+ 
+ # Proxy Server directives. Uncomment the following line to
+ # enable the proxy server:
+ 
+ ProxyRequests On
+ 
+ # To enable the cache as well, edit and uncomment the following lines:
+ 
+ #CacheRoot /home/httpd/proxy
+ #CacheSize 5
+ #CacheGcInterval 4
+ #CacheMaxExpire 24
+ #CacheLastModifiedFactor 0.1
+ #CacheDefaultExpire 1
+ #NoCache adomain.com anotherdomain.edu joes.garage.com
+ 
+ # Listen: Allows you to bind Apache to specific IP addresses and/or
+ # ports, in addition to the default. See also the VirtualHost command
+ 
+ Listen 8001
+ Listen 80
+ #Listen 12.34.56.78:80
+ 
+ # VirtualHost: Allows the daemon to respond to requests for more than one
+ # server address, if your server machine is configured to accept IP packets
+ # for multiple addresses. This can be accomplished with the ifconfig 
+ # alias flag, or through kernel patches like VIF.
+ 
+ # Any httpd.conf or srm.conf directive may go into a VirtualHost command.
+ # See alto the BindAddress entry.
+  
+ [lots of vhosts removed -djg]
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: ROOT <root@wipd.com>
+Cc: apbugs@apache.org
+Subject: Re: os-linux/1893: Server halts for apparently no reason
+Date: Sun, 1 Mar 1998 17:14:27 -0800 (PST)
+
+ Uh, you have 680 log files in your configuration.  Linux 2.0.x supports
+ 256 descriptors per process.  You must be using some patch which gives you
+ greater than 256 per process... and I don't trust all of those patches
+ 100%.  In order to build a system that supports >256 descriptors safely
+ you need to rebuild libc and the patch used has to be really careful. 
+ 
+ i.e. this is an unsupported configuration... and so the problems may not
+ be apache at all, they may be because you've got a bogus kernel/libc
+ combination. 
+ 
+ So, which patch are you using to increase the per process descriptor
+ limit?  What other kernel patches do you have? 
+ 
+ Can you reproduce this problem on a stock 2.0.33 system without any extra
+ kernel patches?
+ 
+ Dean
+ 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: os-linux/1893: Server halts for apparently no reason (fwd)
+Date: Sun, 1 Mar 1998 17:21:18 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ Date: Sun, 1 Mar 1998 18:19:06 -0700 (MST)
+ From: ROOT <root@wipd.com>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: os-linux/1893: Server halts for apparently no reason
+ 
+ Yes, there's no such file.  I run an httpsd server (apache+ssl) that has
+ frontpage extensions, and this doesn't happen on that.  Of course that is
+ not nearly as busy.
+ 
+ On Sun, 1 Mar 1998, Dean Gaudet wrote:
+ 
+ > Look for a file /etc/logrotate.d/apache -- you probably don't want it, it
+ > is part of the redhat apache package and does really bogus things (which
+ > I've complained to them about).
+ > 
+ > Do you have any other servers without php and frontpage which exhibit this
+ > problem?
+ > 
+ > Dean
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: os-linux/1893: Server halts for apparently no reason (fwd)
+Date: Sun, 1 Mar 1998 17:22:33 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ Date: Sun, 1 Mar 1998 18:19:55 -0700 (MST)
+ From: ROOT <root@wipd.com>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: os-linux/1893: Server halts for apparently no reason
+ 
+ OK, done.
+ 
+ On Sun, 1 Mar 1998, Dean Gaudet wrote:
+ 
+ > 
+ > 
+ > On Sun, 1 Mar 1998, ROOT wrote:
+ > 
+ > > ProxyRequests On
+ > 
+ > Hmm, did you really intend this?  This turns on proxying across all
+ > vhosts... if you're not really using proxying (I notice you don't have any
+ > caching set up) then please try turning it off.  That will eliminate one
+ > more variable.
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: os-linux/1893: Server halts for apparently no reason (fwd)
+Date: Sun, 1 Mar 1998 17:22:42 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ Date: Sun, 1 Mar 1998 18:20:29 -0700 (MST)
+ From: ROOT <root@wipd.com>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: os-linux/1893: Server halts for apparently no reason
+ 
+ Done.
+ 
+ On Sun, 1 Mar 1998, Dean Gaudet wrote:
+ 
+ > Can you try putting a directive "LockFile /var/run/httpd.lock" into
+ > httpd.conf?
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: ROOT <root@wipd.com>
+Cc: apbugs@apache.org
+Subject: Re: os-linux/1893: Server halts for apparently no reason
+Date: Sun, 1 Mar 1998 17:35:06 -0800 (PST)
+
+   This message is in MIME format.  The first part should be readable text,
+   while the remaining parts are likely unreadable without MIME-aware tools.
+   Send mail to mime@docserver.cac.washington.edu for more info.
+ 
+ ---909180094-1341353953-888801951=:14311
+ Content-Type: TEXT/PLAIN; CHARSET=US-ASCII
+ Content-ID: <Pine.LNX.3.96dg4.980301173201.4090O@twinlark.arctic.org>
+ 
+ On Sun, 1 Mar 1998, ROOT wrote:
+ 
+ > Yes, I use a patch that allows 3000 FD's to be open.  I have attached my
+ > current kernel patches that I always apply, and my kernel configuration.
+ 
+ Yeah that's the patch I figured you were using.  Take a look at
+ http://www.arctic.org/~dgaudet/patches/1024-descriptors.patch.  Notice the
+ bit about INIT_NR_OPEN.  That is to protect programs that were built with
+ FD_SETSIZE=256 ...
+ 
+ You need to rebuild your C library if you use any of these patches. 
+ Otherwise it still has hardcoded FD_ZERO()s and such with 256 maximums.
+ You also need to build apache on a system with the larger FD_SETSIZE in
+ the include files.  i.e. a lot of care has to be taken.
+ 
+ > By the way, I have just set the priority of all my daemons back to 0
+ > instead of 19, and I haven't seen the problem for about 45 minutes.  I
+ > wonder if the priorities of everything has anything to do with anything ??
+ 
+ I'm not sure what you mean by this... you were running apache at nice +19 ?
+ 
+ Dean
+ 
+ ---909180094-1341353953-888801951=:14311--
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: ROOT <root@wipd.com>
+Cc: apbugs@apache.org
+Subject: Re: os-linux/1893: Server halts for apparently no reason
+Date: Sun, 1 Mar 1998 18:01:46 -0800 (PST)
+
+ nice +19 *shouldn't* cause this problem to happen... and the ethernet card
+ changes shouldn't cause it to happen either.  The motherboard swap may be
+ the blame though.  Have you stressed the new motherboard with, say, a full
+ kernel compile but with lots of processes?  Like: 
+ 
+     make -j7 MAKE='make -j7'
+ 
+ I find this will show motherboard and memory problems pretty quickly. 
+ 
+ But in this case I'm thinking the nice +19 may be more likely the blame. 
+ But I can't imagine how it'd be the cause... lemme see if I can reproduce
+ it. 
+ 
+ Dean
+ 
+ On Sun, 1 Mar 1998, ROOT wrote:
+ 
+ > Yes, it was running fine yesterday.  Some major changes I made:
+ > 
+ > Swapped motherboards (hehe, not something you do everyday)
+ > Made all daemons run with nice +19
+ > Swapped ethernet card places, so arp address is different
+ > 
+ > I believe running everything with +19 priority was very bad.  It has run
+ > for over an hour just fine since I now run everything with +0 priority.  I
+ > set everything to +19 because I thought that would make the server less
+ > able to crash, but I don't really know if that helps.
+ > 
+ > On Sun, 1 Mar 1998, Dean Gaudet wrote:
+ > 
+ > > 
+ > > 
+ > > On Sun, 1 Mar 1998, ROOT wrote:
+ > > 
+ > > > Apache has run fine with this setup until today.  I don't believe that
+ > > > that would be the problem.
+ > > 
+ > > Your original problem report made it sound like you've been having this
+ > > trouble for a while.  If it just started today then you should be able to
+ > > isolate the differences between yesterday and today. 
+ > > 
+ > > Presumably you've been adding vhosts now and then... and each vhost you
+ > > add increases the number of descriptors by 2.  If there are problems with
+ > > your libc they may not show up until you reach a certain number of vhosts.
+ > > 
+ > > Dean
+ > > 
+ > 
+ > 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sun Mar  1 18:32:16 PST 1998
+State-Changed-Why:
+I don't feel like debugging linux scheduler lameness.  So I'm
+closing this one out now that you've worked around the problem.
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: os-linux/1893: Server halts for apparently no reason (fwd)
+Date: Sun, 1 Mar 1998 18:31:28 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ Date: Sun, 1 Mar 1998 19:25:53 -0700 (MST)
+ From: ROOT <root@wipd.com>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: os-linux/1893: Server halts for apparently no reason
+ 
+ Yeah, I've been running everything with 0 priority and there are no more
+ problems whatsoever !
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

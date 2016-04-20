@@ -1,0 +1,69 @@
+Received: (qmail 23437 invoked by uid 2012); 13 Nov 1998 08:12:27 -0000
+Message-Id: <19981113081226.23435.qmail@hyperreal.org>
+Date: 13 Nov 1998 08:12:26 -0000
+From: Tani Hosokawa <unknown@riverstyx.net>
+Reply-To: unknown@riverstyx.net
+To: apbugs@hyperreal.org
+Subject: potential DOS, and an irritating, difficult to track error
+X-Send-Pr-Version: 3.2
+
+>Number:         3397
+>Category:       mod_log-any
+>Synopsis:       potential DOS, and an irritating, difficult to track error
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Nov 13 00:20:01 PST 1998
+>Last-Modified:
+>Originator:     unknown@riverstyx.net
+>Organization:
+apache
+>Release:        all
+>Environment:
+Linux, presumably all Unices, dunno about NT.
+>Description:
+If you've got a log set up to a directory that doesn't exist 
+(ie /home/unknown/logs/transfer_log) and that directory doesn't exist, Apache 
+will quietly not start.  Nothing gets output to the error log even though there 
+is a piece of code that's supposed to dump an error out:
+
+        char *fname = ap_server_root_relative(p, cls->fname);
+        if ((cls->log_fd = ap_popenf(p, fname, xfer_flags, xfer_mode)) < 0) {
+            ap_log_error(APLOG_MARK, APLOG_ERR, s,
+                         "httpd: could not open transfer log file %s.", fname);
+            exit(1);
+
+However, it just goes into the nether.  Ya get nuthin'.  I dunno if this is 
+because the process that's supposed to be logging gets killed before it gets
+a chance to write, but hey, it still causes me problems.
+>How-To-Repeat:
+Just set a log to a directory that doesn't exist.  I've only tried it inside a
+VirtualHost directive, which may affect it.
+>Fix:
+This is a pretty easy way to fix it... stderr is usually by this point
+redirected to the error log, so I put an fprintf in right after the ap_log_error
+call, and that does end up going into the error log.
+
+        char *fname = ap_server_root_relative(p, cls->fname);
+        if ((cls->log_fd = ap_popenf(p, fname, xfer_flags, xfer_mode)) < 0) {
+            ap_log_error(APLOG_MARK, APLOG_ERR, s,
+                         "httpd: could not open transfer log file %s.", fname);
+            fprintf(stderr, "httpd: could not open transfer log file %s.\n", fname);
+            exit(1);
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

@@ -1,0 +1,147 @@
+Received: (qmail 74875 invoked by uid 501); 15 Feb 2001 18:04:13 -0000
+Message-Id: <20010215180413.74862.qmail@apache.org>
+Date: 15 Feb 2001 18:04:13 -0000
+From: Lenny Miceli <miceli@buffalo.edu>
+Reply-To: miceli@buffalo.edu
+To: submit@bugz.apache.org
+Subject: Running into problems at approx 232 virtual hosts.
+X-Send-Pr-Version: 3.110
+
+>Number:         7251
+>Category:       os-solaris
+>Synopsis:       Running into problems at approx 232 virtual hosts.
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Feb 15 10:10:03 PST 2001
+>Closed-Date:
+>Last-Modified:  Thu Feb 15 20:40:15 PST 2001
+>Originator:     miceli@buffalo.edu
+>Release:        1.3.14
+>Organization:
+>Environment:
+SunOS 5.6 Generic_105181-23  sun4u sparc SUNW,Ultra-4.  I use sun's CC compiler.
+>Description:
+I've been running apache for years then approx 6 months ago when running apache
+v1.3.6 I started seeing problems when I tried to add more virtual hosts.  It
+seems like the magic number back then was approx 235-237.  Once I added one more
+VH the server would start but approx 50% of the accesses would get a server
+denied error and in the error log I would see the following messages:
+
+[The date] [error] [client 128.205.251.12] (2)No such
+file or directory: file permissions deny server access: /the_path_to_the_file
+
+But the permissions on the files were fine because you could come right back to
+the same url and the server would serve the page without a problem.  The files
+are .html, .jpg, etc it didn't matter.  Sometimes the server would serve them
+and sometimes it wouldn't.  So I figured I'd upgrade to v1.3.12 but the problem
+is still there, then I tried v1.3.14 but the problem still exists.  I didn't
+upgrade to v1.3.17 since this is a major server on campus and I have to
+schedule upgrades like this since we are serving so many VH's.  Anyways, I'm
+currently running 232 VH's.  As soon as I add one more I get the problems I
+describe above.  But, I've also noticed when I make a change to the httpd.conf
+file and then issue a kill -USR1 the above problem starts happening but to a
+lessor degree.  Instead of %50 of the accesses having problems is approx 3-5%.
+So what I do is now kill the apache server off totally and restart the server
+and the problem goes away.  I now have time to work on this problem again.  I've
+searched your bug reports and everything else I know about and can't find any
+mention of anything like this, except of the issue of too many error log 
+definitions on solaris because they use stdout and you can only have approx
+255 file handles open when using that.  So a long time ago I removed separate
+error logs for all the VH's and I have them all log to the same file.  In all
+the VH 's definitions I don't specify the same file, I just specify the error
+file in the main server section so they pick up the same file by default.  All
+the other hosts do have a different access log but that should be OK to my
+knowledge.  I have unlimited shell limits on the main apache process so that
+should pass those to all the children it creates.
+
+I tried to replicate this problem by starting a test server on the same machine
+with all these VH's but I can't replicate the problem.  It seems like it only
+happens on a very busy server which this host is.  It's our main webserver.
+
+So I was wondering if you can give me any help in debugging why this problem
+is happening since we need to add more VH's to this server and we currently
+can't.
+>How-To-Repeat:
+I can only repeat it by how I said above.
+>Fix:
+Nope.  I ran out of idea's so that's why I'm coming to you guys.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: slive
+State-Changed-When: Thu Feb 15 11:26:49 PST 2001
+State-Changed-Why:
+
+Please see:
+http://httpd.apache.org/docs/misc/FAQ.html#fdlim
+and also consider using mod_vhost_alias.
+
+Thanks for using Apache!
+
+From: Lenny Miceli <miceli@joey.acsu.buffalo.edu>
+To: slive@apache.org
+Cc: apbugs@Apache.Org
+Subject: Re: os-solaris/7251: Running into problems at approx 232 virtual hosts.
+Date: Thu, 15 Feb 2001 14:49:11 -0500
+
+ On Thu, Feb 15, 2001 at 07:26:53PM -0000, slive@apache.org wrote:
+ > 
+ > Synopsis: Running into problems at approx 232 virtual hosts.
+ > 
+ > State-Changed-From-To: open-closed
+ > State-Changed-By: slive
+ > State-Changed-When: Thu Feb 15 11:26:49 PST 2001
+ > State-Changed-Why:
+ > 
+ > Please see:
+ > http://httpd.apache.org/docs/misc/FAQ.html#fdlim
+ > and also consider using mod_vhost_alias.
+ 
+   We can't run mod_vhost_alias since all of our virtual hosts are very
+ distinct per department so every Virtual host definition is not similar
+ enough to use this functionality.
+ 
+   I thought I would be able to have upto 1024 file descriptors, since solaris
+ allows this max and I have the following in the script that starts the apache
+ server:
+ 
+ unlimit cputime
+ unlimit filesize
+ unlimit datasize
+ limit stacksize 2090000
+ limit coredumpsize 20480
+ unlimit vmemoryuse
+ limit descriptors 1024
+ 
+ Also, your answer doesn't explain why I can't use kill -USR1 anymore to
+ have the server reread the config file.
+ 
+ Thanks for you time in this matter,
+   Lenny
+Comment-Added-By: marc
+Comment-Added-When: Thu Feb 15 20:40:15 PST 2001
+Comment-Added:
+The FAQ entry links to http://httpd.apache.org/docs/misc/descriptors.html which has a more detailed description.  Compiling using a 64-bit ABI may get around this particular problem of yours if your system supports it.  This is a Solaris limitation.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

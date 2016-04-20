@@ -1,0 +1,98 @@
+From apwww@hyperreal.org  Mon Sep 22 16:53:14 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id QAA22970;
+	Mon, 22 Sep 1997 16:53:14 -0700 (PDT)
+Message-Id: <199709222353.QAA22970@hyperreal.org>
+Date: Mon, 22 Sep 1997 16:53:14 -0700 (PDT)
+From: "A. Poindexter" <alan_poindexter@bmc.com>
+Reply-To: alan_poindexter@bmc.com
+To: apbugs@hyperreal.org
+Subject: Configure always returns exit code of 0
+X-Send-Pr-Version: 3.2
+
+>Number:         1159
+>Category:       config
+>Synopsis:       Configure always returns exit code of 0
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Sep 22 17:00:02 1997
+>Last-Modified:  Fri Oct 10 02:11:17 PDT 1997
+>Originator:     alan_poindexter@bmc.com
+>Organization:
+>Release:        1.2.4
+>Environment:
+SunOS xxxx 5.5.1 Generic sun4u sparc SUNW,Ultra-2
+
+But will occur on any platform
+
+Note: I search the bug reports, etc. I humbly appologize if this has already been reported 
+and I missed it.
+>Description:
+Configure in version 1.2.4 has six(6) exit 1's in it, but the secound line of Configure is
+trap 'rm -f $tmpfile; exit' 0 1 2 3 15
+
+notice no argument to exit.
+
+now, consulting the man page for exit gives
+  sh
+     exit [ n ]
+
+sh
+     exit will cause the calling shell or shell  script  to  exit
+     with  the  exit  status specified by n.  If n is omitted the
+     exit status is that of the last  command  executed  (an  EOF
+     will also cause the shell to exit.)
+
+since the last command executed is rm and the temp file exists, Configure returns 
+a 0 even if there was an error and Configure tried to exit with a 1 (trap called 
+with exit code = 1)
+>How-To-Repeat:
+Set your path such that there is no cc compilier, run Confgure and examine the exit code
+the script I used was:
+
+./Configure
+echo $?
+>Fix:
+here is a diff, <is the original Config, >is the changes I made
+diff Configure.orig Configure
+2c2
+< trap 'rm -f $tmpfile; exit' 0 1 2 3 15
+---
+> trap 'rm -f $tmpfile; exit $exitCode' 0 1 2 3 15
+25a26
+>       exitCode=1
+31a33
+>       exitCode=1
+43a46
+>   exitCode=1
+66a70
+>    exitCode=1
+501a506
+>         exitCode=1
+547a553
+>             exitCode=1
+
+which is to say, add $exitCode to the trap and place an exitCode=1 before each exit 1
+%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Wed Sep 24 21:51:42 PDT 1997
+State-Changed-Why:
+Thanks, I've submitted the patch for consideration.
+
+Dean
+State-Changed-From-To: analyzed-closed
+State-Changed-By: pcs
+State-Changed-When: Fri Oct 10 02:11:16 PDT 1997
+State-Changed-Why:
+This is now fixed for the next release (1.3b1).
+
+>Unformatted:
+
+

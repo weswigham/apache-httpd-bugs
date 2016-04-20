@@ -1,0 +1,114 @@
+Received: (qmail 62416 invoked by uid 501); 26 Jul 2001 12:10:45 -0000
+Message-Id: <20010726121044.62415.qmail@apache.org>
+Date: 26 Jul 2001 12:10:44 -0000
+From: Alexey Panchenko <panchenko@liwest.ru>
+Reply-To: panchenko@liwest.ru
+To: submit@bugz.apache.org
+Subject: CacheForceCompletion directive don't work
+X-Send-Pr-Version: 3.110
+
+>Number:         8090
+>Category:       mod_proxy
+>Synopsis:       bug fix, covers several other PRs
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jul 26 05:20:00 PDT 2001
+>Closed-Date:    Mon Sep 24 13:21:51 PDT 2001
+>Last-Modified:  Mon Sep 24 13:21:51 PDT 2001
+>Originator:     panchenko@liwest.ru
+>Release:        1.3.20
+>Organization:
+>Environment:
+Bug is not platform specific
+>Description:
+CacheForceCompletion directive don't work
+>How-To-Repeat:
+
+>Fix:
+in mod_proxy.c:
+ static const char * 
+    set_cache_completion(cmd_parms *parms, void *dummy, char *arg)
+ {
+     proxy_server_conf *psf =
+     ap_get_module_config(parms->server->module_config, &proxy_module);
+     int s = atoi(arg);
+     if (s > 100 || s < 0) {
+         return "CacheForceCompletion must be <= 100 percent, "
+                "or 0 for system default.";
+     }
+ 
+     if (s > 0)
+       psf->cache.cache_completion = ((float)s / 100);
+ 
+-    psf->cache.cache_completion = 1;
++    psf->cache.cache_completion_set = 1;
+     return NULL;    
+ }
+>Release-Note:
+>Audit-Trail:
+
+From: Alexey Panchenko <panchenko@liwest.ru>
+To: apbugs@apache.org
+Cc:  
+Subject: Re: mod_proxy/8090: CacheForceCompletion directive don't work
+Date: Thu, 26 Jul 2001 21:36:18 +0700
+
+ Additional fix, applying to PR #7383 "when the client disconnects the
+ proxy will continue to read the content, despite there being no need
+ for it".
+ 
+ In proxy_util.c (function ap_proxy_send_fb):
+ 
+ @@ -593,5 +593,5 @@
+              if (w <= 0) {
+ -                if (c != NULL && c->fp != NULL) {
+ +                if (c != NULL) {
+                      /* when a send failure occurs, we need to decide
+                       * whether to continue loading and caching the
+                       * document, or to abort the whole thing
+ @@ -603,6 +603,8 @@
+                      if (! ok) {
+ +                        if (c->fp!=NULL) {
+                          ap_pclosef(c->req->pool, ap_bfileno(c->fp, B_WR));
+                          c->fp = NULL;
+ +                        }
+                          unlink(c->tempfile);
+                         c = NULL;
+                      }
+ --
+ Best regards,
+  Alexey                            mailto:panchenko@liwest.ru
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: chuck
+State-Changed-When: Mon Sep 24 13:21:51 PDT 2001
+State-Changed-Why:
+Fix applied
+Synopsis-Changed-From: CacheForceCompletion directive don't work
+Synopsis-Changed-To: bug fix, covers several other PRs
+Synopsis-Changed-By: chuck
+Synopsis-Changed-When: Mon Sep 24 13:21:51 PDT 2001
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

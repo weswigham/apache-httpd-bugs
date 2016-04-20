@@ -1,0 +1,122 @@
+Received: (qmail 44356 invoked by uid 65534); 19 Jan 2000 22:10:53 -0000
+Message-Id: <20000119221053.44355.qmail@locus.apache.org>
+Date: 19 Jan 2000 22:10:53 -0000
+From: Brian Reichert <reichert@numachi.com>
+Reply-To: reichert@numachi.com
+To: submit@bugz.apache.org
+Subject: Suggested patch WRT PR# 2785
+X-Send-Pr-Version: 3.110
+
+>Number:         5608
+>Category:       general
+>Synopsis:       Suggested patch WRT PR# 2785
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan 19 14:20:00 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     reichert@numachi.com
+>Release:        apache_1.3.9
+>Organization:
+apache
+>Environment:
+FreeBSD 3.2-STABLE
+Apache 1.3.9
+>Description:
+I needed to run apache under a watchdog script, and (for our sake) added an option to httpd to prevent a detach in standalone mode.
+>How-To-Repeat:
+
+>Fix:
+--- http_main.c.orig    Fri Jan  7 19:20:01 2000
++++ http_main.c Wed Jan 19 16:58:48 2000
+@@ -255,6 +255,8 @@
+ int ap_listenbacklog;
+ int ap_dump_settings = 0;
+ API_VAR_EXPORT int ap_extended_status = 0;
++/* ByB */
++int dont_detach = 0;
+ 
+ /*
+  * The max child slot ever assigned, preserved across restarts.  Necessary
+@@ -1035,6 +1037,7 @@
+ #endif
+     fprintf(stderr, "       %s [-C \"directive\"] [-c \"directive\"]\n", pad);
+     fprintf(stderr, "       %s [-v] [-V] [-h] [-l] [-L] [-S] [-t] [-T]\n", pad);
++    fprintf(stderr, "       %s [-s]\n", pad);
+ #ifdef WIN32
+     fprintf(stderr, "       %s [-n service] [-k signal] [-i] [-u]\n", pad);
+ #endif
+@@ -1053,6 +1056,7 @@
+     fprintf(stderr, "  -l               : list compiled-in modules\n");
+     fprintf(stderr, "  -L               : list available configuration directives\n");
+     fprintf(stderr, "  -S               : show parsed settings (currently only vhost settings)\n");
++    fprintf(stderr, "  -s               : don't detach from terminal in standalone mode\n");
+     fprintf(stderr, "  -t               : run syntax check for config files (with docroot check)\n");
+     fprintf(stderr, "  -T               : run syntax check for config files (without docroot check)\n");
+ #ifdef WIN32
+@@ -4447,7 +4451,23 @@
+     is_graceful = 0;
+ 
+     if (!one_process) {
+-       detach();
++    /*
++       All this patch does is rather than a full detach, merely sets
++       a new program group.  I copied this code from detach(), but
++       I did not pull over all of the mutant OS conditional stuff.
++
++       Wed Jan 19 14:59:36 EST 2000 -  ByB
++     */
++
++      if (dont_detach) {
++        if ((pgrp = setpgrp(getpid(), 0)) == -1) {
++         perror("setpgrp");
++         fprintf(stderr, "%s: setpgrp failed\n",
++         ap_server_argv0);
++         exit(1);
++       }
++      }
++      else { detach(); }
+     }
+     else {
+        MONCONTROL(1);
+@@ -4727,7 +4747,7 @@
+     ap_setup_prelinked_modules();
+ 
+     while ((c = getopt(argc, argv,
+-                                   "D:C:c:xXd:f:vVlLR:StTh"
++                                   "D:C:c:xXd:f:vVlLR:SstTh"
+ #ifdef DEBUG_SIGSTOP
+                                    "Z:"
+ #endif
+@@ -4792,6 +4812,9 @@
+ #endif
+        case 'S':
+            ap_dump_settings = 1;
++           break;
++       case 's':
++           dont_detach = 1;
+            break;
+        case 't':
+            ap_configtestonly = 1;
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

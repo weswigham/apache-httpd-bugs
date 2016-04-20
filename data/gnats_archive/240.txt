@@ -1,0 +1,195 @@
+From nobody@hyperreal.com  Mon Mar 17 23:14:50 1997
+Received: by taz.hyperreal.com (8.8.4/V2.0) id XAA01412; Mon, 17 Mar 1997 23:14:50 -0800 (PST)
+Message-Id: <199703180714.XAA01412@taz.hyperreal.com>
+Date: Mon, 17 Mar 1997 23:14:50 -0800 (PST)
+From: Taso Devetzis <devetzis@snet.net>
+Reply-To: devetzis@snet.net
+To: apbugs@hyperreal.com
+Subject: Add tuning directive ListenBacklog
+X-Send-Pr-Version: 3.2
+
+>Number:         240
+>Category:       config
+>Synopsis:       Add tuning directive ListenBacklog
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Mar 17 23:20:01 1997
+>Last-Modified:  Sat Jun 28 17:08:15 PDT 1997
+>Originator:     devetzis@snet.net
+>Organization:
+>Release:        all
+>Environment:
+n/a
+>Description:
+ListenBacklog complements SendBufferSize and the *KeepAlive* directives
+for tuning the server relative to the kernel.  given the disparate networks
+(and associated syn/ack tcp rtts, network path lengths, latencies, etc.) on
+which one might deploy apache, this parameter is important enough to be runtime
+configurable, imho.  for example, setting it an order of magnitude higher than
+the current default is possible (and desirable -- think syn flood attacks) in
+some kernels.
+
+hmmm... did someone say mod_tune?
+>How-To-Repeat:
+n/a
+>Fix:
+patch for 1.2b7:
+
+Common subdirectories: ../../apache_1.2b7/src/helpers and ./helpers
+diff -c ../../apache_1.2b7/src/http_config.c ./http_config.c
+*** ../../apache_1.2b7/src/http_config.c        Sat Jan 25 20:15:11 1997
+--- ./http_config.c     Tue Mar 18 01:11:38 1997
+***************
+*** 937,942 ****
+--- 937,943 ----
+      s->keep_alive_timeout = 0;
+      s->keep_alive = -1;
+      s->keep_alive_max = -1;
++     s->listen_backlog = -1;
+      /* start the list of addreses */
+      addrs = &s->addrs;
+      while( hostname[0] ) {
+***************
+*** 1004,1009 ****
+--- 1005,1013 ----
+
+        if (virt->send_buffer_size == 0)
+                virt->send_buffer_size = main_server->send_buffer_size;
++
++       if (virt->listen_backlog == -1)
++               virt->listen_backlog = main_server->listen_backlog;
+      }
+  }
+
+***************
+*** 1046,1051 ****
+--- 1050,1056 ----
+      s->keep_alive_timeout = DEFAULT_KEEPALIVE_TIMEOUT;
+      s->keep_alive_max = DEFAULT_KEEPALIVE;
+      s->keep_alive = 1;
++     s->listen_backlog = DEFAULT_LISTEN_BACKLOG;
+      s->next = NULL;
+      s->addrs = pcalloc(p, sizeof (server_addr_rec));
+      s->addrs->host_addr.s_addr = htonl (INADDR_ANY); /* NOT virtual host;
+diff -c ../../apache_1.2b7/src/http_core.c ./http_core.c
+*** ../../apache_1.2b7/src/http_core.c  Mon Feb 17 05:46:06 1997
+--- ./http_core.c       Tue Mar 18 01:07:16 1997
+***************
+*** 867,872 ****
+--- 867,881 ----
+      return NULL;
+  }
+
++ const char *set_listen_backlog (cmd_parms *cmd, void *dummy, char *arg) {
++   int s = atoi (arg);
++   if (s < 0) {
++     return "ListenBacklog must be >= 0.";
++   }
++   cmd->server->listen_backlog = s;
++   return NULL;
++ }
++
+  const char *set_user (cmd_parms *cmd, void *dummy, char *arg)
+  {
+      if (!cmd->server->is_virtual) {
+***************
+*** 1242,1247 ****
+--- 1251,1257 ----
+  { "Listen", set_listener, NULL, RSRC_CONF, TAKE1,
+        "a port number or a numeric IP address and a port number"},
+  { "SendBufferSize", set_send_buffer_size, NULL, RSRC_CONF, TAKE1, "send buffer
+ size in bytes"},
++ { "ListenBacklog", set_listen_backlog, NULL, RSRC_CONF, TAKE1, "maximum queue
+length for pending connections"},
+  { "AddModule", add_module_command, NULL, RSRC_CONF, ITERATE,
+    "the name of a module" },
+  { "ClearModuleList", clear_module_list_command, NULL, RSRC_CONF, NO_ARGS, NULL
+ },
+diff -c ../../apache_1.2b7/src/http_main.c ./http_main.c
+*** ../../apache_1.2b7/src/http_main.c  Wed Feb 19 22:20:18 1997
+--- ./http_main.c       Tue Mar 18 01:15:39 1997
+***************
+*** 1937,1943 ****
+  #ifdef MPE
+      if (ntohs(server->sin_port) < 1024) GETUSERMODE();
+  #endif
+!     listen(s, 512);
+      return s;
+  }
+
+--- 1937,1943 ----
+  #ifdef MPE
+      if (ntohs(server->sin_port) < 1024) GETUSERMODE();
+  #endif
+!     listen(s, server_conf->listen_backlog);
+      return s;
+  }
+
+diff -c ../../apache_1.2b7/src/httpd.h ./httpd.h
+*** ../../apache_1.2b7/src/httpd.h      Fri Feb 21 19:38:04 1997
+--- ./httpd.h   Tue Mar 18 01:13:10 1997
+***************
+*** 189,194 ****
+--- 189,197 ----
+  /* The number of requests to entertain per connection */
+  #define DEFAULT_KEEPALIVE 100
+
++ /* The maximum length of the pending connection queue */
++ #define DEFAULT_LISTEN_BACKLOG 512
++
+  /* The size of the server's internal read-write buffers */
+  #define IOBUFSIZE 8192
+
+***************
+*** 597,602 ****
+--- 600,606 ----
+      int keep_alive_max;               /* Maximum requests per connection */
+      int keep_alive;           /* Use persistent connections? */
+      int send_buffer_size;       /* size of TCP send buffer (in bytes) */
++     int listen_backlog;               /* size of TCP backlog queue */
+
+      char *path;                       /* Pathname for ServerPath */
+      int pathlen;              /* Length of path */
+Common subdirectories: ../../apache_1.2b7/src/modules and ./modules
+Common subdirectories: ../../apache_1.2b7/src/regex and ./regex%0
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Taso Devetzis <devetzis@snet.net>
+Subject: Re: config/240: Add tuning directive ListenBacklog
+Date: Wed, 19 Mar 1997 16:56:08 -0700 (MST)
+
+ 
+ I like the idea.  I have had to tune it myself and thought about making it
+ a little more configurable but never got to it.  I think there are some
+ issues that need to be clarified WRT virtual servers (it is only possible
+ to have a seperate setting for virtual hosts using the Listen directive
+ since all others use the same socket) and it needs to be documented well
+ (so people don't go crazy modifying it for no reason and just hurt
+ themself).  At the very least, it should be a define in httpd.h. 
+ 
+ Nothing will be done about this until after 1.2, since we are in a
+ feature freeze.
+ 
+State-Changed-From-To: open-suspended
+State-Changed-By: marc
+State-Changed-When: Tue Apr 22 08:57:56 PDT 1997
+State-Changed-Why:
+Was too late for 1.2 feature freeze, will re-examine 
+after 1.2.
+State-Changed-From-To: suspended-closed
+State-Changed-By: marc
+State-Changed-When: Sat Jun 28 17:08:14 PDT 1997
+State-Changed-Why:
+The ListenBacklog directive has now been implemented in
+the 1.3 development source; a mildly different implementation
+than the supplied patch was used.
+>Unformatted:
+
+
+

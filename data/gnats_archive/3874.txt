@@ -1,0 +1,120 @@
+Received: (qmail 10346 invoked by uid 2012); 10 Feb 1999 21:25:37 -0000
+Message-Id: <19990210212537.10345.qmail@hyperreal.org>
+Date: 10 Feb 1999 21:25:37 -0000
+From: Jeff Lewis <lewis@stanford.edu>
+Reply-To: lewis@stanford.edu
+To: apbugs@hyperreal.org
+Subject: RewriteLock doesn't work for virtual hosts and silently fails
+X-Send-Pr-Version: 3.2
+
+>Number:         3874
+>Category:       mod_rewrite
+>Synopsis:       RewriteLock doesn't work for virtual hosts and silently fails
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Feb 10 13:30:02 PST 1999
+>Last-Modified:  Tue Aug  3 11:17:33 PDT 1999
+>Originator:     lewis@stanford.edu
+>Organization:
+>Release:        1.3.3
+>Environment:
+SunOS wdev 5.5.1 Generic_103640-14 sun4u sparc SUNW,Ultra-1
+gcc version 2.8.1
+>Description:
+The lock file is opened during the init_child() phase and the file pointer is
+saved in that server_rec, but that config info isn't propagated to the virtual 
+host config.  Since the file pointer isn't available, even though locking is 
+turned on, no locking is done and no warning is given and things break.
+>How-To-Repeat:
+Add a logging line to rewritelock_alloc() like
+
+    if (conf->rewritelockfp != -1) {
+        fd_lock(r, conf->rewritelockfp);
+    } else if (conf->rewritelockfile) {
+      ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ALERT, r,
+                   "mod_rewrite: Don't have lockfile descriptor, can't lock");
+    }
+
+then use RewriteLock and RewriteMap inside and outside of a virtual host
+and you'll see that the lockfile fp isn't available through the virtual
+host config, so no locking is done.
+>Fix:
+I moved the
+        rewritelock_open(s, p);
+call from the init_child() function to the server for loop in 
+init_module() where the rewritelog open is as well, and that seems
+to have fixed it.
+>Audit-Trail:
+
+From: "Ralf S. Engelschall" <rse@engelschall.com>
+To: apbugs@apache.org
+Cc:  Subject: Re: mod_rewrite/3874: RewriteLock doesn't work for virtual hosts and silently fails
+Date: Wed, 10 Mar 1999 13:54:57 +0100
+
+ In article <19990210212537.10345.qmail@hyperreal.org> you wrote:
+ 
+ >[...]
+ > The lock file is opened during the init_child() phase and the file pointer is
+ > saved in that server_rec, but that config info isn't propagated to the virtual 
+ > host config.  Since the file pointer isn't available, even though locking is 
+ > turned on, no locking is done and no warning is given and things break.
+ >>How-To-Repeat:
+ > Add a logging line to rewritelock_alloc() like
+ > 
+ >     if (conf->rewritelockfp != -1) {
+ >         fd_lock(r, conf->rewritelockfp);
+ >     } else if (conf->rewritelockfile) {
+ >       ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ALERT, r,
+ >                    "mod_rewrite: Don't have lockfile descriptor, can't lock");
+ >     }
+ > 
+ > then use RewriteLock and RewriteMap inside and outside of a virtual host
+ > and you'll see that the lockfile fp isn't available through the virtual
+ > host config, so no locking is done.
+ >>Fix:
+ > I moved the
+ >         rewritelock_open(s, p);
+ > call from the init_child() function to the server for loop in 
+ > init_module() where the rewritelog open is as well, and that seems
+ > to have fixed it.
+ 
+ You're right that there might be a problem caused by the fact that the
+ filedescriptor isn't merged into virtual host.  But your solution (moving the
+ rewritelock_open call to the init_module function) is incorrect, because this
+ doesn't work on platforms where flock() is used.  Because under flock() based
+ locking the file _has_ to be opened by the child. So the only solution seems
+ to be to interate in init_child() over the virtual hosts.  I'll look at
+ this...
+                                        Ralf S. Engelschall
+                                        rse@engelschall.com
+                                        www.engelschall.com
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 16:52:34 PDT 1999
+State-Changed-Why:
+Ralf, how's it going?
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Aug  3 11:17:29 PDT 1999
+State-Changed-Why:
+A patch has been applied to 1.3.8-dev which should fix this...
+1.3.8 should be out shortly.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

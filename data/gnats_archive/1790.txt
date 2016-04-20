@@ -1,0 +1,119 @@
+Received: (qmail 27070 invoked by uid 2012); 11 Feb 1998 20:53:44 -0000
+Message-Id: <19980211205344.27069.qmail@hyperreal.org>
+Date: 11 Feb 1998 20:53:44 -0000
+From: Jamie Heilman <jamie@salu.net>
+Reply-To: jamie@salu.net
+To: apbugs@hyperreal.org
+Subject: VirtualHosts are inheriting rewrite rules by default
+X-Send-Pr-Version: 3.2
+
+>Number:         1790
+>Category:       mod_rewrite
+>Synopsis:       VirtualHosts are inheriting rewrite rules by default
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Feb 11 14:10:01 PST 1998
+>Last-Modified:  Wed Mar  4 06:02:50 PST 1998
+>Originator:     jamie@salu.net
+>Organization:
+>Release:        1.3b3
+>Environment:
+Solaris 2.5.1
+>Description:
+My virtual hosts (actually host at the moment) is inheriting the rewrite rules
+I've given my primary server.  This is contrary to the documentation, but I'm
+guessing it is not the documentation at fault.
+
+In my httpd.conf file I have (this has been abridged):
+ServerType      standalone
+HostnameLookups off
+Listen          12.34.56.78:8000
+Listen          12.34.56.90:80
+
+RewriteEngine on
+RewriteCond   %{REQUEST_URI} !^/lc(/.*)?
+RewriteCond   %{REQUEST_URI} !^/info(/.*)?
+RewriteRule   ^/(([a-zA-Z0-9])[a-zA-Z0-9_\-]+)/(.*) /sites/$2/$1/$3
+
+<VirtualHost 12.34.56.90>
+ServerName             foo.salu.net
+ServerAdmin            webmaster@salu.net
+AccessConfig           conf/adm-access.conf
+ResourceConfig         conf/adm-srm.conf
+ErrorLog               /var/web/logs/foo/error_log
+TransferLog            /var/web/logs/foo/access_log
+# RewriteEngine          off
+</VirtualHost>
+
+Unfortunately the rewrite rules are applied to my foo.salu.net on 12.34.56.90:80
+site as well as my main web server on 12.34.56.78:8000
+>How-To-Repeat:
+
+>Fix:
+My workaround is to uncomment the RewriteEngine off directive in my VirtualHost
+declaration, but according to the docs I shouldn't have to have that there.
+%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: rse
+State-Changed-When: Thu Feb 26 01:12:49 PST 1998
+State-Changed-Why:
+It is a very subtle bug in the way the virtual server
+config for modules are created and merged. I currently
+don't know a solution to this, but I'm searching for
+one... 
+
+To make the problem clear:
+
+If there is at least one directive of a module, the per-server config-merging function is
+used and thus can merge correctly.  Mod_rewrite here does its job correct
+because it initialized the per-server config with "engine disabled" and merges
+this correctly. But now when no mod_rewrite directive exists in such a
+<VirtualHost> section, it seems like mod_rewrite is never called (which in
+general is fine). But then mod_rewrite cannot create a special per-server
+config for this particular virtual host (where the engine would be disabled
+per default) and thus the config of the main server is applied to this virtual
+host.
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: rse@hyperreal.org
+Cc: jamie@salu.net, apbugs@apache.org
+Subject: Re: mod_rewrite/1790: VirtualHosts are inheriting rewrite rules by default
+Date: Thu, 26 Feb 1998 01:21:43 -0800 (PST)
+
+ Yeah one way to hack around this is to put:
+ 
+     server_rec *created_in;
+ 
+ into your server config.  Then during your create_server_config routine
+ initialize it to the server you're created in.
+ 
+ Then later on during run time you can compare r->server to
+ your_config->created_in and if they're different you can assume whatever
+ defaults you want to.
+ 
+ It's an ugly part of the API.
+ 
+ Dean
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: rse
+State-Changed-When: Wed Mar  4 06:02:49 PST 1998
+State-Changed-Why:
+Fixed for 1.3b6 now the way Dean mentioned.
+We remember the server and then on-the-fly assume
+we have the default config if the remembered server
+and the calling server mismatch. 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

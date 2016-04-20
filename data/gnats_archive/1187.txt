@@ -1,0 +1,119 @@
+From apwww@hyperreal.org  Wed Oct  1 11:12:56 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id LAA12385;
+	Wed, 1 Oct 1997 11:12:56 -0700 (PDT)
+Message-Id: <199710011812.LAA12385@hyperreal.org>
+Date: Wed, 1 Oct 1997 11:12:56 -0700 (PDT)
+From: Jonas Svanberg <svan@isy.liu.se>
+Reply-To: svan@isy.liu.se
+To: apbugs@hyperreal.org
+Subject: Illogical to search throug ServerAlias when none of the ports in VirtualHost match.
+X-Send-Pr-Version: 3.2
+
+>Number:         1187
+>Category:       config
+>Synopsis:       Illogical to search throug ServerAlias when none of the ports in VirtualHost match.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Oct  1 11:20:02 1997
+>Last-Modified:  Sat Oct 18 05:44:24 PDT 1997
+>Originator:     svan@isy.liu.se
+>Organization:
+>Release:        1.2.4
+>Environment:
+OS:             SunOS jewel 5.4 Generic_101945-23 sun4m
+Apache-ver:     1.2.4 + ssl-1.9 + mod_perl-1.0
+>Description:
+I can still get (steal) a match from later <VirtualHost>:s even if
+the request port:no don't match any (nevermind the hostnames) of
+the port:nos in the <VirtualHost ...> declaration.
+
+Schematic configuration example below:
+
+<VirtualHost www.icg.isy.liu.se:81>
+  ServerName	www.it.isy.liu.se
+# -- The below makes the next virtual host below not to work
+#  ServerAlias	*.icg.isy.liu.se
+  ServerAdmin	webmaster.icg@www.icg.isy.liu.se
+  DocumentRoot	WHATEVER1
+</VirtualHost>
+
+
+# This host won't catch anything if I uncomment the ServerAlias above.
+<VirtualHost www.icg.isy.liu.se:80>
+  ServerName	www.icg.isy.liu.se
+  ServerAlias	*.icg.isy.liu.se
+  DocumentRoot	WHATEVER2
+</VirtualHost>
+>How-To-Repeat:
+Configure as in the Full Description.
+>Fix:
+Yes. Patch http_protocol.c with the patch below. I would rather see a whole
+new approach of matching IP#/port/hostname to virtual servers. E.g. defining
+virtual servers by a logical identifier and then some special declarations
+that binds a match to a logical virtual server. Anyhow - Keep up the good work!
+
+Regards,
+	Jonas Svanberg, SWEDEN
+
+*** http_protocol.c.orig        Wed Oct  1 19:44:14 1997
+--- http_protocol.c     Wed Oct  1 19:37:48 1997
+***************
+*** 687,692 ****
+--- 687,693 ----
+    unsigned port = (*hostname) ? atoi(hostname) : default_port(r);
+    server_rec *s;
+    int l;
++   int port_match_flag;
+  
+    if (port && (port != r->server->port))
+      return;
+***************
+*** 717,723 ****
+--- 718,728 ----
+      }
+  
+      /* search all the names from <VirtualHost> directive */
++     /* at the same time check if any port matches and set port_match_flag */
++     port_match_flag = 0;
+      for( sar = s->addrs; sar; sar = sar->next ) {
++       if( (sar->host_port == 0) || (port == sar->host_port))
++         port_match_flag = 1;
+        if( !strcasecmp( sar->virthost, host ) &&
+         ( (sar->host_port == 0) || (port == sar->host_port) )) {
+        r->server = r->connection->server = s;
+***************
+*** 727,732 ****
+--- 732,741 ----
+        }
+        }
+      }
++ 
++     /* skip checking the aliases if we haven't got any port match */
++     if (!port_match_flag)
++       continue;
+  
+      /* search all the aliases from ServerAlias directive */
+      names = s->names;
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: Lars.Eilebrecht@unix-ag.org
+State-Changed-When: Sat Oct 18 05:44:24 PDT 1997
+State-Changed-Why:
+
+The virtual host matching algorithmen has been completely
+rewritten for Apache version 1.3 and can be tested with
+version 1.3b1 or higher.
+
+You are welcome to issue a new bug report if you still
+find your problem to be existent.
+
+>Unformatted:
+
+

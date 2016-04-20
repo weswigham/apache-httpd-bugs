@@ -1,0 +1,224 @@
+Received: (qmail 5782 invoked by uid 2012); 17 Dec 1997 14:36:04 -0000
+Message-Id: <19971217143604.5781.qmail@hyperreal.org>
+Date: 17 Dec 1997 14:36:04 -0000
+From: Kevin Broadey <kevin.broadey@ats.uk.eds.com>
+Reply-To: kevin.broadey@ats.uk.eds.com
+To: apbugs@hyperreal.org
+Subject: ProxyRemote proxy requests fail authentication by firewall
+X-Send-Pr-Version: 3.2
+
+>Number:         1567
+>Category:       mod_proxy
+>Synopsis:       ProxyRemote proxy requests fail authentication by firewall
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Dec 17 06:40:01 PST 1997
+>Last-Modified:  Wed May 20 19:18:29 PDT 1998
+>Originator:     kevin.broadey@ats.uk.eds.com
+>Organization:
+>Release:        1.3b3
+>Environment:
+AIX 4.2
+uname -a = AIX jobby 2 4 000810644C00
+>Description:
+With apache-1.2.4 my httpd.conf file contains the following VirtualHost
+section...
+
+Listen www-proxy.ats:8082
+<VirtualHost www-proxy.ats:8082>
+  ServerName		www-proxy.ats
+  ProxyRequests		On
+  ProxyRemote		*		http://internet2.eds.com:81
+</VirtualHost>
+
+My browser (Netscape Navigator 3.0) is set to make proxy requests to
+www-proxy.ats:8082 for all URLs outside the company intranet.  The
+ProxyRemote directive in this virtual host forwards them to a firewall
+(internet2).
+
+When I attempt to access a URL outside the intranet the firewall
+requests a user ID and password.  I enter these in the normal
+Navigator dialog box and my request goes out on the internet.
+
+I have tried the same virtual host setting with apache-1.3b3 and it
+does not work.  The firewall requests authentication as before and
+Navigator pops up its dialog box, but when I enter the correct user ID
+and password Navigator comes back with a "Proxy Authorization Failed -
+Retry" dialog box.
+
+
+
+This problem seems to be restricted to ProxyRemote authentication.  My
+apache-1.2.4 httpd.conf also contains this...
+
+Listen www-proxy.ats:8080
+<VirtualHost www-proxy.ats:8080>
+  ServerName		www-proxy.ats
+  ProxyRequests		On
+</VirtualHost>
+
+This virtual host allows users on our office LAN to get out onto the
+company intranet (the apache server sits on both networks).  Navigator
+is set to make proxy requests to www-proxy.ats:8080 for URLs within
+the company intranet.  Apache goes and fetches the URL and returns it
+to the browser.  If the intranet server requests authentication then
+Navigator prompts as before and the request is granted.  This works
+for both 1.2.4 and 1.3b3.
+
+-- 
+Kevin Broadey, Software Development Manager,    _/_/_/ _/_/_/    _/_/
+EDS Ltd, 1-3 Bartley Wood Business Park,       _/     _/    _/ _/
+Bartley Way, Hook, Hants, RG27 9XA, England.  _/_/   _/    _/   _/
+Tel: +44 1256 748889  Fax: +44 1256 748781   _/     _/    _/     _/
+mailto:kevin.broadey@bartley.demon.co.uk    _/_/_/ _/_/_/    _/_/
+mailto:kevin.broadey@ats.uk.eds.com
+>How-To-Repeat:
+1. Set up a firewall proxy server that always requests user authentication.
+
+2. Configure an apache-1.3b3 virtual host to ProxyRemote all proxy requests to the
+firewall proxy server.
+
+3. Configure a browser to send proxy requests to the apache-1.3b3 proxy.
+
+4. Use the browser to visit a URL that requires the use of the proxy.
+
+=> The user authentication at the firewall should fail.
+
+Repeat the above with apache-1.2.4.  This should work correctly.
+>Fix:
+No%2
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: brian
+State-Changed-When: Wed May 20 02:23:30 PDT 1998
+State-Changed-Why:
+Hi.  Sorry about the delay; there hasn't been anyone working
+on the proxy module in awhile.
+
+In doing research on this I found the patch which implemented
+this: 
+
+http://www.apache.org/websrc/cvsweb.cgi/apache-1.3/src/modules/proxy/proxy_http.c.diff?r1=1.20&r2=1.21
+
+The thread of discussion on this can be found in the archives
+for the month of July 1997, at
+
+http://dev.apache.org/mail/nh.9705.gz
+
+unzip it and read it in pine or something, and look for
+a thread called "proxy auth".  You'll see that
+it was done even though folks knew that it could cause a 
+problem like this.  Basically, the HTTP spec says that a proxy
+should "absorb" the header and not forward it along if the
+credentials being presented are for that proxy. Unfortunately
+we absorb it unconditionally.
+
+So to properly fix this we need to block that header only if
+we are the proxy server requiring those credentials.  Also
+consider the possibility of *two* Proxy-Authorization headers,
+one for "us" and one for one of the next proxies down the 
+chain.
+
+At this point we're strapped for resources in the proxy
+department, so if you think you could implement a fix
+we'd be ecstatic.  Failing that, I think it's better to
+always block than anyways relay when those are your only
+options.
+
+Thanks for the note.
+
+
+State-Changed-From-To: feedback-suspended
+State-Changed-By: brian
+State-Changed-When: Wed May 20 19:18:29 PDT 1998
+State-Changed-Why:
+(actually, suspended is the status this bug should be in)
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+
+ Received: (qmail 17878 invoked from network); 19 Dec 1997 17:17:32 -0000
+ Message-Id: <349AACE1.167E@ats.uk.eds.com>
+ Date: Fri, 19 Dec 1997 17:20:33 +0000
+ From: Kevin Broadey <kevin.broadey@ats.uk.eds.com>
+ Sender: kevinb@ats.uk.eds.com
+ To: Apache Bugs <apbugs@Apache.Org>
+ Subject: PR 1567: ProxyRemote proxy requests fail authentication by firewall
+ 
+ >Number:         1575
+ >Category:       pending
+ >Synopsis:       PR 1567: ProxyRemote proxy requests fail authentication by firewall
+ >Confidential:   yes
+ >Severity:       serious
+ >Priority:       medium
+ >Responsible:    gnats-admin
+ >State:          open
+ >Class:          sw-bug
+ >Submitter-Id:   unknown
+ >Arrival-Date:   Fri Dec 19 09:20:01 PST 1997
+ >Last-Modified:  
+ >Originator:     
+ >Organization:
+ >Release:        
+ >Environment:
+ >Description:
+ >How-To-Repeat:
+ >Fix:
+ >Audit-Trail:
+ >Unformatted:
+ The Apache Bug database hasn't replied to my bug report yet so I can't
+ send you this extra info the correct way.  Sorry.  However I have found
+ a way to fix this problem.  Here's the patch...
+ 
+ root@coma:/scratch/gnu/apache_1.3b3/src/modules/proxy# diff -c
+ proxy_http.c.orig proxy_http.c
+ *** proxy_http.c.orig   Wed Oct 22 21:30:08 1997
+ --- proxy_http.c        Fri Dec 19 09:39:49 1997
+ ***************
+ *** 291,297 ****
+         if (reqhdrs[i].key == NULL || reqhdrs[i].val == NULL
+         /* Clear out headers not to send */
+             || !strcasecmp(reqhdrs[i].key, "Host")      /* Already sent
+ */
+ !           ||!strcasecmp(reqhdrs[i].key, "Proxy-Authorization"))
+             continue;
+         bvputs(f, reqhdrs[i].key, ": ", reqhdrs[i].val, "\015\012",
+ NULL);
+       }
+ --- 291,300 ----
+         if (reqhdrs[i].key == NULL || reqhdrs[i].val == NULL
+         /* Clear out headers not to send */
+             || !strcasecmp(reqhdrs[i].key, "Host")      /* Already sent
+ */
+ !             /* I think this breaks ProxyRemote authentication -- KMB
+ !           ||!strcasecmp(reqhdrs[i].key, "Proxy-Authorization")
+ !             */
+ !             )
+             continue;
+         bvputs(f, reqhdrs[i].key, ": ", reqhdrs[i].val, "\015\012",
+ NULL);
+       }
+ 
+ 
+ Apache was changed between 1.2.4 and 1.3b3 to suppress the
+ "Proxy-Authorization" header field.  I'm not too sure why, but allowing
+ it through as before fixes the problem.
+ 
+ 
+ -- 
+ Kevin Broadey, Software Development Manager,    _/_/_/ _/_/_/    _/_/
+ EDS Ltd, 7 Bartley Heath Business Park,        _/     _/    _/ _/
+ Bartley Way, Hook, Hants, RG27 9XA, England.  _/_/   _/    _/   _/
+ Tel: +44 1256 748889  Fax: +44 1256 748781   _/     _/    _/     _/
+ mailto:kevin.broadey@ats.uk.eds.com         _/_/_/ _/_/_/    _/_/
+ 

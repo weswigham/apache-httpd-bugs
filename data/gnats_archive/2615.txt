@@ -1,0 +1,151 @@
+Received: (qmail 3291 invoked by uid 2012); 14 Jul 1998 19:45:14 -0000
+Message-Id: <19980714194514.3290.qmail@hyperreal.org>
+Date: 14 Jul 1998 19:45:14 -0000
+From: Aaron Gowatch <aarong@divinia.com>
+Reply-To: aarong@divinia.com
+To: apbugs@hyperreal.org
+Subject: Set-Cookie not sent with Redirect response headers
+X-Send-Pr-Version: 3.2
+
+>Number:         2615
+>Category:       general
+>Synopsis:       Set-Cookie not sent with Redirect response headers
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jul 14 12:50:01 PDT 1998
+>Last-Modified:  Tue Dec 22 20:14:51 PST 1998
+>Originator:     aarong@divinia.com
+>Organization:
+>Release:        1.3.0
+>Environment:
+Linux lula.divinia.com 2.0.33 #3 Mon Mar 16 16:39:42 PST 1998 i586 unknown
+
+gcc version 2.7.2.3
+>Description:
+Set-Cookies set in r->headers_out set by modules such as mod_usertrack are dropped if response is redirect. I'm unable to find anything that says its illegal to send a Set-Cookie along with a 302 response, but such documentation may exist.
+>How-To-Repeat:
+Example URL: http://www.divinia.com/redirect/1024/www.apache.org/
+
+mod_usertrack cookies are enabled in httpd.conf, which are served when requesting a URL such as:
+
+http://www.divinia.com/
+>Fix:
+If its not illegal to send Set-Cookies with 302's, special case them in main/http_protocol.c.  The following patch has worked for me:
+
+ diff -u -r1.1.1.1 http_protocol.c
+--- http_protocol.c     1998/06/24 03:18:48     1.1.1.1
++++ http_protocol.c     1998/06/24 23:27:25
+@@ -1942,6 +1942,7 @@
+     int idx = ap_index_of_response(status);
+     char *custom_response;
+     char *location = ap_table_get(r->headers_out, "Location");
++    char *cookie = ap_table_get(r->headers_out, "Set-Cookie");
+ 
+     /* We need to special-case the handling of 204 and 304 responses,
+      * since they have specific HTTP requirements and do not include a
+@@ -1997,6 +1998,9 @@
+         if (location && *location
+             && (is_HTTP_REDIRECT(status) || status == HTTP_CREATED))
+             ap_table_setn(r->headers_out, "Location", location);
++
++        if (cookie && *cookie)
++           ap_table_setn(r->headers_out, "Set-Cookie", cookie);
+ 
+         r->content_language = NULL;
+         r->content_languages = NULL;
+>Audit-Trail:
+
+From: Aaron Gowatch <aarong@divinia.com>
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: general/2615: Set-Cookie not sent with Redirect response
+ headers
+Date: Wed, 15 Jul 1998 10:40:29 -0700 (PDT)
+
+ It turns out that the patch that I submitted with the PR works fine when
+ there is only one Set-Cookie in r->headers_out.  This patch should fix it:
+ 
+ 
+ --- src/main/http_protocol.c	Wed May 27 15:55:59 1998
+ +++ /home/aarong/development/Software/Webservers/Apache/src/main/http_protocol.c	Wed Jul 15 10:36:10 1998
+ @@ -1990,6 +1990,12 @@
+           * that may have been set by the request handler before the
+           * error or redirect, except for Location on external redirects.
+           */
+ +
+ +	 ap_table_do((int (*)(void *, const char *, const char *)) ap_table_addn,
+ +		    (void *) r->err_headers_out, r->headers_out,
+ +		    "Set-Cookie",
+ +		    NULL);
+ +
+          r->headers_out = r->err_headers_out;
+          r->err_headers_out = tmp;
+          ap_clear_table(r->err_headers_out);
+ 
+ 
+
+From: "Brian L. Donnell" <briand@egreetings.com>
+To: aarong@divinia.com
+Cc: apbugs@Apache.Org
+Subject: Re: general/2615: Set-Cookie not sent with Redirect response
+Date: Fri, 18 Dec 1998 18:35:29 -0800
+
+ aaron -
+ 
+ i ran into the exact same problem in apache 1.3.3. did you ever find any
+ other resolution to this? i also can find nowhere that states that setting
+ cookies in a redirect should be illegal - but i can't find anything that
+ states that definitively either. so i'm still unsure whether this is a bug
+ or feature in apache.
+ 
+ thanks -
+ brian donnell
+ briand@egreetings.com
+ 
+
+From: Aaron <aarong@divinia.com>
+To: "Brian L. Donnell" <briand@egreetings.com>
+Cc: apbugs@Apache.Org
+Subject: Re: general/2615: Set-Cookie not sent with Redirect response
+Date: Tue, 22 Dec 1998 11:07:28 -0800 (PST)
+
+ On Fri, 18 Dec 1998, Brian L. Donnell wrote:
+ 
+ > i ran into the exact same problem in apache 1.3.3. did you ever find any
+ > other resolution to this? i also can find nowhere that states that setting
+ > cookies in a redirect should be illegal - but i can't find anything that
+ > states that definitively either. so i'm still unsure whether this is a bug
+ > or feature in apache.
+ 
+ Someone else suggested putting Set-Cookies in err_headers_out, but it made
+ less sense to me than doing what my patch does.  I also found it necessary
+ to move the cookie setter to post-read request in my module.
+ 
+ I cant seem to find anything that would indicate that Set-Cookie is
+ illegal in non-2XX responses either, and it seems to be working correctly
+ in my application with all the browsers I've tested.
+ 
+ Aa.
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Tue Dec 22 20:14:51 PST 1998
+State-Changed-Why:
+As discussed on new-httpd, you should be setting
+err_headers_out (which isn't really for errors; I think a
+comment in the source even says that it is misnamed) if
+you want it to be sent on a non-200..299 or 304 response.
+
+I think that resolves this.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

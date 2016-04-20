@@ -1,0 +1,180 @@
+Received: (qmail 37855 invoked by uid 65534); 17 Mar 2000 20:27:22 -0000
+Message-Id: <20000317202722.37854.qmail@locus.apache.org>
+Date: 17 Mar 2000 20:27:22 -0000
+From: Dan Astoorian <djast@cs.toronto.edu>
+Reply-To: djast@cs.toronto.edu
+To: submit@bugz.apache.org
+Subject: regular expressions in <!--#if ... --> tokenized improperly
+X-Send-Pr-Version: 3.110
+
+>Number:         5898
+>Category:       mod_include
+>Synopsis:       regular expressions in <!--#if ... --> tokenized improperly
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Mar 17 12:30:01 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     djast@cs.toronto.edu
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Any
+(Tested on SunOS 5.5.1 sparc)
+>Description:
+mod_include does not tokenize regular expressions correctly in tests such as
+	<!--#if expr="$var = /RE/" -->
+Some ways in which this manifests itself:
+- reports "Invalid expression" to the error log if RE contains parentheses
+  (cf. PR 3864) or other special characters such as =, !, >, <, etc.
+- the RE /\./ matches any character instead of only a literal period (one
+  must use /\\./ or employ quoting to match the literal).
+
+There may be other symptoms as well.
+>How-To-Repeat:
+Observe the output and error logs when the following are included in an SSI:
+	<!--#if expr="x = /(x)/" --> ... <!--#endif -->
+	<!--#if expr="abc = /a\.c/" --> This shouldn't match <!--#endif -->
+>Fix:
+Workaround:
+Enclose regular expressions in apostrophes, i.e.
+	<!--#if expr="x = '/(x)/'" --> ... <!--#endif -->
+Double any backslashes intended for the regular expression, i.e.
+	<!--#if expr="abc = '/a\\.c/'" --> This shouldn't match <!--#endif -->
+
+Fix:
+In the tokenizing code in mod_include.c (get_ptoken()), treat slashes similar
+to quotes, and return a single token_string (which, however, includes the 
+delimiting slashes).  Furthermore, don't treat \ as an escape character when
+it occurs between slashes.
+
+The following patch against 1.3.12 appears to correct the problems, but I have
+not tested it thoroughly, and it may not be the most elegant solution--I'd
+strongly recommend thorough review and regression testing before considering
+incorporating this patch.
+
+========================================================================
+*** mod_include.c       2000/03/17 20:05:06     1.1
+--- mod_include.c       2000/03/17 20:11:41
+***************
+*** 1227,1233 ****
+  {
+      char ch;
+      int next = 0;
+!     int qs = 0;
+  
+      /* Skip leading white space */
+      if (string == (char *) NULL) {
+--- 1227,1233 ----
+  {
+      char ch;
+      int next = 0;
+!     char qs = 0;
+  
+      /* Skip leading white space */
+      if (string == (char *) NULL) {
+***************
+*** 1264,1270 ****
+          }
+      case '\'':
+          token->type = token_string;
+!         qs = 1;
+          break;
+      case '|':
+          if (*string == '|') {
+--- 1264,1275 ----
+          }
+      case '\'':
+          token->type = token_string;
+!         qs = ch;
+!         break;
+!     case '/':
+!         token->type = token_string;
+!         qs = ch;
+!         token->value[next++] = ch;
+          break;
+      case '|':
+          if (*string == '|') {
+***************
+*** 1315,1321 ****
+       * ends up pointing to the next token and I can just return it
+       */
+      for (ch = *string; ch != '\0'; ch = *++string) {
+!         if (ch == '\\') {
+              if ((ch = *++string) == '\0') {
+                  goto TOKEN_DONE;
+              }
+--- 1320,1326 ----
+       * ends up pointing to the next token and I can just return it
+       */
+      for (ch = *string; ch != '\0'; ch = *++string) {
+!         if (ch == '\\' && qs != '/') {
+              if ((ch = *++string) == '\0') {
+                  goto TOKEN_DONE;
+              }
+***************
+*** 1353,1359 ****
+              token->value[next++] = ch;
+          }
+          else {
+!             if (ch == '\'') {
+                  qs = 0;
+                  ++string;
+                  goto TOKEN_DONE;
+--- 1358,1366 ----
+              token->value[next++] = ch;
+          }
+          else {
+!             if (ch == qs) {
+!               if (ch == '/')
+!                   token->value[next++] = ch;
+                  qs = 0;
+                  ++string;
+                  goto TOKEN_DONE;
+***************
+*** 1362,1369 ****
+          }
+      }
+    TOKEN_DONE:
+!     /* If qs is still set, I have an unmatched ' */
+!     if (qs) {
+          ap_rputs("\nUnmatched '\n", r);
+          next = 0;
+      }
+--- 1369,1379 ----
+          }
+      }
+    TOKEN_DONE:
+!     /* If qs is still set, I have an unmatched ' or / */
+!     if (qs == '/') {
+!         ap_rputs("\nUnmatched /\n", r);
+!         next = 0;
+!     } else if (qs) {
+          ap_rputs("\nUnmatched '\n", r);
+          next = 0;
+      }
+
+========================================================================
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

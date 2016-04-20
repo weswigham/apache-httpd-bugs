@@ -1,0 +1,170 @@
+Received: (qmail 1929 invoked by uid 501); 5 May 2000 18:32:54 -0000
+Message-Id: <20000505183254.1928.qmail@locus.apache.org>
+Date: 5 May 2000 18:32:54 -0000
+From: Brian Eidelman <beidelman@netegrity.com>
+Reply-To: beidelman@netegrity.com
+To: submit@bugz.apache.org
+Subject: PATCH:  make mod_proxy deliver cookies set by other modules when used as ProxyPass
+X-Send-Pr-Version: 3.110
+
+>Number:         6055
+>Category:       mod_proxy
+>Synopsis:       fix applied
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri May 05 11:40:00 PDT 2000
+>Closed-Date:    Mon Sep 24 13:24:51 PDT 2001
+>Last-Modified:  Mon Sep 24 13:24:51 PDT 2001
+>Originator:     beidelman@netegrity.com
+>Release:        1.3.12
+>Organization:
+>Environment:
+All.  This is a logic issue.  I use solaris with gcc and SUNWspro
+>Description:
+Currently when used with ProxyPass and ProxyPassReverse, mod_proxy does not deliver cookies set by other modules (such as access or auth modules) when serving up pages retrieved through the Reverse Proxy.  This patch adds all headers set in the err_headers_out table to the outbound request.  The patch is to proxy_util.c.
+
+>How-To-Repeat:
+
+>Fix:
+This patch adds all headers set in the err_headers_out table to the outbound request.  The patch is to proxy_util.c.
+
+[beidelma]>diff -C3 proxy_util-old.c proxy_util.c
+*** proxy_util-old.c    Thu May  4 17:45:23 2000
+--- proxy_util.c        Thu May  4 15:26:06 2000
+***************
+*** 487,492 ****
+--- 487,495 ----
+        }
+      }
+  
++     /* Now add headers set by other modules on our server for this request */
++     resp_hdrs = ap_overlay_tables(r->pool, r->err_headers_out, resp_hdrs);
++ 
+      return resp_hdrs;
+  }
+
+>Release-Note:
+>Audit-Trail:
+
+From: "Eidelman, Brian" <BEidelman@netegrity.com>
+To: "'submit@bugz.apache.org'" <submit@bugz.apache.org>, 
+	"'apache-bugdb@apache.org'" <apache-bugdb@apache.org>
+Cc:  
+Subject: RE: mod_proxy/6055: PATCH:  make mod_proxy deliver cookies set by
+	 other modules when used as ProxyPass
+Date: Fri, 5 May 2000 16:31:33 -0400 
+
+ This message is in MIME format. Since your mail reader does not understand
+ this format, some or all of this message may not be legible.
+ 
+ ------_=_NextPart_001_01BFB6D0.E804675E
+ Content-Type: text/plain;
+ 	charset="iso-8859-1"
+ 
+ I relized that inserting the err_headers_out table as part of
+ ap_proxy_read_headers messes up error checking further on.  I now submit
+ that err_headers_out should be added to resp_hdrs in proxy_http.c right
+ after the connection headers are stripped.  Here is the new patch
+ 
+ PATCH:
+ 
+ [beidelma]>diff -C3 proxy_http-old.c proxy_http.c
+ *** proxy_http-old.c    Fri May  5 16:13:37 2000
+ --- proxy_http.c        Fri May  5 16:14:13 2000
+ ***************
+ *** 481,486 ****
+ --- 481,488 ----
+         }
+   
+         clear_connection(p, resp_hdrs); /* Strip Connection hdrs */
+ +       /* Now add out bound headers set by other modules 
+ +       resp_hdrs = ap_overlay_tables(r->pool, r->err_headers_out,
+ resp_hdrs);
+       }
+       else {
+   /* an http/0.9 response */
+ 
+ ------_=_NextPart_001_01BFB6D0.E804675E
+ Content-Type: text/html;
+ 	charset="iso-8859-1"
+ Content-Transfer-Encoding: quoted-printable
+ 
+ <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2//EN">
+ <HTML>
+ <HEAD>
+ <META HTTP-EQUIV=3D"Content-Type" CONTENT=3D"text/html; =
+ charset=3Diso-8859-1">
+ <META NAME=3D"Generator" CONTENT=3D"MS Exchange Server version =
+ 5.5.2650.12">
+ <TITLE>RE: mod_proxy/6055: PATCH:  make mod_proxy deliver cookies set =
+ by other modules when used as ProxyPass</TITLE>
+ </HEAD>
+ <BODY>
+ 
+ <P><FONT SIZE=3D2>I relized that inserting the err_headers_out table as =
+ part of ap_proxy_read_headers messes up error checking further =
+ on.&nbsp; I now submit that err_headers_out should be added to =
+ resp_hdrs in proxy_http.c right after the connection headers are =
+ stripped.&nbsp; Here is the new patch</FONT></P>
+ 
+ <P><FONT SIZE=3D2>PATCH:</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>[beidelma]&gt;diff -C3 proxy_http-old.c =
+ proxy_http.c</FONT>
+ <BR><FONT SIZE=3D2>*** proxy_http-old.c&nbsp;&nbsp;&nbsp; Fri May&nbsp; =
+ 5 16:13:37 2000</FONT>
+ <BR><FONT SIZE=3D2>--- =
+ proxy_http.c&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Fri May&nbsp; 5 =
+ 16:14:13 2000</FONT>
+ <BR><FONT SIZE=3D2>***************</FONT>
+ <BR><FONT SIZE=3D2>*** 481,486 ****</FONT>
+ <BR><FONT SIZE=3D2>--- 481,488 ----</FONT>
+ <BR><FONT SIZE=3D2>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; }</FONT>
+ <BR><FONT SIZE=3D2>&nbsp; </FONT>
+ <BR><FONT SIZE=3D2>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; =
+ clear_connection(p, resp_hdrs); /* Strip Connection hdrs */</FONT>
+ <BR><FONT SIZE=3D2>+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; /* Now add out =
+ bound headers set by other modules </FONT>
+ <BR><FONT SIZE=3D2>+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; resp_hdrs =3D =
+ ap_overlay_tables(r-&gt;pool, r-&gt;err_headers_out, resp_hdrs);</FONT>
+ <BR><FONT SIZE=3D2>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; }</FONT>
+ <BR><FONT SIZE=3D2>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; else {</FONT>
+ <BR><FONT SIZE=3D2>&nbsp; /* an http/0.9 response */</FONT>
+ </P>
+ 
+ </BODY>
+ </HTML>
+ ------_=_NextPart_001_01BFB6D0.E804675E--
+State-Changed-From-To: open-closed
+State-Changed-By: chuck
+State-Changed-When: Mon Sep 24 13:24:51 PDT 2001
+State-Changed-Why:
+fix applied
+Synopsis-Changed-From: PATCH:  make mod_proxy deliver cookies set by other modules when used as ProxyPass
+Synopsis-Changed-To: fix applied
+Synopsis-Changed-By: chuck
+Synopsis-Changed-When: Mon Sep 24 13:24:51 PDT 2001
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

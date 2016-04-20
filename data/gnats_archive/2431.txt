@@ -1,0 +1,200 @@
+Received: (qmail 11283 invoked by uid 2012); 12 Jun 1998 17:58:36 -0000
+Message-Id: <19980612175836.11282.qmail@hyperreal.org>
+Date: 12 Jun 1998 17:58:36 -0000
+From: Todd Koeckeritz <boomboom@minn.net>
+Reply-To: boomboom@minn.net
+To: apbugs@hyperreal.org
+Subject: A small addition to rotatelogs.c to improve program functionality.
+X-Send-Pr-Version: 3.2
+
+>Number:         2431
+>Category:       general
+>Synopsis:       A small addition to rotatelogs.c to improve program functionality.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jun 12 12:10:00 PDT 1998
+>Last-Modified:  Mon Jun 15 07:58:03 PDT 1998
+>Originator:     boomboom@minn.net
+>Organization:
+>Release:        1.3.0
+>Environment:
+Solaris 2.4 and later, gcc 2.7.2.2
+>Description:
+I was unhappy with the naming of the log files in the rotatelogs program
+as well as the fact that they didn't rotate at midnight in the local
+timezone.  I created a patch that adds a special parameter for the
+rotation time (midnight) that forces rotatelogs to append a date
+string to the name passed in and takes into account the local timezone
+so the rotation of the logs happens at midnight local time.
+
+The default use of rotatelogs is to pass the base filename and number of
+seconds between log file rotations, i.e.:
+  rotatelogs /some/where/file 86400
+This causes logs files to be create with names like:
+  /some/where/file.NNNNNNNNNN
+Where N is the number of seconds since 1 Jan 70 GMT.  Also, the new log
+files are created relative to GMT, i.e. since 86400 is the number of seconds
+in a day, a new log file is always created just after midnight GMT, regardless
+of the current timezone.
+
+My patch allows a command line of:
+  rotatelogs /some/where/file midnight
+Which causes the logs files to be named:
+  /some/where/file.YYYYMMDD
+YYYY = current year, MM = month of year, DD = day of month.
+>How-To-Repeat:
+Yes, default functionality of the rotatelogs program.
+>Fix:
+*** rotatelogs-old.c    Tue Apr 21 15:14:06 1998
+--- rotatelogs.c        Fri Jun 12 12:33:06 1998
+***************
+*** 7,12 ****
+--- 7,32 ----
+   */
+  
+  
++ /**
++ *  NOTE: This is a modified version of the rotatelog program as distributed
++ *      with the apache webserver.  The modification is the addition of
++ *      a new parameter "midnight" wich causes this program to always rotate
++ *      the log file at midnight.  Also with this new parameter, the log
++ *      files are always called /some/where/file.YYMMDD to make it easier to
++ *      deal with the log files.
++ *
++ *      One other minor mod is to make the rotation time take into account
++ *      the current timezone so the logs really start at midnight.
++ *
++ *      Modified by Todd Koeckeritz originally April, 1997.  Modified again
++ *      April, 1998 as the original modification was lost.
++ *
++ *      Modified again in June, 1998 to use a 4 digit year, i.e. file now
++ *      is named /some/where/file.YYYYMMDD.  Also, created a patch and
++ *      submitted to http://bugs.apache.org for consideration in inclusion
++ *      of future releases.
++ **/
++ 
+  #define BUFSIZE               65536
+  #define MAX_PATH      1024
+  
+***************
+*** 23,32 ****
+      int nLogFD = -1;
+      int nRead;
+      char *szLogRoot;
+  
+      if (argc != 3) {
+        fprintf(stderr,
+!               "%s <logfile> <rotation time in seconds>\n\n",
+                argv[0]);
+  #ifdef __EMX__
+        fprintf(stderr,
+--- 43,54 ----
+      int nLogFD = -1;
+      int nRead;
+      char *szLogRoot;
++     int       midnight = 0;
++     struct tm *tm;
+  
+      if (argc != 3) {
+        fprintf(stderr,
+!               "%s <logfile> <rotation time in seconds|midnight>\n\n",
+                argv[0]);
+  #ifdef __EMX__
+        fprintf(stderr,
+***************
+*** 42,58 ****
+                "where nnnn is the\nsystem time at which the log nominally "
+                "starts (N.B. this time will always be a\nmultiple of the "
+                "rotation time, so you can synchronize cron scripts with it).\n"
+!               "At the end of each rotation time a new log is started.\n");
+        exit(1);
+      }
+  
+      szLogRoot = argv[1];
+!     tRotation = atoi(argv[2]);
+!     if (tRotation <= 0) {
+!       fprintf(stderr, "Rotation time must be > 0\n");
+!       exit(6);
+      }
+  
+      for (;;) {
+        nRead = read(0, buf, sizeof buf);
+        if (nRead == 0)
+--- 64,94 ----
+                "where nnnn is the\nsystem time at which the log nominally "
+                "starts (N.B. this time will always be a\nmultiple of the "
+                "rotation time, so you can synchronize cron scripts with it).\n"
+!               "At the end of each rotation time a new log is started.\n\n"
+!               "NOTE:  If the midnight option is specified instead of a\n"
+!               "number of seconds, the logs will always be rotated at\n"
+!               "midnight local time and the name will have the format of:\n"
+!               "  /some/where/file.YYMMDD\n");
+        exit(1);
+      }
+  
+      szLogRoot = argv[1];
+!     if (! strcmp (argv [2], "midnight")) {
+!       midnight = 1;
+!       tRotation = 86400;
+      }
++     else {
++        tRotation = atoi(argv[2]);
++        if (tRotation <= 0) {
++          fprintf(stderr, "Rotation time must be > 0\n");
++          exit(6);
++        }
++     }
+  
++     /* Ensure that the timezone information is set.
++     */
++     tzset ();
++ 
+      for (;;) {
+        nRead = read(0, buf, sizeof buf);
+        if (nRead == 0)
+***************
+*** 66,72 ****
+        }
+        if (nLogFD < 0) {
+            time_t tLogStart = (time(NULL) / tRotation) * tRotation;
+!           sprintf(buf2, "%s.%010d", szLogRoot, (int) tLogStart);
+            tLogEnd = tLogStart + tRotation;
+            nLogFD = open(buf2, O_WRONLY | O_CREAT | O_APPEND, 0666);
+            if (nLogFD < 0) {
+--- 102,115 ----
+        }
+        if (nLogFD < 0) {
+            time_t tLogStart = (time(NULL) / tRotation) * tRotation;
+!           if (midnight) {
+!              tLogStart += (daylight == 0 ? timezone : altzone);
+!              tm = localtime (&tLogStart);
+!              sprintf (buf2, "%s.%04d%02d%02d", szLogRoot,
+!                       tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday);
+!           }
+!           else
+!              sprintf(buf2, "%s.%010d", szLogRoot, (int) tLogStart);
+            tLogEnd = tLogStart + tRotation;
+            nLogFD = open(buf2, O_WRONLY | O_CREAT | O_APPEND, 0666);
+            if (nLogFD < 0) {
+>Audit-Trail:
+Release-Changed-From-To: 1.3.0 (and earlier)-1.3.0
+Release-Changed-By: coar
+Release-Changed-When: Mon Jun 15 06:46:49 PDT 1998
+State-Changed-From-To: open-suspended
+State-Changed-By: coar
+State-Changed-When: Mon Jun 15 07:58:03 PDT 1998
+State-Changed-Why:
+Marking for consideration during the next cycle..
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

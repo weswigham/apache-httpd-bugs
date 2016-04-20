@@ -1,0 +1,84 @@
+Received: (qmail 7994 invoked by uid 2012); 9 Mar 1998 11:25:27 -0000
+Message-Id: <19980309112527.7993.qmail@hyperreal.org>
+Date: 9 Mar 1998 11:25:27 -0000
+From: Tony Fincg <fanf@demon.net>
+Reply-To: fanf@demon.net
+To: apbugs@hyperreal.org
+Subject: Apache incorrectly defines the CGI environment variable REMOTE_HOST when HostnameLookups is set off
+X-Send-Pr-Version: 3.2
+
+>Number:         1925
+>Category:       mod_cgi
+>Synopsis:       Apache incorrectly defines the CGI environment variable REMOTE_HOST when HostnameLookups is set off
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Mar  9 03:30:00 PST 1998
+>Last-Modified:  Mon Mar  9 21:15:14 PST 1998
+>Originator:     fanf@demon.net
+>Organization:
+>Release:        1.3b3
+>Environment:
+OS:
+SunOS uk-0 5.5.1 Generic_103640-12 sun4u sparc SUNW,Ultra-Enterprise
+
+I _think_ apache was built with
+ucbcc: WorkShop Compilers 4.2 30 Oct 1996 C 4.2
+ld: Software Generation Utilities (SGU) SunOS/ELF (LK-2.0 (S/I) - versioning)
+(although the compiler may have been upgraded since the build)
+
+Server version "Apache/1.3b3"
+Server built:  Jan  9 1998 12:27:44
+Server compiled with....
+ -D HTTPD_ROOT="/usr/local/apache"
+ -D HAVE_MMAP
+ -D USE_MMAP_FILES
+ -D USE_PTHREAD_SERIALIZED_ACCEPT
+
+>Description:
+The CGI spec says that REMOTE_HOST should be set to the remote hosts's name, or
+left undefined if this value is unavailable. This is the case when HostNameLookups
+is off. However, the function add_common_vars in the util_script.c file calls
+get_remote_host with the REMOTE_NAME type, which means it returns the IP address
+if the hostname is unavailable. The get_remote_host call should be changed to use
+REMOTE_HOST, which will make it conform to the CGI spec.
+>How-To-Repeat:
+Set HostNameLookups off in httpd.conf, and run some CGI scripts. Look at their
+environment and compare to the CGI spec.
+EG. http://cgi.www.demon.lspace.org/cgi-bin/www.demon.lspace.org/apache-cgi-bug
+>Fix:
+Here is a nice little patch.
+
+--- util_script.c       Mon Mar  9 11:22:11 1998
++++ util_script.c~      Mon Mar  9 10:30:14 1998
+@@ -213,7 +213,7 @@
+     table_set(e, "SERVER_NAME", s->server_hostname);
+     table_set(e, "SERVER_PORT", port);
+     table_set(e, "REMOTE_HOST",
+-             get_remote_host(c, r->per_dir_config, REMOTE_HOST));
++             get_remote_host(c, r->per_dir_config, REMOTE_NAME));
+     table_set(e, "REMOTE_ADDR", c->remote_ip);
+     table_set(e, "DOCUMENT_ROOT", document_root(r));   /* Apache */
+     table_set(e, "SERVER_ADMIN", s->server_admin);     /* Apache */
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Mar  9 21:15:14 PST 1998
+State-Changed-Why:
+Yup.  Commited to 1.3b6-dev.
+
+Thanks
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

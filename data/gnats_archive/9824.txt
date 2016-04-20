@@ -1,0 +1,171 @@
+Received: (qmail 98892 invoked by uid 501); 14 Feb 2002 21:42:08 -0000
+Message-Id: <20020214214208.98891.qmail@apache.org>
+Date: 14 Feb 2002 21:42:08 -0000
+From: Christian Wittenhorst <wiwi@progon.net>
+Reply-To: wiwi@progon.net
+To: submit@bugz.apache.org
+Subject: Resource Leak (file descriptors) in 2.0.28 under heavy load (FreeBSD 4.5)
+X-Send-Pr-Version: 3.110
+
+>Number:         9824
+>Category:       general
+>Synopsis:       Resource Leak (file descriptors) in 2.0.28 under heavy load (FreeBSD 4.5)
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Feb 15 02:00:02 PST 2002
+>Closed-Date:    Mon Mar 25 22:45:43 PST 2002
+>Last-Modified:  Mon Mar 25 22:45:43 PST 2002
+>Originator:     wiwi@progon.net
+>Release:        2.0.28
+>Organization:
+>Environment:
+Apache/2.0.28 (Unix) mod_ssl/3.0a0 OpenSSL/0.9.6a  
+
+walhalla# uname -a
+FreeBSD walhalla.kanti-zug.ch 4.5-STABLE FreeBSD 4.5-STABLE #4: 
+Thu Feb 14 20:35:10 CET 2002     
+wiwi@walhalla.kanti-zug.ch:/usr/src/sys/compile/walhalla  i386
+
+walhalla# gcc --version
+2.95.3
+
+walhalla# ps aux
+
+USER     PID %CPU %MEM   VSZ  RSS  TT  STAT STARTED      TIME COMMAND
+root   11326  0.0  0.1   436  244  p1  R+   10:36PM   0:00.00 ps aux
+root       1  0.0  0.1   544  320  ??  ILs   8:40PM   0:00.02 /sbin/init --
+root       2  0.0  0.0     0    0  ??  DL    8:40PM   0:00.02  (pagedaemon)
+root       3  0.0  0.0     0    0  ??  DL    8:40PM   0:00.00  (vmdaemon)
+root       4  0.0  0.0     0    0  ??  DL    8:40PM   0:00.11  (bufdaemon)
+root       5  0.0  0.0     0    0  ??  DL    8:40PM   0:00.08  (vnlru)
+root       6  0.0  0.0     0    0  ??  DL    8:40PM   0:00.86  (syncer)
+root      85  0.0  0.3   952  652  ??  Ss    8:40PM   0:00.45 syslogd -s
+root      88  0.0  0.4  1304  928  ??  Ss    8:40PM   0:00.40 /usr/sbin/ntpd -p /var/run/ntpd.pid
+root      95  0.0  0.3   972  712  ??  Is    8:40PM   0:00.07 /usr/sbin/cron
+root     100  0.0  0.6  2216 1568  ??  Is    8:40PM   0:00.00 /usr/sbin/sshd
+root     118  0.0  0.7  2060 1684  ??  Ss    8:40PM   0:00.49 /usr/sbin/dhcpd
+root     145  0.0  0.8  2396 1996  ??  Ss    8:40PM   2:51.32 /usr/sbin/named -c /jail/named/etc/named.conf
+root     159  0.0  0.3   948  656  v0  Is+   8:40PM   0:00.00 /usr/libexec/getty Pc ttyv0
+root     160  0.0  0.3   948  656  v1  Is+   8:40PM   0:00.00 /usr/libexec/getty Pc ttyv1
+root     161  0.0  0.3   948  656  v2  Is+   8:40PM   0:00.00 /usr/libexec/getty Pc ttyv2
+root     162  0.0  0.3   948  656  v3  Is+   8:40PM   0:00.00 /usr/libexec/getty Pc ttyv3
+root     163  0.0  0.3   948  656  v4  Is+   8:40PM   0:00.00 /usr/libexec/getty Pc ttyv4
+root     164  0.0  0.3   948  656  v5  Is+   8:40PM   0:00.00 /usr/libexec/getty Pc ttyv5
+root     165  0.0  0.3   948  656  v6  Is+   8:40PM   0:00.00 /usr/libexec/getty Pc ttyv6
+root     166  0.0  0.3   948  656  v7  Is+   8:40PM   0:00.00 /usr/libexec/getty Pc ttyv7
+root     167  0.0  0.7  2328 1896  ??  I     8:40PM   0:01.08 sshd: wiwi@ttyp0 (sshd)
+wiwi     168  0.0  0.4  1352  940  p0  Is    8:40PM   0:00.03 -csh (csh)
+root     170  0.0  0.4  1384 1024  p0  I+    8:40PM   0:00.27 _su (csh)
+root   78367  0.0  0.7  2328 1900  ??  S     9:25PM   0:01.37 sshd: wiwi@ttyp1 (sshd)
+wiwi   78605  0.0  0.4  1360  996  p1  Is    9:25PM   0:00.05 -csh (csh)
+root   84685  0.0  0.4  1468 1108  p1  S     9:27PM   0:00.38 _su (csh)
+root   86382  0.0  2.1 11512 5444  p1  S     9:28PM   0:01.55 /usr/local/apache2/bin/httpd
+nobody 96054  0.0  2.1 11312 5448  p1  I    10:19PM   0:01.22 /usr/local/apache2/bin/httpd
+nobody 96394  0.0  2.1 11360 5464  p1  I    10:19PM   0:01.22 /usr/local/apache2/bin/httpd
+nobody 96476  0.0  2.1 11360 5464  p1  I    10:19PM   0:01.20 /usr/local/apache2/bin/httpd
+nobody 97960  0.0  2.1 11364 5456  p1  I    10:20PM   0:01.08 /usr/local/apache2/bin/httpd
+nobody  1477  0.0  2.1 11508 5504  p1  I    10:21PM   0:00.82 /usr/local/apache2/bin/httpd
+nobody  1651  0.0  2.1 11508 5504  p1  I    10:21PM   0:00.82 /usr/local/apache2/bin/httpd
+nobody  1652  0.0  2.2 11676 5648  p1  I    10:21PM   0:00.82 /usr/local/apache2/bin/httpd
+nobody  2219  0.0  2.1 11508 5504  p1  I    10:21PM   0:00.71 /usr/local/apache2/bin/httpd
+nobody  2861  0.0  2.1 11508 5504  p1  I    10:21PM   0:00.69 /usr/local/apache2/bin/httpd
+nobody  6128  0.0  2.1 11576 5508  p1  I    10:22PM   0:00.38 /usr/local/apache2/bin/httpd
+root       0  0.0  0.0     0    0  ??  DLs   8:40PM   0:00.00  (swapper)
+>Description:
+The master process seems to expose a resource leak under heavy load. The number of used files/sockets is continually increasing (under heavy load only, 5-15 requests to index.html per second!).
+
+walhalla# sockstat | grep httpd | grep root | wc -l
+	55
+
+walhalla# fstat | grep httpd | wc -l
+        2471
+
+After 45mins under load (just getting ***a static*** index.html):
+walhalla# sockstat | grep httpd | grep root | wc -l
+	159
+
+walhalla# fstat | grep httpd | wc -l
+        6774
+
+This will continue until all available files are used up. Killing the master process with "apachectl stop" or "kill" frees the files immediately. This happens with http and https. 
+
+The error logs contains the following entries:
+[Thu Feb 14 22:20:09 2002] [warn] (61)Connection refused: connect to listener
+[Thu Feb 14 22:20:44 2002] [warn] (61)Connection refused: connect to listener
+[Thu Feb 14 22:20:52 2002] [warn] (49)Can't assign requested address: connect to listener
+[Thu Feb 14 22:20:54 2002] [warn] (61)Connection refused: connect to listener
+[Thu Feb 14 22:21:00 2002] [warn] (49)Can't assign requested address: connect to listener
+[Thu Feb 14 22:21:01 2002] [warn] (49)Can't assign requested address: connect to listener
+[Thu Feb 14 22:21:02 2002] [warn] (61)Connection refused: connect to listener
+[Thu Feb 14 22:21:03 2002] [warn] (49)Can't assign requested address: connect to listener
+[Thu Feb 14 22:21:04 2002] [warn] (49)Can't assign requested address: connect to listener
+[Thu Feb 14 22:21:05 2002] [warn] (49)Can't assign requested address: connect to listener
+[Thu Feb 14 22:21:06 2002] [warn] (49)Can't assign requested address: connect to listener
+[Thu Feb 14 22:21:07 2002] [warn] (61)Connection refused: connect to listener
+[Thu Feb 14 22:21:08 2002] [warn] (61)Connection refused: connect to listener
+[Thu Feb 14 22:21:49 2002] [warn] (61)Connection refused: connect to listener
+[Thu Feb 14 22:21:50 2002] [warn] (61)Connection refused: connect to listener
+[Thu Feb 14 22:21:53 2002] [warn] (61)Connection refused: connect to listener
+[Thu Feb 14 22:22:03 2002] [warn] (61)Connection refused: connect to listener
+[Thu Feb 14 22:22:06 2002] [warn] (49)Can't assign requested address: connect to listener
+[Thu Feb 14 22:22:07 2002] [warn] (49)Can't assign requested address: connect to listener
+[Thu Feb 14 22:22:08 2002] [warn] (61)Connection refused: connect to listener
+>How-To-Repeat:
+Just generate heavy traffic on a static page (index.html for example) and watch the number of used files increase.
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+
+From: "William A. Rowe, Jr." <wrowe@covalent.net>
+To: <apache-bugdb@apache.org>,
+	<wiwi@progon.net>,
+	<submit@bugz.apache.org>
+Cc:  
+Subject: Re: general/9824: Resource Leak (file descriptors) in 2.0.28 under heavy load (FreeBSD 4.5)
+Date: Sat, 16 Feb 2002 13:04:23 -0600
+
+ From: "Christian Wittenhorst" <wiwi@progon.net>
+ Sent: Thursday, February 14, 2002 3:42 PM
+ 
+ 
+ > >Description:
+ > The master process seems to expose a resource leak under heavy load. The number of used files/sockets is continually increasing
+ (under heavy load only, 5-15 requests to index.html per second!).
+ 
+ There are a ton of changes to 2.0.32 that is right now available at
+ http://www.apache.org/dist/httpd/
+ 
+ Please see if that clears up your leakage.
+ 
+ Bill
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Mon Mar 25 22:45:43 PST 2002
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

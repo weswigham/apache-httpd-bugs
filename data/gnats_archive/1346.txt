@@ -1,0 +1,238 @@
+Received: (qmail 15612 invoked by uid 2012); 1 Nov 1997 13:27:39 -0000
+Message-Id: <19971101132739.15611.qmail@hyperreal.org>
+Date: 1 Nov 1997 13:27:39 -0000
+From: Bram Kivenko <bram@xspace.com>
+Reply-To: bram@xspace.com
+To: apbugs@hyperreal.org
+Subject: questionable user promotion
+X-Send-Pr-Version: 3.2
+
+>Number:         1346
+>Category:       suexec
+>Synopsis:       questionable user promotion
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Nov  1 05:30:00 PST 1997
+>Last-Modified:  Wed May 20 19:33:25 PDT 1998
+>Originator:     bram@xspace.com
+>Organization:
+>Release:        ALL
+>Environment:
+all UNIX flavours
+>Description:
+When executing CGIs/SSIs, there is a somewhat insecure method of user
+promotion.
+
+(a) CGI's exhibit user promotion
+(b) SSI's/scripts may not.
+(c) the permissions are determined by file location.
+>How-To-Repeat:
+execute a binary CGI, a shell script CGI, and an SSI.
+>Fix:
+<SUEXEC FIX>
+The user promotion should always go to the OWNER of the file.  Or at least this 
+should be a configurable option.  There could be a configurable exception for 
+files owned by root.
+
+<APACHE FIX>
+The biggest problem though is that any executed file should be executed via 
+suexec if it is enabled, there should be no exceptions to that rule.
+
+<APACHE FIX>
+As a sidenote, if the server is not executing as root, it may not be able to
+setrlimits correctly, consequently files not executed through suexec may run
+out of control.
+%0
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Sat Nov  1 13:22:00 PST 1997
+State-Changed-Why:
+I'm not sure I understand what you are trying
+to say.
+
+The user things run as is supposed to be determined by
+where the file is.  suexec has two ways of doing things: either it
+runs them as the user if it is a ~userdir request or it
+runs them as the User specified in the VirtualHost if
+it is a VirtualHost.  If not, it does nothing.
+
+I'm afraid you will have to explain your problem more.  suexec
+has a specific security model for specific reasons; while
+you may want it to work a different way for your needs,
+that doesn't mean anything is wrong with the way it works.
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: suexec/1346: questionable user promotion (fwd)
+Date: Sun, 2 Nov 1997 12:33:45 -0700 (MST)
+
+ ---------- Forwarded message ----------
+ Date: Sun, 2 Nov 1997 09:39:08 -0500 (EST)
+ From: Bram Kivenko -- XSpace Staff <bram@xspace.com>
+ To: marc@hyperreal.org
+ Subject: Re: suexec/1346: questionable user promotion
+ 
+ 
+ Okay, well, I understand that suexec is controlled depending on where the
+ file is, but there are two problems: 
+ 
+ (a) in util_script.c, it is possible to execute through an exec with
+ 	SHELL_PATH instead of SUEXEC_BIN, shell path does not run with the
+ 	protection of suexec (obviously.)  This allows users to try
+ 	'nasty' things under the cloak of the webserver user.  It also is
+ 	inconsistent, I may have a CGI in one location to save private
+ 	data, but then my SSI cannot retrieve this private data.
+ 
+ 	If the file resides within the web server's domain, then it should
+ 	execute it as the owner of the (realpath of the) file.  My
+ 	personal touch also is that if it is not inside the web server's
+ 	domain it should have sticky bits set (ie indicating that changing
+ 	ownership isn't a problem anyway.)
+ 
+ 	The theory is, why would someone else's file be in my directory?
+ 
+ (b) my document root is : "/var/httpd/htdocs", so that my users do not
+     have to place a tilde (~) in their URL's, I do :
+     "ln -s ~username/public_html /var/httpd/htdocs/username"
+     The web server gets confused as it does not realize that the real
+     location is /home/username/public_html...  I believe it now backtracks
+     realpath's to verify for .htaccess, but I do not believe it backtracks
+     to find out the true owner of the directory.
+ 
+     I realize I am using the web server differently than expected, but
+     nonetheless, the user and group id's should be determined through the
+     realpath of the file, not the sympath of the file.
+ 
+ I know asking for (b) to be supported is treading thin, but (a) is
+ definitely inappropriate.
+ 
+ Anyway, I hope you see it from my point of view.  My real problem is that
+ if you set suexec then everything should run with suexec.
+ 
+ Thanks,
+ Bram
+ 
+ On 1 Nov 1997 marc@hyperreal.org wrote:
+ 
+ > Synopsis: questionable user promotion
+ > 
+ > State-Changed-From-To: open-feedback
+ > State-Changed-By: marc
+ > State-Changed-When: Sat Nov  1 13:22:00 PST 1997
+ > State-Changed-Why:
+ > I'm not sure I understand what you are trying
+ > to say.
+ > 
+ > The user things run as is supposed to be determined by
+ > where the file is.  suexec has two ways of doing things: either it
+ > runs them as the user if it is a ~userdir request or it
+ > runs them as the User specified in the VirtualHost if
+ > it is a VirtualHost.  If not, it does nothing.
+ > 
+ > I'm afraid you will have to explain your problem more.  suexec
+ > has a specific security model for specific reasons; while
+ > you may want it to work a different way for your needs,
+ > that doesn't mean anything is wrong with the way it works.
+ > 
+ 
+ __________________________________________________________________________
+ 
+  Bram Kivenko -- XSpace Owner -- System Manager -- mailto:bram@xspace.com
+   Let XSpace be your host  --  http://www.xspace.com  --  (905)-458-5225
+                            XSPACE COMMUNICATIONS
+ __________________________________________________________________________
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: brian
+State-Changed-When: Wed May 20 19:33:25 PDT 1998
+State-Changed-Why:
+>Unformatted:
+>(a) in util_script.c, it is possible to execute through an exec with
+>SHELL_PATH instead of SUEXEC_BIN, shell path does not run with the
+>protection of suexec (obviously.)  This allows users to try
+>'nasty' things under the cloak of the webserver user.  
+
+Only if they can put things in the directories where that is
+the case.  For example, an ISP might only ever allow CGI scripts
+in home/public_html directories, and keep the "normal" 
+documentroot area available only to one or two people they
+trust (or no one).  Obviously the non-home-dir scripts will
+run as the server's userid, usually "nobody", and any well-
+designed system will have restrictions on what the "nobody"
+user is.  The only way to get higher security than this is
+to use the chroot jail modules which are available out there;
+we didn't pursue that route because we wanted a little more
+flexibility.
+
+>It also is
+>inconsistent, I may have a CGI in one location to save private
+>data, but then my SSI cannot retrieve this private data.
+ 
+Sure it can, with <!--#include virtual="" -->.
+
+>If the file resides within the web server's domain, then it should
+>execute it as the owner of the (realpath of the) file.  
+
+The checks have to be more rigorous than that, or it becomes
+too easy to "steal" privileges.  Consider an equivalent 
+situation in SMTP-land, where qmail won't deliver to a .qmail
+(its version of .forward) if the file is group- or other-writeable, or
+if the directory it's in is group- or other-writeable.
+
+>My personal touch also is that if it is not inside the web 
+>server's domain it should have sticky bits set (ie 
+>indicating that changing ownership isn't a problem anyway.)
+
+But then any Joe Random User on the site can run this CGI
+script, without any of the extra protections that suexec
+provides.
+ 
+>The theory is, why would someone else's file be in my 
+>directory?
+ 
+Because a user might be clueless about file permissions and
+"I just wanna run my guestbook script", etc?  Especially
+since so many CGI packages out there advocate setting things
+chmod 777 - makes me want to scream.
+
+>my document root is : "/var/httpd/htdocs", so that my users do not
+>have to place a tilde (~) in their URL's, I do :
+>"ln -s ~username/public_html /var/httpd/htdocs/username"
+>The web server gets confused as it does not realize that 
+>the real location is /home/username/public_html...  I 
+>believe it now backtracks realpath's to verify for 
+>.htaccess, but I do not believe it backtracks
+>to find out the true owner of the directory.
+
+You can use mod_userdir in ways which allow you to not
+have to use "~", yet still allow suexec to work properly.
+
+>I realize I am using the web server differently than 
+>expected, but nonetheless, the user and group id's 
+>should be determined through the realpath of the file, 
+>not the sympath of the file.
+ 
+Yes, but there will be other times when people ask 
+for the opposite (for example, access controls), so
+we should choose one path and stick with it, and we
+have.
+
+>Anyway, I hope you see it from my point of view.  My real 
+>problem is that if you set suexec then everything should 
+>run with suexec.
+
+I think reasonable people can clearly disagree on this;
+the beauty of Apache is that you can configure things, 
+without any source code modifications, to accomplish 
+exactly what you have stated you want to accomplish.
+
+Thanks.
+
+
+

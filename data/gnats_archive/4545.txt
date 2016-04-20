@@ -1,0 +1,182 @@
+Received: (qmail 23477 invoked by uid 2012); 8 Jun 1999 17:10:54 -0000
+Message-Id: <19990608171054.23476.qmail@hyperreal.org>
+Date: 8 Jun 1999 17:10:54 -0000
+From: Keith Turner <apache_pr@keeff.com>
+Reply-To: apache_pr@keeff.com
+To: apbugs@hyperreal.org
+Subject: No way to limit access based on REMOTE_IDENT RFC1413 identd IdentityCheck
+X-Send-Pr-Version: 3.2
+
+>Number:         4545
+>Category:       mod_setenvif
+>Synopsis:       No way to limit access based on REMOTE_IDENT RFC1413 identd IdentityCheck
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    coar
+>State:          analyzed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jun  8 10:20:01 PDT 1999
+>Last-Modified:  Tue Jul  6 15:17:15 PDT 1999
+>Originator:     apache_pr@keeff.com
+>Organization:
+>Release:        1.3.6
+>Environment:
+gcc version 2.8.1
+SunOS mrmean 5.5.1 Generic sun4m sparc SUNW,SPARCstation-10
+>Description:
+No documented or predictable combination of require, allow, deny or SetEnvIf
+achieves access control based on the response from the RFC1413 IdentityCheck.
+
+Congratulations for reading this far - I appreciate your openmindedness.
+Yes, I know that ident can be spoofed by anyone with administrator privileges
+or with network level access.  Yes, I know that ident is of limited value on
+the internet.  However, it remains that ident is a useful technology on an
+intranet or extranet.  Limitations on it's use should be in the documentation
+not the software.
+
+Obviously the facility should be documented as only worth using in combination
+with host address based access control between hosts you control over networks
+you control.  I will undertake to write the required documentation if that will
+improve the chances of the patch being adopted (and if I can grok the format).
+
+The only problem I can see with this change is with the special logname
+"unknown".  There is no way outside the core logname code to distinguish between
+<no-reply-from identd> and "unknown" sent by identd.  It would be nice to move
+the "unknown" string constant to the logging modules, or to make it user-
+definable.  However, if this potential source of confusion is ignored, the
+command sequence here works with the patch below.
+>How-To-Repeat:
+In httpd.conf:
+SetEnvIf Remote_Ident unknown noidentsupplied
+deny from env=noidentsupplied
+>Fix:
+A patch to mod_setenvif.c achieves a fairly good fix, but leaves the problem
+with the "unknown" special value unanswered:
+---cut-here-and-there---
+*** apache_1.3.6/src/modules/standard/mod_setenvif.c	Fri Jan  1 11:05:13 1999
+--- mod_setenvif.c	Mon Jun  7 12:55:54 1999
+***************
+*** 93,96 ****
+--- 93,98 ----
+   *   remote_host        Remote host name (if available)
+   *   remote_addr        Remote IP address
++  *   remote_ident       Remote RFC1413 (NULL if IdentityCheck Off,
++  *					"unknown" if no reply)
+   *   remote_user        Remote authenticated user (if any)
+   *   request_method     Request method (GET, POST, etc)
+***************
+*** 124,127 ****
+--- 126,130 ----
+      SPECIAL_REMOTE_ADDR,
+      SPECIAL_REMOTE_HOST,
++     SPECIAL_REMOTE_IDENT,
+      SPECIAL_REMOTE_USER,
+      SPECIAL_REQUEST_URI,
+***************
+*** 233,236 ****
+--- 236,242 ----
+  	    new->special_type = SPECIAL_REMOTE_HOST;
+  	}
++ 	else if (!strcasecmp(fname, "remote_ident")) {
++ 	    new->special_type = SPECIAL_REMOTE_IDENT;
++ 	}
+  	else if (!strcasecmp(fname, "remote_user")) {
+  	    new->special_type = SPECIAL_REMOTE_USER;
+***************
+*** 347,350 ****
+--- 353,359 ----
+  					  REMOTE_NAME);
+  		break;
++ 	    case SPECIAL_REMOTE_IDENT:
++ 		val = ap_get_remote_logname(r);
++ 		break;
+  	    case SPECIAL_REMOTE_USER:
+  		val = r->connection->user;
+---cut-here-and-there---
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: coar
+State-Changed-When: Sun Jul  4 11:33:34 PDT 1999
+State-Changed-Why:
+
+In the Apache model, access checking occurs before
+authentication and authorisation checking -- and all
+of these occur before content handling.  So the
+information should never reach a CGI script, for
+instance, because the access decision should have
+been made much earlier.
+
+You might check out the mod_access_identd module, which
+is available from <http://Web.MeepZor.Com/packages/>.
+
+
+From: keith.turner@silvaco.com (Keith Turner)
+To: coar@apache.org
+Cc: apbugs@apache.org
+Subject: Re: mod_setenvif/4545: No way to limit access based on REMOTE_IDENT RFC1413 identd IdentityCheck
+Date: Tue, 6 Jul 1999 15:06:57 -0700
+
+ Dear Ken,
+ 
+ > You might check out the mod_access_identd module, which
+ > is available from <http://Web.MeepZor.Com/packages/>.
+ 
+ Thanks for the pointer!  This is one possible solution to
+ my problem, although I still think that the mod_setenvif
+ change is worthwhile.  I'm worried that a change to the
+ semantics of the "allow" and "deny" commands make the
+ MeepZor module a source of confusion for anyone who
+ inherits my web config files.  The mod_setenvif patch is
+ more localised and does not change the way the old familiar
+ NCSA commands work.
+ 
+ > In the Apache model, access checking occurs before
+ > authentication and authorisation checking -- and all
+ > of these occur before content handling.  So the
+ > information should never reach a CGI script, for
+ > instance, because the access decision should have
+ > been made much earlier.
+ 
+ I don't understand the relevance of this response.
+ I believe the patch I attached to this bug report does the job.
+ With the config fragment I gave as the How-To-Repeat it successfully
+ limited access based on the response from identd.
+ 
+ Are you saying that the patch doesn't work?
+ Are you saying that mod_setenvif is the wrong place to do this?
+ Are you saying that this feature should not be part of the
+ standard distribution?
+ 
+ Hope you can clarify.
+ 
+ Thanks,
+ 	/<eith
+Severity-Changed-From-To: serious-non-critical
+Severity-Changed-By: coar
+Severity-Changed-When: Tue Jul  6 15:17:12 PDT 1999
+Responsible-Changed-From-To: apache-coar
+Responsible-Changed-By: coar
+Responsible-Changed-When: Tue Jul  6 15:17:12 PDT 1999
+Responsible-Changed-Why:
+
+This is a reasonable thing to do, so I'll add it to my
+plate of stuff to add in the next release.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+
+

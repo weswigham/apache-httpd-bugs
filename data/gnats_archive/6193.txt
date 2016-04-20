@@ -1,0 +1,227 @@
+Received: (qmail 12149 invoked by uid 501); 14 Jun 2000 20:29:02 -0000
+Message-Id: <20000614202901.12146.qmail@locus.apache.org>
+Date: 14 Jun 2000 20:29:01 -0000
+From: Dan Rench <drench@xnet.com>
+Reply-To: drench@xnet.com
+To: submit@bugz.apache.org
+Subject: Add config directives to override DEFAULT_ERROR_MSG and DEFAULT_TIME_FORMAT
+X-Send-Pr-Version: 3.110
+
+>Number:         6193
+>Category:       mod_include
+>Synopsis:       Add config directives to override DEFAULT_ERROR_MSG and DEFAULT_TIME_FORMAT
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jun 14 13:30:01 PDT 2000
+>Closed-Date:    Sun Feb 25 22:27:09 PST 2001
+>Last-Modified:  Sun Feb 25 22:27:09 PST 2001
+>Originator:     drench@xnet.com
+>Release:        2.0a4
+>Organization:
+>Environment:
+FreeBSD 3.4-STABLE (May 18, 2000), i386, gcc 2.7.2.3
+>Description:
+If you want to change mod_include's default error message or time format,
+you have two choices:
+
+1. <!--#config errmsg="whatever" --><!--#config timefmt="whatever" -->
+in every SSI file or,
+
+2. Change DEFAULT_ERROR_MSG/DEFAULT_TIME_FORMAT in the source and recompile
+
+I know that you're not interested in adding features to 1.3.x so I'm submitting
+a patch against 2.0a4 mod_include to add two new config directives:
+"SSIErrorMsg" and "SSITimeFormat".  In case the diff formatting got mangled,
+I've put it here also: http://home.xnet.com/~drench/mod_include.c-diff.txt
+>How-To-Repeat:
+
+>Fix:
+--- mod_include.c-orig  Wed Jun 14 12:31:38 2000
++++ mod_include.c       Wed Jun 14 14:45:13 2000
+@@ -2178,7 +2178,15 @@
+     }
+ }
+ 
++enum xbithack {
++    xbithack_off, xbithack_on, xbithack_full
++};
+ 
++typedef struct {
++    char *default_error_msg;
++    char *default_time_fmt;
++    enum xbithack *xbithack;
++} include_dir_config;
+ 
+ /* -------------------------- The main function --------------------------- */
+ 
+@@ -2193,9 +2201,11 @@
+     int if_nesting;
+     int printing;
+     int conditional_status;
++    include_dir_config *conf =
++        (include_dir_config *) ap_get_module_config(r->per_dir_config, &includes_module);
+ 
+-    ap_cpystrn(error, DEFAULT_ERROR_MSG, sizeof(error));
+-    ap_cpystrn(timefmt, DEFAULT_TIME_FORMAT, sizeof(timefmt));
++    ap_cpystrn(error, conf->default_error_msg, sizeof(error));
++    ap_cpystrn(timefmt, conf->default_time_fmt, sizeof(timefmt));
+     sizefmt = SIZEFMT_KMG;
+ 
+ /*  Turn printing on */
+@@ -2329,9 +2339,6 @@
+  */
+ 
+ module includes_module;
+-enum xbithack {
+-    xbithack_off, xbithack_on, xbithack_full
+-};
+ 
+ #ifdef XBITHACK
+ #define DEFAULT_XBITHACK xbithack_full
+@@ -2341,23 +2348,28 @@
+ 
+ static void *create_includes_dir_config(ap_pool_t *p, char *dummy)
+ {
+-    enum xbithack *result = (enum xbithack *) ap_palloc(p, sizeof(enum xbithack));
+-    *result = DEFAULT_XBITHACK;
++    include_dir_config *result =
++        (include_dir_config *)ap_palloc(p, sizeof(include_dir_config));
++    enum xbithack *xbh = (enum xbithack *) ap_palloc(p, sizeof(enum xbithack));
++    *xbh = DEFAULT_XBITHACK;
++    result->default_error_msg = DEFAULT_ERROR_MSG;
++    result->default_time_fmt = DEFAULT_TIME_FORMAT;
++    result->xbithack = xbh;
+     return result;
+ }
+ 
+-static const char *set_xbithack(cmd_parms *cmd, void *xbp, char *arg)
++static const char *set_xbithack(cmd_parms *cmd, void *mconfig, char *arg)
+ {
+-    enum xbithack *state = (enum xbithack *) xbp;
++    include_dir_config *conf = (include_dir_config *)mconfig;
+ 
+     if (!strcasecmp(arg, "off")) {
+-        *state = xbithack_off;
++        *conf->xbithack = (enum xbithack) xbithack_off;
+     }
+     else if (!strcasecmp(arg, "on")) {
+-        *state = xbithack_on;
++        *conf->xbithack = (enum xbithack) xbithack_on;
+     }
+     else if (!strcasecmp(arg, "full")) {
+-        *state = xbithack_full;
++        *conf->xbithack = (enum xbithack) xbithack_full;
+     }
+     else {
+         return "XBitHack must be set to Off, On, or Full";
+@@ -2366,11 +2378,27 @@
+     return NULL;
+ }
+ 
++static const char *set_default_error_msg(cmd_parms *cmd, void *mconfig, char *msg)
++{
++    include_dir_config *conf = (include_dir_config *)mconfig;
++    conf->default_error_msg = (char *)ap_pstrdup(cmd->pool, msg);
++    return NULL;
++}
++
++static const char *set_default_time_fmt(cmd_parms *cmd, void *mconfig, char *fmt)
++{
++    include_dir_config *conf = (include_dir_config *)mconfig;
++    conf->default_time_fmt = (char *)ap_pstrdup(cmd->pool, fmt);
++    return NULL;
++}
++
++
++
+ static int send_parsed_file(request_rec *r)
+ {
+     ap_file_t *f = NULL;
+-    enum xbithack *state =
+-    (enum xbithack *) ap_get_module_config(r->per_dir_config, &includes_module);
++    include_dir_config *conf =
++        (include_dir_config *) ap_get_module_config(r->per_dir_config, &includes_module);
+     int errstatus;
+     request_rec *parent;
+ 
+@@ -2398,7 +2426,7 @@
+         return HTTP_FORBIDDEN;
+     }
+ 
+-    if ((*state == xbithack_full)
++    if ((*conf->xbithack == xbithack_full)
+ #if !defined(OS2) && !defined(WIN32)
+     /*  OS/2 dosen't support Groups. */
+         && (r->finfo.protection & S_IXGRP)
+@@ -2436,7 +2464,7 @@
+         * environment */
+         ap_add_common_vars(r);
+         ap_add_cgi_vars(r);
+-        add_include_vars(r, DEFAULT_TIME_FORMAT);
++        add_include_vars(r, conf->default_time_fmt);
+     }
+     /* XXX: this is bogus, at some point we're going to do a subrequest,
+      * and when we do it we're going to be subjecting code that doesn't
+@@ -2471,16 +2499,14 @@
+     /* OS/2 dosen't currently support the xbithack. This is being worked on. */
+     return DECLINED;
+ #else
+-    enum xbithack *state;
++    include_dir_config *conf =
++        (include_dir_config *) ap_get_module_config(r->per_dir_config, &includes_module);
+ 
+     if (!(r->finfo.protection & S_IXUSR)) {
+         return DECLINED;
+     }
+ 
+-    state = (enum xbithack *) ap_get_module_config(r->per_dir_config,
+-                                                &includes_module);
+-
+-    if (*state == xbithack_off) {
++    if (*conf->xbithack == xbithack_off) {
+         return DECLINED;
+     }
+     return send_parsed_file(r);
+@@ -2490,6 +2516,9 @@
+ static const command_rec includes_cmds[] =
+ {
+     {"XBitHack", set_xbithack, NULL, OR_OPTIONS, TAKE1, "Off, On, or Full"},
++    {"SSIErrorMsg", set_default_error_msg, NULL, OR_ALL, TAKE1, "a string"},
++    {"SSITimeFormat",
++        set_default_time_fmt, NULL, OR_ALL, TAKE1, "a strftime(3) formatted string"},
+     {NULL}
+ };
+ 
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rbb
+State-Changed-When: Sun Feb 25 22:27:09 PST 2001
+State-Changed-Why:
+This has been committed to the latest CVS tree, after
+porting it to the latest format.  I am sorry it took so long
+to get this into the tree.  Thank you for using Apache and
+helping to improve it.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

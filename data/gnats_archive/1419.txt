@@ -1,0 +1,118 @@
+Received: (qmail 13930 invoked by uid 2012); 14 Nov 1997 23:12:54 -0000
+Message-Id: <19971114231254.13929.qmail@hyperreal.org>
+Date: 14 Nov 1997 23:12:54 -0000
+From: Mike Rudolph <miker@anawave.com>
+Reply-To: miker@anawave.com
+To: apbugs@hyperreal.org
+Subject: Logging to a pipe
+X-Send-Pr-Version: 3.2
+
+>Number:         1419
+>Category:       mod_log-any
+>Synopsis:       Logging to a pipe
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Nov 14 15:20:00 PST 1997
+>Last-Modified:  Sat Jan 10 13:03:04 PST 1998
+>Originator:     miker@anawave.com
+>Organization:
+>Release:        1.3b2
+>Environment:
+SunOS 5.5/5.6, BSD 3.0/3.1
+>Description:
+Piping logs to an external program actually runs the program twice.
+Looks like its a result of calling dup() and then closing the old
+stream?
+---
+Also, for the new 1.3 with the reliable piping, it would be *great* to
+see some other features in this area, since so many people are piping to
+external programs...
+
+I'd like to see a way to have Apache buffer a set amount of logging information
+before piping it out... say something we could #define so that Apache
+didn't keep piping out 128 bytes of information, but buffered 4-8K so
+our external processors can run more efficiently?
+>How-To-Repeat:
+Use a simple C program to log to and have it print to it's stdout when
+it start's up.
+>Fix:
+
+>Audit-Trail:
+Comment-Added-By: Lars.Eilebrecht@unix-ag.org
+Comment-Added-When: Fri Nov 14 15:41:57 PST 1997
+Comment-Added:
+
+Under Linux with 1.3b3-dev I wasn't able to reproduce
+the bug.
+(Dean: or was this fixed by your patch which introduced
+ that new pool which is passed to child_init/_exit?)
+
+Release-Changed-From-To: 1.24/1.3b2-1.3b2
+Release-Changed-By: Lars.Eilebrecht@unix-ag.org
+Release-Changed-When: Fri Nov 14 15:41:57 PST 1997
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Fri Nov 14 16:04:34 PST 1997
+State-Changed-Why:
+Is your program handling getting an EOF properly?  It
+is normal behavior for Apache to restart the program
+multiple times while it is running.  When your script
+gets an EOF, it should exit.
+
+If this doesn't help, please give an example of a minimal
+script that shows this problem.
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Mike Rudolph <miker@anawave.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_log-any/1419: Logging to a pipe
+Date: Fri, 14 Nov 1997 16:42:01 -0800 (PST)
+
+ You probably have "| foo" and you're seeing both the /bin/sh which is
+ running that command, and the command itself.  Look at the parentage to
+ find out... ps ajxww or ps alxww or something like that.  It's unlikely
+ that two processes are actually running.  You can do "| exec foo" if it
+ bugs you.
+ 
+ 1.3b2 piping is slightly borken, every time a httpd child exits it will
+ spawn another pipe child.  Define -DNO_OTHER_CHILD or wait until 1.3b3. 
+ 
+ If you read the 1.3 perf-tuning document at
+ www.apache.org/docs/misc/perf-tuning.html you'll discover the
+ BUFFERED_LOGS define. 
+ 
+ It's impossible to increase the size of a pipe() in a portable manner. 
+ They're almost always 4k deep.  Buffering behaviour across a pipe (the
+ buffer in the kernel) also differs greatly across unixes.  For example,
+ under linux, if the writer is fast enough they can fill a 4k pipe 1 byte
+ at a time before the reader is awakened to read the pipe.  This is likely
+ different elsewhere. 
+ 
+ If you need to tweak the kernel buffer for the pipe then you'll need to
+ replace the code with a socketpair() call and use setsockopt() and see if
+ it helps... but that's not something we'll be putting into the server any
+ time soon because it opens a portability can o' worms.
+ 
+ Dean
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: Lars.Eilebrecht@unix-ag.org
+State-Changed-When: Sat Jan 10 13:03:04 PST 1998
+State-Changed-Why:
+
+No further response. I assume the problem has been
+resolved.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

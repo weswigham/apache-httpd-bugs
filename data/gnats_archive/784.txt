@@ -1,0 +1,110 @@
+From nobody@hyperreal.com  Wed Jun 25 09:55:30 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id JAA16197;
+	Wed, 25 Jun 1997 09:55:30 -0700 (PDT)
+Message-Id: <199706251655.JAA16197@hyperreal.com>
+Date: Wed, 25 Jun 1997 09:55:30 -0700 (PDT)
+From: Tim Baverstock <warwick@mmm.co.uk>
+Reply-To: warwick@mmm.co.uk
+To: apbugs@hyperreal.com
+Subject: IncludesNOEXEC prohibits execution of Action in <!--#include virtual -->
+X-Send-Pr-Version: 3.2
+
+>Number:         784
+>Category:       mod_include
+>Synopsis:       IncludesNOEXEC prohibits execution of Action in <!--#include virtual -->
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          analyzed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jun 25 10:20:01 1997
+>Last-Modified:  Thu Jan 22 07:53:05 PST 1998
+>Originator:     warwick@mmm.co.uk
+>Organization:
+>Release:        1.2.0
+>Environment:
+Linux stoat.mmm.co.uk 2.0.18 #1 Tue Sep 10 10:15:48 EDT 1996 i486
+(not that it matters)
+>Description:
+While trying to support random banners with links, I added this to srm.conf:
+AddType application/x-multi-img-link .links
+Action application/x-multi-img-link /cgi-bin/multilink
+
+This to something.html (which is chmod 755, with XBitHack on):
+<!--#include virtual="something.links" -->
+
+Some stuff to something.links (contents irrelevant)
+Some stuff to /cgi-bin/multilink (contents irrelevant; /cgi-bin is ScriptAliased)
+
+If .htaccess contained Options Includes, something.html behaved as expected.
+If .htaccess contained Options IncludesNOEXEC, the inclusion of something.links
+failed, because it's a `potential exec' according to logs/error_log.
+I even tried .htaccess with Options IncludesNOEXEC ExecCGI, which failed too.
+
+If I used <!--#include virtual="/cgi-bin/multilink/something.links" -->, it
+worked fine even with IncludesNOEXEC, but I wanted to avoid having to type
+pathnames all over the place.
+
+I don't see what IncludesNOEXEC has got to do with the <!--#include -->
+directive, when it's clearly called no*EXEC* - surely it should only have
+jurisdiction on <!==#exec -->?
+
+I also can't really see what security advantage there is in being able to
+prohibit the Script-type calling of a cgi-bin, when the same call made
+explicitly is permitted.
+
+The response to report 697 seems to imply what I'm trying should work:
+> State-Changed-By: marc
+>How-To-Repeat:
+I believe there's enough information in the description to recreate the problem.
+>Fix:
+Restrict IncludesNOEXEC's authority to the <!--#exec --> directive, where it
+presumably started out (freeing include virtual), and if need be introduce 
+IncludesNOVIRTUAL and/or IncludesNOVIRTUALCGI to specifically (and 
+consistently) support the behaviour described in 697
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Wed Jun 25 10:27:15 PDT 1997
+State-Changed-Why:
+Yes, this is a known discrepancy.  Some people suggest that
+IncludesNOEXEC should not allow include virtual of scripts,
+others argue it should.  Either way, the current behavior
+of allowing it for ScriptAliased directories but not
+scripts done with an AddHandler is bogus.  Eventually
+it should get fixed, but some investigation of possible
+side-effects of changing that bit of code is necessary
+first.
+Release-Changed-From-To: 1.2(final)-1.2.0
+Release-Changed-By: coar
+Release-Changed-When: Thu Jan 22 07:53:04 PST 1998
+>Unformatted:
+>...
+> I _think_ the intent is for people to use include virtual
+> instead of exec for that; even when IncludesNOEXEC is 
+> enabled, include virutal can currently still include a
+> script in a ScriptAliased CGI directory.  The documentation
+> seems to be a bit odd though, and it doesn't work for
+> scripts executed as CGIs outside ScriptAlised directories.
+
+But the docs state that:
+#  include                                                             
+#          This command inserts the text of another document or file into
+#          the parsed file. Any included file is subject to the usual     
+###        access control. If the directory containing the parsed file has
+###        the Option IncludesNOEXEC set, and the including the document
+###        would cause a program to be executed, then it will not be      
+###        included; this prevents the execution of CGI scripts. Otherwise
+#          CGI scripts are invoked as normal using the complete URL given
+#          in the command, including any query string.                   
+
+..which seems to flatly contradict the response to 697, and what happens in 
+practice.
+
+Perhaps there was confusion over whether the `EXEC' in `NOEXEC' meant the
+<!--#exec --> directive, or EXECuting things generally?
+
+

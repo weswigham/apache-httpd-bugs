@@ -1,0 +1,132 @@
+Received: (qmail 48431 invoked by uid 501); 29 Jan 2001 15:21:06 -0000
+Message-Id: <20010129152106.48430.qmail@apache.org>
+Date: 29 Jan 2001 15:21:06 -0000
+From: Noah Arliss <narliss@netegrity.com>
+Reply-To: narliss@netegrity.com
+To: submit@bugz.apache.org
+Subject: apache api calls don't seem available from a loaded module
+X-Send-Pr-Version: 3.110
+
+>Number:         7148
+>Category:       mod_so
+>Synopsis:       apache api calls don't seem available from a loaded module
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jan 29 07:30:02 PST 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     narliss@netegrity.com
+>Release:        1.2.12
+>Organization:
+apache
+>Environment:
+AIX 4.3.3.0.06
+>Description:
+I am trying to port our plugin to AIX 4.3.3.0. It works successfully on solaris, hpux, and linux. On aix however it seems that after Apache loads our module, any api call (for example: ap_pcalloc, ap_pstrdup etc..) is failing with illegal instructions. I have submitted a bug with IBM and they recommended submitting a bug here. The backtrace from the core file is as follows:
+
+Illegal instruction (reserved addressing fault) in . at 0x0 ($t1)
+Instruction is valid on: pwrx
+0x00000000 f00c2208       Invalid opcode.
+(dbx) where
+warning: could not locate trace table from starting address 0x0
+create_sm_server_config() at 0xd4aa01bc
+ap_single_module_configure(0x20017a48, 0x20017a70, 0x200503d8), line 1497 in "ht
+tp_config.c"
+load_module(0x2ff229f8, 0x0, 0x200190d8, 0x200190e8), line 282 in "mod_so.c"
+invoke_cmd(0x20007d48, 0x2ff229f8, 0x0, 0x2ff209ed), line 818 in "http_config.c"
+
+unnamed block $b111, line 1008 in "http_config.c"
+ap_handle_command(0x2ff229f8, 0x20018600, 0x2ff209a0), line 1008 in "http_config
+.c"
+unnamed block $b113, line 1022 in "http_config.c"
+ap_srm_command_loop(0x2ff229f8, 0x20018600), line 1022 in "http_config.c"
+ap_process_resource_config(0x20017a70, 0x20018f40, 0x20017a48, 0x2001cfa8), line
+ 1202 in "http_config.c"
+ap_read_config(0x20017a48, 0x2001cfa8, 0x20003c40), line 1481 in "http_config.c"
+
+main(argc = 1, argv = 0x2ff22bec), line 4955 in "http_main.c"
+(dbx)                                                                           
+>How-To-Repeat:
+Here is the simple module that can re-create this problem:
+extern "C" {
+        #include "httpd.h"
+        #include "http_config.h"
+}
+
+/* forward referencing the structure */
+extern "C" module sm_module;
+
+
+typedef struct
+{
+        char *szConfigFile;
+
+
+} sm_server_config_struct;
+
+
+extern "C" void *create_sm_server_config(pool *p, server_rec *pServer)
+{
+fprintf(stderr, "start of create_sm_server_config\n");
+fprintf(stderr, "allocating %d for smserverconf\n", sizeof(sm_server_config_stru
+ct));
+        sm_server_config_struct *smserverconf = (sm_server_config_struct *) ap_p
+calloc(p, sizeof(sm_server_config_struct));
+        fprintf(stderr, "Finisehd ap_pcalloc call.");
+        smserverconf->szConfigFile = "/apache/";
+
+        return smserverconf;
+fprintf(stderr, "end of create_sm_server_config.\n");
+}
+
+
+extern "C" int SmCheckAccess(request_rec *pReq)
+{
+        int nRetCode;
+        fprintf(stderr, "Simple Checkaccess hook that does nothing.\n");
+        nRetCode=DECLINED;
+        fprintf(stderr, "Check Access Hook finished.\n");
+        return nRetCode;
+}
+
+
+/* --------------------------------- */
+extern "C" module sm_module = {
+    STANDARD_MODULE_STUFF,
+    NULL,                         /* initializer */
+    NULL,                         /* dir config creater */
+    NULL,                         /* dir merger --- default is to override */
+    create_sm_server_config,      /* server config */
+    NULL,                         /* merge server config */
+    NULL,                         /* command table */
+    NULL,                         /* handlers */
+    NULL,                         /* filename translation */
+"mod_sm.cpp" 70 lines, 2128 characters                                          
+
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

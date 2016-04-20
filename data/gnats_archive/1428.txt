@@ -1,0 +1,493 @@
+Received: (qmail 3716 invoked by uid 2012); 18 Nov 1997 15:22:22 -0000
+Message-Id: <19971118152222.3715.qmail@hyperreal.org>
+Date: 18 Nov 1997 15:22:22 -0000
+From: Brian Atkins <brian@hypermart.net>
+Reply-To: brian@hypermart.net
+To: apbugs@hyperreal.org
+Subject: Increasing number of non-IP virtual hosts drastically increases memory demands
+X-Send-Pr-Version: 3.2
+
+>Number:         1428
+>Category:       general
+>Synopsis:       Increasing number of non-IP virtual hosts drastically increases memory demands
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Nov 18 07:30:00 PST 1997
+>Last-Modified:  Tue Nov 18 14:00:05 PST 1997
+>Originator:     brian@hypermart.net
+>Organization:
+>Release:        1.2.4
+>Environment:
+BSD/OS ns.hypermart.net 3.1 BSDI BSD/OS 3.1 Kernel #4: Thu Oct 16 16:16:52 MDT 1
+997     polk@corp.BSDI.COM:/amd/demiurge/home/polk/sys-3.0patches/compile/GENERI
+C  i386
+>Description:
+When using ~200 non-IP virtual domains, each httpd process takes up around
+8MEG. When using 1200 non-IP virtual domains each httpd process takes up
+around 50MEGS.
+>How-To-Repeat:
+Configure a server with approx 1200 virtual domains and see what happens.
+>Fix:
+No idea why it is doing this, is it fixed in 1.3.x%3
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: Lars.Eilebrecht@unix-ag.org
+State-Changed-When: Tue Nov 18 09:11:55 PST 1997
+State-Changed-Why:
+
+Hmmm... I suspect that each process _really_ takes
+that amount of memory space...
+Anyway, the virtual host code was completely rewritten in
+Apache version 1.3b2 and higher. Especially for 
+large sites with many vhosts it will provide a better
+performance.
+See http://www.apache.org/docs/vhosts/ for details.
+
+
+From: Brian Atkins <brian@hypermart.net>
+To: Lars.Eilebrecht@unix-ag.org, brian@organic.com
+Cc: apbugs@Apache.Org
+Subject: Re: general/1428: Increasing number of non-IP virtual hosts drastically increases memory demands
+Date: Tue, 18 Nov 1997 15:14:05 -0500
+
+ Lars.Eilebrecht@unix-ag.org wrote:
+ > 
+ > [In order for any reply to be added to the PR database, ]
+ > [you need to include <apbugs@Apache.Org> in the Cc line ]
+ > [and leave the subject line UNCHANGED.  This is not done]
+ > [automatically because of the potential for mail loops. ]
+ > 
+ > Synopsis: Increasing number of non-IP virtual hosts drastically increases memory demands
+ > 
+ > State-Changed-From-To: open-closed
+ > State-Changed-By: Lars.Eilebrecht@unix-ag.org
+ > State-Changed-When: Tue Nov 18 09:11:55 PST 1997
+ > State-Changed-Why:
+ > 
+ > Hmmm... I suspect that each process _really_ takes
+ > 
+ > that amount of memory space...
+ > 
+ > Anyway, the virtual host code was completely rewritten in
+ > 
+ > Apache version 1.3b2 and higher. Especially for
+ > 
+ > large sites with many vhosts it will provide a better
+ > 
+ > performance.
+ > 
+ > See http://www.apache.org/docs/vhosts/ for details.
+ 
+ A followup on this critical bug: The same behavior has been
+ observered in 1.3b2. Both grow to over 50MEGs of malloc'ed
+ mem when using 1250 or so non-IP virtual hosts. After about
+ that many, neither of them will even start up (even with all
+ shell limits unlimited), failing with the error:
+ "Ouch!  malloc failed in malloc_block()"
+ 
+ As long as this problem remains, the promise of non-IP hosting
+ will not be realized, and ISPs will remain shackled to having
+ a small number of virtual domains per physical NIC/server.
+ Steps should be taken to fix the problem, and to allow Apache
+ to host a minimum of 10,000 non-IP domains.
+ -- 
+ The future has arrived; it's just not evenly distributed.
+                                                        -William Gibson
+ ______________________________________________________________________
+ Visit Hypermart at http://www.hypermart.net for free virtual hosting!
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Brian Atkins <brian@hypermart.net>
+Cc: apbugs@apache.org
+Subject: Re: general/1428: Increasing number of non-IP virtual hosts drastically increases memory demands
+Date: Tue, 18 Nov 1997 12:31:51 -0800 (PST)
+
+ I suspect this is an issue with your config only and not a general
+ problem.  For example, I just created a server with 2000 non-IP virtual
+ hosts and it only consumes 4.5Mb RSS, 5.3Mb SZ.  Most of that is also
+ shared between the servers... which works well on linux which has
+ optimistic memory allocation; but probably chews swap which is never used
+ on other operating systems (which use pessimistic allocation). 
+ 
+ If you're duplicating configuration a lot rather than inheriting it from
+ the main server then you're bound to chew a lot of memory, and there is
+ absolutely nothing we can do about it.  Your vhosts should be extremely
+ minimal, like this: 
+ 
+ <VirtualHost a.b.c.d>
+ ServerName foo.com
+ ServerAlias *.foo.com
+ ServerAdmin webmaster@foo.com
+ DocumentRoot /www/docroot/foo.com
+ </VirtualHost>
+ 
+ Dean
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Brian Atkins <brian@NS.hypermart.net>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: general/1428: Increasing number of non-IP virtual hosts drastically increases memory demands
+Date: Tue, 18 Nov 1997 13:34:02 -0700 (MST)
+
+ On 18 Nov 1997, Brian Atkins wrote:
+ 
+ >  A followup on this critical bug: The same behavior has been
+ >  observered in 1.3b2. Both grow to over 50MEGs of malloc'ed
+ >  mem when using 1250 or so non-IP virtual hosts. After about
+ >  that many, neither of them will even start up (even with all
+ >  shell limits unlimited), failing with the error:
+ >  "Ouch!  malloc failed in malloc_block()"
+ 
+ Most of that memory is shared between processes on any reasonable OS, ie.
+ you only have one copy of it.  Many systems, however, still expect you to
+ have enough swap to allocate swap so that you would have enough if they
+ were all different.
+ 
+ >  
+ >  As long as this problem remains, the promise of non-IP hosting
+ >  will not be realized, and ISPs will remain shackled to having
+ >  a small number of virtual domains per physical NIC/server.
+ >  Steps should be taken to fix the problem, and to allow Apache
+ >  to host a minimum of 10,000 non-IP domains.
+ 
+ Say you needed 2k of data structures for each virtual domain.  That is
+ perfectly reasonable.  Then you will still need 20 megs per process for
+ 10000 non-IP virtual hosts.  You are likely using it in a very
+ specialized application: you probably have nearly identical config
+ settings for each vhost.  There is going to be overhead per virtual host.
+ You would need to modify Apache specifically for your setup if you wanted
+ to 
+ 
+ A virtual server is just that: a virtual server, configurable nearly as
+ much as the main server.  That takes overhead.  Hostnames aren't really
+ good substitutions for directories.  
+ 
+ You may be able to scrap all the vhosts, keep the hostnames, then use
+ mod_rewrite to internally rewrite user.domain to domain/user or
+ domain/~user or whatever.  Would have to think about that one.
+ 
+ There are a few more things to be said about this WRT how copy on write is
+ working in this situation, how it would be nice if it worked, and what
+ Apache could do to work around it, but I don't have time right now.  I
+ will comment more later. 
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Brian Atkins <brian@ns.hypermart.net>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: general/1428: Increasing number of non-IP virtual hosts drastically increases memory demands
+Date: Tue, 18 Nov 1997 13:42:59 -0700 (MST)
+
+ On 18 Nov 1997, Dean Gaudet wrote:
+ 
+ > The following reply was made to PR general/1428; it has been noted by GNATS.
+ > 
+ > From: Dean Gaudet <dgaudet@arctic.org>
+ > To: Brian Atkins <brian@hypermart.net>
+ > Cc: apbugs@apache.org
+ > Subject: Re: general/1428: Increasing number of non-IP virtual hosts drastically increases memory demands
+ > Date: Tue, 18 Nov 1997 12:31:51 -0800 (PST)
+ > 
+ >  I suspect this is an issue with your config only and not a general
+ >  problem.  For example, I just created a server with 2000 non-IP virtual
+ >  hosts and it only consumes 4.5Mb RSS, 5.3Mb SZ.  Most of that is also
+ >  shared between the servers... which works well on linux which has
+ >  optimistic memory allocation; but probably chews swap which is never used
+ >  on other operating systems (which use pessimistic allocation). 
+ 
+ Something else I was going to mention: try with minimal modules,
+ no frontpage hacks, etc.  A module can do whatever it feels like
+ so you never know what bad things it will do...
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Brian Atkins <brian@hypermart.net>
+Cc: apbugs@apache.org
+Subject: Re: general/1428: Increasing number of non-IP virtual hosts drastically increases memory demands
+Date: Tue, 18 Nov 1997 13:38:18 -0800 (PST)
+
+ Yeah that's it then.  Do this:
+ 
+ <VirtualHost _default_>
+ ServerName www.hypermart.net
+ ... yadda yadda, the rest of your www.hypermart.net config
+ </VirtualHost>
+ 
+ Er, well that might not exactly be what you want, if www.hypermart.net has
+ the same ip as the non-ip hosts.  If that's the case, then with a 1.3
+ server what you want is to put:
+ 
+ <VirtualHost www.hypermart.net>
+ ...
+ </VirtualHost>
+ 
+ as the *first* host on that IP.  With 1.2 you want it to be the *last*
+ host on that IP. 
+ 
+ Essentially you want to arrange it so that none of those 2500
+ scriptaliases are inherited by the non-ip virtual hosts.
+ 
+ Note you might also be able to use mod_rewrite to reduce the 2500
+ scriptaliases down to a more manageable number. 
+ 
+ Dean
+ 
+ On Tue, 18 Nov 1997, Brian Atkins wrote:
+ 
+ > Ooh that might be it- we have about 2500 scriptaliases in the
+ > srm.conf. But I thought those would only apply to the main
+ > www.hypermart.net server- at least that was what I intended.
+ > I'm not sure what you mean about a default server ?
+ > 
+ > Dean Gaudet wrote:
+ > > 
+ > > Do you have many Aliases or ScriptAliases in the main server?  because as
+ > > soon as you add a ScriptAlias to a vhost you end up with a copy of all the
+ > > main server mod_alias settings in addition to the one new setting.
+ > > There's essentially no easy way to change this.  But you can usually work
+ > > around it by ensuring that only the minimal settings are present in the
+ > > main server.  Perhaps you can use a _default_ server to replace the main
+ > > server for example.
+ > > 
+ > > Dean
+ > > 
+ > > On Tue, 18 Nov 1997, Brian Atkins wrote:
+ > > 
+ > > > Dean Gaudet wrote:
+ > > > >
+ > > > > I suspect this is an issue with your config only and not a general
+ > > > > problem.  For example, I just created a server with 2000 non-IP virtual
+ > > > > hosts and it only consumes 4.5Mb RSS, 5.3Mb SZ.  Most of that is also
+ > > > > shared between the servers... which works well on linux which has
+ > > > > optimistic memory allocation; but probably chews swap which is never used
+ > > > > on other operating systems (which use pessimistic allocation).
+ > > > >
+ > > > > If you're duplicating configuration a lot rather than inheriting it from
+ > > > > the main server then you're bound to chew a lot of memory, and there is
+ > > > > absolutely nothing we can do about it.  Your vhosts should be extremely
+ > > > > minimal, like this:
+ > > > >
+ > > > > <VirtualHost a.b.c.d>
+ > > > > ServerName foo.com
+ > > > > ServerAlias *.foo.com
+ > > > > ServerAdmin webmaster@foo.com
+ > > > > DocumentRoot /www/docroot/foo.com
+ > > > > </VirtualHost>
+ > > > >
+ > > > > Dean
+ > > >
+ > > > That is exactly how we have it, plus one ScriptAlias for a
+ > > > cgi-bin. Isn't there any way to make Apache more memory
+ > > > efficient when dealing with non-IP virtual hosts?
+ > > > --
+ > > > The future has arrived; it's just not evenly distributed.
+ > > >                                                        -William Gibson
+ > > > ______________________________________________________________________
+ > > > Visit Hypermart at http://www.hypermart.net for free virtual hosting!
+ > > >
+ > 
+ > -- 
+ > The future has arrived; it's just not evenly distributed.
+ >                                                        -William Gibson
+ > ______________________________________________________________________
+ > Visit Hypermart at http://www.hypermart.net for free virtual hosting!
+ > 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: general/1428: Increasing number of non-IP virtual hosts drastically increases memory demands (fwd)
+Date: Tue, 18 Nov 1997 13:52:02 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ Date: Tue, 18 Nov 1997 16:44:41 -0500
+ From: Brian Atkins <brian@hypermart.net>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: general/1428: Increasing number of non-IP virtual hosts drastically increases memory demands
+ 
+ I created a www.hypermart.net virtual server to replace the main
+ server, moved all the Scriptaliases there and now the processes
+ are only taking up 5meg each! Fantastic!
+ Thanks for your help!
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Brian Atkins <brian@NS.hypermart.net>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: general/1428: Increasing number of non-IP virtual hosts drastically increases memory demands
+Date: Tue, 18 Nov 1997 14:42:44 -0700 (MST)
+
+ On Tue, 18 Nov 1997, Brian Atkins wrote:
+ 
+ > > You may be able to scrap all the vhosts, keep the hostnames, then use
+ > > mod_rewrite to internally rewrite user.domain to domain/user or
+ > > domain/~user or whatever.  Would have to think about that one.
+ > 
+ > That really would be unacceptable...
+ 
+ Why?  Note not redirect, but internally rewrite them before serving them.
+ That means that to the client it still seems just like user.domain, only
+ you don't actually need vhosts.
+ 
+ May or may not be possible.  Mildly interesting, so I will take a look
+ when I get a chance...
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: general/1428: Increasing number of non-IP virtual hosts drastically increases memory demands (fwd)
+Date: Tue, 18 Nov 1997 14:43:03 -0700 (MST)
+
+ ---------- Forwarded message ----------
+ Date: Tue, 18 Nov 1997 16:13:53 -0500
+ From: Brian Atkins <brian@ns.hypermart.net>
+ To: Marc Slemko <marcs@znep.com>
+ Subject: Re: general/1428: Increasing number of non-IP virtual hosts drastically increases memory demands
+ 
+ Marc Slemko wrote:
+ > 
+ > On 18 Nov 1997, Dean Gaudet wrote:
+ > 
+ > > The following reply was made to PR general/1428; it has been noted by GNATS.
+ > >
+ > > From: Dean Gaudet <dgaudet@arctic.org>
+ > > To: Brian Atkins <brian@hypermart.net>
+ > > Cc: apbugs@apache.org
+ > > Subject: Re: general/1428: Increasing number of non-IP virtual hosts drastically increases memory demands
+ > > Date: Tue, 18 Nov 1997 12:31:51 -0800 (PST)
+ > >
+ > >  I suspect this is an issue with your config only and not a general
+ > >  problem.  For example, I just created a server with 2000 non-IP virtual
+ > >  hosts and it only consumes 4.5Mb RSS, 5.3Mb SZ.  Most of that is also
+ > >  shared between the servers... which works well on linux which has
+ > >  optimistic memory allocation; but probably chews swap which is never used
+ > >  on other operating systems (which use pessimistic allocation).
+ > 
+ > Something else I was going to mention: try with minimal modules,
+ > no frontpage hacks, etc.  A module can do whatever it feels like
+ > so you never know what bad things it will do...
+ 
+ I just tried a minimal version of 1.2.4 with no luck- it seems
+ all of the memory usage is happening within some central part
+ of the code.
+ -- 
+ The future has arrived; it's just not evenly distributed.
+                                                        -William Gibson
+ ______________________________________________________________________
+ Visit Hypermart at http://www.hypermart.net for free virtual hosting!
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: general/1428: Increasing number of non-IP virtual hosts drastically increases memory demands (fwd)
+Date: Tue, 18 Nov 1997 14:43:08 -0700 (MST)
+
+ ---------- Forwarded message ----------
+ Date: Tue, 18 Nov 1997 16:28:32 -0500
+ From: Brian Atkins <brian@NS.hypermart.net>
+ To: Marc Slemko <marcs@znep.com>
+ Subject: Re: general/1428: Increasing number of non-IP virtual hosts drastically increases memory demands
+ 
+ Marc Slemko wrote:
+ > 
+ > On 18 Nov 1997, Brian Atkins wrote:
+ > 
+ > >  A followup on this critical bug: The same behavior has been
+ > >  observered in 1.3b2. Both grow to over 50MEGs of malloc'ed
+ > >  mem when using 1250 or so non-IP virtual hosts. After about
+ > >  that many, neither of them will even start up (even with all
+ > >  shell limits unlimited), failing with the error:
+ > >  "Ouch!  malloc failed in malloc_block()"
+ > 
+ > Most of that memory is shared between processes on any reasonable OS, ie.
+ > you only have one copy of it.  Many systems, however, still expect you to
+ > have enough swap to allocate swap so that you would have enough if they
+ > were all different.
+ > 
+ > >
+ > >  As long as this problem remains, the promise of non-IP hosting
+ > >  will not be realized, and ISPs will remain shackled to having
+ > >  a small number of virtual domains per physical NIC/server.
+ > >  Steps should be taken to fix the problem, and to allow Apache
+ > >  to host a minimum of 10,000 non-IP domains.
+ > 
+ > Say you needed 2k of data structures for each virtual domain.  That is
+ > perfectly reasonable.  Then you will still need 20 megs per process for
+ > 10000 non-IP virtual hosts.  You are likely using it in a very
+ > specialized application: you probably have nearly identical config
+ > settings for each vhost.  There is going to be overhead per virtual host.
+ > You would need to modify Apache specifically for your setup if you wanted
+ > to
+ 
+ Well, I know a little C but am by no means good enough to modify
+ the Apache source... I really don't see where all the mem is going
+ though- we have very minimal virtual host definitions, just a
+ server name, IP, document root, and a cgi-bin scriptalias. Seems
+ like all that together would be less than 500 bytes?
+ 
+ > 
+ > A virtual server is just that: a virtual server, configurable nearly as
+ > much as the main server.  That takes overhead.  Hostnames aren't really
+ > good substitutions for directories.
+ 
+ Well, would it be possible to create something like "lite" virtual
+ hosts that could be a lot more memory efficient?
+ 
+ > 
+ > You may be able to scrap all the vhosts, keep the hostnames, then use
+ > mod_rewrite to internally rewrite user.domain to domain/user or
+ > domain/~user or whatever.  Would have to think about that one.
+ 
+ That really would be unacceptable...
+ 
+ > 
+ > There are a few more things to be said about this WRT how copy on write is
+ > working in this situation, how it would be nice if it worked, and what
+ > Apache could do to work around it, but I don't have time right now.  I
+ > will comment more later.
+ 
+ I'd appreciate any help or further advice you might have. Thanks
+ -- 
+ The future has arrived; it's just not evenly distributed.
+                                                        -William Gibson
+ ______________________________________________________________________
+ Visit Hypermart at http://www.hypermart.net for free virtual hosting!
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: general/1428: Increasing number of non-IP virtual hosts drastically increases memory demands (fwd)
+Date: Tue, 18 Nov 1997 14:51:00 -0700 (MST)
+
+ ---------- Forwarded message ----------
+ Date: Tue, 18 Nov 1997 16:47:21 -0500
+ From: Brian Atkins <brian@NS.hypermart.net>
+ To: Marc Slemko <marcs@znep.com>
+ Subject: Re: general/1428: Increasing number of non-IP virtual hosts drastically increases memory demands
+ 
+ Just to let you know I think we found the problem :-)
+ It was about 1200 Scriptaliases in the main srm.conf getting
+ inherited to each virtual server. With that fixed it is
+ back down to about 5meg per server now.
+ -- 
+ The future has arrived; it's just not evenly distributed.
+                                                        -William Gibson
+ ______________________________________________________________________
+ Visit Hypermart at http://www.hypermart.net for free virtual hosting!
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

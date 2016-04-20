@@ -1,0 +1,135 @@
+Received: (qmail 3389 invoked by uid 2012); 25 Mar 1999 16:12:41 -0000
+Message-Id: <19990325161241.3388.qmail@hyperreal.org>
+Date: 25 Mar 1999 16:12:41 -0000
+From: Jacques Distler <distler@golem.ph.utexas.edu>
+Reply-To: distler@golem.ph.utexas.edu
+To: apbugs@hyperreal.org
+Subject: Instructions for simulating RefererIgnore incorrect
+X-Send-Pr-Version: 3.2
+
+>Number:         4129
+>Category:       mod_log-any
+>Synopsis:       Instructions for simulating RefererIgnore incorrect
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          feedback
+>Class:          doc-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Mar 25 08:20:03 PST 1999
+>Last-Modified:  Fri Apr 30 15:20:00 PDT 1999
+>Originator:     distler@golem.ph.utexas.edu
+>Organization:
+>Release:        1.3.6
+>Environment:
+NextStep3.3 (hppa), with NeXT's cc compiler.
+1> uname -a
+NEXTSTEP golem Rose2L  7100LC 
+>Description:
+<http://www.apache.org/docs/mod/mod_log_config.html> says:
+
+	" Beginning with Apache 1.3.5, the mod_log_config module has also
+	subsumed the RefererIgnore functionality from _mod_log_referer_. The
+	effect of RefererIgnore can be achieved by combinations of _SetEnvIf_ 
+	directives and conditional CustomLog definitions.
+
+and <http://www.apache.org/docs/mod/mod_setenvif.html> gives the example
+
+		SetEnvIf Request_URI "\.(gif)|(jpg)|(xbm)$" object_is_image
+		SetEnvIf Referer www\.mydomain\.com intra_site_referral
+  
+
+	The first will set the envariable object_is_image if the request was
+	for an image file, and the second sets intra_site_referral if the 
+	referring page was somewhere on the www.mydomain.com Web site.
+
+This does NOT, however, simulate the behaviour of the RefererIgnore directive in
+mod_log_referer.
+>How-To-Repeat:
+
+>Fix:
+The "correct" construction, which reproduces the behaviour of
+
+	RefererIgnore www.mydomain.com
+
+is
+
+	SetEnvIf Referer "^http://www\.mydomain\.com|www\.mydomain\.com" intra_site_referral
+>Audit-Trail:
+
+From: Jacques Distler <distler@golem.ph.utexas.edu>
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: mod_log-any/4129: Instructions for simulating RefererIgnore
+	incorrect
+Date: Thu, 25 Mar 1999 10:31:21 -0600
+
+ Whoops!
+ 
+ To *really* simulate the RefererIgnore directive, you also need to drop  
+ blank http_referer fields. So make that:
+ 
+ 	SetEnvIf Referer "^http://www\.mydomain\.com|www\.mydomain\.com|^$"  
+ intra_site_referral
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Thu Apr 29 12:43:08 PDT 1999
+State-Changed-Why:
+
+I'll grant your point about the null Referer value, but why
+do you think the full URI needs to be specified?  The
+mod_log_referer module just checks to see if the RefereIgnore
+string appears anywhere in the Referer field value.  It
+doesn't check only the host portion of the Referer URI.
+
+Comment-Added-By: coar
+Comment-Added-When: Thu Apr 29 12:44:44 PDT 1999
+Comment-Added:
+
+Sorry, you're not saying the full URI is required, just
+that the test text be anchored at the beginning of the
+string.  Which is still not a requirement of mod_log_referer.
+
+
+From: Jacques Distler <distler@golem.ph.utexas.edu>
+To: coar@apache.org
+Cc: <apbugs@apache.org>
+Subject: Re: mod_log-any/4129: Instructions for simulating RefererIgnore
+	incorrect
+Date: Fri, 30 Apr 1999 17:11:58 -0500
+
+ I'm not sure what we are quibbling about.
+ 
+ The NCSA http-referer log, with the RefererIgnore directive, ignored blank  
+ HTTP_REFERER fields and HTTP_REFERER fields which are URIs from the named web  
+ site.
+ 
+ I expect that there are various different regular expressions one could  
+ write down which would accomplish this in mod_log_referer. However, if the  
+ documentation states that
+ 
+ 	mod_log_referer and
+ 
+ 		SetEnvIf Referer REGEXP
+ 
+ 	simulate the NCSA behaviour
+ 
+ then they ought to do that. The fact that mod_log_referer logs null  
+ HTTP_REFERER fields is a departure from the behaviour of NCSA http-referer  
+ log. That should be noted in the docs.
+ 
+ Perhaps my modification of your sample REGEXP only muddies the issue.
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

@@ -1,0 +1,96 @@
+Received: (qmail 4675 invoked by uid 2012); 29 Apr 1999 12:03:27 -0000
+Message-Id: <19990429120327.4674.qmail@hyperreal.org>
+Date: 29 Apr 1999 12:03:27 -0000
+From: Didimo Grimaldo <emilio_tunon@nl.compuware.com>
+Reply-To: emilio_tunon@nl.compuware.com
+To: apbugs@hyperreal.org
+Subject: Apache doesn't work with a DSO that has multi-threading
+X-Send-Pr-Version: 3.2
+
+>Number:         4328
+>Category:       os-linux
+>Synopsis:       Apache doesn't work with a DSO that has multi-threading
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Apr 29 05:10:00 PDT 1999
+>Last-Modified:  Thu Apr 29 05:17:23 PDT 1999
+>Originator:     emilio_tunon@nl.compuware.com
+>Organization:
+>Release:        1.3.4
+>Environment:
+Linux c1030 2.0.36 #1 Tue Oct 13 22:17:11 EDT 1998 i686 unknown
+gcc 2.8.1
+glibc-2.0 (LinuxThreads included)
+>Description:
+The situation is as follows. Apache is configured to use a DSO, this
+DSO has two threads. It is possible to run Apache standalone (-X)
+from the command line but it will cease to respond as soon as a
+request is made that loads the multi-threaded module.
+
+Attempting to run apache (-X) on the debugger is fruitless because it
+aborts during startup (see attached backtrace) because it cannot
+"Access memory at XYZ" during cleanup.
+
+The multi-threaded module has been tested successfully on SunOS/Solaris 2.5,
+HP-UX 10.20/11.00. And at least on Solaris (don't know about HP) it is
+possible to debug this multi-threaded module with their debugger (not gdb).
+
+Looking into the apache code I noticed that it makes use of SIGUSR1 and
+SIGUSR2, presumably for apache_ctl. Unfortunately these two signals are
+used by LinuxThreads which is the PThreads implementation under Linux.
+Linux threads was a separate package in libc5 (older systems) and is
+'built-in' in glibc-2.x (libc6). Combining apache with a multi-threaded
+module in Linux causes a conflict of the sigusr signals being kidnapped
+by Apache. I think this is where the problem lies.
+>How-To-Repeat:
+1. Run the server and make a request that requires the threaded
+   module to handle the request, or...
+
+2. Try to debug Apache with a DSO that uses threads
+2a) Run it in standalone mode 
+   (gdb) run -X
+
+2b) Do a backtrace on the debugger
+(gdb) backtrace
+#0  0x40005dd1 in _dl_debug_state () at dl-debug.c:55
+#1  0x400f261c in _dl_close (map=0x8093080) at dl-close.c:141
+#2  0x40066a84 in doit () at dlclose.c:28
+#3  0x40005bc0 in _dl_catch_error (errstring=0x40068424, operate=0xbffff9a0) at dl-error.c:105
+#4  0x40066dd5 in _dlerror_run (operate=0xbffff9a0) at dlerror.c:69
+#5  0x40066ad5 in dlclose (handle=0x8093080) at dlclose.c:31
+#6  0x806e1b8 in ap_os_dso_unload (handle=0x8093080) at os.c:123
+#7  0x804dff6 in unload_module ()
+#8  0x804fd82 in run_cleanups (c=0x809059c) at alloc.c:1650
+#9  0x804e5c8 in ap_clear_pool (a=0x8087694) at alloc.c:475
+#10 0x805e11b in standalone_main (argc=2, argv=0xbffffa70) at http_main.c:4252
+#11 0x805ea4f in main (argc=2, argv=0xbffffa70) at http_main.c:4592
+>Fix:
+Use a different mechanism than SIGUSR* 
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rbbloom@us.ibm.com
+State-Changed-When: Thu Apr 29 05:17:22 PDT 1999
+State-Changed-Why:
+You have found the cause of your problem.  The SIGUSR1
+handlers that Apaceh uses are being triggered by LinuxThreads.
+This has been solved for the 2.0 release, so I am closing the
+report.  There is no fix for the current version of Apache.
+
+Thank you for using Apache.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

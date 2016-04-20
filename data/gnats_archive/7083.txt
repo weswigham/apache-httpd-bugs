@@ -1,0 +1,112 @@
+Received: (qmail 5130 invoked by uid 501); 17 Jan 2001 17:29:23 -0000
+Message-Id: <20010117172923.5129.qmail@apache.org>
+Date: 17 Jan 2001 17:29:23 -0000
+From: Douglas B.Jones <douglas@gpc.peachnet.edu>
+Reply-To: douglas@gpc.peachnet.edu
+To: submit@bugz.apache.org
+Subject: get 'sergmentaion faul (signal 11)' on attemp to connect to apache web server
+X-Send-Pr-Version: 3.110
+
+>Number:         7083
+>Category:       os-osf
+>Synopsis:       get 'sergmentaion faul (signal 11)' on attemp to connect to apache web server
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan 17 09:30:00 PST 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     douglas@gpc.peachnet.edu
+>Release:        1.3.14
+>Organization:
+apache
+>Environment:
+OS:OSF1 gpc1.gpc.peachnet.edu V4.0 1229 alpha
+CC:DEC C V5.9-011 on Digital UNIX V4.0 (Rev. 1229)
+Compaq XP1000 ev6 500 Mhz workstation
+>Description:
+First, the error log message:
+[Tue Jan 16 10:01:47 2001] [notice] child pid 13504 exit signal Segmentation fau
+lt (11)
+
+Now, ladebug (like dbx) message.
+
+#ladebug -pid 27848 /usr/local/etc/httpd-test/bin/httpd
+Welcome to the Ladebug Debugger Version 4.0-48
+------------------ 
+object file name: /usr/local/etc/httpd-test/bin/httpd 
+Reading symbolic information ...done
+Attached to process id 27848  ....
+Thread received signal SEGV
+stopped at [int read_request_line(request_rec*):867 0x12020f5d0]        
+    867 static int read_request_line(request_rec *r)
+(ladebug) where  
+>How-To-Repeat:
+telnet gpc1.gpc.peachnet.edu 83
+>Fix:
+Not off hand....help really needed - any pointers - This happens every time
+and the only error_log is the one mentioned above. Glad to do any more
+debugging you would want me to do.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+ >0  0x12020f5d0 in read_request_line(r=0x1401a8820) "http_protocol.c":867
+ #1  0x12020fd30 in ap_read_request(conn=0x1401a8820) "http_protocol.c":1049
+ #2  0x1201fc664 in child_main(child_num_arg=0) "http_main.c":4192
+ #3  0x1201fc9dc in make_child(s=0x14012b060, slot=0, now=979740544) "http_main.c":4362
+ #4  0x1201fcaa8 in startup_children(number_to_start=1) "http_main.c":4389
+ #5  0x1201fd2d4 in standalone_main(argc=3, argv=0x11ffffa08) "http_main.c":4677
+ #6  0x1201fdd04 in main(argc=3, argv=0x11ffffa08) "http_main.c":5004
+ #7  0x120081e48 in __start(0x1401aa060, 0x0, 0x10000, 0x0, 0x0, 0x800) in /usr/local/etc/httpd-test/bin/httpd
+ 
+ Now notice, that it fails at read_request_line on line 867. This is at
+ the beginning of the routine? Not in it somewhere in it. If I type in
+ the ladebug (like dbx) and then go up one to ap_read_request() line 1049,
+ I get two different values for r.
+ 
+ (ladebug) p r  
+ 0x1401a8820
+ (ladebug) up  
+ >1  0x12020fd30 in ap_read_request(conn=0x1401a8820) "http_protocol.c":1049
+    1049     if (!read_request_line(r)) {
+ (ladebug) p r  
+ 0x1401aa060
+ 
+ It is almost like read_request_line function is being corrupted.
+ 
+ We have three system:
+ gpc - with Compaq Tru64 4.0f - a 2100 with a ev5 chip
+ gpc1 - with Compaq Tru64 4.0f - a xp1000 with ev6 chip
+ webct - with Compaq Tru64 5.0a - es40 with ev6 chip
+ 
+ Compiled on the other gpc and webct they work fine, but on gpc1
+ it fails. gpc1 is the only one in c2 security mode right now. I
+ want ot move the others that way, but can't until this is resolved.
+ I did not find any reference to the getes*() routines used under
+ c2 security, but din't think they are really needed. Only getpw*()
+ rouintes should be needed.
+ 
+ Anyway, the only real difference is that gpc1 is in c2 security mode.
+ 
+ Any ideas?
+

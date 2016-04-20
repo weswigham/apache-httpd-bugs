@@ -1,0 +1,254 @@
+Received: (qmail 35990 invoked by uid 501); 28 Aug 2000 14:42:26 -0000
+Message-Id: <20000828144226.35988.qmail@locus.apache.org>
+Date: 28 Aug 2000 14:42:26 -0000
+From: Martin Sojka <msojka@gmx.de>
+Reply-To: msojka@gmx.de
+To: submit@bugz.apache.org
+Subject: htpasswd clears password file if /tmp is full.
+X-Send-Pr-Version: 3.110
+
+>Number:         6475
+>Category:       other
+>Synopsis:       [Patch] Error reporting for lost htdigest/htpasswd actions due to full /tmp volume
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          analyzed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Aug 28 07:50:02 PDT 2000
+>Closed-Date:
+>Last-Modified:  Sun Oct 01 10:29:01 PDT 2000
+>Originator:     msojka@gmx.de
+>Release:        1.3.12 and 2.somethng
+>Organization:
+>Environment:
+System: Linux (2.2.14C5 - from www.cobalt.com)
+gcc version egcs-2.91.66 19990314/Linux (egcs-1.1.2 release)
+>Description:
+tmpnam() usually returns a filename somewhere in /tmp; if this partitition ist full, you can open a file there, but anything you write into this file will be lost. htpasswd (and possibly other tools) doesn't check this condition, and simply generates an empty password file.
+>How-To-Repeat:
+$ dd if=/dev/zero of=/tmp/zero bs=1M count=10000 (or whatever works to fill up /tmp)
+$ htpasswd -c -b $HOME/temppasswd username password
+$ ls -l $HOME/temppasswd
+-> the file has a size of 0 Bytes
+>Fix:
+Here's a crude fix for 1.3.12:
+--- htpasswd_old.c      Thu Oct 21 22:46:32 1999
++++ htpasswd.c  Mon Aug 28 15:47:29 2000
+@@ -144,7 +144,7 @@
+     }
+ }
+
+-static void putline(FILE *f, char *l)
++static int putline(FILE *f, char *l)
+ {
+     int x;
+
+@@ -152,6 +152,7 @@
+        fputc(l[x], f);
+     }
+     fputc('\n', f);
++    return (fflush(f) != EOF);
+ }
+
+ /*
+@@ -256,6 +257,8 @@
+     fprintf(stderr, " -s  Force SHA encryption of the password.\n");
+     fprintf(stderr, " -b  Use the password from the command line rather "
+            "than prompting for it.\n");
++    fprintf(stderr, " -f  Don't force the creation of a backup password "
++           "file.\n");
+     fprintf(stderr,
+            "On Windows and TPF systems the '-m' flag is used by default.\n");
+     fprintf(stderr,
+@@ -328,13 +331,17 @@
+  * Copy from the current position of one file to the current position
+  * of another.
+  */
+-static void copy_file(FILE *target, FILE *source)
++static int copy_file(FILE *target, FILE *source)
+ {
+     static char line[MAX_STRING_LEN];
+
+     while (fgets(line, sizeof(line), source) != NULL) {
+        fputs(line, target);
++       if( fflush(target) == EOF ) {
++           return 0;
++       }
+     }
++    return 1;
+ }
+
+ /*
+@@ -350,11 +357,13 @@
+     char record[MAX_STRING_LEN];
+     char line[MAX_STRING_LEN];
+     char pwfilename[MAX_STRING_LEN];
++    char oldpwfilename[MAX_STRING_LEN];
+     char *arg;
+     int found = 0;
+     int alg = ALG_CRYPT;
+     int newfile = 0;
+     int noninteractive = 0;
++    int nobackup = 0;
+     int i;
+     int args_left = 2;
+
+@@ -383,6 +392,9 @@
+            if (*arg == 'c') {
+                newfile++;
+            }
++           else if (*arg == 'f') {
++               nobackup++;
++           }
+            else if (*arg == 'm') {
+                alg = ALG_APMD5;
+            }
+@@ -497,6 +509,9 @@
+        exit(ERR_FILEPERM);
+     }
+
++    strcpy(oldpwfilename, pwfilename);
++    strcat(oldpwfilename, "-");
++
+     /*
+      * All the file access checks have been made.  Time to go to work;
+      * try to create the record for the username in question.  If that
+@@ -535,7 +550,16 @@
+            char *colon;
+
+            if ((line[0] == '#') || (line[0] == '\0')) {
+-               putline(ftemp, line);
++               if (!putline(ftemp, line)) {
++                   fprintf(stderr, "%s: cannot write to file %s. "
++                       "Partitition full?\n",
++                       argv[0], tempfilename);
++                   fclose(fpw);
++                   fclose(ftemp);
++                   perror("fputs");
++                   unlink(tempfilename);
++                   exit(ERR_FILEPERM);
++               }
+                continue;
+            }
+            strcpy(scratch, line);
+@@ -547,7 +571,16 @@
+                *colon = '\0';
+            }
+            if (strcmp(user, scratch) != 0) {
+-               putline(ftemp, line);
++               if (!putline(ftemp, line)) {
++                   fprintf(stderr, "%s: cannot write to file %s. "
++                       "Partitition full?\n",
++                       argv[0], tempfilename);
++                   fclose(fpw);
++                   fclose(ftemp);
++                   perror("fputs");
++                   unlink(tempfilename);
++                   exit(ERR_FILEPERM);
++               }
+                continue;
+            }
+            found++;
+@@ -564,13 +597,30 @@
+     /*
+      * Now add the user record we created.
+      */
+-    putline(ftemp, record);
++    if (!putline(ftemp, record)) {
++       fprintf(stderr, "%s: cannot write to file %s. Partitition full?\n",
++           argv[0], tempfilename);
++       fclose(fpw);
++       fclose(ftemp);
++       perror("fputs");
++       unlink(tempfilename);
++       exit(ERR_FILEPERM);
++    }
+     /*
+      * If we're updating an existing file, there may be additional
+      * records beyond the one we're updating, so copy them.
+      */
+     if (! newfile) {
+-       copy_file(ftemp, fpw);
++       if (!copy_file(ftemp, fpw)) {
++           fprintf(stderr, "%s: cannot write to file %s. "
++               "Partitition full?\n",
++               argv[0], tempfilename);
++           fclose(fpw);
++           fclose(ftemp);
++           perror("fputs");
++           unlink(tempfilename);
++           exit(ERR_FILEPERM);
++       }
+        fclose(fpw);
+     }
+     /*
+@@ -579,9 +629,29 @@
+      * in the appropriate mode, and copy them file to the real one.
+      */
+     fclose(ftemp);
++    if (rename(pwfilename, oldpwfilename)) {
++       fprintf(stderr, "%s: couldn't create backup password file.",
++           argv[0]);
++       if (nobackup) {
++           fprintf(stderr, " Use the -f flag to ignore this error.\n");
++           perror("rename");
++           unlink(tempfilename);
++           exit(ERR_FILEPERM);
++       }
++       fprintf(stderr, "\n");
++    }
+     fpw = fopen(pwfilename, "w+");
+     ftemp = fopen(tempfilename, "r");
+-    copy_file(fpw, ftemp);
++    if (!copy_file(fpw, ftemp)) {
++       fprintf(stderr, "%s: cannot write to file %s. "
++           "Partitition full?\n",
++           argv[0], pwfilename);
++       fclose(fpw);
++       fclose(ftemp);
++       perror("fputs");
++       unlink(tempfilename);
++       exit(ERR_FILEPERM);
++    }
+     fclose(fpw);
+     fclose(ftemp);
+     unlink(tempfilename);
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: wrowe
+State-Changed-When: Sun Oct  1 10:29:00 PDT 2000
+State-Changed-Why:
+
+Good point - but the error messaging could use a little
+work.  This is a worthwhile patch to apply when someone
+has a few minutes.  Tagged and added to STATUS
+
+Synopsis-Changed-From: htpasswd clears password file if /tmp is full.
+Synopsis-Changed-To: [Patch] Error reporting for lost htdigest/htpasswd actions due to full /tmp volume
+Synopsis-Changed-By: wrowe
+Synopsis-Changed-When: Sun Oct  1 10:29:00 PDT 2000
+Class-Changed-From-To: support-sw-bug
+Class-Changed-By: wrowe
+Class-Changed-When: Sun Oct  1 10:29:00 PDT 2000
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

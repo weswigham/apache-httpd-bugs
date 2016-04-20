@@ -1,0 +1,80 @@
+Received: (qmail 19570 invoked by uid 2012); 25 Jun 1999 14:48:03 -0000
+Message-Id: <19990625144803.19568.qmail@hyperreal.org>
+Date: 25 Jun 1999 14:48:03 -0000
+From: Franz Sirl <Franz.Sirl-kernel@lauterbach.com>
+Reply-To: Franz.Sirl-kernel@lauterbach.com
+To: apbugs@hyperreal.org
+Subject: va_list variable used twice without intervening va_end/va_start
+X-Send-Pr-Version: 3.2
+
+>Number:         4650
+>Category:       general
+>Synopsis:       va_list variable used twice without intervening va_end/va_start
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jun 25 07:50:01 PDT 1999
+>Last-Modified:  Sat Jun 26 22:24:14 PDT 1999
+>Originator:     Franz.Sirl-kernel@lauterbach.com
+>Organization:
+>Release:        1.3.6
+>Environment:
+Linux/PPC 2.2.x
+glibc-2.1.1
+egcs-1.1.2
+>Description:
+Apache 1.3.6 (haven't tested earlier versions) dumps core on Linux/PPC if handed 
+a nonexistent URL. The problem is that ap_log_rerror() uses a va_list variable
+twice without an intervening va_end/va_start combination. This invokes undefined
+behaviour according to C9X.
+I've checked the other uses of va_list in apache, but this was the only misuse
+I found.
+
+Franz.
+>How-To-Repeat:
+
+>Fix:
+--- apache_1.3.6/src/main/http_log.c~   Thu Mar 11 10:52:38 1999
++++ apache_1.3.6/src/main/http_log.c    Thu Jun 24 13:26:50 1999
+@@ -447,6 +447,7 @@ API_EXPORT(void) ap_log_rerror(const cha
+
+     va_start(args, fmt);
+     log_error_core(file, line, level, r->server, r, fmt, args);
++    va_end(args);
+     /*
+      * IF the error level is 'warning' or more severe,
+      * AND there isn't already error text associated with this request,
+@@ -455,6 +456,7 @@ API_EXPORT(void) ap_log_rerror(const cha
+      * something, even an empty string, into the "error-notes" cell
+      * before calling this routine.
+      */
++    va_start(args, fmt);
+     if (((level & APLOG_LEVELMASK) <= APLOG_WARNING)
+        && (ap_table_get(r->notes, "error-notes") == NULL)) {
+        ap_table_setn(r->notes, "error-notes",
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: manoj
+State-Changed-When: Sat Jun 26 22:24:14 PDT 1999
+State-Changed-Why:
+This has already been fixed in CVS and the fix will be
+present in the next release of Apache.
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

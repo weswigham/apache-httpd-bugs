@@ -1,0 +1,167 @@
+Received: (qmail 13327 invoked by uid 2012); 17 Nov 1999 10:58:26 -0000
+Message-Id: <19991117105826.13324.qmail@hyperreal.org>
+Date: 17 Nov 1999 10:58:26 -0000
+From: Nic Doye <nic@niss.ac.uk>
+Reply-To: nic@niss.ac.uk
+To: apbugs@hyperreal.org
+Subject: mod_speling does not escape URLs
+X-Send-Pr-Version: 3.2
+
+>Number:         5326
+>Category:       mod_speling
+>Synopsis:       mod_speling does not escape URLs
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Nov 17 04:10:00 PST 1999
+>Closed-Date:
+>Last-Modified:  Mon Jan 24 07:30:00 PST 2000
+>Originator:     nic@niss.ac.uk
+>Release:        1.3.9
+>Organization:
+apache
+>Environment:
+Linux gristle.office.niss.ac.uk 2.2.10 #2 Thu Jun 17 11:36:26 BST 1999 i686 unknown
+gcc version 2.7.2.3
+--
+SunOS synapse 5.6 Generic_105181-16 sun4u sparc SUNW,Ultra-5_10
+gcc version 2.8.1
+>Description:
+If you have url /file%20name.html or /dir%20name/file.html and spell it slightly
+wrong (as per how mod_speling works) then it doesn't re-escape the " " (space)
+back to "%20".
+
+(PS. if you want the patch below e-mailed as an attachment, let me know. 
+Also - I have nuke-trailing-whitespace on, so there are a few extra "bogus"
+lines in this diff.)
+>How-To-Repeat:
+
+>Fix:
+--- src/modules/standard/mod_speling.c.orig	Wed Nov 17 09:26:56 1999
++++ src/modules/standard/mod_speling.c	Wed Nov 17 09:52:00 1999
+@@ -264,7 +264,7 @@
+     filoc = ap_rind(r->filename, '/');
+     /*
+      * Don't do anything if the request doesn't contain a slash, or
+-     * requests "/" 
++     * requests "/"
+      */
+     if (filoc == -1 || strcmp(r->uri, "/") == 0) {
+         return DECLINED;
+@@ -397,9 +397,29 @@
+         qsort((void *) candidates->elts, candidates->nelts,
+               sizeof(misspelled_file), sort_by_quality);
+
++	/* 16.11.1999 nic <nic@niss.ac.uk>
++	 * This escapes the last element of the of the path.
++	 */
+
++	for ( i = 0 ; i < candidates->nelts ; ++i ) {
++	  /* Partial needs to be set because these are filenames */
++	  variant[i].name = ap_os_escape_path(r->pool,
++					      variant[i].name,
++					      1);
++	}
+
++	/* 17.11.1999 nic <nic@niss.ac.uk>
++	 * This escapes the rest of the path.
++	 */
+
++	url = ap_os_escape_path(r->pool,
++				url,
++				0);
+
+
+         /*
+-         * Conditions for immediate redirection: 
+-         *     a) the first candidate was not found by stripping the suffix 
++         * Conditions for immediate redirection:
++         *     a) the first candidate was not found by stripping the suffix
+          * AND b) there exists only one candidate OR the best match is not
+ 	 *        ambiguous
+          * then return a redirection right away.
+@@ -496,7 +516,7 @@
+                 if (i > 0 && i < candidates->nelts - 1
+                     && variant[i].quality != SP_VERYDIFFERENT
+                     && variant[i + 1].quality == SP_VERYDIFFERENT) {
+-		    *(const char **)ap_push_array(t) = 
++		    *(const char **)ap_push_array(t) =
+ 				   "</ul>\nFurthermore, the following related "
+ 				   "documents were found:\n<ul>\n";
+                 }
+@@ -519,7 +539,7 @@
+
+ 	    ap_table_mergen(r->subprocess_env, "VARIANTS",
+ 			    ap_array_pstrcat(p, v, ','));
+-	  
+
+ 	    ap_destroy_pool(sub_pool);
+
+             ap_log_rerror(APLOG_MARK, APLOG_NOERRNO | APLOG_INFO, r,
+>Release-Note:
+>Audit-Trail:
+
+From: <nic@niss.ac.uk>
+To: nic@niss.ac.uk
+Cc: apbugs@apache.org
+Subject: Re: mod_speling/5326: mod_speling does not escape URLs
+Date: Mon, 24 Jan 2000 15:28:22 +0000 (GMT)
+
+ Hi,
+ 
+ It looks like you've read my bug report and tried to fix the problem
+ in the correct manner (rather than my kludgy way) in 1.3.11.
+ 
+ However, you've only fixed it for the single choice case (line 411
+ mod_speling.c).
+ 
+ In the multiple choice case (line 471) you're still using ap_strcat
+ and not escaping the URL.
+ 
+ Here's an untested patch (for 1.3.11) based on your code for the
+ single choice case:
+ 
+ Cheers,
+ nic
+ 
+ bash$ diff -u  mod_speling.c mod_speling.c.orig 
+ --- mod_speling.c	Mon Jan 24 15:18:39 2000
+ +++ mod_speling.c.orig	Mon Jan 24 14:24:27 2000
+ @@ -468,13 +468,11 @@
+  
+  		reason = sp_reason_str[(int) (variant[i].quality)];
+                  /* The format isn't very neat... */
+ -		vuri = ap_escape_uri(sub_pool, ap_pstrcat(sub_pool, url,
+ -							  variant[i].name,
+ -							  r->path_info, NULL));
+ -		if (r->parsed_uri.query)
+ -		    vuri = ap_pstrcat(r->pool, vuri, "?", r->parsed_uri.query, NULL);
+ -
+ -
+ +		vuri = ap_pstrcat(sub_pool, url, variant[i].name, r->path_info,
+ +				  (r->parsed_uri.query != NULL) ? "?" : "",
+ +				  (r->parsed_uri.query != NULL)
+ +				      ? r->parsed_uri.query : "",
+ +				  NULL);
+  		*(const char **)ap_push_array(v) = "\"";
+  		*(const char **)ap_push_array(v) = vuri;
+  		*(const char **)ap_push_array(v) = "\";\"";
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

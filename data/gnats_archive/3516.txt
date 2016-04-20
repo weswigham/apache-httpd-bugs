@@ -1,0 +1,359 @@
+Received: (qmail 360 invoked from network); 10 Dec 1998 03:39:43 -0000
+Message-Id: <366F429D.26991EEC@kawo2.rwth-aachen.de>
+Date: Thu, 10 Dec 1998 04:40:30 +0100
+From: Michael Mess <michael@kawo2.rwth-aachen.de>
+Sender: michael@michael.kawo2.rwth-aachen.de
+To: apbugs@Apache.Org
+Subject: [PATCH] apache1.3.3 - Proxy_Substitute
+
+>Number:         3516
+>Category:       mod_proxy
+>Synopsis:       [PATCH] apache1.3.3 - Proxy_Substitute
+>Confidential:   yes
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   unknown
+>Arrival-Date:   Wed Dec  9 19:40:00 PST 1998
+>Last-Modified:  Mon Jan  4 12:53:51 PST 1999
+>Originator:     michael@kawo2.rwth-aachen.de
+>Organization:
+>Release:        
+>Environment:
+>Description:
+>How-To-Repeat:
+>Fix:
+>Audit-Trail:
+Originator-Changed-From-To: -michael@kawo2.rwth-aachen.de
+Originator-Changed-By: coar
+Originator-Changed-When: Mon Jan  4 12:53:50 PST 1999
+Class-Changed-From-To: sw-bug-change-request
+Class-Changed-By: coar
+Class-Changed-When: Mon Jan  4 12:53:50 PST 1999
+Responsible-Changed-From-To: gnats-admin-apache
+Responsible-Changed-By: coar
+Responsible-Changed-When: Mon Jan  4 12:53:50 PST 1999
+Responsible-Changed-Why:
+Putting back into mainstream bugdb.
+Category-Changed-From-To: pending-mod_proxy
+Category-Changed-By: coar
+Category-Changed-When: Mon Jan  4 12:53:50 PST 1999
+
+>Unformatted:
+This is a multi-part message in MIME format.
+
+--------------1D4A32AF5123D26E66948D56
+Content-Type: text/plain; charset=us-ascii
+Content-Transfer-Encoding: 7bit
+
+This patch makes a new substitution feature available for the proxy of
+apache.
+
+There is a configuration file /etc/proxy_substitute.conf with the
+following syntax:
+#this is a comment.
+
+substitute
+http://one.host.com/path/document1.html
+http://another.host.com/path/document1.html
+with
+http://target.host.com/directory/newpage.html
+#The proxy will return the documentation
+#http://target.host.com/directory/newpage.html
+#if the documents above are requested.
+
+substitute
+http://advertising.host.com/spamconsoles/*
+with
+http://my.host.com/close_spamconsole.html
+#This will replace a complete tree of a server with one document.
+#It is useful to replace the URLs of some domains which use 
+#popup-consoles for advertising-purposes with one which just closes
+#them. This saves network-bandwith and the surfer don't need to close
+#these popups manually.
+
+substitute
+http://my.server.com/apache-mirror/*
+with
+http://www.apache.org/*
+#This mirrors the whole apache site in a subdirectory on my.server.com
+#Note: this mirror is only visible for those who use your proxy-server.
+#So it is only useful, if you want to guide your proxy users to use a 
+#near mirror of a site to save bandwith. But those who don't use your 
+#proxy will not be affected.
+#This can also be used by parents in a home-network or teachers at
+#school to protect their children from 
+#getting access to adult material on specified sites. 
+#But this will make a really long config file...
+substitute
+http://an.ugly.sex.site.com/*
+with
+http://www.apache.org/*
+#So if your children try to access a document on an.ugly.sex.site.com
+#they will learn about apache ;-)
+
+--------------1D4A32AF5123D26E66948D56
+Content-Type: text/plain; charset=us-ascii; name="mod_proxy.diff"
+Content-Transfer-Encoding: 7bit
+Content-Disposition: inline; filename="mod_proxy.diff"
+
+*** old-mod_proxy.c	Sun Nov 29 07:12:33 1998
+--- mod_proxy.c	Thu Dec 10 03:15:57 1998
+***************
+*** 129,134 ****
+--- 129,215 ----
+      return urip - uri;
+  }
+  
++ /* ##### proxy_substitute ####### */
++ static int substitute_match(const char *uri, const char *alias_fakename)
++ {
++   const char *end_fakename = alias_fakename + strlen(alias_fakename);
++   const char *aliasp = alias_fakename, *urip = uri;
++   
++   if (strchr(aliasp, ':')) {             /* protocoll: in string? */
++     while (aliasp < end_fakename) {
++       if (*urip != *aliasp)
++ 	return 0;       
++       if (*aliasp == ':')        /* compare until ':' */
++ 	break;
++       urip++;
++       aliasp++;
++     }	
++     urip++;                     /* the char after ':' */
++     aliasp++;      
++   }
++   
++   while (aliasp < end_fakename) {
++     if (*aliasp == '/') {
++       /* any number of '/' in the alias matches any number in
++        * the supplied URI, but there must be at least one...
++        */
++       if (*urip != '/')
++ 	return 0;
++       
++       while (*aliasp == '/')
++ 	++aliasp;
++       while (*urip == '/')
++ 	++urip;
++     }
++     else {
++       /* Other characters are compared literally */
++       if (*aliasp == '*')
++ 	return urip - uri;   /* '*' matches the rest of the uri */
++       if (*urip != *aliasp)
++ 	return 0;
++       urip++;
++       aliasp++;
++     }
++   }
++   
++   /* If the URI does not end here, it does not match */
++   
++   if (*urip != '\0') 
++     return 0;
++   
++   /* Return number of characters from URI which matched (may be
++    * greater than length of alias, since we may have matched
++    * doubled slashes)
++    */
++   
++   return urip - uri;
++   
++   
++ }
++ 
++ static int freadline(FILE * datei, char *buffer, const int bufsize)
++ {
++   char *retval;
++   if (fgets(buffer, bufsize, datei)==NULL)
++     return 0;
++   else
++     {
++       retval=strchr(buffer, '\n');
++       if (retval)
++ 	{
++ 	  *retval='\0'; 
++ 	  retval=(char *)(buffer-retval);
++ 	}
++       if (buffer[0]!=*"#" && retval>=buffer)	
++ 	return (int)(retval);
++       else
++ 	return freadline(datei, buffer, bufsize);
++     }
++ }
++ 
++ /* #############   */
++ 
++ 
+  /* Detect if an absoluteURI should be proxied or not.  Note that we
+   * have to do this during this phase because later phases are
+   * "short-circuiting"... i.e. translate_names will end when the first
+***************
+*** 142,174 ****
+   */
+  static int proxy_detect(request_rec *r)
+  {
+!     void *sconf = r->server->module_config;
+!     proxy_server_conf *conf;
+! 
+!     conf = (proxy_server_conf *) ap_get_module_config(sconf, &proxy_module);
+! 
+!     if (conf->req && r->parsed_uri.scheme) {
+! 	/* but it might be something vhosted */
+!        if (!(r->parsed_uri.hostname
+! 	    && !strcasecmp(r->parsed_uri.scheme, ap_http_method(r))
+! 	    && ap_matches_request_vhost(r, r->parsed_uri.hostname,
+!                r->parsed_uri.port_str ? r->parsed_uri.port : ap_default_port(r)))) {
+! 	    r->proxyreq = 1;
+! 	    r->uri = r->unparsed_uri;
+! 	    r->filename = ap_pstrcat(r->pool, "proxy:", r->uri, NULL);
+! 	    r->handler = "proxy-server";
+!         }
+!     }
+!     /* We need special treatment for CONNECT proxying: it has no scheme part */
+!     else if (conf->req && r->method_number == M_CONNECT
+! 	     && r->parsed_uri.hostname
+! 	     && r->parsed_uri.port_str) {
+! 	    r->proxyreq = 1;
+! 	    r->uri = r->unparsed_uri;
+! 	    r->filename = ap_pstrcat(r->pool, "proxy:", r->uri, NULL);
+! 	    r->handler = "proxy-server";
+      }
+!     return DECLINED;
+  }
+  
+  static int proxy_trans(request_rec *r)
+--- 223,349 ----
+   */
+  static int proxy_detect(request_rec *r)
+  {
+!   int substmatch;   
+!   FILE *substconf;
+!   void *sconf = r->server->module_config;
+!   proxy_server_conf *conf;
+!   
+!   conf = (proxy_server_conf *) ap_get_module_config(sconf, &proxy_module);
+!   
+!   if (conf->req && r->parsed_uri.scheme) {
+!      /* but it might be something vhosted */
+!     if (!(r->parsed_uri.hostname
+! 	  && !strcasecmp(r->parsed_uri.scheme, ap_http_method(r))
+! 	  && ap_matches_request_vhost(r, r->parsed_uri.hostname,
+! 	     r->parsed_uri.port_str ? r->parsed_uri.port : ap_default_port(r)))) {
+!       r->proxyreq = 1;
+!       r->uri = r->unparsed_uri;
+!           
+!       /* ########### proxy substitute ######### */
+!       
+!       substconf=ap_pfopen(r->pool, "/etc/proxy_substitute.conf","r");
+!       
+!       if (substconf)     /* Configuration exists */
+! 	{
+! 	  
+! #define MaxLineChars 200
+! #define server_error(text) return ap_proxyerror(r, ap_pstrdup(r->pool, text))
+! 	  
+! 	  char line[MaxLineChars];
+! 	  char * match_uri;
+! 	  char * new_uri;
+! 	  char * stern;
+! 	  
+! 	  while (freadline(substconf, line, MaxLineChars)) {
+! 	    if (strcmp(line,"substitute")==0
+! 		|| strcmp(line,"Substitute")==0
+! 		|| strcmp(line,"SUBSTITUTE")==0) { /* Command found...*/ 
+! 	      while (freadline(substconf, line, MaxLineChars)) {
+! 		if (strcmp(line,"with")==0
+! 		    || strcmp(line,"With")==0
+! 		    || strcmp(line,"WITH")==0) {   /* with (no match) */
+! 		  if (freadline(substconf, line, MaxLineChars)) {
+! 		    /* everything is OK now, get next command now */
+! 		    break;
+! 		  }
+! 		  else {
+! 		    server_error("Proxy_Substitute: substitute: no match and no URL found after <b>with</b>");
+! 		  }
+! 		}
+! 		substmatch=substitute_match(r->uri,line);
+! 		if (substmatch) {
+! 		  match_uri=ap_pstrdup(r->pool, line);
+! 		  while (freadline(substconf, line, MaxLineChars)) {
+! 		    if (strcmp(line,"with")==0
+! 			|| strcmp(line,"With")==0
+! 			|| strcmp(line,"WITH")==0) {   /* with found */
+! 		      if (freadline(substconf, line, MaxLineChars)) {
+! 			if (stern=strchr(line, '*')) {
+! 			  *stern = 0;
+! 			  new_uri=ap_pstrcat(r->pool, line, &(r->uri[substmatch]), NULL);
+! 			}
+! 			else {
+! 			  new_uri=ap_pstrdup(r->pool, line);
+! 			}
+! 			if (substitute_match(r->uri,new_uri)) {
+! 			  /* new uri matches -> no substitution 
+! 			   * this is to prevent loops 
+! 			   */
+! 			} 
+! 			else {
+! 			  ap_parse_uri(r,new_uri);
+! 			  return proxy_detect(r);
+! 			}
+! 		      }
+! 		      else {
+! 			/* error: no location after with */
+! 			server_error("Proxy_Substitute: No URL after <b>with</b> found");
+! 		      }
+! 		    }   /* with has been found */
+! 		  }     /* while -- searching for with */
+! 		  /* error: no with found */
+! 		  server_error("Proxy_Substitute: No <b>with</b> found after matching URL.");
+! 		}       /* if -- match found */
+! 		else {  /* no match, continue */
+! 		}
+! 	      } /* while -- test all given urls for a match */
+! 	    }
+! 	    /* Other commands may appear here */
+! 	    if (strcmp(line,"end")==0
+! 		|| strcmp(line,"End")==0
+! 		|| strcmp(line,"END")==0) {
+! 	      break;
+! 	    }	    
+! 	  }
+! 	  
+! 	  /*
+! 	    substmatch = substitute_match(r->uri, "http://www.rwth-aachen.de/zentral");
+! 	    if (substmatch) {
+! 	    ap_parse_uri(r,"http://www.kawo2.rwth-aachen.de");
+! 	    
+! 	    return proxy_detect(r);
+! 	    r->unparsed_uri = "http://www.kawo2.rwth-aachen.de";
+! 	    *  r->proxyreq = 1;
+! 	    *  r->uri = r->unparsed_uri; 
+! 	    */
+! 	}
+!       
+!       /* ###################################### */
+!       
+!       r->filename = ap_pstrcat(r->pool, "proxy:", r->uri, NULL);
+!       r->handler = "proxy-server";
+      }
+!   }
+!   /* We need special treatment for CONNECT proxying: it has no scheme part */
+!   else if (conf->req && r->method_number == M_CONNECT
+! 	   && r->parsed_uri.hostname
+! 	   && r->parsed_uri.port_str) {
+!     r->proxyreq = 1;
+!     r->uri = r->unparsed_uri;
+!     r->filename = ap_pstrcat(r->pool, "proxy:", r->uri, NULL);
+!     r->handler = "proxy-server";
+!   }
+!   return DECLINED;
+  }
+  
+  static int proxy_trans(request_rec *r)
+
+--------------1D4A32AF5123D26E66948D56--
+

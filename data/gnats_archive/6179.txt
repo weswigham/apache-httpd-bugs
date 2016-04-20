@@ -1,0 +1,102 @@
+Received: (qmail 75501 invoked by uid 501); 13 Jun 2000 00:48:34 -0000
+Message-Id: <20000613004834.75500.qmail@locus.apache.org>
+Date: 13 Jun 2000 00:48:34 -0000
+From: David Saunders <drs8h@virginia.edu>
+Reply-To: drs8h@virginia.edu
+To: submit@bugz.apache.org
+Subject: change needed to run off Linux ext2 read-only or WORM filesystem
+X-Send-Pr-Version: 3.110
+
+>Number:         6179
+>Category:       os-linux
+>Synopsis:       change needed to run off Linux ext2 read-only or WORM filesystem
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun 12 17:50:00 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     drs8h@virginia.edu
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Slackware 7.0 CD
+Linux 2.2.13 #3 i686 unknown
+gcc version egcs-2.91.66 19990314/Linux (egcs-1.1.2)
+>Description:
+The Linux ext2 filesystem utility "chattr" enables Linux on a normal
+hard disk to mimic a CDROM or a WORM drive.  "chattr -R =i *" sets
+everything below the current directory to be "immutable", and 
+"chattr -R =Sa" sets everything to append-only.  A Linux virtual
+worm drive will consist of a mix of files in the filesystem being 
+either immutable or append-only.  (The "S" is "Sa" means that 
+the file is always synched, ie, new contents are written out immediately.)
+
+Apache's serialized accept lock file has problems in this environment.
+As coded, src/main/httpd_main.c appends the PID to the lock file name,
+and, later, attempts to create this file name prior to the actual locking
+requests by the child processes.
+
+This patch 1) removes the PID append operation to the name, and 2) changes
+the open on the file to not have O_CREAT and O_EXCL, and to have O_APPEND
+(and the original O_WRONLY).
+
+Prior to starting the server, the installer must "touch <acceptfile>" and
+"chattr =Sa <acceptfile>".
+>How-To-Repeat:
+You should be able to set the LockFile name in conf/httpd.conf, apply the
+patch, "touch" the lock file you specify, and chattr it to "=Sa".
+(Other apache files can also be append-only, or deriected to /dev/null.)
+
+Then apply the patch below, build apache and start the server.
+>Fix:
+Here's the patch.  In the long-run, I think having a conf directive would
+be better.  Also, a conf directive to enable SINGLE_LISTEN_UNSERIALIZED_ACCEPT
+might be useful for true CDROM implementations of Apache.
+
+--- http_main-old.c     Tue Jun 13 09:11:43 2000
++++ http_main.c Tue Jun 13 09:13:46 2000
+@@ -494,8 +494,8 @@
+ static void expand_lock_fname(pool *p)
+ {
+     /* XXXX possibly bogus cast */
+-    ap_lock_fname = ap_psprintf(p, "%s.%lu",
+-       ap_server_root_relative(p, ap_lock_fname), (unsigned long)getpid());
++/*    ap_lock_fname = ap_psprintf(p, "%s.%lu",
++       ap_server_root_relative(p, ap_lock_fname), (unsigned long)getpid()); */
+ }
+ #endif
+ 
+@@ -804,7 +804,7 @@
+     unlock_it.l_pid = 0;               /* pid not actually interesting */
+ 
+     expand_lock_fname(p);
+-    lock_fd = ap_popenf(p, ap_lock_fname, O_CREAT | O_WRONLY | O_EXCL, 0644);
++    lock_fd = ap_popenf(p, ap_lock_fname, O_WRONLY | O_APPEND, 0644);
+     if (lock_fd == -1) {
+        perror("open");
+        fprintf(stderr, "Cannot open lock file: %s\n", ap_lock_fname);
+
+ 
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

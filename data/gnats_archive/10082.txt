@@ -1,0 +1,68 @@
+Received: (qmail 84651 invoked by uid 501); 8 Mar 2002 10:51:44 -0000
+Message-Id: <20020308105144.84650.qmail@apache.org>
+Date: 8 Mar 2002 10:51:44 -0000
+From: Siegfried Delwiche <siegfried.delwiche@sbs.be>
+Reply-To: siegfried.delwiche@sbs.be
+To: submit@bugz.apache.org
+Subject: ErrorDocument directive for error 407 (proxy authorisation) does not work
+X-Send-Pr-Version: 3.110
+
+>Number:         10082
+>Category:       general
+>Synopsis:       ErrorDocument directive for error 407 (proxy authorisation) does not work
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Mar 08 03:00:01 PST 2002
+>Closed-Date:
+>Last-Modified:
+>Originator:     siegfried.delwiche@sbs.be
+>Release:        1.3.23
+>Organization:
+apache
+>Environment:
+All OS
+>Description:
+If you activate authentication in combination with mod_proxy, authentication errors are internally handled as server authentication (401) and then converted to proxy authentication (407). The custom error fetching must be repeated after this conversion.
+>How-To-Repeat:
+ErrorDocument 401 works (even for proxy)
+ErrorDocument 407 does not work
+>Fix:
+In http_request.c, function ap_die, replace 
+
+   if (r->status == AUTH_REQUIRED && r->proxyreq == STD_PROXY) {
+        r->status = HTTP_PROXY_AUTHENTICATION_REQUIRED;
+    }
+ by the following
+if (r->status == AUTH_REQUIRED && r->proxyreq == STD_PROXY) {
+        r->status = HTTP_PROXY_AUTHENTICATION_REQUIRED;
+	error_index = ap_index_of_response(r->status);
+        custom_response = ap_response_code_string(r, error_index);
+    }
+
+
+In addition, we should also check that the error document is local (as we do for error 401)
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,191 @@
+From nobody@hyperreal.org  Thu Jul 31 05:13:34 1997
+Received: (from nobody@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id FAA09483;
+	Thu, 31 Jul 1997 05:13:34 -0700 (PDT)
+Message-Id: <199707311213.FAA09483@hyperreal.org>
+Date: Thu, 31 Jul 1997 05:13:34 -0700 (PDT)
+From: Frederic Corne <frederic.corne@erli.fr>
+Reply-To: frederic.corne@erli.fr
+To: apbugs@hyperreal.org
+Subject: Cgi with tcp sockets don't works
+X-Send-Pr-Version: 3.2
+
+>Number:         951
+>Category:       os-windows
+>Synopsis:       Cgi with tcp sockets don't works
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jul 31 05:20:00 1997
+>Last-Modified:  Thu Jan 22 07:28:07 PST 1998
+>Originator:     frederic.corne@erli.fr
+>Organization:
+>Release:        1.3b2
+>Environment:
+NT4 Server (SP2)(build 1381)
+VC++ 4.2
+Netscape 3 browser
+Apache 1.3a1 Win32 release build.
+>Description:
+We have developped a product with cgi which are connected to a external 
+tcp server (not a web server). This works on unix (solaris, aix) with 
+apache 1.2 and on NT with Microsoft IIS, Netscape, Website...
+
+With apache 1.3a1 on NT, the cgis start but are not able to connect to 
+the server. The error pages that we have prepared in this case are correctly 
+displayed.
+>How-To-Repeat:
+here is a exemple in perl. 
+Launch the server and try the client first as a sample program, then as a cgi.
+
+the result is a sample "socket ok bind ok connect ok packet 1 packet 2 Close"
+#### the server ####
+#!/Perl/bin/perl
+($port) = @ARGV;
+$port = 2345 unless $port;
+
+$AF_INET = 2;
+$SOCK_STREAM = 1;
+
+$sockaddr = 'S n a4 x8';
+
+($name, $aliases, $proto) = getprotobyname('tcp');
+if ($port !~ /^\d+$/) {
+    ($name, $aliases, $port) = getservbyport($port, 'tcp');
+}
+
+print "Port = $port\n";
+
+$this = pack($sockaddr, $AF_INET, $port, "\0\0\0\0");
+
+select(NS); $| = 1; select(stdout);
+
+socket(S, $AF_INET, $SOCK_STREAM, $proto) || die "socket: $!";
+bind(S,$this) || die "bind: $!";
+listen(S,5) || die "connect: $!";
+
+select(S); $| = 1; select(stdout);
+
+print "Listening for connection....\n";
+
+($addr = accept(NS,S)) || die $!;
+
+print "accept ok\n";
+
+($af,$port,$inetaddr) = unpack($sockaddr,$addr);
+@inetaddr = unpack('C4',$inetaddr);
+print "$af $port @inetaddr\n";
+
+while (<NS>) {
+    print;
+    
+}
+close(NS);
+########## end of the server #########
+
+######### the client ############
+#!/Perl/bin/perl
+print "Content-type: text/html\n\n";
+
+print "<HTML><head><title>TCP Client</title><head><BODY>\n";
+
+$port = 2345;
+$them = 'localhost' ;
+
+$AF_INET = 2;
+$SOCK_STREAM = 1;
+
+$SIG{'INT'} = 'dokill';
+sub dokill {
+    kill 9,$child if $child;
+}
+
+$sockaddr = 'S n a4 x8';
+
+$hostname = "localhost";
+
+($name,$aliases,$proto) = getprotobyname('tcp');
+($name,$aliases,$port) = getservbyname($port,'tcp')
+    unless $port =~ /^\d+$/;;
+($name,$aliases,$type,$len,$thisaddr) = gethostbyname($hostname);
+($name,$aliases,$type,$len,$thataddr) = gethostbyname($them);
+
+$this = pack($sockaddr, $AF_INET, 0, $thisaddr);
+$that = pack($sockaddr, $AF_INET, $port, $thataddr);
+
+if (socket(S, $AF_INET, $SOCK_STREAM, $proto)) { 
+    print "socket ok\n";
+}
+else {
+    die $!;
+}
+
+if (bind(S, $this)) {
+    print "bind ok\n";
+}
+else {
+    die $!;
+}
+
+if (connect(S,$that)) {
+    print "connect ok\n";
+}
+else {
+    die $!;
+}
+
+select(S); $| = 1; select(STDOUT);
+
+print "packet 1\n";
+print S "packet 1\n";
+
+print "packet 2\n";
+print S "packet 2\n";
+
+print "Close\n";
+close (S);
+
+print " </BODY></HTML>\n";
+#########end of the client ########
+Release-Changed-From-To: 1.3a1 Win32-1.3a1,1.3b2
+Release-Changed-By: coar
+Release-Changed-When: Tue Oct 21 08:18:37 PDT 1997
+Category-Changed-From-To: mod_cgi-os-windows
+Category-Changed-By: coar
+Category-Changed-When: Tue Oct 21 08:18:37 PDT 1997
+
+>Fix:
+N
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: ben
+State-Changed-When: Sun Aug  3 05:37:46 PDT 1997
+State-Changed-Why:
+I've asked for source.
+Comment-Added-By: coar
+Comment-Added-When: Tue Oct 21 08:18:37 PDT 1997
+Comment-Added:
+[Text moved here from PR#1288]
+We have developped a product with cgi which are connected to a external 
+tcp server (not a web server). This works on unix (solaris, aix) with 
+apache 1.2 and on NT with Microsoft IIS, Netscape, Website...
+
+With apache 1.3a1 and now 1.3b2 on NT, the cgis start but are not able to 
+connect to the server. The error pages that we have prepared in this case
+ are correctly displayed.
+State-Changed-From-To: feedback-closed
+State-Changed-By: marc
+State-Changed-When: Wed Nov 12 14:05:57 PST 1997
+State-Changed-Why:
+This has been corrected and a fix will be available in the
+next release.
+Release-Changed-From-To: 1.3a1,1.3b2-1.3b2
+Release-Changed-By: coar
+Release-Changed-When: Thu Jan 22 07:28:07 PST 1998
+>Unformatted:
+
+

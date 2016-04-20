@@ -1,0 +1,146 @@
+From nobody@hyperreal.com  Sun May 25 13:37:05 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id NAA09791;
+	Sun, 25 May 1997 13:37:05 -0700 (PDT)
+Message-Id: <199705252037.NAA09791@hyperreal.com>
+Date: Sun, 25 May 1997 13:37:05 -0700 (PDT)
+From: Christopher Neitzert <chris@razorfish.com>
+Reply-To: chris@razorfish.com
+To: apbugs@hyperreal.com
+Subject: FIX TO BUG #605
+X-Send-Pr-Version: 3.2
+
+>Number:         620
+>Category:       config
+>Synopsis:       FIX TO BUG #605
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun May 25 13:40:00 1997
+>Originator:     chris@razorfish.com
+>Organization:
+>Release:        1.2b10
+>Environment:
+Solaris, gcc.
+>Description:
+Under normal compile of apache1.2b10 the binary fails to grab socket
+saying permission denied.  (see fix below)	
+>How-To-Repeat:
+
+>Fix:
+Dennis Sheil, <dws@earthweb.com> got me started on this fix and after
+a few moments of hacking this is what we came up with:
+
+Apparently the SOCK_STREAM variable in http_main.c is set to -1
+when it should be set to a value of 2.  This more or less is caused
+by certain versions of Perl for Solaris and the server's calls to socket.ph. (bogus file)
+Overall the variable SOCK_STREAM should _not_ be set to 1 or -1, which is the 
+case with this version of apache.
+%0
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Sun May 25 14:34:23 PDT 1997
+State-Changed-Why:
+That does not make any sense.  SOCK_STREAM is not a 
+variable, but a constant defined in a system header
+file.  On Solaris, it should be in /usr/include/sys/socket.h:
+
+#define NC_TPI_COTS     2               /* must agree with netconfig.h */
+[...]
+#define SOCK_STREAM     NC_TPI_COTS     /* stream socket */
+
+What do your include files show?  Unless you can say that
+Apache is doing something, the problem appears to be in
+your include files.  Apache does nothing with the
+SOCK_STREAM define other than use it twice.
+State-Changed-From-To: feedback-closed
+State-Changed-By: marc
+State-Changed-When: Sun Jul 20 23:11:15 PDT 1997
+State-Changed-Why:
+The fix suggested makes no sense.  There is something else
+wrong with your setup, but we tried to deal with
+that in PR#605.
+
+From: Marc Slemko <marcs@znep.com>
+To: apbugs@apache.org
+Subject: config/620
+Date: Mon, 21 Jul 1997 00:11:31 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Sun, 25 May 1997 17:49:53 -0400 (EDT)
+ From: Christopher Neitzert <chris@razorfish.com>
+ To: marc@hyperreal.com
+ Cc: apache-bugdb@apache.org, marc@apache.org
+ Subject: Re: Changed information for PR config/620
+ 
+ On Sun, 25 May 1997 marc@hyperreal.com wrote:
+ 
+ > Synopsis: FIX TO BUG #605
+ > State-Changed-From-To: open-feedback
+ > State-Changed-By: marc
+ > State-Changed-When: Sun May 25 14:34:23 PDT 1997
+ > State-Changed-Why:
+ > That does not make any sense.  SOCK_STREAM is not a 
+ > variable, but a constant defined in a system header
+ > file.  On Solaris, it should be in /usr/include/sys/socket.h:
+ > 
+ > #define NC_TPI_COTS     2               /* must agree with netconfig.h */
+ > [...]
+ > #define SOCK_STREAM     NC_TPI_COTS     /* stream socket */
+ > 
+ > What do your include files show?  Unless you can say that
+ > Apache is doing something, the problem appears to be in
+ > your include files.  Apache does nothing with the
+ > SOCK_STREAM define other than use it twice.
+ from http_main.c
+ --snip--
+     if ((s = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP)) == 2) {
+         log_unixerr("socket", NULL, "Failed to get a socket, exiting
+ child",
+                     server_conf);
+         exit(1);
+     }
+ --snip--
+ it was set to -1, I changed it, it compiled, I havent had a chance to
+ stress test it yet though.
+ 
+ >From /usr/include/sys/netconfig.h
+ 
+ --snip--
+ #define NC_TPI_COTS     2
+ --snip--
+ 
+ 
+ I see what you are saying, and then it must be with _my_ include files
+ though nearly every solaris platform I have access to would not
+ run the binary due to this error.  I am not sure if i've abnormal
+ solaris boxen or this is common.  The Apache would run untill
+ it made the socket call then exit with an error of no permission
+ to bind the socket.  --maybe a small paragraph in the faqs
+ would save others from pulling hair like i was(for all of ten minutes).
+ 
+ cheap the faith!
+ 
+ christopher neitzert
+ 
+ --
+ christopher neitzert
+         [ systems administrator ]
+                                         107 grand street   | 3rd floor
+                                 new york   | ny 10013
+        w w w . r a z o r f i s h . c o m
+ 
+ 
+>Unformatted:
+
+>Last-Modified:  Sun Jul 20 23:11:15 PDT 1997
+
+

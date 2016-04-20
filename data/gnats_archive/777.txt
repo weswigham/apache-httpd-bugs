@@ -1,0 +1,117 @@
+From nobody@hyperreal.com  Tue Jun 24 04:06:27 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id EAA06224;
+	Tue, 24 Jun 1997 04:06:27 -0700 (PDT)
+Message-Id: <199706241106.EAA06224@hyperreal.com>
+Date: Tue, 24 Jun 1997 04:06:27 -0700 (PDT)
+From: Tim Baverstock <warwick@mmm.co.uk>
+Reply-To: warwick@mmm.co.uk
+To: apbugs@hyperreal.com
+Subject: RewriteRule ... ... [R=permanent] only performs a 302 Temporary
+X-Send-Pr-Version: 3.2
+
+>Number:         777
+>Category:       mod_rewrite
+>Synopsis:       RewriteRule ... ... [R=permanent] only performs a 302 Temporary
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jun 24 04:10:01 1997
+>Originator:     warwick@mmm.co.uk
+>Organization:
+>Release:        1.2(final)
+>Environment:
+Linux stoat.mmm.co.uk 2.0.18 #1 Tue Sep 10 10:15:48 EDT 1996 i486
+>Description:
+I called this `serious' because while it behaves usefully, it's not doing
+what the docs say, and its functionality is reduced. (Don't webcrawlers
+tend to update records which claim to be permanent deletions?)
+
+In access.conf, for the whole server (not in a virtualhost directive):
+RewriteEngine on
+RewriteLog logs/rewrite_log
+RewriteLogLevel 9
+RewriteRule ^/w/(.*)$ http://www.mmm.co.uk/~warwick/$1 [R=permanent]
+
+# /etc/rc.d/init.d/httpd stop; /etc/rc.d/init.d/httpd start
+...
+# telnet stoat 80
+Trying 194.200.167.3...
+Connected to stoat.mmm.co.uk.
+Escape character is '^]'.
+GET /w/ HTTP/1.0
+
+HTTP/1.1 302 Moved Temporarily
+Date: Tue, 24 Jun 1997 10:50:11 GMT
+Server: Apache/1.2.0
+Location: http://www.mmm.co.uk/~warwick/
+...
+
+In logs/rewrite_log:
+stoat.mmm.co.uk - - [24/Jun/1997:11:46:51 +0100] [stoat.mmm.co.uk/sid#808dacc][r
+id#809e3ec/initial] (2) init rewrite engine with requested uri /w/
+stoat.mmm.co.uk - - [24/Jun/1997:11:46:51 +0100] [stoat.mmm.co.uk/sid#808dacc][r
+id#809e3ec/initial] (2) rewrite /w/ -> http://www.mmm.co.uk/~warwick/
+stoat.mmm.co.uk - - [24/Jun/1997:11:46:51 +0100] [stoat.mmm.co.uk/sid#808dacc][r
+id#809e3ec/initial] (1) escaping http://www.mmm.co.uk/~warwick/ for redirect
+stoat.mmm.co.uk - - [24/Jun/1997:11:46:51 +0100] [stoat.mmm.co.uk/sid#808dacc][r
+id#809e3ec/initial] (1) redirect to http://www.mmm.co.uk/~warwick/ [REDIRECT/302
+]
+
+>How-To-Repeat:
+You can ask stoat.mmm.co.uk:80 for things during UK working hours. :)
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Sun Jul 13 19:29:46 PDT 1997
+State-Changed-Why:
+Patch applied to 1.3 development tree.  Thanks for the
+report.  A copy of the patch is being send via mail.
+
+From: Marc Slemko <marcs@znep.com>
+To: apbugs@apache.org
+Subject: Re: mod_rewrite/777: RewriteRule ... ... [R=permanent] only performs a 302 Temporary
+Date: Sun, 13 Jul 1997 20:33:15 -0600 (MDT)
+
+ 
+ The below patch fixes the problem.  
+ 
+ Index: mod_rewrite.c
+ ===================================================================
+ RCS file: /export/home/cvs/apache/src/mod_rewrite.c,v
+ retrieving revision 1.31
+ diff -c -r1.31 mod_rewrite.c
+ *** mod_rewrite.c	1997/06/22 03:45:00	1.31
+ --- mod_rewrite.c	1997/07/05 19:53:34
+ ***************
+ *** 1624,1629 ****
+ --- 1624,1630 ----
+              and the current URL still is not a fully qualified one we
+              finally prefix it with http[s]://<ourname> explicitly */
+           if (flags & RULEFLAG_FORCEREDIRECT) {
+ +             r->status = p->forced_responsecode;
+               if (  !(strlen(r->filename) > 7 &&
+                       strncmp(r->filename, "http://", 7) == 0)
+                  && !(strlen(r->filename) > 8 &&
+ ***************
+ *** 1659,1665 ****
+                   else
+                       rewritelog(r, 2, "[per-dir %s] prepare forced redirect %s -> %s", perdir, r->filename, newuri);
+                   r->filename = pstrdup(r->pool, newuri);
+ -                 r->status = p->forced_responsecode;
+                   return 1;
+               }
+           }
+ --- 1660,1665 ----
+ 
+>Unformatted:
+
+>Last-Modified:  Sun Jul 13 19:29:47 PDT 1997
+
+

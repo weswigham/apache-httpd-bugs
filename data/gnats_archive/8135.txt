@@ -1,0 +1,83 @@
+Received: (qmail 79006 invoked by uid 501); 4 Aug 2001 04:33:27 -0000
+Message-Id: <20010804043327.79005.qmail@apache.org>
+Date: 4 Aug 2001 04:33:27 -0000
+From: Olivier Falandry <of@model-fx.com>
+Reply-To: of@model-fx.com
+To: submit@bugz.apache.org
+Subject: RLimitNPROC has no effect when running CGI scripts under suEXEC
+X-Send-Pr-Version: 3.110
+
+>Number:         8135
+>Category:       suexec
+>Synopsis:       RLimitNPROC has no effect when running CGI scripts under suEXEC
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Aug 03 21:40:00 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     of@model-fx.com
+>Release:        1.3.14
+>Organization:
+apache
+>Environment:
+Linux 2.2.18 i686 Glibc 2.1.2 gcc version egcs-2.91.66 19990314/Linux (egcs-1.1.2 release)
+>Description:
+As described in bug #6017 (among others), RLimitNPROC does not have any effect when used in conjunction with suEXEC. With the gain in popularity of simple to use and socket-friendly tools such as PHP, anyone can DoS even a medium-sized server without hurting his fingers, by using copy-pasted code such as :
+
+#!/usr/bin/php -q
+<?php
+$i = 0;
+while ($i < 1000) {
+    $fp = fsockopen ("www.unluckydotcom.com", 80, $errno, $errstr, 10);
+    if (!$fp) {
+        echo "$errstr ($errno)\n";
+    } else {
+        fputs ($fp,"GET /fat.cgi HTTP/1.1\r\n");
+        fputs ($fp,"Host: www.unluckydotcom.com\r\n\r\n");
+        fclose ($fp);
+    }
+    $i++;
+}
+?>
+
+And I can assure you that b0red teenagers on IRC saturdays night don't pass the opportunity.
+
+On a shared hosting environment, you cannot enforce safe script programming for each of your hundreds of customers, and you are bound to get one or two frozen servers each month, specially if you host high-profile sites...
+
+I rated this problem as SERIOUS, because any 6-years-old kid with a modem can DoS your server with a simple BROWSER. huh.
+>How-To-Repeat:
+1. configure a vhost or server with RLimitNPROC 4 4 - for exemple
+2. start a "top d 1" session on this server
+3. load a fat and long running cgi script on this vhost and hit "reload" 20 times very quickly.
+4. watch in despair as the 20 first lines of your "top" are filled with the cgi script's name...
+>Fix:
+As _not_ using suEXEC is not appealing (RLimitNPROC becomes global), the only solution we found was to install mod_throttle_access to limit the number of concurrent accesses to a given Location. It works "tant bien que mal".
+
+cheers;
+
+-OF
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

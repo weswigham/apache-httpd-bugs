@@ -1,0 +1,167 @@
+From dgaudet@arctic.org  Sun Aug 17 20:50:28 1997
+Received: from sierra.zyzzyva.com (ppp0-sierra.zyzzyva.com [208.214.59.46])
+	by hyperreal.org (8.8.5/8.8.5) with ESMTP id UAA12432
+	for <apbugs@apache.org>; Sun, 17 Aug 1997 20:50:26 -0700 (PDT)
+Message-Id: <Pine.LNX.3.95dg3.970817202435.6685H-100000@twinlark.arctic.org>
+Date: Sun, 17 Aug 1997 20:27:35 -0700 (PDT)
+From: Dean Gaudet <dgaudet@arctic.org>
+To: TLOSAP <new-httpd@apache.org>
+Cc: apbugs@apache.org
+In-Reply-To: <Pine.BSF.3.95.970817135139.27023G-100000@alive.znep.com>
+Subject: Re: general/161: Questionable performace of  mod_dir() with negotiation (fwd)
+
+>Number:         1006
+>Category:       other
+>Synopsis:       Re: general/161: Questionable performace of  mod_dir() with negotiation (fwd)
+>Confidential:   yes
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          mistaken
+>Submitter-Id:   unknown
+>Arrival-Date:   Sun Aug 17 21:00:02 1997
+>Last-Modified:  Thu Jan 22 09:22:18 PST 1998
+>Originator:     dgaudet@arctic.org
+>Organization:
+>Release:        
+>Environment:
+>Description:
+>How-To-Repeat:
+>Fix:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Mon Aug 18 09:37:03 PDT 1997
+State-Changed-Why:
+Mistakenly entered as a new PR; text attached to the
+right one.
+Originator-Changed-From-To: -dgaudet@arctic.org
+Originator-Changed-By: coar
+Originator-Changed-When: Mon Aug 18 09:37:03 PDT 1997
+Class-Changed-From-To: sw-bug-mistaken
+Class-Changed-By: coar
+Class-Changed-When: Mon Aug 18 09:37:03 PDT 1997
+Severity-Changed-From-To: serious-
+Severity-Changed-By: coar
+Severity-Changed-When: Mon Aug 18 09:37:03 PDT 1997
+Responsible-Changed-From-To: gnats-admin (GNATS administrator)-dgaudet
+Responsible-Changed-By: coar
+Responsible-Changed-When: Mon Aug 18 09:37:03 PDT 1997
+Responsible-Changed-Why:
+"Each dog barks in its own yard.%2
+Category-Changed-From-To: pending-other
+Category-Changed-By: coar
+Category-Changed-When: Mon Aug 18 09:37:03 PDT 1997
+
+Responsible-Changed-From-To: dgaudet-apache
+Responsible-Changed-By: coar
+Responsible-Changed-When: Thu Jan 22 09:22:18 PST 1998
+Responsible-Changed-Why:
+Putting back into mainstream bugdb
+>Unformatted:
+
+This could be suspended pending the implementation of a promte_request()
+function.  We did a lot of cleanup around 1.2b8 with the request
+promotion that handle_multi() uses (Petr Lampa pointed out most of the
+bugs actually).
+
+He also pointed out the inefficiency of mod_dir+negotiation in that both of
+them do readdir()s on the same directory.  Caching would be really nice.
+
+Dean
+
+On Sun, 17 Aug 1997, Marc Slemko wrote:
+
+> This was suspended pending the release of 1.2...
+> 
+> ---------- Forwarded message ----------
+> Date: Wed, 5 Feb 1997 14:30:01 -0800 (PST)
+> From: Petr Lampa <lampa@fee.vutbr.cz>
+> To: gnats-admin@hyperreal.org
+> Cc: brian@hyperreal.org, apache-bugdb@apache.org
+> Subject: general/161: Questionable performace of  mod_dir() with negotiation
+> 
+> 
+> >Number:         161
+> >Category:       general
+> >Synopsis:       Questionable performace of  mod_dir() with negotiation
+> >Confidential:   no
+> >Severity:       serious
+> >Priority:       medium
+> >Responsible:    gnats-admin (GNATS administrator)
+> >State:          open
+> >Class:          sw-bug
+> >Submitter-Id:   apache
+> >Arrival-Date:   Wed Feb  5 14:30:01 1997
+> >Originator:     lampa@fee.vutbr.cz
+> >Organization:
+> apache
+> >Release:        1.2b2, b3, b4, b6
+> >Environment:
+> FreeBSD-2.2BETA
+> >Description:
+> Problem reported for 1.2b2, still unresolved.
+> 
+> handle_multi() style shortcut redirect (fixed) would be
+> nice for other modules. For instance mod_dir()
+> would be much faster using such redirection.
+> Iff you trace calls for http://www.xxx/, you'll see, 
+> that mod_negotiation() is called twice for the same URI
+> due to standard redirect:
+> / -> mod_dir() -> /Welcome.html -> handle_multi() -> select /Welcome.html.en ->
+> mod_dir() -> redirect -> /Welcome.html -> handle_multi() again!
+> This could be a serious performance hit.
+> 
+> >How-To-Repeat:
+> 
+> >Fix:
+> Use redirection shortcut similar to the handle_multi():
+> 
+> *** mod_dir.c.old   Sun Dec  1 21:28:59 1996
+> --- mod_dir.c    Mon Dec 30 19:20:49 1996
+> ***************
+> *** 803,811 ****
+>                  new_uri = pstrcat(r->pool, new_uri, "?", rr->args, NULL);
+>              else if (r->args != NULL)
+>                  new_uri = pstrcat(r->pool, new_uri, "?", r->args, NULL);
+> !
+> !            destroy_sub_req (rr);
+> !            internal_redirect (new_uri, r);
+>              return OK;
+>         }
+> 
+> --- 790,815 ----
+>               new_uri = pstrcat(r->pool, new_uri, "?", rr->args, NULL);
+>            else if (r->args != NULL)
+>               new_uri = pstrcat(r->pool, new_uri, "?", r->args, NULL);
+> !
+> !         if (r->path_info && *r->path_info == '/') ++r->path_info; /* eat o
+> ne slash for directory "/d'/'/ -> /d/index.html/" */
+> !         r->filename = rr->filename;
+> !         r->handler = rr->handler;
+> !         r->content_type = rr->content_type;
+> !         r->content_encoding = rr->content_encoding;
+> !         r->content_languages = rr->content_languages;
+> !         r->content_language = rr->content_language;
+> !         r->finfo = rr->finfo;
+> !     /* We don't want TRACE to run through the normal handler set,
+> !      * we handle it specially.
+> !      */
+> !         if (r->method_number == M_TRACE) send_http_trace (r);
+> !         else if ((error_notfound = invoke_handler (r)) != 0) {
+> !             die (error_notfound, r);
+> !             return;
+> !         }
+> !
+> !    /* Take care of little things that need to happen when we're done */
+> !         finalize_request_protocol (r);
+>           return OK;
+>       }
+> %0
+> >Audit-Trail:
+> >Unformatted:
+> 
+> 
+> 
+

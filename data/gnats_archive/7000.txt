@@ -1,0 +1,113 @@
+Received: (qmail 83074 invoked by uid 501); 20 Dec 2000 13:15:39 -0000
+Message-Id: <20001220131539.83073.qmail@locus.apache.org>
+Date: 20 Dec 2000 13:15:39 -0000
+From: Andras Gyalai - K. <andrasg@email.com>
+Reply-To: andrasg@email.com
+To: submit@bugz.apache.org
+Subject: JServ Wrapper - big number of "Internal Server Error" responses on heavily loaded systems
+X-Send-Pr-Version: 3.110
+
+>Number:         7000
+>Category:       mod_jserv
+>Synopsis:       JServ Wrapper - big number of "Internal Server Error" responses on heavily loaded systems
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Dec 20 05:20:01 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     andrasg@email.com
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+RedHat Linux 6.2, Apache 1.3.12, Apache JServ 1.1.2, JDK 1.2.2, JSDK 2.0
+>Description:
+I found out, that some problems, related to big number of "Internal
+Server Error" messages from Apache, cames when it tries to execute Java
+servlets with JServ.
+
+In order to simulate a real situation, I made a simple test script, which
+sends a couple of HTTP requests, using curl or wget or any available
+command-line HTTP tool, in a loop, creating processes in the background to
+simulate the concurrent connection requests.
+
+All the errors came because the JServ`s Apache connector module is killing
+the Java Virtual Machine and starting a new one.
+
+First I thougt the problem is with the servlets, I made a new JServ
+configuration, on which I put only a simplest servlet possible, a "Hello
+world" servlet, which just send a simple HTTP page back to the client,
+containing the text Hello World. The results were the same.
+
+I found out two problems which causes them:
+
+
+When the incoming request came from Apache to JServ, JServ
+will first try to contact the Java Virtual Machine on the JVM큦 port, in
+order to execute the corresponding servlet. When there is a heavily loaded
+system, e.g. big number of parallel requests came, the system is busy
+executing these requests (including spawning new httpd processes), and the
+Java Virtual Machine does not have enough CPU time available to be able to
+respond to the JServ큦 contacting requests, making JServ to think there is a
+problem with the Java Virtual Machine. This is the problem, than JServ will
+kill the JVM process and will start a new one, but also JServ is written in
+Java and it will not be able to work (except the Apache connector, of
+course) for the time the Java Virtual Machine is restarted. In this time,
+only the JServ큦 Apache connector will function, which will try to send the
+incoming requests to a program which is not running and since it will fail
+with this, an Internal Server Error is
+generated. 
+
+The other reason is a wrong documented setting of the JServ listener
+program, the security.backlog property, which is documented to be a fine
+tuning socket property, which should be left with his default value, in most
+cases, but this setting will set in fact the number of parallel connections
+which can be accepted by JServ, not only the security.maxconnections
+setting, as it is in the JServ큦 documentation. When the number of requests
+are higher then the default security.backlog property큦 value (which is 5),
+the other requests are rejected by the JServ, and the connector will also
+not know how to handle
+this and it returns an "Internal Server Error" result. A good approach to
+this problem seems to set the backlog property to the same value as the
+maxconnections property.
+
+I tried also to test with Tomcat, but I had the same problem.
+
+
+>How-To-Repeat:
+simple script which sends in a loop more http requests, approximately in the same time, e.g. curl http://localhost/myzone/myServlet &
+>Fix:
+This is a design problem I think, in the Unix wrapper code,
+instead of stopping itself by restarting the JVM should wait until the JVM
+became available, e.g. sleeping the new incoming requests when JVM is not responding.
+
+I hope it can this information help the JServ development, to solve these
+problems, I saw other Apache/Java Servlet Engine connector modules, written
+also in C, which had a very nice solution like if no JVM available (e.g.
+timeout) then sleeping the incoming request`s new process until the JVM is
+available.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,97 @@
+Received: (qmail 10560 invoked by uid 2012); 29 Nov 1999 08:19:08 -0000
+Message-Id: <19991129081908.10559.qmail@hyperreal.org>
+Date: 29 Nov 1999 08:19:08 -0000
+From: Marko "Pölönen" <mpolonen@shire.ntc.nokia.com>
+Reply-To: mpolonen@shire.ntc.nokia.com
+To: apbugs@hyperreal.org
+Subject: tmpnam(NULL) doesn't work when -lpthread in link.
+X-Send-Pr-Version: 3.2
+
+>Number:         5383
+>Category:       os-hpux
+>Synopsis:       tmpnam(NULL) doesn't work when -lpthread in link.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Nov 29 00:20:02 PST 1999
+>Closed-Date:    Wed May 03 11:02:09 PDT 2000
+>Last-Modified:  Wed May 03 11:02:09 PDT 2000
+>Originator:     mpolonen@shire.ntc.nokia.com
+>Release:        1.3.9
+>Organization:
+>Environment:
+HP-UX sirion B.11.00 A 9000/782 2005651274 two-user license
+HP C/ANSI C Compiler B.11.01.06 
+>Description:
+Htpasswd, htdigest and mod_auth_digest use tmpnam(NULL), which won't
+work in HP-UX 11 if -lpthread is in link. 
+
+I got the following from HP's tech support:
+
+"This is covered by the man page for tpmnam().
+
+$ man tmpnam
+....
+   tmpnam()       Always generates a file name using the path-prefix
+                  .....
+                  in that array and returns s.  For multi-thread
+                  applications, if s is a NULL pointer, the
+                  operation is not performed and a NULL pointer is
+                  returned.
+
+ie for multi-threaded applications you need to supply the address of
+the buffer tmpnam should use."
+>How-To-Repeat:
+I built apache with:
+CC=cc CFLAGS="-g +e" \
+./configure --prefix=/usr/local/apache_1.3.9 \
+            --enable-module=rewrite
+make
+
+Now try to run htpasswd in src/support:
+
+$ ./htpasswd -c test test
+New password: ....
+Re-type new password: ....
+./htpasswd: unable to create temporary file
+fopen: No such file or directory
+>Fix:
+Either remove -lpthread from LIBS in src/Configure (that's what I did
+as I couldn't figure out any reason to use -lpthread in link phase)
+or if it is needed to link with -lpthread provide a pointer 
+(to array of at leas L_tmpnam bytes) to tmpnam call.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Wed May  3 11:02:08 PDT 2000
+State-Changed-Why:
+As of the next release after 1.3.12, Apache will pass a
+buffer in to tmpnam(), avoiding this problem.  Thanks!
+
+Category-Changed-From-To: general-os-hpux
+Category-Changed-By: coar
+Category-Changed-When: Wed May  3 11:02:08 PDT 2000
+
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

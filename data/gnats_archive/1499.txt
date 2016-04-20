@@ -1,0 +1,204 @@
+Received: (qmail 27105 invoked by uid 2012); 1 Dec 1997 19:09:47 -0000
+Message-Id: <19971201190947.27104.qmail@hyperreal.org>
+Date: 1 Dec 1997 19:09:47 -0000
+From: David Pisoni <david@cnation.com>
+Reply-To: david@cnation.com
+To: apbugs@hyperreal.org
+Subject: Server ceases answering requests, remains running silently despite SIGUSR1 or SIGHUP.
+X-Send-Pr-Version: 3.2
+
+>Number:         1499
+>Category:       os-unixware
+>Synopsis:       Server ceases answering requests, remains running silently despite SIGUSR1 or SIGHUP.
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Dec  1 11:10:00 PST 1997
+>Last-Modified:  Wed Jan 21 15:51:20 PST 1998
+>Originator:     david@cnation.com
+>Organization:
+>Release:        1.2.4
+>Environment:
+uname -a ==> UNIX_SV brahms 4.2MP 2.1 i386 x86at
+UnixWare 2.1.2 (SVR4.2MP), proprietary compiler, dual 200mhz-Pentium system
+>Description:
+The server at random times ceases to answer requests (indefinately) until restarted.  SIGUSR1 and SIGHUP transmissal will be logged, but will not revive server.
+This server was running quite normally with one virtual host on a quiet web site.  I moved a busy web site to the server, with a handful of virtual hosts, and this problem began happening.
+As a stop gap measure over the weekend, I was forced to make a cron-job restart the server every half hour.
+I tried recompiling the server with USE_SO_LINGER, with similar results.  I tried running the server with KeepAlive Off with similar results.
+
+I also recompiled without _POSIX_SOURCE (it was the only known UnixWare bug I could find in the database.)
+I also made sure that USE_FCNTL_SERIALIZED_ACCEPT was defined in the compile, per the very first known bug regarding multiple listens.
+
+There is no core dump, as the server processes continue to run despite their ineptitude.
+
+In a 'netstat' of a frozen server, there is not an excessive amount of FIN_WAIT_2, but rather an "average" mix of statuses.
+There are more statuses than server children running, however.
+
+>How-To-Repeat:
+The server has two primary web sites on it :
+<http://www.cdprojects.com>
+<http://www2.capcom.com>
+
+They may or may not work when you try them.  The cron job will restart the server at 20 and 40 past each hour.
+>Fix:
+Not a clue.  All I know is that the server has been working fine until I added more VH's.
+The machine is quite powerful (dual 200mhz-pentiums), and so it should be able to take a major beating.
+I can supply conf files on request, as well as STDERR from a 'make'.
+
+Hmm, perusing the docs again, I re-read the section on multiple listens.  It is possible that this is the problem (since I added other listens to the config file),
+but the supposed fix is defining USE_FCNTL_SERIALIZED_ACCEPT, which is already defined in the SVR4 section of the 'conf.h' file. Hmm.
+
+%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Wed Dec  3 14:55:36 PST 1997
+State-Changed-Why:
+Do you have all the latest SCO networking patches applied?
+Traditionally, SCO stuff has often had broken networking.
+
+If you can, give it a try using gcc for a compiler.  This has sometimes
+resolved such problems.
+
+What happens when it doesn't answer requests?  Are connectiosn refused?
+Do you connect and just have nothing answer?  What is running
+in the way of processes when this happens?  Anything in the
+error log?  If SCO has something like ktrace/strace/ptrace/truss/etc.
+to trace system calls, see what the child processes are doing.
+Try using a debugger on the child processes after recompiling
+with -g in EXTRA_CFLAGS to see where they child processes
+are when it hangs.
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: os-unixware/1499: Server ceases answering requests, remains running silently despite SIGUSR1 or SIGHUP. (fwd)
+Date: Thu, 4 Dec 1997 16:49:10 -0700 (MST)
+
+ ---------- Forwarded message ----------
+ Date: Thu, 4 Dec 1997 15:25:43 -0800
+ From: David Alan Pisoni <david@cnation.com>
+ To: marc@hyperreal.org
+ Subject: Re: os-unixware/1499: Server ceases answering requests, remains running silently despite SIGUSR1 or SIGHUP.
+ 
+ -----BEGIN PGP SIGNED MESSAGE-----
+ Hash: SHA1
+ 
+ Content-Transfer-Encoding: quoted-printable
+ 
+ >Synopsis: Server ceases answering requests, remains running silently=
+  despite SIGUSR1 or SIGHUP.
+ >
+ >State-Changed-From-To: open-analyzed
+ >State-Changed-By: marc
+ >State-Changed-When: Wed Dec  3 14:55:36 PST 1997
+ >State-Changed-Why:
+ >Do you have all the latest SCO networking patches applied?
+ >Traditionally, SCO stuff has often had broken networking.
+ >
+ 
+ No, I just checked on that.  I found a recently posted omnibus network=
+  patch, but was unable to apply it because of a glitch (it wasn't=
+  recognizing my OS version.)  I've contacted SCO about the problem, they=
+  should respond within the milennium.
+ 
+ >If you can, give it a try using gcc for a compiler.  This has sometimes
+ >resolved such problems.
+ >
+ 
+ I have had problems with the gcc distributed at the SCO FTP site, and=
+  haven't had the time (or wherewithal) to go through the lenghty source=
+  compiliation process required for a good gcc build.
+ 
+ >What happens when it doesn't answer requests? Are connectiosn refused?
+ >Do you connect and just have nothing answer? =20
+ The latter occurs.  Nice happy TCP 80's appear in the netstat, and the=
+  client will report "Host Contacted, waiting for reply", but just silence.
+ =46YI - I attempted to access the web server (when in this state) from the=
+  same machine (I used telnet), then looked at netstat.  The client process=
+  was in "FIN_WAIT_2", while the server process was in "ESTABLISHED" (I=
+  believe. I don't remember exactly.  I just remember think it very strange."
+ 
+ Ahh, just tried it again, but with a different result (though I made a=
+  configuration change, explained below.) =20
+ 
+ >What is running in the way of processes when this happens?
+ 
+ I imagine around 15 or so, which I think is what I have startservers set at.
+ 
+ >Anything in the error log?
+ Nope.
+ 
+ >If SCO has something like ktrace/strace/ptrace/truss/etc.
+ >to trace system calls, see what the child processes are doing.
+ >Try using a debugger on the child processes after recompiling
+ >with -g in EXTRA_CFLAGS to see where they child processes
+ >are when it hangs.
+ 
+ Before I dive into that, I wanna try the network patches.
+ 
+ Okay, since my last contact, I changed the configuration to disable all the=
+  "Listen" directives and their cooresponding Vhosts.  I had hoped this would=
+  be a temporary fix.  No such luck, though the behaviour seems more consista=
+ nt.
+ Now the netstat table is filling up with mostly 'CLOSE_WAIT's and to a=
+  lesser degree 'ESTABLISHED's, with a small handful of 'FIN_WAIT_1's.  The=
+  server is now actually refusing connections, as opposed to opening them and=
+  then ignoring them.  This looks more and more like a kernel networking=
+  problem, but I will get back to you after I get the damn patch installed. =
+  This doesn't cause a general denial of service -- only the web server=
+  hangs, but I can telnet in to HUP it.  Oh, and I forgot to mention, in it's=
+  present state (after changing the configuration) it now recovers with a HUP=
+  (where previously it quietly logged the HUP but still did not change its=
+  abberant behaviour.)
+ 
+ In short, I think that there is a kernel networking problem causing my aches=
+  now, but I'm not sure if the patch will fix the problem with multiple=
+  "Listen"s (which was supposedly fixed by USE_FCNTL_SERIALIZED_ACCEPT.) =20
+ 
+ I will get back to you with what I discover.
+ 
+ Thanks for your time,
+ 
+ 
+ David Pisoni, System Administrator
+ CyberNation, LLC -- Web Design for the Next Milennium
+ david@cnation.com - http://www.cnation.com/
+ 310/656-3450  -  310/656-3453 (fax)
+ 
+ 
+ -----BEGIN PGP SIGNATURE-----
+ Version: PGP for Personal Privacy 5.0
+ Charset: noconv
+ 
+ iQA/AwUBNIc8Aj8po64ro8iIEQJ/fgCgwcjcKxNmhgufpCxNPuijcz5qRz4AniTl
+ IfnqLq5WuYNtKni8TU7+fghw
+ =OcMT
+ -----END PGP SIGNATURE-----
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Wed Jan 21 15:51:19 PST 1998
+State-Changed-Why:
+As of 1.3b4 apache will define USE_FCNTL_SERIALIZED_ACCEPT for
+unixware.  This has solved a very similar problem for another
+user with unixware 2.1.2 on an SMP machine.  You can give it a
+try by adding -DUSE_FCNTL_SERIALIZED_ACCEPT to EXTRA_CFLAGS and
+recompiling.
+
+I notice that you were looking in the SYSV4 section of conf.h,
+unixware has its own section, look for UW.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

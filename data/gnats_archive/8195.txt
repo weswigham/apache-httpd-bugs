@@ -1,0 +1,78 @@
+Received: (qmail 13212 invoked by uid 501); 17 Aug 2001 06:24:27 -0000
+Message-Id: <20010817062427.13211.qmail@apache.org>
+Date: 17 Aug 2001 06:24:27 -0000
+From: Dongqiang Bai <bai@dreamarts.co.jp>
+Reply-To: bai@dreamarts.co.jp
+To: submit@bugz.apache.org
+Subject: ap_unparse_uri_components() steals ->query info when ->path is NULL
+X-Send-Pr-Version: 3.110
+
+>Number:         8195
+>Category:       apache-api
+>Synopsis:       ap_unparse_uri_components() steals ->query info when ->path is NULL
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Aug 16 23:30:01 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     bai@dreamarts.co.jp
+>Release:        1.3.20
+>Organization:
+apache
+>Environment:
+OS: Linux(acturally all OS)
+PATCH: without any patch
+Compiler: gcc(actually un-related)
+>Description:
+I'm writing apache modules using ap_* functions.
+
+Looking at such html tag:
+<FORM action="?act=1">
+
+Use ap_parse_uri_componets() to parse the URI "?act=1", then use ap_unparse_uri_components() to recover the URI, you will get the different results, and the convert=>revert result is an empty string "".
+
+This was not a problem in apache_1.3.14.
+>How-To-Repeat:
+Look at the source code of apache_1.3.20/src/main/util_uri.c:line 250 is better.
+Or insert following test code into apache to be called and do debug:
+------------------
+void test_ap_unparse_uri_components(pool *anypool)
+{
+  uri_components *uptr = ap_pcalloc(anypool, sizeof(uri_components));
+  int status = ap_parse_uri_components(anypool, "?act=1", uptr);
+  char *new_uri = ap_unparse_uri_components(anypool, uptr, 0);
+
+  // verify the new_uri became empty here
+  if (strlen(new_uri) == 0)
+    // this shows the problem
+    exit(1);
+}
+>Fix:
+Add one line before 250 line of util_uri.c:
+line 250: +)    if (uptr->path)
+line 251:  )       parts[j++] = uptr->path;
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

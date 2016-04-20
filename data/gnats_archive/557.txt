@@ -1,0 +1,171 @@
+From nobody@hyperreal.com  Wed May  7 16:03:02 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id QAA01045;
+	Wed, 7 May 1997 16:03:02 -0700 (PDT)
+Message-Id: <199705072303.QAA01045@hyperreal.com>
+Date: Wed, 7 May 1997 16:03:02 -0700 (PDT)
+From: Malcolm Ramsay <eek@airmail.net>
+Reply-To: eek@airmail.net
+To: apbugs@hyperreal.com
+Subject: ~UserHome directories are not honored in absolute pathname requests (.htaccess)
+X-Send-Pr-Version: 3.2
+
+>Number:         557
+>Category:       mod_auth-any
+>Synopsis:       ~UserHome directories are not honored in absolute pathname requests (.htaccess)
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    contrib@apache.org
+>State:          suspended
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed May  7 16:10:01 1997
+>Last-Modified:  Mon Feb 23 03:42:02 PST 1998
+>Originator:     eek@airmail.net
+>Organization:
+>Release:        1.2b10
+>Environment:
+FreeBSD 2.2.1, gcc (testing platform)
+>Description:
+While it may be a security hole to implement AuthUserFile access to a
+relative directory (the reason for the absolute pathname now) it should still
+be considered that an active user's home directory is still a valid non-
+relative directory.
+
+The implementation is to remove burdens from sysadmins who would have to 
+provide end-users full pathnames for their directories.  Also to allow these
+directories to be portable in future when the customer/user moves their home
+directory.  No need to provide end-users with their absolute directory since
+it would equal their username (~username) in this instance.
+>How-To-Repeat:
+Replication of this problem requires a user called "testing" with a home
+directory of "/usr/local/customer/home" and a standard user or group 
+configured htaccess/htpasswd file as follows:
+
+----".htaccess" file------
+AuthUserFile ~testing/.htpasswd 
+AuthGroupFile /dev/null
+AuthName Testing Server
+AuthType Basic
+<limit GET>
+require valid-user
+</Limit>
+
+---".htpasswd" file------
+testing:<standard crypt>
+---
+
+Place this file in a user's home directory.  Point apache to it via a 
+<VirtualHost> directive with an IP alias, and you will get a failure that it
+cannot locate the file "~testing/.htaccess"... while using the full absolute
+path works correctly.
+>Fix:
+The following patch will take a "~" from a filename request and attempt to
+resolve the username path.  If it can be resolved, it uses it, otherwise the
+filename is used as-is, with the current security provisions remaining.
+
+*** alloc.c	1997/05/04 22:52:59	1.1
+--- alloc.c	1997/05/04 23:12:15
+***************
+*** 828,850 ****
+    register_cleanup (p, (void *)fp, file_cleanup, file_child_cleanup);
+  }
+  
+  FILE *pfopen(pool *a, const char *name, const char *mode)
+  {
+    FILE *fd = NULL;
+    int baseFlag, desc;
+  
+    block_alarms();
+  
+    if (*mode == 'a') {
+      /* Work around faulty implementations of fopen */
+      baseFlag = (*(mode+1) == '+') ? O_RDWR : O_WRONLY;
+!     desc = open(name, baseFlag | O_APPEND | O_CREAT,
+  		S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+      if (desc >= 0) {
+        fd = fdopen(desc, mode);
+      }
+    } else {
+!     fd = fopen(name, mode);
+    }
+  
+    if (fd != NULL) note_cleanups_for_file (a, fd);
+--- 828,876 ----
+    register_cleanup (p, (void *)fp, file_cleanup, file_child_cleanup);
+  }
+  
++ #include <pwd.h>
++ char *get_upath(n)
++ char *n;
++ {
++ 	char *p;
++ 	static struct passwd *pw, *getpwnam();
++ 	if ((pw=getpwnam(n)) != (struct passwd *) NULL) 
++ 		return(pw->pw_dir);
++ 	return(n);
++ }
++ 		
+  FILE *pfopen(pool *a, const char *name, const char *mode)
+  {
+    FILE *fd = NULL;
++   char fname[1024];
++   char tmp[1024];
+    int baseFlag, desc;
++   if (*name == '~') { /* assume user name expansion requested */
++ 	char *p, *r;;
++ 	strcpy(tmp, name);
++ 	if ((p=strchr(tmp, '/')) != (char *) NULL ) {
++ 		*p='\0'; /* null it out*/
++ 		p++; /* put it on the start of the path */
++ 		r=tmp; 
++ 		r++; /* skip past the ~ */
++ 		sprintf(fname, "%s/%s", get_upath(r), p);
++ 		} else  /* found no /'s give up */
++ 		  strcpy(fname, name);
++ 	} else 
++ 		strcpy(fname, name);
+  
+    block_alarms();
+  
+    if (*mode == 'a') {
+      /* Work around faulty implementations of fopen */
+      baseFlag = (*(mode+1) == '+') ? O_RDWR : O_WRONLY;
+!     desc = open(fname, baseFlag | O_APPEND | O_CREAT,
+  		S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+      if (desc >= 0) {
+        fd = fdopen(desc, mode);
+      }
+    } else {
+!     fd = fopen(fname, mode);
+    }
+  
+    if (fd != NULL) note_cleanups_for_file (a, fd);
+%0
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: coar
+State-Changed-When: Thu May  8 03:04:24 PDT 1997
+State-Changed-Why:
+Thank you for the suggestion.  1.2 is in feature freeze now,
+so I'm suspending this report for future consideration.
+Thank you for using Apache!
+Class-Changed-From-To: sw-bug-change-request
+Class-Changed-By: coar
+Class-Changed-When: Thu May  8 03:04:24 PDT 1997
+Category-Changed-From-To: general-mod_auth-any
+Category-Changed-By: coar
+Category-Changed-When: Thu May  8 03:04:24 PDT 1997
+
+Release-Changed-From-To: 1.2b10 and previous-1.2b10
+Release-Changed-By: coar
+Release-Changed-When: Thu Jan 22 08:42:18 PST 1998
+Responsible-Changed-From-To: apache-contrib@apache.org
+Responsible-Changed-By: dgaudet
+Responsible-Changed-When: Mon Feb 23 03:42:02 PST 1998
+Responsible-Changed-Why:
+mark this for contrib%0
+>Unformatted:
+
+

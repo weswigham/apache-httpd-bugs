@@ -1,0 +1,193 @@
+Received: (qmail 26780 invoked by uid 2012); 29 Jul 1999 17:46:55 -0000
+Message-Id: <19990729174655.26779.qmail@hyperreal.org>
+Date: 29 Jul 1999 17:46:55 -0000
+From: Victor Pulver <victor.pulver@latimes.com>
+Reply-To: victor.pulver@latimes.com
+To: apbugs@hyperreal.org
+Subject: mod_proxy incorrectly caches responses which contain a set-cookie
+X-Send-Pr-Version: 3.2
+
+>Number:         4793
+>Category:       mod_proxy
+>Synopsis:       mod_proxy incorrectly caches responses which contain a set-cookie
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jul 29 10:50:01 PDT 1999
+>Last-Modified:  Thu Jul 29 13:20:01 PDT 1999
+>Originator:     victor.pulver@latimes.com
+>Organization:
+apache
+>Release:        1.3.6
+>Environment:
+SunOS latimes10.su-colo.bbnplanet.com 5.6 Generic_105181-08 sun4u sparc SUNW,Ultra-Enterprise
+>Description:
+Responses which contain a set-cookie should not be cached by a proxy server 
+(quoting from http://home.netscape.com/newsref/std/cookie_spec.html :
+ When caching HTTP, as a proxy server might do, the Set-cookie response header should never be cached. )
+
+>How-To-Repeat:
+
+>Fix:
+In file porxy_cache.c, at approximately line 880:
+
+after the line
+
+	ap_table_get(r->headers_in, "Authorization") != NULL ||
+
+add the line
+
+	ap_table_get(resp_hdrs, "Set-Cookie") != NULL ||
+	
+>Audit-Trail:
+
+From: Dirk-Willem van Gulik <dirkx@webweaving.org>
+To: Victor Pulver <victor.pulver@latimes.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_proxy/4793: mod_proxy incorrectly caches responses which
+ contain a set-cookie
+Date: Thu, 29 Jul 1999 22:12:39 +0200 (CEST)
+
+ You are right, somethng is not correct here, looking at rfc261, which
+ skimps the issue(though does list a number of prama's we really should
+ check for), and rfc2109. 
+ 
+ But as you can see it needs a few more check's for other headers to be
+ compliant with rfc2109, which is a standards track document. And I'd
+ prefer to go that way. I will look into this tomorrow. I am still looking
+ for anything authoritative for http/1.0 but I fear that it does not exist.
+ 
+ In which it makes sense to follow the gist of your suggestion.
+ 
+ Dw.
+ 
+ From 2109:
+ 
+ 4.2.3  Controlling Caching
+ 
+    An origin server must be cognizant of the effect of possible caching
+    of both the returned resource and the Set-Cookie header.  Caching
+    "public" documents is desirable.  For example, if the origin server
+    wants to use a public document such as a "front door" page as a
+    sentinel to indicate the beginning of a session for which a Set-
+    Cookie response header must be generated, the page should be stored
+    in caches "pre-expired" so that the origin server will see further
+    requests.  "Private documents", for example those that contain
+    information strictly private to a session, should not be cached in
+    shared caches.
+ 
+    If the cookie is intended for use by a single user, the Set-cookie
+    header should not be cached.  A Set-cookie header that is intended to
+    be shared by multiple users may be cached.
+ 
+    The origin server should send the following additional HTTP/1.1
+    response headers, depending on circumstances:
+ 
+    * To suppress caching of the Set-Cookie header: Cache-control: no-
+      cache="set-cookie".
+ 
+    and one of the following:
+ 
+    * To suppress caching of a private document in shared caches: Cache-
+      control: private.
+ 
+    * To allow caching of a document and require that it be validated
+      before returning it to the client: Cache-control: must-revalidate.
+ 
+    * To allow caching of a document, but to require that proxy caches
+      (not user agent caches) validate it before returning it to the
+      client: Cache-control: proxy-revalidate.
+ 
+    * To allow caching of a document and request that it be validated
+      before returning it to the client (by "pre-expiring" it):
+      Cache-control: max-age=0.  Not all caches will revalidate the
+      document in every case.
+ 
+    HTTP/1.1 servers must send Expires: old-date (where old-date is a
+    date long in the past) on responses containing Set-Cookie response
+    headers unless they know for certain (by out of band means) that
+    there are no downsteam HTTP/1.0 proxies.  HTTP/1.1 servers may send
+    other Cache-Control directives that permit caching by HTTP/1.1
+    proxies in addition to the Expires: old-date directive; the Cache-
+    Control directive will override the Expires: old-date for HTTP/1.1
+    proxies.
+ 
+ 
+ 
+ 
+ On 29 Jul 1999, Victor Pulver wrote:
+ 
+ > 
+ > >Number:         4793
+ > >Category:       mod_proxy
+ > >Synopsis:       mod_proxy incorrectly caches responses which contain a set-cookie
+ > >Confidential:   no
+ > >Severity:       serious
+ > >Priority:       medium
+ > >Responsible:    apache
+ > >State:          open
+ > >Class:          sw-bug
+ > >Submitter-Id:   apache
+ > >Arrival-Date:   Thu Jul 29 10:50:01 PDT 1999
+ > >Last-Modified:
+ > >Originator:     victor.pulver@latimes.com
+ > >Organization:
+ > apache
+ > >Release:        1.3.6
+ > >Environment:
+ > SunOS latimes10.su-colo.bbnplanet.com 5.6 Generic_105181-08 sun4u sparc SUNW,Ultra-Enterprise
+ > >Description:
+ > Responses which contain a set-cookie should not be cached by a proxy server 
+ > (quoting from http://home.netscape.com/newsref/std/cookie_spec.html :
+ >  When caching HTTP, as a proxy server might do, the Set-cookie response header should never be cached. )
+ > 
+ > >How-To-Repeat:
+ > 
+ > >Fix:
+ > In file porxy_cache.c, at approximately line 880:
+ > 
+ > after the line
+ > 
+ > 	ap_table_get(r->headers_in, "Authorization") != NULL ||
+ > 
+ > add the line
+ > 
+ > 	ap_table_get(resp_hdrs, "Set-Cookie") != NULL ||
+ > 	
+ > >Audit-Trail:
+ > >Unformatted:
+ > [In order for any reply to be added to the PR database, you need]
+ > [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ > [subject line starts with the report component and number, with ]
+ > [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ > ["Re: general/1098:").  If the subject doesn't match this       ]
+ > [pattern, your message will be misfiled and ignored.  The       ]
+ > ["apbugs" address is not added to the Cc line of messages from  ]
+ > [the database automatically because of the potential for mail   ]
+ > [loops.  If you do not include this Cc, your reply may be ig-   ]
+ > [nored unless you are responding to an explicit request from a  ]
+ > [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ > 
+ > 
+ > 
+ > 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

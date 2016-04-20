@@ -1,0 +1,166 @@
+Received: (qmail 10933 invoked by uid 2012); 18 Feb 1999 02:42:58 -0000
+Message-Id: <19990218024258.10932.qmail@hyperreal.org>
+Date: 18 Feb 1999 02:42:58 -0000
+From: Teo Chee Keong <ckteo@mas.gov.sg>
+Reply-To: ckteo@mas.gov.sg
+To: apbugs@hyperreal.org
+Subject: Syntax Error in httpd.conf: Expected </Directory> but saw </Directory>
+X-Send-Pr-Version: 3.2
+
+>Number:         3913
+>Category:       os-aix
+>Synopsis:       Syntax Error in httpd.conf: Expected </Directory> but saw </Directory>
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Feb 17 18:50:01 PST 1999
+>Last-Modified:  Thu Feb 18 16:50:02 PST 1999
+>Originator:     ckteo@mas.gov.sg
+>Organization:
+>Release:        1.3.*
+>Environment:
+AIX 4.3.2 OS, C for AIX Compiler 4.4
+>Description:
+After compiling and installing 1.3.*, httpd fails to start with the following error:
+"Syntax error on line 285 of /apache/conf/httpd.conf:
+Expected </Directory> but saw </Directory>"
+
+This is a known problem due to a bug in the C for AIX compiler. Check PR 2312, 2534, 2664, 2853, and 3042 for more details. However, it was mentioned in PR 2312 that the PTF or fix to resolve it would be out only in Apr 99 for C for AIX 4.4 by IBM.
+
+What I can suggest here is a solution for those who cannot wait till Apr 99 or are using an older version of C for AIX.
+>How-To-Repeat:
+
+>Fix:
+Yes, but you need to do a few things:
+
+First, edit the http_core.c file. Made the following changes to the end_nested_section() function as follow:
+===========================================================
+static const char *end_nested_section(cmd_parms *cmd, void *dummy)
+{
+    int answercode=123;
+
+    if (cmd->end_token == NULL) {
+        return ap_pstrcat(cmd->pool, cmd->cmd->name,
+                          " without matching <", cmd->cmd->name + 2,
+                          " section", NULL);
+    }
+    /*
+     * This '!=' may look weird on a string comparison, but it's correct --
+     * it's been set up so that checking for two pointers to the same datum
+     * is valid here.  And faster.
+     */
+
+    /* Modification by Teo Chee Keong to work with AIX 4.3.2 and
+       C for AIX compiler 4.4
+       Date Modified: 12/02/99
+     */
+
+    /* if (cmd->cmd->name != cmd->end_token) {  <-- replaced by line below */
+
+    if(strcmp(cmd->cmd->name,cmd->end_token)) {
+        return ap_pstrcat(cmd->pool, "Expected ", cmd->end_token, " but saw ",
+                          cmd->cmd->name, NULL);
+    }
+    return cmd->end_token;
+}
+=============================================================
+The above amendment uses the traditional string comparsion routine (which is slower)  instead of the so-called "weird" "!=" operator. Remember to include strings.h in the beginning of the file. This would only made Apache server slower when reading configuration files and should not affect run-time performance.
+
+Next, you may also need to modify function ap_md5() in util_md5.c as the C for AIX compiler may be quite strict on implicit data type conversion. The amendment below does this:
+=================================================
+API_EXPORT(char *) ap_md5(pool *p, const unsigned char *string)
+{
+    /* Modification by Teo Chee Keong for AIX 4.3.2 and C for AIX Compiler 4.4
+       Date modified: 12/02/99
+       Modified due to stricter checking by C for AIX compiler on data types
+    */
+    const char *ckteo;            /* declare tmp variable        */
+    ckteo=(const char *)string;   /* forced data type conversion */
+    return ap_md5_binary(p, string, strlen(ckteo));
+}
+===========================================
+
+Lastly, recompile again ,ie, run make again. I have tried this method on my machine and it works.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: shaneo@raleigh.ibm.com
+State-Changed-When: Thu Feb 18 06:53:02 PST 1999
+State-Changed-Why:
+See PR 2312, and also the FAQ.
+It is a bug in your compiler.
+
+From: "Teo Chee Keong" <ckteo@mas.gov.sg>
+To: shaneo@raleigh.ibm.com
+Cc: Apache-Bugdb@Apache.Org,
+	apbugs@Apache.Org
+Subject: Re: os-aix/3913: Syntax Error in httpd.conf: Expected </Directory
+	> but saw </Directory>
+Date: Fri, 19 Feb 1999 08:42:25 +0800
+
+ I know that it is a bug in the IBM's AIX C compiler. What I have submitted
+ is actually a temporary solution to go around the problem until the fix for
+ the bug is available in Apr 99 (for those using the latest version of C for
+ AIX) or for those who are using an older version of C for AIX compiler
+ where no more support is available.
+ 
+ My motive is to help those who are currently facing the same problem as me
+ to continue to deploy Apache in AIX without delay.
+ 
+ Lastly, I also hope you can update me when the PTF is available. Thanks!
+ 
+ 
+ 
+ 
+ 
+ shaneo@raleigh.ibm.com
+ 18/02/99 10:53 PM
+ 
+ To:   apache-bugdb@apache.org, Teo Chee Keong/ITD/MAS/SG,
+       shaneo@raleigh.ibm.com
+ cc:
+ Subject:  Re: os-aix/3913: Syntax Error in httpd.conf: Expected
+       </Directory> but saw </Directory>
+ 
+ 
+ 
+ 
+ [In order for any reply to be added to the PR database, ]
+ [you need to include <apbugs@Apache.Org> in the Cc line ]
+ [and leave the subject line UNCHANGED.  This is not done]
+ [automatically because of the potential for mail loops. ]
+ [If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request ]
+ [from a developer.                                      ]
+ [Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+ 
+ 
+ Synopsis: Syntax Error in httpd.conf: Expected </Directory> but saw
+ </Directory>
+ 
+ State-Changed-From-To: open-closed
+ State-Changed-By: shaneo@raleigh.ibm.com
+ State-Changed-When: Thu Feb 18 06:53:02 PST 1999
+ State-Changed-Why:
+ See PR 2312, and also the FAQ.
+ It is a bug in your compiler.
+ 
+ 
+ 
+ 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

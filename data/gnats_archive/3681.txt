@@ -1,0 +1,96 @@
+Received: (qmail 3804 invoked by uid 2012); 15 Jan 1999 16:37:03 -0000
+Message-Id: <19990115163703.3803.qmail@hyperreal.org>
+Date: 15 Jan 1999 16:37:03 -0000
+From: Doug Yatcilla <yatcilda@umdnj.edu>
+Reply-To: yatcilda@umdnj.edu
+To: apbugs@hyperreal.org
+Subject: C compiler options beginning with "+" causes error in src/Configure
+X-Send-Pr-Version: 3.2
+
+>Number:         3681
+>Category:       config
+>Synopsis:       C compiler options beginning with "+" causes error in src/Configure
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jan 15 08:40:01 PST 1999
+>Last-Modified:  Tue Apr 20 21:39:50 PDT 1999
+>Originator:     yatcilda@umdnj.edu
+>Organization:
+>Release:        1.3.4
+>Environment:
+HP-UX B.10.20 E ; HP C complier
+>Description:
+Some HP C complier options start with a "+" rather than a "-"
+(such as "+z" to generate position independent code and "+DAmodel" to
+cross compile for another HP "model" architecture.)  
+
+Apparently, the "src/Configure" program assumes each CFLAGS option
+begins with a "-" and will create a bad $AP_CONFIG_AUTO_H header file
+when "+" complier options are used.
+>How-To-Repeat:
+I want to build apache to work on many HP systems:
+
+CFLAGS="+DAportable" \
+./configure --prefix=/products/apache
+
+But, when I try to make, it stops due to syntax error in src/include/ap_config_auto.h: 
+
+...
+/* build flag: -DUSE_HSREGEX +DAportable */
+#ifndef USE_HSREGEX +DAportable
+#define USE_HSREGEX +DAportable 1
+#endif
+...
+
+The other CFLAGS set by configure are:
+-DHPUX10 -Aa -D_HPUX_SOURCE -DUSE_HSREGEX 
+
+>Fix:
+src/Configure-dist is what came with apache1.3.4
+
+I think this (or equivalent) change to sed string is needed anytime 
+all C complier options are assumed to only begin with "-"
+
+> diff -c src/Configure src/Configure-dist
+*** src/Configure       Fri Jan 15 11:30:45 1999
+--- src/Configure-dist  Wed Jan 13 12:19:09 1999
+***************
+*** 1816,1822 ****
+  TEXTRA_CFLAGS=`egrep '^EXTRA_CFLAGS=' Makefile.config | tail -1 |\
+               sed -e 's;^EXTRA_CFLAGS=;;' -e 's;\`.*\`;;'`
+  tmpstr=`echo $CFLAGS $TEXTRA_CFLAGS |\
+!       sed -e 's;[     ]\([-+]\);!\1;g' -e 's/\\\"/\"/g' -e 's/\([^\\]\)"/\1/g'`
+  OIFS="$IFS"
+  IFS='!'
+  for cflag in $tmpstr; do
+--- 1816,1822 ----
+  TEXTRA_CFLAGS=`egrep '^EXTRA_CFLAGS=' Makefile.config | tail -1 |\
+               sed -e 's;^EXTRA_CFLAGS=;;' -e 's;\`.*\`;;'`
+  tmpstr=`echo $CFLAGS $TEXTRA_CFLAGS |\
+!       sed -e 's;[     ]-;!-;g' -e 's/\\\"/\"/g' -e 's/\([^\\]\)"/\1/g'`
+  OIFS="$IFS"
+  IFS='!'
+  for cflag in $tmpstr; do
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 21:39:50 PDT 1999
+State-Changed-Why:
+looks like someone else already did this in 1.3.6.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

@@ -1,0 +1,631 @@
+Received: (qmail 7366 invoked by uid 2012); 21 Apr 1998 06:25:43 -0000
+Message-Id: <19980421062543.7365.qmail@hyperreal.org>
+Date: 21 Apr 1998 06:25:43 -0000
+From: M.D.Parker <mdpc@netcom.com>
+Reply-To: mdpc@netcom.com
+To: apbugs@hyperreal.org
+Subject: LogFormat directives are not "inherited"
+X-Send-Pr-Version: 3.2
+
+>Number:         2090
+>Category:       mod_log-any
+>Synopsis:       LogFormat directives are not "inherited"
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Apr 20 23:30:01 PDT 1998
+>Last-Modified:  Tue Jun 16 23:50:00 PDT 1998
+>Originator:     mdpc@netcom.com
+>Organization:
+>Release:        1.3b6
+>Environment:
+UNIX
+>Description:
+I had an httpd.conf file containing lines ordered:
+
+LogFormat "...blah..." nickname
+.
+.
+.
+<VirtualHost 10.0.0.1>
+CustomLog filename nickname
+.
+.
+
+What happens is that the nickname is not expanded to reference the
+previous LogFormat nickname.
+
+Examination of the documentation is UNCLEAR about this but would seem to
+indicate that as most directives, this one if defined in a more global
+scope in the configuration file, should apply to the VirtualHosts.
+
+This seems to be a scoping issue here.
+>How-To-Repeat:
+Oh yes...easy
+>Fix:
+I'm in favor of a code fix to allow LogFormat statements to be carried 
+globally and apply (if not redefined) within a lower VirtualHost section
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Mon Jun  8 21:40:50 PDT 1998
+State-Changed-Why:
+waiting to see if Christof's patch solves the problem.
+
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: "M.D.Parker" <mdpc@netcom.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_log-any/2090: LogFormat directives are not "inherited"
+Date: Mon, 8 Jun 1998 21:45:36 -0700 (PDT)
+
+ Here is a patch provided by Christof Damian <damian@mediaconsult.com>.  It
+ has been applied to 1.3.1-dev... you can pick up a snapshot at
+ ftp://dev.apache.org/httpd/from-cvs/ in a few hours. 
+ 
+ Tell me if it solves your problem.
+ 
+ Thanks
+ Dean
+ 
+ *** mod_log_config.c-orig	Sun Jun  7 12:28:50 1998
+ --- mod_log_config.c	Sun Jun  7 12:48:36 1998
+ ***************
+ *** 215,220 ****
+ --- 215,221 ----
+    */
+   
+   typedef struct {
+ +     char *default_format_string;
+       array_header *default_format;
+       array_header *config_logs;
+       array_header *server_config_logs;
+ ***************
+ *** 232,237 ****
+ --- 233,239 ----
+   
+   typedef struct {
+       char *fname;
+ +     char *format_string;
+       array_header *format;
+       int log_fd;
+   #ifdef BUFFERED_LOGS
+ ***************
+ *** 782,787 ****
+ --- 784,790 ----
+       multi_log_state *mls = (multi_log_state *) ap_palloc(p, sizeof(multi_log_state));
+   
+       mls->config_logs = ap_make_array(p, 1, sizeof(config_log_state));
+ +     mls->default_format_string = NULL;
+       mls->default_format = NULL;
+       mls->server_config_logs = NULL;
+       mls->formats = ap_make_table(p, 4);
+ ***************
+ *** 800,812 ****
+ --- 803,841 ----
+   {
+       multi_log_state *base = (multi_log_state *) basev;
+       multi_log_state *add = (multi_log_state *) addv;
+ +     char *format;
+ +     const char *dummy;
+   
+       add->server_config_logs = base->config_logs;
+       if (!add->default_format) {
+ +         add->default_format_string = base->default_format_string;
+           add->default_format = base->default_format;
+       }
+       add->formats = ap_overlay_tables(p, base->formats, add->formats);
+   
+ +     if (add->default_format_string) {
+ +       format = ap_table_get(add->formats, add->default_format_string);
+ +       if (format) {
+ +         add->default_format = parse_log_string(p, format, &dummy);
+ +       };
+ +     }    
+ + 
+ +     if (add->config_logs) {
+ +       config_log_state *clsarray = (config_log_state *) add->config_logs->elts;
+ +       int i;
+ + 
+ +       for (i = 0; i < add->config_logs->nelts; ++i) {
+ +         config_log_state *cls = &clsarray[i];
+ + 
+ +         if (cls->format_string) {
+ +           format = ap_table_get(add->formats, cls->format_string);
+ +           if (format) {
+ +             cls->format = parse_log_string(p, format , &dummy);
+ +           }
+ +         }
+ +       }
+ +     }
+ + 
+       return add;
+   }
+   
+ ***************
+ *** 817,823 ****
+                                 char *name)
+   {
+       const char *err_string = NULL;
+ -     char *format;
+       multi_log_state *mls = ap_get_module_config(cmd->server->module_config,
+                                                &config_log_module);
+   
+ --- 846,851 ----
+ ***************
+ *** 833,846 ****
+           }
+       }
+       else {
+ !         /*
+ !          * See if we were given a name rather than a format string.
+ !          */
+ !         format = ap_table_get(mls->formats, fmt);
+ !         if (format == NULL) {
+ !             format = fmt;
+ !         }
+ !         mls->default_format = parse_log_string(cmd->pool, format, &err_string);
+       }
+       return err_string;
+   }
+ --- 861,868 ----
+           }
+       }
+       else {
+ !         mls->default_format_string = fmt;
+ !         mls->default_format = parse_log_string(cmd->pool, fmt, &err_string);
+       }
+       return err_string;
+   }
+ ***************
+ *** 852,868 ****
+       multi_log_state *mls = ap_get_module_config(cmd->server->module_config,
+                                                &config_log_module);
+       config_log_state *cls;
+ -     char *format;
+   
+       cls = (config_log_state *) ap_push_array(mls->config_logs);
+       cls->fname = fn;
+       if (!fmt) {
+           cls->format = NULL;
+       }
+       else {
+ !         format = ap_table_get(mls->formats, fmt);
+ !         format = (format != NULL) ? format : fmt;
+ !         cls->format = parse_log_string(cmd->pool, format, &err_string);
+       }
+       cls->log_fd = -1;
+   
+ --- 874,888 ----
+       multi_log_state *mls = ap_get_module_config(cmd->server->module_config,
+                                                &config_log_module);
+       config_log_state *cls;
+   
+       cls = (config_log_state *) ap_push_array(mls->config_logs);
+       cls->fname = fn;
+ +     cls->format_string = fmt;
+       if (!fmt) {
+           cls->format = NULL;
+       }
+       else {
+ !         cls->format = parse_log_string(cmd->pool, fmt, &err_string);
+       }
+       cls->log_fd = -1;
+   
+ 
+ 
+
+From: "M. D. Parker" <mdpc@netcom.com>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_log-any/2090: LogFormat directives are not "inherited"
+Date: Tue, 9 Jun 98 13:19:11 PDT
+
+ The patch installs without issue.  Preliminary testing shows
+ that the patch does indeed fix the problem.
+ 
+ Thanks! :-)
+ 
+ Mike
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Jun  9 17:10:34 PDT 1998
+State-Changed-Why:
+christof's patch solves the problem.
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Oliver von Bueren <ovb@ovb.ch>
+Cc: "M. D. Parker" <mdpc@netcom.com>, Johnie Ingram <johnie@debian.org>,
+  Christof Damian <damian@mediaconsult.com>, apbugs@apache.org
+Subject: Re: mod_log-any/2090: LogFormat directives are not "inherited"
+Date: Wed, 10 Jun 1998 13:39:15 -0700 (PDT)
+
+ Christof -- a small bug in your patch.  I think you need to delay the
+ parsing of log formats until the open_multi_logs point like I suggested,
+ rather than in the merging point... because the main server is never
+ merged (there's nothing to merge into it).  Can I trouble you to fix that?=
+ =20
+ :)=20
+ 
+ Dean
+ 
+ On Wed, 10 Jun 1998, Oliver von Bueren wrote:
+ 
+ > Hello Everybody.
+ >=20
+ > On Tue, 9 Jun 98 16:39:02 PDT, you wrote:
+ >=20
+ > >There is a patch apparently made available to me for
+ > >testing, in the bug report....and for me IT WORKS!
+ > >It can be used in the 1.3.0 release server as well.
+ > >
+ > >The patch is contained in my problem report on the
+ > >Apache web site (PR#2090)
+ >=20
+ > Thanks for the pointer, applied and tested it too. It works for all
+ > virtual hosts but it broke the logfile outside a virtualhost
+ > definition. Now this file has just the text "common" in it. Don't have
+ > time to look into it any closer but if you need more informaten just
+ > ask.
+ >=20
+ >=20
+ >        Cheers,
+ >        Oliver
+ >=20
+ >  /---------------------------------------------------------------------\
+ >  =A6 Oliver von Bueren                                        ovb@ovb.ch =
+ =A6
+ >  =A6 Schlierenstr. 42                                         www.ovb.ch =
+ =A6
+ >  =A6 8142 Uitikon                                            Switzerland =
+ =A6
+ >  =A6 VoicePhone: ++41-1-4958181                                          =
+ =A6
+ >  =A6 Attention: TimeZone GMT+1 -> VoiceCalls only 09.00-21.00 local time =
+ =A6
+ >  \---------------------------------------------------------------------/
+ >=20
+ 
+State-Changed-From-To: closed-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Wed Jun 10 13:55:12 PDT 1998
+State-Changed-Why:
+still not completely fixed
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Jun 16 23:40:47 PDT 1998
+State-Changed-Why:
+fixed by christof's update to his patch
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: mod_log-any/2090: LogFormat directives are not "inherited" (fwd)
+Date: Tue, 16 Jun 1998 23:51:55 -0700 (PDT)
+
+   This message is in MIME format.  The first part should be readable text,
+   while the remaining parts are likely unreadable without MIME-aware tools.
+   Send mail to mime@docserver.cac.washington.edu for more info.
+ 
+ --------------23269446CC34D6EBA8014F75
+ Content-Type: TEXT/PLAIN; CHARSET=us-ascii
+ Content-ID: <Pine.LNX.3.96dg4.980616235152.22555I@twinlark.arctic.org>
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Thu, 11 Jun 1998 10:00:31 +0100
+ From: Christof Damian <damian@mediaconsult.com>
+ Organization: mediaconsult ltd.
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Cc: Johnie Ingram <johnie@debian.org>
+ Subject: Re: mod_log-any/2090: LogFormat directives are not "inherited"
+ 
+ Dean Gaudet wrote:
+ > 
+ > Christof -- a small bug in your patch.  I think you need to delay the
+ > parsing of log formats until the open_multi_logs point like I suggested,
+ > rather than in the merging point... because the main server is never
+ > merged (there's nothing to merge into it).  Can I trouble you to fix that?
+ > :)
+ 
+ ups - I thought I checked that.
+ 
+ Attached is a patch against 1.60 (cvs tree) and one against 1.59 (1.3.0)
+ I don't know which one you prefer.
+ 
+ damian
+ -- 
+ Christof Damian                
+ Technical Director             
+ http://www.mediaconsult.com/     ( btw: mediaconsult is hiring )
+ 
+ --------------23269446CC34D6EBA8014F75
+ Content-Type: TEXT/PLAIN; CHARSET=us-ascii; NAME="diff-1.59"
+ Content-ID: <Pine.LNX.3.96dg4.980616235152.22555J@twinlark.arctic.org>
+ Content-Description: 
+ 
+ Index: src/modules/standard/mod_log_config.c
+ ===================================================================
+ RCS file: /cvs/apache-1.3/src/modules/standard/mod_log_config.c,v
+ retrieving revision 1.59
+ diff -c -r1.59 mod_log_config.c
+ *** mod_log_config.c	1998/05/29 08:18:51	1.59
+ --- mod_log_config.c	1998/06/11 08:54:02
+ ***************
+ *** 215,220 ****
+ --- 215,221 ----
+    */
+   
+   typedef struct {
+ +     char *default_format_string;
+       array_header *default_format;
+       array_header *config_logs;
+       array_header *server_config_logs;
+ ***************
+ *** 232,237 ****
+ --- 233,239 ----
+   
+   typedef struct {
+       char *fname;
+ +     char *format_string;
+       array_header *format;
+       int log_fd;
+   #ifdef BUFFERED_LOGS
+ ***************
+ *** 782,787 ****
+ --- 784,790 ----
+       multi_log_state *mls = (multi_log_state *) ap_palloc(p, sizeof(multi_log_state));
+   
+       mls->config_logs = ap_make_array(p, 1, sizeof(config_log_state));
+ +     mls->default_format_string = NULL;
+       mls->default_format = NULL;
+       mls->server_config_logs = NULL;
+       mls->formats = ap_make_table(p, 4);
+ ***************
+ *** 803,808 ****
+ --- 806,812 ----
+   
+       add->server_config_logs = base->config_logs;
+       if (!add->default_format) {
+ +         add->default_format_string = base->default_format_string;
+           add->default_format = base->default_format;
+       }
+       add->formats = ap_overlay_tables(p, base->formats, add->formats);
+ ***************
+ *** 817,823 ****
+                                 char *name)
+   {
+       const char *err_string = NULL;
+ -     char *format;
+       multi_log_state *mls = ap_get_module_config(cmd->server->module_config,
+                                                &config_log_module);
+   
+ --- 821,826 ----
+ ***************
+ *** 833,846 ****
+           }
+       }
+       else {
+ !         /*
+ !          * See if we were given a name rather than a format string.
+ !          */
+ !         format = ap_table_get(mls->formats, fmt);
+ !         if (format == NULL) {
+ !             format = fmt;
+ !         }
+ !         mls->default_format = parse_log_string(cmd->pool, format, &err_string);
+       }
+       return err_string;
+   }
+ --- 836,843 ----
+           }
+       }
+       else {
+ !         mls->default_format_string = fmt;
+ !         mls->default_format = parse_log_string(cmd->pool, fmt, &err_string);
+       }
+       return err_string;
+   }
+ ***************
+ *** 852,868 ****
+       multi_log_state *mls = ap_get_module_config(cmd->server->module_config,
+                                                &config_log_module);
+       config_log_state *cls;
+ -     char *format;
+   
+       cls = (config_log_state *) ap_push_array(mls->config_logs);
+       cls->fname = fn;
+       if (!fmt) {
+           cls->format = NULL;
+       }
+       else {
+ !         format = ap_table_get(mls->formats, fmt);
+ !         format = (format != NULL) ? format : fmt;
+ !         cls->format = parse_log_string(cmd->pool, format, &err_string);
+       }
+       cls->log_fd = -1;
+   
+ --- 849,863 ----
+       multi_log_state *mls = ap_get_module_config(cmd->server->module_config,
+                                                &config_log_module);
+       config_log_state *cls;
+   
+       cls = (config_log_state *) ap_push_array(mls->config_logs);
+       cls->fname = fn;
+ +     cls->format_string = fmt;
+       if (!fmt) {
+           cls->format = NULL;
+       }
+       else {
+ !         cls->format = parse_log_string(cmd->pool, fmt, &err_string);
+       }
+       cls->log_fd = -1;
+   
+ ***************
+ *** 935,940 ****
+ --- 930,943 ----
+                                                &config_log_module);
+       config_log_state *clsarray;
+       const char *dummy;
+ +     char *format;
+ + 
+ +     if (mls->default_format_string) {
+ + 	format = ap_table_get(mls->formats, mls->default_format_string);
+ + 	if (format) {
+ + 	    mls->default_format = parse_log_string(p, format, &dummy);
+ + 	}
+ +     }    
+   
+       if (!mls->default_format) {
+           mls->default_format = parse_log_string(p, DEFAULT_LOG_FORMAT, &dummy);
+ ***************
+ *** 945,950 ****
+ --- 948,960 ----
+           for (i = 0; i < mls->config_logs->nelts; ++i) {
+               config_log_state *cls = &clsarray[i];
+   
+ + 	    if (cls->format_string) {
+ + 		format = ap_table_get(mls->formats, cls->format_string);
+ + 		if (format) {
+ + 		    cls->format = parse_log_string(p, format, &dummy);
+ + 		}
+ + 	    }
+ + 
+               cls = open_config_log(s, p, cls, mls->default_format);
+           }
+       }
+ ***************
+ *** 952,957 ****
+ --- 962,974 ----
+           clsarray = (config_log_state *) mls->server_config_logs->elts;
+           for (i = 0; i < mls->server_config_logs->nelts; ++i) {
+               config_log_state *cls = &clsarray[i];
+ + 
+ + 	    if (cls->format_string) {
+ + 		format = ap_table_get(mls->formats, cls->format_string);
+ + 		if (format) {
+ + 		    cls->format = parse_log_string(p, format, &dummy);
+ + 		}
+ + 	    }
+   
+               cls = open_config_log(s, p, cls, mls->default_format);
+           }
+ 
+ --------------23269446CC34D6EBA8014F75
+ Content-Type: TEXT/PLAIN; CHARSET=us-ascii; NAME="diff-1.60"
+ Content-ID: <Pine.LNX.3.96dg4.980616235152.22555K@twinlark.arctic.org>
+ Content-Description: 
+ 
+ Index: src/modules/standard/mod_log_config.c
+ ===================================================================
+ RCS file: /cvs/apache-1.3/src/modules/standard/mod_log_config.c,v
+ retrieving revision 1.60
+ diff -c -r1.60 mod_log_config.c
+ *** mod_log_config.c	1998/06/09 04:36:47	1.60
+ --- mod_log_config.c	1998/06/11 08:54:52
+ ***************
+ *** 803,810 ****
+   {
+       multi_log_state *base = (multi_log_state *) basev;
+       multi_log_state *add = (multi_log_state *) addv;
+ -     char *format;
+ -     const char *dummy;
+   
+       add->server_config_logs = base->config_logs;
+       if (!add->default_format) {
+ --- 803,808 ----
+ ***************
+ *** 813,841 ****
+       }
+       add->formats = ap_overlay_tables(p, base->formats, add->formats);
+   
+ -     if (add->default_format_string) {
+ - 	format = ap_table_get(add->formats, add->default_format_string);
+ - 	if (format) {
+ - 	    add->default_format = parse_log_string(p, format, &dummy);
+ - 	}
+ -     }    
+ - 
+ -     if (add->config_logs) {
+ - 	config_log_state *clsarray = (config_log_state *) add->config_logs->elts;
+ - 	int i;
+ - 
+ - 	for (i = 0; i < add->config_logs->nelts; ++i) {
+ - 	    config_log_state *cls = &clsarray[i];
+ - 
+ - 	    if (cls->format_string) {
+ - 		format = ap_table_get(add->formats, cls->format_string);
+ - 		if (format) {
+ - 		    cls->format = parse_log_string(p, format, &dummy);
+ - 		}
+ - 	    }
+ - 	}
+ -     }
+ - 
+       return add;
+   }
+   
+ --- 811,816 ----
+ ***************
+ *** 955,960 ****
+ --- 930,943 ----
+                                                &config_log_module);
+       config_log_state *clsarray;
+       const char *dummy;
+ +     char *format;
+ + 
+ +     if (mls->default_format_string) {
+ + 	format = ap_table_get(mls->formats, mls->default_format_string);
+ + 	if (format) {
+ + 	    mls->default_format = parse_log_string(p, format, &dummy);
+ + 	}
+ +     }    
+   
+       if (!mls->default_format) {
+           mls->default_format = parse_log_string(p, DEFAULT_LOG_FORMAT, &dummy);
+ ***************
+ *** 965,970 ****
+ --- 948,960 ----
+           for (i = 0; i < mls->config_logs->nelts; ++i) {
+               config_log_state *cls = &clsarray[i];
+   
+ + 	    if (cls->format_string) {
+ + 		format = ap_table_get(mls->formats, cls->format_string);
+ + 		if (format) {
+ + 		    cls->format = parse_log_string(p, format, &dummy);
+ + 		}
+ + 	    }
+ + 
+               cls = open_config_log(s, p, cls, mls->default_format);
+           }
+       }
+ ***************
+ *** 972,977 ****
+ --- 962,974 ----
+           clsarray = (config_log_state *) mls->server_config_logs->elts;
+           for (i = 0; i < mls->server_config_logs->nelts; ++i) {
+               config_log_state *cls = &clsarray[i];
+ + 
+ + 	    if (cls->format_string) {
+ + 		format = ap_table_get(mls->formats, cls->format_string);
+ + 		if (format) {
+ + 		    cls->format = parse_log_string(p, format, &dummy);
+ + 		}
+ + 	    }
+   
+               cls = open_config_log(s, p, cls, mls->default_format);
+           }
+ 
+ --------------23269446CC34D6EBA8014F75--
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

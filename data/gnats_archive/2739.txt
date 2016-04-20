@@ -1,0 +1,193 @@
+Received: (qmail 3064 invoked by uid 2012); 29 Jul 1998 19:18:21 -0000
+Message-Id: <19980729191821.3063.qmail@hyperreal.org>
+Date: 29 Jul 1998 19:18:21 -0000
+From: Johan van Reijendam <jvanreij@systems.dhl.com>
+Reply-To: jvanreij@systems.dhl.com
+To: apbugs@hyperreal.org
+Subject: Forward the client IP address to back-end server when proxying request
+X-Send-Pr-Version: 3.2
+
+>Number:         2739
+>Category:       mod_proxy
+>Synopsis:       Forward the client IP address to back-end server when proxying request
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jul 29 12:20:00 PDT 1998
+>Last-Modified:  Wed Jul 29 14:20:01 PDT 1998
+>Originator:     jvanreij@systems.dhl.com
+>Organization:
+apache
+>Release:        1.3.0
+>Environment:
+Change was tested on HPUX-10.20 and Solaris 2.[5-6] using
+Apache-1.3b2, 1.3.0
+>Description:
+We currently use Apache to reverse proxy an increasing number of internal
+web sites. When requests are proxied however there is little or no info
+available to the back-end server to perform statistical analysis regarding what
+users are hitting what pages.
+In order to remedy this a change was made to the mod_proxy.c module to make it
+possible to forward the IP address of the connecting browser/client.
+This information is placed in an additional HTTP header sent to the back-end
+host.
+
+Please let me know if this is an acceptable submission.
+Regards
+>How-To-Repeat:
+
+>Fix:
+diff -C3 output :
+--------8<-------
+*** mod_proxy-old.c     Wed Jul 29 12:01:02 1998
+--- mod_proxy.c Wed Jul 29 12:04:34 1998
+***************
+*** 195,200 ****
+--- 195,207 ----
+                                   r->uri + len, NULL);
+             r->handler = "proxy-server";
+             r->proxyreq = 1;
++ 
++            /* Add client IP to headers */
++ 
++            if ( conf->forward_client_ip ) {
++                table_set( r->headers_out, "Client_IP", r->connection->remote_ip );
++            }
++ 
+             return OK;
+        }
+      }
+***************
+*** 577,582 ****
+--- 584,600 ----
+  }
+  
+  static const char *
++      forward_client_ip(cmd_parms *parms, void *dummy, int flag)
++ {
++     proxy_server_conf *psf =
++     get_module_config(parms->server->module_config, &proxy_module);
++ 
++     psf->forward_client_ip = flag;
++     return NULL;
++ }
++ 
++ 
++ static const char *
+       set_proxy_req(cmd_parms *parms, void *dummy, int flag)
+  {
+      proxy_server_conf *psf =
+***************
+*** 783,788 ****
+--- 801,808 ----
+       "The number of characters in subdirectory names"},
+      {"NoCache", set_cache_exclude, NULL, RSRC_CONF, ITERATE,
+       "A list of names, hosts or domains for which caching is *not* provided"},
++     {"ForwardClientIP", forward_client_ip, NULL, RSRC_CONF, FLAG,
++      "on if the client ip address should be forwarded"},
+      {NULL}
+  };
+  
+---------8<--------
+>Audit-Trail:
+
+From: Johan van Reijendam <jvanreij@systems.DHL.COM>
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: mod_proxy/2739: Forward the client IP address to back-end server when proxying request
+Date: Wed, 29 Jul 1998 14:11:53 -0700
+
+ This is a cryptographically signed message in MIME format.
+ 
+ --------------ms9A86478E16DCF511B22CA844
+ Content-Type: text/plain; charset=us-ascii
+ Content-Transfer-Encoding: 7bit
+ 
+ Additional change needs to be made to the mod_proxy.h header file :
+ 
+ ------------8<-----------
+ *** mod_proxy-old.h     Wed Jul 29 13:44:35 1998
+ --- mod_proxy.h Wed Jul 29 13:48:41 1998
+ ***************
+ *** 208,213 ****
+ --- 208,214 ----
+       char *domain;             /* domain name to use in absence of a
+ domain name in the request */
+       int req;                  /* true if proxy requests are enabled */
+       int recv_buffer_size;
+ +     int forward_client_ip;
+   } proxy_server_conf;
+   
+   struct hdr_entry {
+ ------------8<-----------
+ -- 
+ 
+ Johan van Reijendam                         DHL Systems Inc.
+ jvanreij@systems.DHL.COM                    Tel : +1 650 4255138
+                                             Fax : +1 650 4255019
+ --------------ms9A86478E16DCF511B22CA844
+ Content-Type: application/x-pkcs7-signature; name="smime.p7s"
+ Content-Transfer-Encoding: base64
+ Content-Disposition: attachment; filename="smime.p7s"
+ Content-Description: S/MIME Cryptographic Signature
+ 
+ MIIJ3QYJKoZIhvcNAQcCoIIJzjCCCcoCAQExCzAJBgUrDgMCGgUAMAsGCSqGSIb3DQEHAaCC
+ CEswggOUMIIC/aADAgECAhBkIJu8Lj4PyAWnxtZqrEsMMA0GCSqGSIb3DQEBAgUAMGIxETAP
+ BgNVBAcTCEludGVybmV0MRcwFQYDVQQKEw5WZXJpU2lnbiwgSW5jLjE0MDIGA1UECxMrVmVy
+ aVNpZ24gQ2xhc3MgMiBDQSAtIEluZGl2aWR1YWwgU3Vic2NyaWJlcjAeFw05ODAyMDEwMDAw
+ MDBaFw05OTAyMDEyMzU5NTlaMIIBGzERMA8GA1UEBxMISW50ZXJuZXQxFzAVBgNVBAoTDlZl
+ cmlTaWduLCBJbmMuMTQwMgYDVQQLEytWZXJpU2lnbiBDbGFzcyAyIENBIC0gSW5kaXZpZHVh
+ bCBTdWJzY3JpYmVyMUYwRAYDVQQLEz13d3cudmVyaXNpZ24uY29tL3JlcG9zaXRvcnkvQ1BT
+ IEluY29ycC4gYnkgUmVmLixMSUFCLkxURChjKTk2MSYwJAYDVQQLEx1EaWdpdGFsIElEIENs
+ YXNzIDIgLSBOZXRzY2FwZTEeMBwGA1UEAxMVSm9oYW4gRCB2YW4gUmVpamVuZGFtMScwJQYJ
+ KoZIhvcNAQkBFhhqdmFucmVpakBzeXN0ZW1zLmRobC5jb20wXDANBgkqhkiG9w0BAQEFAANL
+ ADBIAkEA8lZHwy10b1VHv118C09rxy6nRnESTASTe4IvuMrIFBXflMRn/nwbFlaCHqdHZIOr
+ 5QL1voldvlHjICt7a9zk6QIDAQABo4HTMIHQMAkGA1UdEwQCMAAwga8GA1UdIASBpzCAMIAG
+ C2CGSAGG+EUBBwEBMIAwKAYIKwYBBQUHAgEWHGh0dHBzOi8vd3d3LnZlcmlzaWduLmNvbS9D
+ UFMwYgYIKwYBBQUHAgIwVjAVFg5WZXJpU2lnbiwgSW5jLjADAgEBGj1WZXJpU2lnbidzIENQ
+ UyBpbmNvcnAuIGJ5IHJlZmVyZW5jZSBsaWFiLiBsdGQuIChjKTk3IFZlcmlTaWduAAAAAAAA
+ MBEGCWCGSAGG+EIBAQQEAwIHgDANBgkqhkiG9w0BAQIFAAOBgQAxUSYF/wHN7utXOFnAD62l
+ gWjtHkXRaC+tby94SDH56/PQT16ILJbCJ1fVDM4csVoi5cd2eQmkvjs7vNzrAAZl/XfxfKlk
+ OLPRGf2fAaMj5Ft5mWlXmZ28grqnwgDamM6WWDIQNMDKXd0r2MCuxFcBhO9Jl7Fyu1q8gMr8
+ IcZX/TCCAnowggHjoAMCAQICEQCVsHaETMUKImamk2m/gp6dMA0GCSqGSIb3DQEBAgUAMF8x
+ CzAJBgNVBAYTAlVTMRcwFQYDVQQKEw5WZXJpU2lnbiwgSW5jLjE3MDUGA1UECxMuQ2xhc3Mg
+ MiBQdWJsaWMgUHJpbWFyeSBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eTAeFw05NjA2MjcwMDAw
+ MDBaFw05OTA2MjcyMzU5NTlaMGIxETAPBgNVBAcTCEludGVybmV0MRcwFQYDVQQKEw5WZXJp
+ U2lnbiwgSW5jLjE0MDIGA1UECxMrVmVyaVNpZ24gQ2xhc3MgMiBDQSAtIEluZGl2aWR1YWwg
+ U3Vic2NyaWJlcjCBnzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEAugPtnMyhkXGDH5vIHZ5P
+ tHXvfUww87KqNL+Z20bG1JjHHUUO57DG0VntEgG//UKC02f3CdIjgana5M+1Kaqimq1aE0nZ
+ UjFTPdrVqd2yZ3GR0A9beMXepUFXSNf0+kfuSdE9bpDnbCPSZn/hdvEuoN0dy9UhcIhynmSm
+ b8/u/d8CAwEAAaMzMDEwDwYDVR0TBAgwBgEB/wIBATALBgNVHQ8EBAMCAQYwEQYJYIZIAYb4
+ QgEBBAQDAgEGMA0GCSqGSIb3DQEBAgUAA4GBAKp1Lr/rK3/KntNvbY08DwnOWziY3U+AITlY
+ W/13MU4GEhdf2ZKhkbsgotOIPKe2UmkXLO5sLJ9OyFu9RMHAivaPLdJV/GGBTXJHwg3Hbjyz
+ sdkBsmA1bTehFd/CYI+F2pxl/Ou+yQtFdt3Q4jQUadZMdrmHRHBhmWvI/D8aGK54MIICMTCC
+ AZoCBQKjAAABMA0GCSqGSIb3DQEBAgUAMF8xCzAJBgNVBAYTAlVTMRcwFQYDVQQKEw5WZXJp
+ U2lnbiwgSW5jLjE3MDUGA1UECxMuQ2xhc3MgMiBQdWJsaWMgUHJpbWFyeSBDZXJ0aWZpY2F0
+ aW9uIEF1dGhvcml0eTAeFw05NjAxMjkwMDAwMDBaFw05OTEyMzEyMzU5NTlaMF8xCzAJBgNV
+ BAYTAlVTMRcwFQYDVQQKEw5WZXJpU2lnbiwgSW5jLjE3MDUGA1UECxMuQ2xhc3MgMiBQdWJs
+ aWMgUHJpbWFyeSBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eTCBnzANBgkqhkiG9w0BAQEFAAOB
+ jQAwgYkCgYEAtlqLow1qI4OAa885h/QhEzMGTCWi7VUSl8WngLn6g8EgoPovFQ18oWBrfnks
+ +gYPOq72G2+x0v8vKFJfg31LxHq3+GYfgFT8t8KOWUoUV0bRmpO+QZEDuxWAk1zr58wIbD8+
+ s0r8/0tsI9VQgiZEGY4jw3HqGSRHBJ51v8imAB8CAwEAATANBgkqhkiG9w0BAQIFAAOBgQB7
+ r6QcL8CbDjtc/Kjm0ZYPSHJJheWvGiMA4+m7gDRssj+EqDxycLNM3nP6fITSkqUANwnCAzQj
+ A7ftdpbcPk+F/VgX9AS+7FEe3Hrb267oYXjaZThHrB0DcG3p47ugSp9A6rzbc79nTV3GfCBc
+ 5+iiCivCCXTXTP7b6WsCY105pzGCAVowggFWAgEBMHYwYjERMA8GA1UEBxMISW50ZXJuZXQx
+ FzAVBgNVBAoTDlZlcmlTaWduLCBJbmMuMTQwMgYDVQQLEytWZXJpU2lnbiBDbGFzcyAyIENB
+ IC0gSW5kaXZpZHVhbCBTdWJzY3JpYmVyAhBkIJu8Lj4PyAWnxtZqrEsMMAkGBSsOAwIaBQCg
+ fTAYBgkqhkiG9w0BCQMxCwYJKoZIhvcNAQcBMBwGCSqGSIb3DQEJBTEPFw05ODA3MjkyMTEx
+ NTRaMB4GCSqGSIb3DQEJDzERMA8wDQYIKoZIhvcNAwICASgwIwYJKoZIhvcNAQkEMRYEFD9l
+ 3dpZVltNwlDCQww81koa3MXDMA0GCSqGSIb3DQEBAQUABECZzMajzDzJ7oZLud/S8s37YNTm
+ MWWyRv1oU4uwWgzBmh1VPGIAXnVqehJgMSJByfchCXxgudI77EY2P8vDsiKV
+ --------------ms9A86478E16DCF511B22CA844--
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

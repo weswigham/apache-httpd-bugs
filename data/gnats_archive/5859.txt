@@ -1,0 +1,109 @@
+Received: (qmail 66416 invoked by uid 65534); 11 Mar 2000 17:19:32 -0000
+Message-Id: <20000311171931.66413.qmail@locus.apache.org>
+Date: 11 Mar 2000 17:19:31 -0000
+From: Franky Van Liedekerke <liedekef@pandora.be>
+Reply-To: liedekef@pandora.be
+To: submit@bugz.apache.org
+Subject: mass virtual hosts: strange behaviour
+X-Send-Pr-Version: 3.110
+
+>Number:         5859
+>Category:       general
+>Synopsis:       mass virtual hosts: strange behaviour
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Mar 11 09:20:01 PST 2000
+>Closed-Date:    Wed Sep 20 15:01:07 PDT 2000
+>Last-Modified:  Wed Sep 20 15:01:07 PDT 2000
+>Originator:     liedekef@pandora.be
+>Release:        1.3.12
+>Organization:
+>Environment:
+OS: Solaris 2.6
+compiler: egcs-1.12 gcc compiler
+>Description:
+I use the following config:
+
+NameVirtualHost 192.168.252.1:9090
+
+<VirtualHost 192.168.252.1:9090>
+        UseCanonicalName        Off
+        VirtualDocumentRoot     /web/content/%0/
+        VirtualScriptAlias      "/web/content/%0/cgi-bin/"
+</VirtualHost>
+<VirtualHost 192.168.252.1:9090>
+        ServerName olympus.mgmt
+        DocumentRoot     /usr/local/docs
+</VirtualHost>
+
+As you can see I use mass virtual hosting and named virtual hosts 
+(for exeptions).
+Now when I request a document from one of my sites under /web/content 
+(eg: http://<NAME>/doc.html), everything works as expected: the server 
+goes to /web/content/<NAME>/doc.html, and when I request a doc from 
+http://olympus.mgmt/test.html, it goes to /usr/local/docs/test.html.
+Now when I switch the two definitions of virtual hosts around:
+<VirtualHost 192.168.252.1:9090>
+        ServerName olympus.mgmt
+        DocumentRoot     /usr/local/docs
+</VirtualHost>
+<VirtualHost 192.168.252.1:9090>
+        UseCanonicalName        Off
+        VirtualDocumentRoot     /web/content/%0/
+        VirtualScriptAlias      "/web/content/%0/cgi-bin/"
+</VirtualHost>
+
+When I now request the doc http://<NAME>/doc.html, the servers tries to 
+find it at /usr/local/docs/doc.html, which is wrong. I'm using 
+Netscape 4.7 as a client, so it sends a 'Host' header field along, so 
+the problem is most certainly not there. It seems apache is looking for 
+a defined "ServerName" but in mass virtual hosting this is not specified 
+in the config, so it goes to the first virtual host definition found, 
+which is wrong behaviour (or not documented) for mass virtual hosting.
+Even better: if I define a ScriptAlias in the main config of apache, 
+it overides the setting I specify in VirtualScriptAlias, in both 
+config setups!
+
+>How-To-Repeat:
+Use a config similar as I described.
+>Fix:
+Nope, sorry
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: fanf
+State-Changed-When: Wed Sep 20 15:01:05 PDT 2000
+State-Changed-Why:
+This is expected behaviour. mod_vhost_alias wasn't designed
+to work with NameVirtualHost, so the fact that the first
+configuration works is a coincidence. It's a result of the
+way that name-based virtual host configurations are looked up.
+The first <VirtualHost> section is used if none of the others
+match, so if you put mod_vhost_alias directives in the
+second or subsequent name-based <VirtualHost> section they
+will only work for one hostname (based on the ServerName
+directive or the name(s) in the <VirtualHost> directive
+itself), not lots of hostnames as you would wish.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

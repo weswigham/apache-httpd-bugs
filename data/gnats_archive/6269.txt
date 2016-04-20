@@ -1,0 +1,113 @@
+Received: (qmail 62397 invoked by uid 501); 2 Jul 2000 17:05:22 -0000
+Message-Id: <20000702170522.62396.qmail@locus.apache.org>
+Date: 2 Jul 2000 17:05:22 -0000
+From: Jim Patterson <jim-patterson@ncf.ca>
+Reply-To: jim-patterson@ncf.ca
+To: submit@bugz.apache.org
+Subject: Apache aborts on startup
+X-Send-Pr-Version: 3.110
+
+>Number:         6269
+>Category:       general
+>Synopsis:       Apache aborts on startup
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Jul 02 10:10:00 PDT 2000
+>Closed-Date:    Tue Sep 04 12:25:17 PDT 2001
+>Last-Modified:  Tue Sep 04 12:25:17 PDT 2001
+>Originator:     jim-patterson@ncf.ca
+>Release:        2.0a4
+>Organization:
+>Environment:
+Windows 2000 and Windows 98 (tested both)
+Microsoft Visual C++ 5.0 SP3
+
+>Description:
+Here is a traceback for the initial crash:
+
+ap_process_resource_config(server_rec * 0x00654a38, char * 0x006501d0, ap_directive_t * * 0x0063dd84, ap_pool_t * 0x00654130, ap_pool_t * 0x006765b4) line 1325 + 3 bytes
+ap_read_config(process_rec * 0x0065211c, ap_pool_t * 0x006765b4, char * 0x006501d0, ap_directive_t * * 0x0063dd84) line 1588 + 25 bytes
+apache_main + 680 bytes
+main + 1673 bytes
+mainCRTStartup() line 338 + 17 bytes
+KERNEL32! bff8b560()
+
+This problem is because an error handler is being called before all of the 
+information has been set up.
+>How-To-Repeat:
+Run Apache from its build directory e.g.:
+cd CoreD
+..\ApacheD\Apache
+
+This is the message I get after the fix:
+[Sun Jul 02 13:01:36 2000] [warn] Registry does not contain key SOFTWARE\Apache
+Software Foundation\Apache\2.0a4
+Syntax error on line 0 of (unknown):
+Cannot load /apache/modules/ApacheModuleRewrite.dll into server: One of the libr
+ary files needed to run this application cannot be found.
+>Fix:
+This change to src/main/http_config.c corrects it:
+*** http_config.c-orig	Sun Jul 02 16:40:52 2000
+--- http_config.c	Sun Jul 02 16:35:16 2000
+***************
+*** 1319,1328 ****
+      errmsg = ap_build_config(&parms, p, ptemp, conftree);
+  
+      if (errmsg != NULL) {
+  	ap_log_error(APLOG_MARK, APLOG_STARTUP | APLOG_NOERRNO, 0, NULL,
+                       "Syntax error on line %d of %s:",
+!                      parms.err_directive->line_num, 
+!                      parms.err_directive->filename);
+  	ap_log_error(APLOG_MARK, APLOG_STARTUP | APLOG_NOERRNO, 0, NULL, 
+                       "%s", errmsg);
+  	exit(1);
+--- 1319,1330 ----
+      errmsg = ap_build_config(&parms, p, ptemp, conftree);
+  
+      if (errmsg != NULL) {
++ 	int line_num = (parms.err_directive ? parms.err_directive->line_num : 0);
++ 	const char* filename = (parms.err_directive ? parms.err_directive->filename : "(unknown)");
+  	ap_log_error(APLOG_MARK, APLOG_STARTUP | APLOG_NOERRNO, 0, NULL,
+                       "Syntax error on line %d of %s:",
+!                      line_num, 
+!                      filename);
+  	ap_log_error(APLOG_MARK, APLOG_STARTUP | APLOG_NOERRNO, 0, NULL, 
+                       "%s", errmsg);
+  	exit(1);
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rbb
+State-Changed-When: Tue Sep  4 12:25:17 PDT 2001
+State-Changed-Why:
+This looks to be fixed in the latest CVS tree.  This was
+tested by loading SSL into the server without the SSL
+.DLL in the path, so that the library was not available
+to the server.  The server reported the error correctly,
+and did not seg fault.
+
+Please re-test with a later version of Apache 2.0, and let
+us know if this problem is not solved.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

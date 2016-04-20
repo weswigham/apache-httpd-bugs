@@ -1,0 +1,921 @@
+From nobody@hyperreal.com  Wed Apr 23 11:19:15 1997
+Received: (from nobody@localhost)
+          by hyperreal.com (8.8.4/8.8.4)
+	  id LAA21903; Wed, 23 Apr 1997 11:19:15 -0700 (PDT)
+Message-Id: <199704231819.LAA21903@hyperreal.com>
+Date: Wed, 23 Apr 1997 11:19:15 -0700 (PDT)
+From: Brett McCormick <brett@speakeasy.org>
+Reply-To: brett@speakeasy.org
+To: apbugs@hyperreal.com
+Subject: virtualhost support functionally broken
+X-Send-Pr-Version: 3.2
+
+>Number:         463
+>Category:       os-osf
+>Synopsis:       virtualhost support functionally broken
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Apr 23 11:20:01 1997
+>Last-Modified:  Sat Aug 16 18:43:58 PDT 1997
+>Originator:     brett@speakeasy.org
+>Organization:
+>Release:        1.2b8
+>Environment:
+Digital Unix (OSF/1) 4.0, gcc 2.7.2.1
+>Description:
+Virtualhosts do not operate correctly.  The first virtualhost (and not the main
+server) serves all requests.  This is due to get_addresses storing the ip addr
+in a long int, which on an alpha is 64bit.  DEFAULT_VHOST_ADDR is also specified
+as a long.
+>How-To-Repeat:
+just try to use virtualhosts on a platform with 64bit longs
+>Fix:
+change the type of my_addr in get_addresses (http_config.c) to a 32-bit type.
+change the definition of DEFAULT_VHOST_ADDR to be 32-bit (i don't think this
+is neccesary, but it might be)
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Brett McCormick <brett@speakeasy.org>
+Subject: Re: os-osf/463: virtualhost support functionally broken
+Date: Wed, 23 Apr 1997 13:01:08 -0700 (PDT)
+
+ 
+ This code was changed to use an unsigned long specifically *because* of
+ OSF/1 and the alpha chip.  Are you absolutely sure that this is the
+ problem?  If we change it back it's likely to break the config of the
+ person that asked us to change it to a long.
+ 
+ Are there any errors while starting up? 
+ 
+ Can you send me the <VirtualHost> lines from your config?
+ 
+ Dean
+ 
+ On Wed, 23 Apr 1997, Brett McCormick wrote:
+ 
+ > 
+ > 	The contract type is `' with a response time of 3 business hours.
+ > 	A first analysis should be sent before: Wed Apr 23 14:00:01 PDT 1997
+ > 
+ > 
+ > >Number:         463
+ > >Category:       os-osf
+ > >Synopsis:       virtualhost support functionally broken
+ > >Confidential:   no
+ > >Severity:       critical
+ > >Priority:       medium
+ > >Responsible:    apache (Apache HTTP Project)
+ > >State:          open
+ > >Class:          sw-bug
+ > >Submitter-Id:   apache
+ > >Arrival-Date:   Wed Apr 23 11:20:01 1997
+ > >Originator:     brett@speakeasy.org
+ > >Organization:
+ > apache
+ > >Release:        1.2b8
+ > >Environment:
+ > Digital Unix (OSF/1) 4.0, gcc 2.7.2.1
+ > >Description:
+ > Virtualhosts do not operate correctly.  The first virtualhost (and not the main
+ > server) serves all requests.  This is due to get_addresses storing the ip addr
+ > in a long int, which on an alpha is 64bit.  DEFAULT_VHOST_ADDR is also specified
+ > as a long.
+ > >How-To-Repeat:
+ > just try to use virtualhosts on a platform with 64bit longs
+ > >Fix:
+ > change the type of my_addr in get_addresses (http_config.c) to a 32-bit type.
+ > change the definition of DEFAULT_VHOST_ADDR to be 32-bit (i don't think this
+ > is neccesary, but it might be)
+ > >Audit-Trail:
+ > >Unformatted:
+ > 
+ > 
+ > 
+ 
+
+From: Brett McCormick <brett@speedy.speakeasy.org>
+To: Dean Gaudet <dgaudet@arctic.org>
+Subject: Re: os-osf/463: virtualhost support functionally broken
+Date: Wed, 23 Apr 1997 13:18:45 -0700 (PDT)
+
+ 
+ 
+ Fairly certain.  Here's where the problem lies: inet_addr returnes -1
+ (INADDR_NONE) on failure, which gets assigned to my_addr (unsigned
+ long int).  That is then compared to INADDR_NONE (0xffffffff), which
+ isn't casted to a long int.  So, -1 != 0xffffffff..  I suppose the
+ correct fix would be to leave DEFAULT_VHOST_ADDR with the 'ul' at the
+ end, and then cast INADDR_NONE to unsigned long in the comparison.
+ 
+     } else if(
+ #ifdef DGUX
+             ( my_addr = inet_network(w) )
+ #else
+             ( my_addr = inet_addr(w) )
+ #endif
+             != INADDR_NONE ) {
+         is_an_ip_addr = 1;
+     }
+ 
+ There are no errors starting up, and here are my virtualhost lines:
+ 
+ <Virtualhost www.prorental.com>
+ DocumentRoot /usr/local/apache/httpd/sites/prorental/docs
+ </VirtualHost>
+ 
+ <Virtualhost www.hedgescellars.com>
+ DocumentRoot /usr/local/apache/httpd/sites/hedgescellars/docs
+ </VirtualHost>
+ 
+ No matter what i ask for (localhost, www.prorental.com,
+ www.hedgescellars.com) I get www.prorental.com..
+ 
+ On Wed, 23 April 1997, at 13:01:08, Dean Gaudet wrote:
+ 
+ > This code was changed to use an unsigned long specifically *because* of
+ > OSF/1 and the alpha chip.  Are you absolutely sure that this is the
+ > problem?  If we change it back it's likely to break the config of the
+ > person that asked us to change it to a long.
+ > 
+ > Are there any errors while starting up? 
+ > 
+ > Can you send me the <VirtualHost> lines from your config?
+ > 
+ > Dean
+ > 
+ > On Wed, 23 Apr 1997, Brett McCormick wrote:
+ > 
+ > > 
+ > > 	The contract type is `' with a response time of 3 business hours.
+ > > 	A first analysis should be sent before: Wed Apr 23 14:00:01 PDT 1997
+ > > 
+ > > 
+ > > >Number:         463
+ > > >Category:       os-osf
+ > > >Synopsis:       virtualhost support functionally broken
+ > > >Confidential:   no
+ > > >Severity:       critical
+ > > >Priority:       medium
+ > > >Responsible:    apache (Apache HTTP Project)
+ > > >State:          open
+ > > >Class:          sw-bug
+ > > >Submitter-Id:   apache
+ > > >Arrival-Date:   Wed Apr 23 11:20:01 1997
+ > > >Originator:     brett@speakeasy.org
+ > > >Organization:
+ > > apache
+ > > >Release:        1.2b8
+ > > >Environment:
+ > > Digital Unix (OSF/1) 4.0, gcc 2.7.2.1
+ > > >Description:
+ > > Virtualhosts do not operate correctly.  The first virtualhost (and not the main
+ > > server) serves all requests.  This is due to get_addresses storing the ip addr
+ > > in a long int, which on an alpha is 64bit.  DEFAULT_VHOST_ADDR is also specified
+ > > as a long.
+ > > >How-To-Repeat:
+ > > just try to use virtualhosts on a platform with 64bit longs
+ > > >Fix:
+ > > change the type of my_addr in get_addresses (http_config.c) to a 32-bit type.
+ > > change the definition of DEFAULT_VHOST_ADDR to be 32-bit (i don't think this
+ > > is neccesary, but it might be)
+ > > >Audit-Trail:
+ > > >Unformatted:
+ > > 
+ > > 
+ > > 
+ > 
+
+From: Brett McCormick <brett@speedy.speakeasy.org>
+To: Dean Gaudet <dgaudet@arctic.org>
+Subject: Re: os-osf/463: virtualhost support functionally broken
+Date: Wed, 23 Apr 1997 13:19:09 -0700 (PDT)
+
+ 
+ 
+ on an unrelated note, I always have to add -lm to EXTRA_LIBS as well..
+ 
+ On Wed, 23 April 1997, at 13:01:08, Dean Gaudet wrote:
+ 
+ > This code was changed to use an unsigned long specifically *because* of
+ > OSF/1 and the alpha chip.  Are you absolutely sure that this is the
+ > problem?  If we change it back it's likely to break the config of the
+ > person that asked us to change it to a long.
+ > 
+ > Are there any errors while starting up? 
+ > 
+ > Can you send me the <VirtualHost> lines from your config?
+ > 
+ > Dean
+ > 
+ > On Wed, 23 Apr 1997, Brett McCormick wrote:
+ > 
+ > > 
+ > > 	The contract type is `' with a response time of 3 business hours.
+ > > 	A first analysis should be sent before: Wed Apr 23 14:00:01 PDT 1997
+ > > 
+ > > 
+ > > >Number:         463
+ > > >Category:       os-osf
+ > > >Synopsis:       virtualhost support functionally broken
+ > > >Confidential:   no
+ > > >Severity:       critical
+ > > >Priority:       medium
+ > > >Responsible:    apache (Apache HTTP Project)
+ > > >State:          open
+ > > >Class:          sw-bug
+ > > >Submitter-Id:   apache
+ > > >Arrival-Date:   Wed Apr 23 11:20:01 1997
+ > > >Originator:     brett@speakeasy.org
+ > > >Organization:
+ > > apache
+ > > >Release:        1.2b8
+ > > >Environment:
+ > > Digital Unix (OSF/1) 4.0, gcc 2.7.2.1
+ > > >Description:
+ > > Virtualhosts do not operate correctly.  The first virtualhost (and not the main
+ > > server) serves all requests.  This is due to get_addresses storing the ip addr
+ > > in a long int, which on an alpha is 64bit.  DEFAULT_VHOST_ADDR is also specified
+ > > as a long.
+ > > >How-To-Repeat:
+ > > just try to use virtualhosts on a platform with 64bit longs
+ > > >Fix:
+ > > change the type of my_addr in get_addresses (http_config.c) to a 32-bit type.
+ > > change the definition of DEFAULT_VHOST_ADDR to be 32-bit (i don't think this
+ > > is neccesary, but it might be)
+ > > >Audit-Trail:
+ > > >Unformatted:
+ > > 
+ > > 
+ > > 
+ > 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Brett McCormick <brett@speedy.speakeasy.org>
+Subject: Re: os-osf/463: virtualhost support functionally broken
+Date: Wed, 23 Apr 1997 13:52:59 -0700 (PDT)
+
+ 
+ What does inet_network return?  Hasn't OSF become DGUX?
+ 
+ Dean
+ 
+ On Wed, 23 Apr 1997, Brett McCormick wrote:
+ 
+ > 
+ > Fairly certain.  Here's where the problem lies: inet_addr returnes -1
+ > (INADDR_NONE) on failure, which gets assigned to my_addr (unsigned
+ > long int).  That is then compared to INADDR_NONE (0xffffffff), which
+ > isn't casted to a long int.  So, -1 != 0xffffffff..  I suppose the
+ > correct fix would be to leave DEFAULT_VHOST_ADDR with the 'ul' at the
+ > end, and then cast INADDR_NONE to unsigned long in the comparison.
+ > 
+ >     } else if(
+ > #ifdef DGUX
+ >             ( my_addr = inet_network(w) )
+ > #else
+ >             ( my_addr = inet_addr(w) )
+ > #endif
+ >             != INADDR_NONE ) {
+ >         is_an_ip_addr = 1;
+ >     }
+ > 
+ > There are no errors starting up, and here are my virtualhost lines:
+ > 
+ > <Virtualhost www.prorental.com>
+ > DocumentRoot /usr/local/apache/httpd/sites/prorental/docs
+ > </VirtualHost>
+ > 
+ > <Virtualhost www.hedgescellars.com>
+ > DocumentRoot /usr/local/apache/httpd/sites/hedgescellars/docs
+ > </VirtualHost>
+ > 
+ > No matter what i ask for (localhost, www.prorental.com,
+ > www.hedgescellars.com) I get www.prorental.com..
+ > 
+ > On Wed, 23 April 1997, at 13:01:08, Dean Gaudet wrote:
+ > 
+ > > This code was changed to use an unsigned long specifically *because* of
+ > > OSF/1 and the alpha chip.  Are you absolutely sure that this is the
+ > > problem?  If we change it back it's likely to break the config of the
+ > > person that asked us to change it to a long.
+ > > 
+ > > Are there any errors while starting up? 
+ > > 
+ > > Can you send me the <VirtualHost> lines from your config?
+ > > 
+ > > Dean
+ > > 
+ > > On Wed, 23 Apr 1997, Brett McCormick wrote:
+ > > 
+ > > > 
+ > > > 	The contract type is `' with a response time of 3 business hours.
+ > > > 	A first analysis should be sent before: Wed Apr 23 14:00:01 PDT 1997
+ > > > 
+ > > > 
+ > > > >Number:         463
+ > > > >Category:       os-osf
+ > > > >Synopsis:       virtualhost support functionally broken
+ > > > >Confidential:   no
+ > > > >Severity:       critical
+ > > > >Priority:       medium
+ > > > >Responsible:    apache (Apache HTTP Project)
+ > > > >State:          open
+ > > > >Class:          sw-bug
+ > > > >Submitter-Id:   apache
+ > > > >Arrival-Date:   Wed Apr 23 11:20:01 1997
+ > > > >Originator:     brett@speakeasy.org
+ > > > >Organization:
+ > > > apache
+ > > > >Release:        1.2b8
+ > > > >Environment:
+ > > > Digital Unix (OSF/1) 4.0, gcc 2.7.2.1
+ > > > >Description:
+ > > > Virtualhosts do not operate correctly.  The first virtualhost (and not the main
+ > > > server) serves all requests.  This is due to get_addresses storing the ip addr
+ > > > in a long int, which on an alpha is 64bit.  DEFAULT_VHOST_ADDR is also specified
+ > > > as a long.
+ > > > >How-To-Repeat:
+ > > > just try to use virtualhosts on a platform with 64bit longs
+ > > > >Fix:
+ > > > change the type of my_addr in get_addresses (http_config.c) to a 32-bit type.
+ > > > change the definition of DEFAULT_VHOST_ADDR to be 32-bit (i don't think this
+ > > > is neccesary, but it might be)
+ > > > >Audit-Trail:
+ > > > >Unformatted:
+ > > > 
+ > > > 
+ > > > 
+ > > 
+ > 
+ 
+
+From: Brett McCormick <brett@speedy.speakeasy.org>
+To: Dean Gaudet <dgaudet@arctic.org>
+Subject: Re: os-osf/463: virtualhost support functionally broken
+Date: Wed, 23 Apr 1997 14:14:16 -0700 (PDT)
+
+ 
+ 
+ Well, in this case we've got a hostname, so inet_{addr,network} will
+ return -1.  I don't know if OSF if DGUX..  It doesn't seem to be set
+ by cpp, though.  My feeling is that it's not.
+ 
+ On Wed, 23 April 1997, at 13:52:59, Dean Gaudet wrote:
+ 
+ > What does inet_network return?  Hasn't OSF become DGUX?
+ > 
+ > Dean
+ > 
+ > On Wed, 23 Apr 1997, Brett McCormick wrote:
+ > 
+ > > 
+ > > Fairly certain.  Here's where the problem lies: inet_addr returnes -1
+ > > (INADDR_NONE) on failure, which gets assigned to my_addr (unsigned
+ > > long int).  That is then compared to INADDR_NONE (0xffffffff), which
+ > > isn't casted to a long int.  So, -1 != 0xffffffff..  I suppose the
+ > > correct fix would be to leave DEFAULT_VHOST_ADDR with the 'ul' at the
+ > > end, and then cast INADDR_NONE to unsigned long in the comparison.
+ > > 
+ > >     } else if(
+ > > #ifdef DGUX
+ > >             ( my_addr = inet_network(w) )
+ > > #else
+ > >             ( my_addr = inet_addr(w) )
+ > > #endif
+ > >             != INADDR_NONE ) {
+ > >         is_an_ip_addr = 1;
+ > >     }
+ > > 
+ > > There are no errors starting up, and here are my virtualhost lines:
+ > > 
+ > > <Virtualhost www.prorental.com>
+ > > DocumentRoot /usr/local/apache/httpd/sites/prorental/docs
+ > > </VirtualHost>
+ > > 
+ > > <Virtualhost www.hedgescellars.com>
+ > > DocumentRoot /usr/local/apache/httpd/sites/hedgescellars/docs
+ > > </VirtualHost>
+ > > 
+ > > No matter what i ask for (localhost, www.prorental.com,
+ > > www.hedgescellars.com) I get www.prorental.com..
+ > > 
+ > > On Wed, 23 April 1997, at 13:01:08, Dean Gaudet wrote:
+ > > 
+ > > > This code was changed to use an unsigned long specifically *because* of
+ > > > OSF/1 and the alpha chip.  Are you absolutely sure that this is the
+ > > > problem?  If we change it back it's likely to break the config of the
+ > > > person that asked us to change it to a long.
+ > > > 
+ > > > Are there any errors while starting up? 
+ > > > 
+ > > > Can you send me the <VirtualHost> lines from your config?
+ > > > 
+ > > > Dean
+ > > > 
+ > > > On Wed, 23 Apr 1997, Brett McCormick wrote:
+ > > > 
+ > > > > 
+ > > > > 	The contract type is `' with a response time of 3 business hours.
+ > > > > 	A first analysis should be sent before: Wed Apr 23 14:00:01 PDT 1997
+ > > > > 
+ > > > > 
+ > > > > >Number:         463
+ > > > > >Category:       os-osf
+ > > > > >Synopsis:       virtualhost support functionally broken
+ > > > > >Confidential:   no
+ > > > > >Severity:       critical
+ > > > > >Priority:       medium
+ > > > > >Responsible:    apache (Apache HTTP Project)
+ > > > > >State:          open
+ > > > > >Class:          sw-bug
+ > > > > >Submitter-Id:   apache
+ > > > > >Arrival-Date:   Wed Apr 23 11:20:01 1997
+ > > > > >Originator:     brett@speakeasy.org
+ > > > > >Organization:
+ > > > > apache
+ > > > > >Release:        1.2b8
+ > > > > >Environment:
+ > > > > Digital Unix (OSF/1) 4.0, gcc 2.7.2.1
+ > > > > >Description:
+ > > > > Virtualhosts do not operate correctly.  The first virtualhost (and not the main
+ > > > > server) serves all requests.  This is due to get_addresses storing the ip addr
+ > > > > in a long int, which on an alpha is 64bit.  DEFAULT_VHOST_ADDR is also specified
+ > > > > as a long.
+ > > > > >How-To-Repeat:
+ > > > > just try to use virtualhosts on a platform with 64bit longs
+ > > > > >Fix:
+ > > > > change the type of my_addr in get_addresses (http_config.c) to a 32-bit type.
+ > > > > change the definition of DEFAULT_VHOST_ADDR to be 32-bit (i don't think this
+ > > > > is neccesary, but it might be)
+ > > > > >Audit-Trail:
+ > > > > >Unformatted:
+ > > > > 
+ > > > > 
+ > > > > 
+ > > > 
+ > > 
+ > 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Brett McCormick <brett@speedy.speakeasy.org>
+Subject: Re: os-osf/463: virtualhost support functionally broken
+Date: Wed, 23 Apr 1997 14:19:22 -0700 (PDT)
+
+ 
+ Is INADDR_NONE actually defined as -1 or as 0xffffffff ?  You've said both
+ below.  Does inet_addr actually return (unsigned)-1 on error or
+ INADDR_NONE?  What is inet_addr prototyped as? 
+ 
+ Isn't (unsigned long) the same as (unsigned) on the alpha?  Or is unsigned
+ a 32-bit quantity?
+ 
+ Can you try changing it to use inet_network instead of inet_addr? 
+ 
+ BTW, there is no portable solution to this as far as I can tell so far. 
+ I'll have to dig through mail archives to find the original change to
+ unsigned long. 
+ 
+ Dean
+ 
+ On Wed, 23 Apr 1997, Brett McCormick wrote:
+ 
+ > 
+ > Well, in this case we've got a hostname, so inet_{addr,network} will
+ > return -1.  I don't know if OSF if DGUX..  It doesn't seem to be set
+ > by cpp, though.  My feeling is that it's not.
+ > 
+ > On Wed, 23 April 1997, at 13:52:59, Dean Gaudet wrote:
+ > 
+ > > What does inet_network return?  Hasn't OSF become DGUX?
+ > > 
+ > > Dean
+ > > 
+ > > On Wed, 23 Apr 1997, Brett McCormick wrote:
+ > > 
+ > > > 
+ > > > Fairly certain.  Here's where the problem lies: inet_addr returnes -1
+ > > > (INADDR_NONE) on failure, which gets assigned to my_addr (unsigned
+ > > > long int).  That is then compared to INADDR_NONE (0xffffffff), which
+ > > > isn't casted to a long int.  So, -1 != 0xffffffff..  I suppose the
+ > > > correct fix would be to leave DEFAULT_VHOST_ADDR with the 'ul' at the
+ > > > end, and then cast INADDR_NONE to unsigned long in the comparison.
+ > > > 
+ > > >     } else if(
+ > > > #ifdef DGUX
+ > > >             ( my_addr = inet_network(w) )
+ > > > #else
+ > > >             ( my_addr = inet_addr(w) )
+ > > > #endif
+ > > >             != INADDR_NONE ) {
+ > > >         is_an_ip_addr = 1;
+ > > >     }
+ > > > 
+ > > > There are no errors starting up, and here are my virtualhost lines:
+ > > > 
+ > > > <Virtualhost www.prorental.com>
+ > > > DocumentRoot /usr/local/apache/httpd/sites/prorental/docs
+ > > > </VirtualHost>
+ > > > 
+ > > > <Virtualhost www.hedgescellars.com>
+ > > > DocumentRoot /usr/local/apache/httpd/sites/hedgescellars/docs
+ > > > </VirtualHost>
+ > > > 
+ > > > No matter what i ask for (localhost, www.prorental.com,
+ > > > www.hedgescellars.com) I get www.prorental.com..
+ > > > 
+ > > > On Wed, 23 April 1997, at 13:01:08, Dean Gaudet wrote:
+ > > > 
+ > > > > This code was changed to use an unsigned long specifically *because* of
+ > > > > OSF/1 and the alpha chip.  Are you absolutely sure that this is the
+ > > > > problem?  If we change it back it's likely to break the config of the
+ > > > > person that asked us to change it to a long.
+ > > > > 
+ > > > > Are there any errors while starting up? 
+ > > > > 
+ > > > > Can you send me the <VirtualHost> lines from your config?
+ > > > > 
+ > > > > Dean
+ > > > > 
+ > > > > On Wed, 23 Apr 1997, Brett McCormick wrote:
+ > > > > 
+ > > > > > 
+ > > > > > 	The contract type is `' with a response time of 3 business hours.
+ > > > > > 	A first analysis should be sent before: Wed Apr 23 14:00:01 PDT 1997
+ > > > > > 
+ > > > > > 
+ > > > > > >Number:         463
+ > > > > > >Category:       os-osf
+ > > > > > >Synopsis:       virtualhost support functionally broken
+ > > > > > >Confidential:   no
+ > > > > > >Severity:       critical
+ > > > > > >Priority:       medium
+ > > > > > >Responsible:    apache (Apache HTTP Project)
+ > > > > > >State:          open
+ > > > > > >Class:          sw-bug
+ > > > > > >Submitter-Id:   apache
+ > > > > > >Arrival-Date:   Wed Apr 23 11:20:01 1997
+ > > > > > >Originator:     brett@speakeasy.org
+ > > > > > >Organization:
+ > > > > > apache
+ > > > > > >Release:        1.2b8
+ > > > > > >Environment:
+ > > > > > Digital Unix (OSF/1) 4.0, gcc 2.7.2.1
+ > > > > > >Description:
+ > > > > > Virtualhosts do not operate correctly.  The first virtualhost (and not the main
+ > > > > > server) serves all requests.  This is due to get_addresses storing the ip addr
+ > > > > > in a long int, which on an alpha is 64bit.  DEFAULT_VHOST_ADDR is also specified
+ > > > > > as a long.
+ > > > > > >How-To-Repeat:
+ > > > > > just try to use virtualhosts on a platform with 64bit longs
+ > > > > > >Fix:
+ > > > > > change the type of my_addr in get_addresses (http_config.c) to a 32-bit type.
+ > > > > > change the definition of DEFAULT_VHOST_ADDR to be 32-bit (i don't think this
+ > > > > > is neccesary, but it might be)
+ > > > > > >Audit-Trail:
+ > > > > > >Unformatted:
+ > > > > > 
+ > > > > > 
+ > > > > > 
+ > > > > 
+ > > > 
+ > > 
+ > 
+ 
+
+From: Brett McCormick <brett@speedy.speakeasy.org>
+To: Dean Gaudet <dgaudet@arctic.org>
+Subject: Re: os-osf/463: virtualhost support functionally broken
+Date: Wed, 23 Apr 1997 14:36:28 -0700 (PDT)
+
+ 
+ 
+ It is defined as 0xffffffff.
+ inet_addr returns -1, heres the prototype:
+   unsigned long    inet_addr __P((const char *));
+ 
+ So, it would appear the problem is in my systems header files.
+ Heh, the man page for inet_addr says:
+ 
+ RETURN VALUES
+ 
+   Upon successful completion, the inet_addr() function returns an equivalent
+   network byte-ordered address integer.  Otherwise, it returns (in_addr_t)-1.
+ 
+ except, inet_addr("foo") != (in_addr_t) -1
+ 
+ I'll try changing it to use inet_network, but again, these functions
+ take string ip addresses, whereas I'm using hostnames..
+ 
+ Now that I think about it, I'm not even sure if 1.1.3 works out of the
+ box..
+ 
+ On Wed, 23 April 1997, at 14:19:22, Dean Gaudet wrote:
+ 
+ > Is INADDR_NONE actually defined as -1 or as 0xffffffff ?  You've said both
+ > below.  Does inet_addr actually return (unsigned)-1 on error or
+ > INADDR_NONE?  What is inet_addr prototyped as? 
+ > 
+ > Isn't (unsigned long) the same as (unsigned) on the alpha?  Or is unsigned
+ > a 32-bit quantity?
+ > 
+ > Can you try changing it to use inet_network instead of inet_addr? 
+ > 
+ > BTW, there is no portable solution to this as far as I can tell so far. 
+ > I'll have to dig through mail archives to find the original change to
+ > unsigned long. 
+ > 
+ > Dean
+ > 
+ > On Wed, 23 Apr 1997, Brett McCormick wrote:
+ > 
+ > > 
+ > > Well, in this case we've got a hostname, so inet_{addr,network} will
+ > > return -1.  I don't know if OSF if DGUX..  It doesn't seem to be set
+ > > by cpp, though.  My feeling is that it's not.
+ > > 
+ > > On Wed, 23 April 1997, at 13:52:59, Dean Gaudet wrote:
+ > > 
+ > > > What does inet_network return?  Hasn't OSF become DGUX?
+ > > > 
+ > > > Dean
+ > > > 
+ > > > On Wed, 23 Apr 1997, Brett McCormick wrote:
+ > > > 
+ > > > > 
+ > > > > Fairly certain.  Here's where the problem lies: inet_addr returnes -1
+ > > > > (INADDR_NONE) on failure, which gets assigned to my_addr (unsigned
+ > > > > long int).  That is then compared to INADDR_NONE (0xffffffff), which
+ > > > > isn't casted to a long int.  So, -1 != 0xffffffff..  I suppose the
+ > > > > correct fix would be to leave DEFAULT_VHOST_ADDR with the 'ul' at the
+ > > > > end, and then cast INADDR_NONE to unsigned long in the comparison.
+ > > > > 
+ > > > >     } else if(
+ > > > > #ifdef DGUX
+ > > > >             ( my_addr = inet_network(w) )
+ > > > > #else
+ > > > >             ( my_addr = inet_addr(w) )
+ > > > > #endif
+ > > > >             != INADDR_NONE ) {
+ > > > >         is_an_ip_addr = 1;
+ > > > >     }
+ > > > > 
+ > > > > There are no errors starting up, and here are my virtualhost lines:
+ > > > > 
+ > > > > <Virtualhost www.prorental.com>
+ > > > > DocumentRoot /usr/local/apache/httpd/sites/prorental/docs
+ > > > > </VirtualHost>
+ > > > > 
+ > > > > <Virtualhost www.hedgescellars.com>
+ > > > > DocumentRoot /usr/local/apache/httpd/sites/hedgescellars/docs
+ > > > > </VirtualHost>
+ > > > > 
+ > > > > No matter what i ask for (localhost, www.prorental.com,
+ > > > > www.hedgescellars.com) I get www.prorental.com..
+ > > > > 
+ > > > > On Wed, 23 April 1997, at 13:01:08, Dean Gaudet wrote:
+ > > > > 
+ > > > > > This code was changed to use an unsigned long specifically *because* of
+ > > > > > OSF/1 and the alpha chip.  Are you absolutely sure that this is the
+ > > > > > problem?  If we change it back it's likely to break the config of the
+ > > > > > person that asked us to change it to a long.
+ > > > > > 
+ > > > > > Are there any errors while starting up? 
+ > > > > > 
+ > > > > > Can you send me the <VirtualHost> lines from your config?
+ > > > > > 
+ > > > > > Dean
+ > > > > > 
+ > > > > > On Wed, 23 Apr 1997, Brett McCormick wrote:
+ > > > > > 
+ > > > > > > 
+ > > > > > > 	The contract type is `' with a response time of 3 business hours.
+ > > > > > > 	A first analysis should be sent before: Wed Apr 23 14:00:01 PDT 1997
+ > > > > > > 
+ > > > > > > 
+ > > > > > > >Number:         463
+ > > > > > > >Category:       os-osf
+ > > > > > > >Synopsis:       virtualhost support functionally broken
+ > > > > > > >Confidential:   no
+ > > > > > > >Severity:       critical
+ > > > > > > >Priority:       medium
+ > > > > > > >Responsible:    apache (Apache HTTP Project)
+ > > > > > > >State:          open
+ > > > > > > >Class:          sw-bug
+ > > > > > > >Submitter-Id:   apache
+ > > > > > > >Arrival-Date:   Wed Apr 23 11:20:01 1997
+ > > > > > > >Originator:     brett@speakeasy.org
+ > > > > > > >Organization:
+ > > > > > > apache
+ > > > > > > >Release:        1.2b8
+ > > > > > > >Environment:
+ > > > > > > Digital Unix (OSF/1) 4.0, gcc 2.7.2.1
+ > > > > > > >Description:
+ > > > > > > Virtualhosts do not operate correctly.  The first virtualhost (and not the main
+ > > > > > > server) serves all requests.  This is due to get_addresses storing the ip addr
+ > > > > > > in a long int, which on an alpha is 64bit.  DEFAULT_VHOST_ADDR is also specified
+ > > > > > > as a long.
+ > > > > > > >How-To-Repeat:
+ > > > > > > just try to use virtualhosts on a platform with 64bit longs
+ > > > > > > >Fix:
+ > > > > > > change the type of my_addr in get_addresses (http_config.c) to a 32-bit type.
+ > > > > > > change the definition of DEFAULT_VHOST_ADDR to be 32-bit (i don't think this
+ > > > > > > is neccesary, but it might be)
+ > > > > > > >Audit-Trail:
+ > > > > > > >Unformatted:
+ > > > > > > 
+ > > > > > > 
+ > > > > > > 
+ > > > > > 
+ > > > > 
+ > > > 
+ > > 
+ > 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Brett McCormick <brett@speedy.speakeasy.org>
+Subject: Re: os-osf/463: virtualhost support functionally broken
+Date: Wed, 23 Apr 1997 14:50:43 -0700 (PDT)
+
+ 
+ On Wed, 23 Apr 1997, Brett McCormick wrote:
+ > I'll try changing it to use inet_network, but again, these functions
+ > take string ip addresses, whereas I'm using hostnames..
+ 
+ Yep but they're called to find out if the address passed is an ip addr,
+ and if we're misinterpreting their result code it would cause the problem
+ you describe.  All vhosts would be treated as if they were _default_ and
+ the code would actually end up using the first one in the file. 
+ 
+ Your inet_addr returns (in_addr_t)-1, which isn't what we test for -- we
+ test for INADDR_NONE.  Unfortunately every other arch returns INADDR_NONE
+ as the error code.  Using inet_network might fix that.  If it doesn't you
+ could give the patch below a try.  (A similar change needs to be applied
+ to get_virthost_addr() in util.c.)
+ 
+ Dean
+ 
+ *** http_config.c.dist	Wed Apr 23 14:47:13 1997
+ --- http_config.c	Wed Apr 23 14:48:22 1997
+ ***************
+ *** 879,891 ****
+   	    || strcmp(w, "255.255.255.255") == 0 ) {
+   	my_addr = DEFAULT_VHOST_ADDR;
+   	is_an_ip_addr = 1;
+ !     } else if(
+ ! #ifdef DGUX
+ ! 	    ( my_addr = inet_network(w) )
+   #else
+ ! 	    ( my_addr = inet_addr(w) )
+   #endif
+ ! 	    != INADDR_NONE ) {
+   	is_an_ip_addr = 1;
+       }
+       if( is_an_ip_addr ) {
+ --- 879,893 ----
+   	    || strcmp(w, "255.255.255.255") == 0 ) {
+   	my_addr = DEFAULT_VHOST_ADDR;
+   	is_an_ip_addr = 1;
+ !     }
+ ! #if defined( DGUX )
+ !     else if( ( my_addr = inet_network(w) ) != INADDR_NONE )
+ ! #elif defined( OSF1 )
+ !     else if( ( my_addr = inet_addr(w) ) != (in_addr_t)-1 )
+   #else
+ !     else if( ( my_addr = inet_addr(w) ) != INADDR_NONE )
+   #endif
+ !     {
+   	is_an_ip_addr = 1;
+       }
+       if( is_an_ip_addr ) {
+ 
+
+From: Brett McCormick <brett@speedy.speakeasy.org>
+To: Dean Gaudet <dgaudet@arctic.org>
+Subject: Re: os-osf/463: virtualhost support functionally broken
+Date: Wed, 23 Apr 1997 15:08:42 -0700 (PDT)
+
+ 
+ 
+ On Wed, 23 April 1997, at 14:50:43, Dean Gaudet wrote:
+ 
+ > On Wed, 23 Apr 1997, Brett McCormick wrote:
+ > > I'll try changing it to use inet_network, but again, these functions
+ > > take string ip addresses, whereas I'm using hostnames..
+ > 
+ > Yep but they're called to find out if the address passed is an ip addr,
+ > and if we're misinterpreting their result code it would cause the problem
+ > you describe.  All vhosts would be treated as if they were _default_ and
+ > the code would actually end up using the first one in the file. 
+ 
+ Exactly.  Which is why inet_network won't have any beneficial effect,
+ we'll still misinterpret the result code.  And if we weren't, it would
+ do the wrong thing anyway.  But I'll give it a try.
+ 
+ As I said in my previous mail, the man page is wrong.  It says it
+ returns (in_addr_t)-1, but does not.  If it did, it would work.  I'm
+ not sure how you want to make this work, aside from putting an #elif
+ OSF like you did below, and just use -1 instead of INADDR_NONE.
+ 
+ You don't need to send me a patch until it is one that will be
+ included in the final distribution.  I've already got my copy fixed,
+ I'm only doing this so others won't have to go through the same
+ debugging effort.
+ 
+ > 
+ > Your inet_addr returns (in_addr_t)-1, which isn't what we test for -- we
+ > test for INADDR_NONE.  Unfortunately every other arch returns INADDR_NONE
+ > as the error code.  Using inet_network might fix that.  If it doesn't you
+ > could give the patch below a try.  (A similar change needs to be applied
+ > to get_virthost_addr() in util.c.)
+ > 
+ > Dean
+ > 
+ > *** http_config.c.dist	Wed Apr 23 14:47:13 1997
+ > --- http_config.c	Wed Apr 23 14:48:22 1997
+ > ***************
+ > *** 879,891 ****
+ >   	    || strcmp(w, "255.255.255.255") == 0 ) {
+ >   	my_addr = DEFAULT_VHOST_ADDR;
+ >   	is_an_ip_addr = 1;
+ > !     } else if(
+ > ! #ifdef DGUX
+ > ! 	    ( my_addr = inet_network(w) )
+ >   #else
+ > ! 	    ( my_addr = inet_addr(w) )
+ >   #endif
+ > ! 	    != INADDR_NONE ) {
+ >   	is_an_ip_addr = 1;
+ >       }
+ >       if( is_an_ip_addr ) {
+ > --- 879,893 ----
+ >   	    || strcmp(w, "255.255.255.255") == 0 ) {
+ >   	my_addr = DEFAULT_VHOST_ADDR;
+ >   	is_an_ip_addr = 1;
+ > !     }
+ > ! #if defined( DGUX )
+ > !     else if( ( my_addr = inet_network(w) ) != INADDR_NONE )
+ > ! #elif defined( OSF1 )
+ > !     else if( ( my_addr = inet_addr(w) ) != (in_addr_t)-1 )
+ >   #else
+ > !     else if( ( my_addr = inet_addr(w) ) != INADDR_NONE )
+ >   #endif
+ > !     {
+ >   	is_an_ip_addr = 1;
+ >       }
+ >       if( is_an_ip_addr ) {
+ > 
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Fri Apr 25 13:15:29 PDT 1997
+State-Changed-Why:
+I have absolutely no problem with DU 3.2 and the bundled
+cc(1) compiler.  Therefore, I suspect either the differences
+to DU 4.0 or gcc.  Can you please try building with the
+DU compiler and see if the behaviour changes?
+State-Changed-From-To: feedback-analyzed
+State-Changed-By: coar
+State-Changed-When: Fri Apr 25 13:36:54 PDT 1997
+State-Changed-Why:
+Response from customer:
+State-Changed-From-To: analyzed-feedback
+State-Changed-By: coar
+State-Changed-When: Fri Apr 25 13:43:56 PDT 1997
+State-Changed-Why:
+inet_addr() is prototyped in <arpa/inet.h> as
+"unsigned int".  INADDR_NONE isn't defined by any of
+the DU header files at all, so it's using the
+"unsigned long" from Apache's conf.h.
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Aug 16 18:43:58 PDT 1997
+State-Changed-Why:
+I'm unable to reproduce these problems on 64-bit systems
+I have access to.  1.3 contains other 64-bit fixes.  I'm
+going to assume they fix this problem.
+
+Dean
+>Unformatted:
+>What is the prototype for inet_addr, and the definition for
+>INADDR_NONE?  I suspect the differences will be there.
+>I'll try compiling with cc in the meantime, although I suspect the
+>same effect shall be had..
+>
+>--brett
+
+
+
+
+
+
+
+
+
+
+
+

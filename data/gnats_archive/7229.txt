@@ -1,0 +1,214 @@
+Received: (qmail 5281 invoked by uid 501); 11 Feb 2001 14:10:00 -0000
+Message-Id: <20010211141000.5280.qmail@apache.org>
+Date: 11 Feb 2001 14:10:00 -0000
+From: Henning Schmiedehausen <hps@intermeta.de>
+Reply-To: hps@intermeta.de
+To: submit@bugz.apache.org
+Subject: For full traffic accounting, the size of the Client-Request and the Response Header is needed
+X-Send-Pr-Version: 3.110
+
+>Number:         7229
+>Category:       apache-api
+>Synopsis:       For full traffic accounting, the size of the Client-Request and the Response Header is needed
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Feb 11 06:20:00 PST 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     hps@intermeta.de
+>Release:        1.3.17
+>Organization:
+apache
+>Environment:
+RedHat Linux 6.2, 2.2.x Kernel, glibc 2.1.3
+>Description:
+I had to develop a module which generates traffic statistics for accounting as
+"close to the wire" as possible, so that the byte count from the module and
+the byte count over the wire (without TCP retransmits and Ethernet Headers)
+is as equal as possible. To be able to do so, I needed the exact sizes of the
+Transmitted HTTP Header including all MIME-Fields sent by the server and the
+Size of the Client Request received from the Browser. I did this by adding
+two new fields to the request structure which keep these sizes and a small
+addition to the buffered i/o routines to keep also the number of received bytes.
+
+The full patch is just below 150 lines and completely surrounded by #ifdef
+statements, so even if applied, if you don't define "HEADER_CHEAT", it is
+completely inert.
+
+Please consider adding it to future apache releases as it provides informations
+to modules they have no other way to access. It is very useful to all kinds of
+logging, accounting and statistics modules.
+>How-To-Repeat:
+
+>Fix:
+diff -urb apache_1.3.14/src/include/buff.h apache_1.3.14.p/src/include/buff.h
+--- apache_1.3.14/src/include/buff.h	Sun Feb 11 01:02:23 2001
++++ apache_1.3.14.p/src/include/buff.h	Sun Feb 11 00:04:01 2001
+@@ -111,7 +111,9 @@
+     void (*error) (BUFF *fb, int op, void *data);
+     void *error_data;
+     long int bytes_sent;	/* number of bytes actually written */
+-
++#ifdef HEADER_CHEAT
++    long int bytes_rec;
++#endif  
+     ap_pool *pool;
+ 
+ /* could also put pointers to the basic I/O routines here */
+@@ -145,6 +147,10 @@
+ 
+ /* Options to bset/getopt */
+ #define BO_BYTECT (1)
++
++#ifdef HEADER_CHEAT
++#define BO_BYTEREC (2)
++#endif
+ 
+ /* Stream creation and modification */
+ API_EXPORT(BUFF *) ap_bcreate(pool *p, int flags);
+diff -urb apache_1.3.14/src/include/httpd.h apache_1.3.14.p/src/include/httpd.h
+--- apache_1.3.14/src/include/httpd.h	Sun Feb 11 01:02:24 2001
++++ apache_1.3.14.p/src/include/httpd.h	Sun Feb 11 00:09:18 2001
+@@ -870,6 +870,11 @@
+      */
+     char *case_preserved_filename;
+ 
++#ifdef HEADER_CHEAT
++  long header_bytes_sent;
++  long header_bytes_rec;
++#endif
++  
+ /* Things placed at the end of the record to avoid breaking binary
+  * compatibility.  It would be nice to remember to reorder the entire
+  * record to improve 64bit alignment the next time we need to break
+diff -urb apache_1.3.14/src/main/buff.c apache_1.3.14.p/src/main/buff.c
+--- apache_1.3.14/src/main/buff.c	Sun Feb 11 01:02:23 2001
++++ apache_1.3.14.p/src/main/buff.c	Sun Feb 11 00:26:50 2001
+@@ -440,7 +440,9 @@
+     fb->outchunk = -1;
+     fb->error = NULL;
+     fb->bytes_sent = 0L;
+-
++#ifdef HEADER_CHEAT
++    fb->bytes_rec = 0L;
++#endif
+     fb->fd = -1;
+     fb->fd_in = -1;
+ #ifdef WIN32
+@@ -488,6 +490,12 @@
+ 	fb->bytes_sent = *(const long int *) optval - (long int) fb->outcnt;;
+ 	return 0;
+     }
++#ifdef HEADER_CHEAT
++    else if(optname == BO_BYTEREC) {
++      fb->bytes_rec = *(const long int *) optval;
++      return 0;
++    }
++#endif
+     else {
+ 	errno = EINVAL;
+ 	return -1;
+@@ -503,6 +511,15 @@
+ 	*(long int *) optval = bs;
+ 	return 0;
+     }
++#ifdef HEADER_CHEAT
++    else if(optname == BO_BYTEREC) {
++      long int bs = fb->bytes_rec;
++      if (bs < 0L)
++		bs = 0L;
++      *(long int *) optval = bs;
++      return 0;
++    }
++#endif
+     else {
+ 	errno = EINVAL;
+ 	return -1;
+@@ -756,6 +773,9 @@
+     else if (rv == -1 && errno != EAGAIN) {
+ 	doerror(fb, B_RD);
+     }
++#ifdef HEADER_CHEAT
++    fb->bytes_rec += rv;
++#endif
+     return rv;
+ }
+ 
+diff -urb apache_1.3.14/src/main/http_protocol.c apache_1.3.14.p/src/main/http_protocol.c
+--- apache_1.3.14/src/main/http_protocol.c	Sun Feb 11 01:02:24 2001
++++ apache_1.3.14.p/src/main/http_protocol.c	Sun Feb 11 00:25:12 2001
+@@ -1009,6 +1009,8 @@
+     const char *expect;
+     int access_status;
+ 
++    const long int zero = 0L;
++
+     p = ap_make_sub_pool(conn->pool);
+     r = ap_pcalloc(p, sizeof(request_rec));
+     r->pool            = p;
+@@ -1049,6 +1051,10 @@
+ 
+     /* Get the request... */
+ 
++#ifdef HEADER_CHEAT
++	ap_bsetopt(r->connection->client, BO_BYTEREC, &zero);
++#endif
++
+     ap_keepalive_timeout("read request line", r);
+     if (!read_request_line(r)) {
+         ap_kill_timeout(r);
+@@ -1066,6 +1072,9 @@
+         ap_hard_timeout("read request headers", r);
+         get_mime_headers(r);
+         ap_kill_timeout(r);
++#ifdef HEADER_CHEAT
++		ap_bgetopt(r->connection->client, BO_BYTEREC, &r->header_bytes_rec);
++#endif
+         if (r->status != HTTP_REQUEST_TIME_OUT) {
+             ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r,
+                          "request failed: error reading the headers");
+@@ -1643,6 +1652,9 @@
+ {
+     int i;
+     const long int zero = 0L;
++#ifdef HEADER_CHEAT
++	ap_bsetopt(r->connection->client, BO_BYTECT, &zero);
++#endif
+ 
+     if (r->assbackwards) {
+         if (!r->main)
+@@ -1724,6 +1736,9 @@
+     terminate_header(r->connection->client);
+ 
+     ap_kill_timeout(r);
++#ifdef HEADER_CHEAT
++    ap_bgetopt(r->connection->client, BO_BYTECT, &r->header_bytes_sent);
++#endif
+ 
+     ap_bsetopt(r->connection->client, BO_BYTECT, &zero);
+     r->sent_bodyct = 1;         /* Whatever follows is real body stuff... */
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

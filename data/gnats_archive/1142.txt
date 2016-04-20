@@ -1,0 +1,816 @@
+From joakim@korridor.se  Wed Sep 17 06:37:57 1997
+Received: from blueroom.korridor.se (root@blueroom.korridor.se [194.197.93.4])
+	by hyperreal.org (8.8.5/8.8.5) with ESMTP id GAA02863
+	for <apbugs@hyperreal.org>; Wed, 17 Sep 1997 06:37:54 -0700 (PDT)
+Message-Id: <3.0.3.32.19970917153946.00a3c670@korridor.se>
+Date: Wed, 17 Sep 1997 15:39:46 +0200
+From: Joakim Larsson <joakim@korridor.se>
+To: apbugs@hyperreal.org
+Cc: dsalot@haggle.com
+Subject: Problem report #1140
+
+>Number:         1142
+>Category:       general
+>Synopsis:       spurious POST or PUT without Content-length errors
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Sep 17 06:40:02 1997
+>Last-Modified:  Thu Jan 22 13:12:01 PST 1998
+>Originator:     dsalot@haggle.com
+>Organization:
+>Release:        1.1.3
+>Environment:
+Linux 2.0.30
+>Description:
+I think this problem has been reported by others, but I always see
+it closed out without a satisfactory answer.  My site gets about
+100,000 hits per day and I get a few "POST or PUT without Content-length"
+errors per hour.  The users who generate these errors are all
+using mainstream browsers and they all report that repeated
+attempts to POST form data basically hangs their browsers.
+I'm guessing that the problem is related at least partially to
+keep-alive, since it seems to be repeatable on a given connection.
+>How-To-Repeat:
+I have not been able to repeat this problem myself, and it happens
+about 1 in 10,000 hits, so I have no idea how to repeat it.  It
+can happen with any page that contains a form, such as
+http://www.haggle.com/account.html
+>Fix:
+None.  Any ideas would be appreciated
+>Audit-Trail:
+Comment-Added-By: Lars.Eilebrecht@unix-ag.org
+Comment-Added-When: Wed Sep 17 12:56:01 PDT 1997
+Comment-Added:
+(comment from PR#1143, due to confused gnats-system) 
+
+
+I just wanted to add that the very same symptom occured for me at the
+exemple page refered to in the original problem report. Again using   
+Netscape 3.03/Win NT 4.x                                           
+
+http://www.haggle.com/account.html
+
+Joakim
+
+Severity-Changed-From-To: serious-non-critical
+Severity-Changed-By: Lars.Eilebrecht@unix-ag.org
+Severity-Changed-When: Wed Sep 17 12:56:01 PDT 1997
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Wed Sep 24 23:44:09 PDT 1997
+State-Changed-Why:
+The single most useful thing now would be a tcpdump of a session
+showing this error.  We need full packets so that we can analyse
+what the browser sent and how the server reacted.  So you need to
+do something like this:
+
+    tcpdump -s 1514 -w dumpfile tcp port 80 and host clientname
+
+as root on a machine on the same ethernet segment as either the
+server or the client.  Then gzip the dumpfile and put it up for
+ftp/http and tell us where to get it.
+
+Thanks
+Dean 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Doug Salot <dsalot@haggle.com>
+Subject: Re: general/1142: spurious POST or PUT without Content-length errors
+Date: Fri, 26 Sep 1997 12:46:21 -0700 (PDT)
+
+ 
+   This message is in MIME format.  The first part should be readable text,
+   while the remaining parts are likely unreadable without MIME-aware tools.
+   Send mail to mime@docserver.cac.washington.edu for more info.
+ 
+ ---271644610-169652028-875293504=:8764
+ Content-Type: TEXT/PLAIN; CHARSET=US-ASCII
+ Content-ID: <Pine.LNX.3.95dg3.970926123731.30331C@twinlark.arctic.org>
+ 
+ Oh wow, it's a really weird browser bug it looks like.  It is definately
+ sending a request w/o Content-Length.  Here's what it sent:
+ 
+ 	POST /cgi/getacct.cgi HTTP/1.0.
+ 	Referer: http://www.haggle.com/account.html.
+ 	Connection: Keep-Alive.
+ 	User-Agent: Mozilla/3.02 (WinNT; U).
+ 	Host: www.haggle.com.
+ 	Accept: image/gif, image/x-xbitmap, image/jpeg, image/pjpeg, */*.
+ 	Cookie: cookie=carl@golfweb.com.
+ 	
+ The trailing . are CR.  There should be one more line, which is the
+ CRLF that terminates the headers, it never appears.  For example here is
+ a valid GET later on in the capture:
+ 
+ 	GET /account.html HTTP/1.0.
+ 	If-Modified-Since: Tuesday, 16-Sep-97 18:08:56 GMT; length=1965.
+ 	Referer: http://www.haggle.com/.
+ 	Connection: Keep-Alive.
+ 	User-Agent: Mozilla/3.02 (WinNT; U).
+ 	Pragma: no-cache.
+ 	Host: www.haggle.com.
+ 	Accept: image/gif, image/x-xbitmap, image/jpeg, image/pjpeg, */*.
+ 	.
+ 
+ The first POST does not timeout on the server side.  What has happened is that
+ netscape has kept-alive a connection and sent the bogus POST above to
+ it.  The server responds immediately with an RST, I'm guessing because it has
+ already closed that connection due to the keep-alive timeout.  Somehow
+ netscape doesn't notice that closure immediately.
+ 
+ Three seconds later a new connection is opened and the POST is re-sent
+ (this is normal behaviour for a keep-alive browser in response to a
+ closed connection).  The server is still waiting for the rest of the data,
+ and a minute passes without event.  Then you reloaded the page.
+ 
+ Hmm.  It would be nice to see what happened before this point, specifically
+ what other traffic went on that first keep-alive connection.  We might be
+ able to chase down what is causing netscape to flub up like this.  If I
+ could trouble you to do this again but run the tcpdump before you even fire
+ up the browser.  Then we'll have a record of all the tcp sessions.
+ 
+ Thanks
+ Dean
+ 
+ On Fri, 26 Sep 1997, Doug Salot wrote:
+ 
+ > OK, I've attached a dump of a sesion in which this problem was reproduced.
+ > 
+ > Here were the steps taken:
+ > 
+ > 1) go to the page with the form
+ > 2) turn on tcpdump
+ > 3) hit the submit button
+ > 4) wait for a long time, but not long enough for a timeout
+ > 5) hit the stop button
+ > 6) reload the html page (as a marker for the dump)
+ > 
+ > Here's what appeared in the error log:
+ > [Fri Sep 26 12:42:54 1997] access to /home/dsalot/html/cgi/getacct.cgi
+ > failed for 209.1.103.92, reason: POST or PUT without Content-length:
+ > [Fri Sep 26 12:42:54 1997] request lost connection to client 209.1.103.92
+ > 
+ > It's interesting to note that we did this twice.  The first time we let
+ > the server time-out.  The time-out was logged, but there was no error
+ > about content-length.  So it seems like the server is sitting there
+ > waiting for data that the browser thinks it already sent.
+ > 
+ > Doug Salot
+ > Haggle Online
+ > http://www.haggle.com
+ > 
+ > On Wed, 24 Sep 1997 dgaudet@hyperreal.org wrote:
+ > 
+ > > Synopsis: spurious POST or PUT without Content-length errors
+ > > 
+ > > State-Changed-From-To: open-feedback
+ > > State-Changed-By: dgaudet
+ > > State-Changed-When: Wed Sep 24 23:44:09 PDT 1997
+ > > State-Changed-Why:
+ > > The single most useful thing now would be a tcpdump of a session
+ > > showing this error.  We need full packets so that we can analyse
+ > > what the browser sent and how the server reacted.  So you need to
+ > > do something like this:
+ > > 
+ > >     tcpdump -s 1514 -w dumpfile tcp port 80 and host clientname
+ > > 
+ > > as root on a machine on the same ethernet segment as either the
+ > > server or the client.  Then gzip the dumpfile and put it up for
+ > > ftp/http and tell us where to get it.
+ > > 
+ > > Thanks
+ > > Dean 
+ > > 
+ > 
+ 
+ ---271644610-169652028-875293504=:8764
+ Content-Type: APPLICATION/OCTET-STREAM; NAME="carl.log"
+ Content-Transfer-Encoding: BASE64
+ Content-ID: <Pine.LNX.3.95.970926130504.8764B@hagen.webdevelop.com>
+ Content-Description: 
+ 
+ 1MOyoQIABAAAAAAAAAAAAOoFAAABAAAA0eUrNK6NAAA5AQAAOQEAAADgKQW7
+ BQBgcBV5mwgARQABKzk9QAByBog50QFnXM/vPgkMFABQCshRzb6ZLGhQGCA/
+ J0wAAFBPU1QgL2NnaS9nZXRhY2N0LmNnaSBIVFRQLzEuMA0KUmVmZXJlcjog
+ aHR0cDovL3d3dy5oYWdnbGUuY29tL2FjY291bnQuaHRtbA0KQ29ubmVjdGlv
+ bjogS2VlcC1BbGl2ZQ0KVXNlci1BZ2VudDogTW96aWxsYS8zLjAyIChXaW5O
+ VDsgVSkNCkhvc3Q6IHd3dy5oYWdnbGUuY29tDQpBY2NlcHQ6IGltYWdlL2dp
+ ZiwgaW1hZ2UveC14Yml0bWFwLCBpbWFnZS9qcGVnLCBpbWFnZS9wanBlZywg
+ Ki8qDQpDb29raWU6IGNvb2tpZT1jYXJsQGdvbGZ3ZWIuY29tDQrR5Ss0ro0A
+ ADYAAAA2AAAAAGBwFXmbAOApBbsFCABFAAAo6IQAAP8GjPTP7z4J0QFnXABQ
+ DBS+mSxoAAAAAFAEAAByJAAA0eUrNM7bAAA8AAAAPAAAAADgKQW7BQBgcBV5
+ mwgARQAAKDo9QAByBog80QFnXM/vPgkMFABQCshS0L6ZLGhQBAAAFIwAAAIE
+ BaAvbdTlKzSOPwAAPAAAADwAAAAA4CkFuwUAYHAVeZsIAEUAACw8PUAAcgaG
+ ONEBZ1zP7z4JDBcAUArJBq0AAAAAYAIgABPzAAACBAW0L2nU5Ss0jj8AADoA
+ AAA6AAAAAGBwFXmbAOApBbsFCABFAAAs6KsAAEAGS8rP7z4J0QFnXABQDBeG
+ 2j5vCskGrmASfADylwAAAgQFtNTlKzROFAIAPAAAADwAAAAA4CkFuwUAYHAV
+ eZsIAEUAACg+PUAAcgaEPNEBZ1zP7z4JDBcAUArJBq6G2j5wUBAiOGQdAAAC
+ BAW0L0PU5Ss0ThQCADkBAAA5AQAAAOApBbsFAGBwFXmbCABFAAErPz1AAHIG
+ gjnRAWdcz+8+CQwXAFAKyQauhto+cFAYIjiWJQAAUE9TVCAvY2dpL2dldGFj
+ Y3QuY2dpIEhUVFAvMS4wDQpSZWZlcmVyOiBodHRwOi8vd3d3LmhhZ2dsZS5j
+ b20vYWNjb3VudC5odG1sDQpDb25uZWN0aW9uOiBLZWVwLUFsaXZlDQpVc2Vy
+ LUFnZW50OiBNb3ppbGxhLzMuMDIgKFdpbk5UOyBVKQ0KSG9zdDogd3d3Lmhh
+ Z2dsZS5jb20NCkFjY2VwdDogaW1hZ2UvZ2lmLCBpbWFnZS94LXhiaXRtYXAs
+ IGltYWdlL2pwZWcsIGltYWdlL3BqcGVnLCAqLyoNCkNvb2tpZTogY29va2ll
+ PWNhcmxAZ29sZndlYi5jb20NCtTlKzRuYgIANgAAADYAAAAAYHAVeZsA4CkF
+ uwUIAEUAACjor0AAQAYLys/vPgnRAWdcAFAMF4baPnAKyQexUBB8AAlSAAAO
+ 5is0DjwLADwAAAA8AAAAAOApBbsFAGBwFXmbCABFAAAoQj1AAHIGgDzRAWdc
+ z+8+CQwXAFAKyQexWZOJ5VAEAABnMAAAR0VUIC9qLuYrNF47AgA8AAAAPAAA
+ AADgKQW7BQBgcBV5mwgARQAALEY9QAByBnw40QFnXM/vPgkMGABQCspySAAA
+ AABgAiAAqFUAAAIEBbQvaS7mKzReOwIAOgAAADoAAAAAYHAVeZsA4CkFuwUI
+ AEUAACzskwAAQAZH4s/vPgnRAWdcAFAMGOYASwcKynJJYBJ8ABs8AAACBAW0
+ LuYrNB4QBAA8AAAAPAAAAADgKQW7BQBgcBV5mwgARQAAKEc9QAByBns80QFn
+ XM/vPgkMGABQCspySeYASwhQECI4jMEAAEdFVCAvYy7mKzQuNwQAXQEAAF0B
+ AAAA4CkFuwUAYHAVeZsIAEUAAU9IPUAAcgZ5FdEBZ1zP7z4JDBgAUArKcknm
+ AEsIUBgiOGP+AABHRVQgL2FjY291bnQuaHRtbCBIVFRQLzEuMA0KSWYtTW9k
+ aWZpZWQtU2luY2U6IFR1ZXNkYXksIDE2LVNlcC05NyAxODowODo1NiBHTVQ7
+ IGxlbmd0aD0xOTY1DQpSZWZlcmVyOiBodHRwOi8vd3d3LmhhZ2dsZS5jb20v
+ DQpDb25uZWN0aW9uOiBLZWVwLUFsaXZlDQpVc2VyLUFnZW50OiBNb3ppbGxh
+ LzMuMDIgKFdpbk5UOyBVKQ0KUHJhZ21hOiBuby1jYWNoZQ0KSG9zdDogd3d3
+ LmhhZ2dsZS5jb20NCkFjY2VwdDogaW1hZ2UvZ2lmLCBpbWFnZS94LXhiaXRt
+ YXAsIGltYWdlL2pwZWcsIGltYWdlL3BqcGVnLCAqLyoNCg0KLuYrNC43BADD
+ AAAAwwAAAABgcBV5mwDgKQW7BQgARQAAteyaQABABgdSz+8+CdEBZ1wAUAwY
+ 5gBLCArKc3BQGHwA4ywAAEhUVFAvMS4wIDMwNCBOb3QgTW9kaWZpZWQNCkRh
+ dGU6IEZyaSwgMjYgU2VwIDE5OTcgMTY6NDM6MjYgR01UDQpTZXJ2ZXI6IFN0
+ cm9uZ2hvbGQvMS4zLjQgQmVuLVNTTC8xLjMgQXBhY2hlLzEuMS4zDQpDb25u
+ ZWN0aW9uOiBLZWVwLUFsaXZlDQoNCi7mKzQegQYAZQEAAGUBAAAA4CkFuwUA
+ YHAVeZsIAEUAAVdJPUAAcgZ4DdEBZ1zP7z4JDBgAUArKc3DmAEuVUBghq8Ow
+ AABHRVQgL2dpZi9oYWdnbGUuZ2lmIEhUVFAvMS4wDQpJZi1Nb2RpZmllZC1T
+ aW5jZTogTW9uZGF5LCAwNi1KYW4tOTcgMTA6MTE6MjAgR01UOyBsZW5ndGg9
+ MTI4MA0KUmVmZXJlcjogaHR0cDovL3d3dy5oYWdnbGUuY29tL2FjY291bnQu
+ aHRtbA0KQ29ubmVjdGlvbjogS2VlcC1BbGl2ZQ0KVXNlci1BZ2VudDogTW96
+ aWxsYS8zLjAyIChXaW5OVDsgVSkNClByYWdtYTogbm8tY2FjaGUNCkhvc3Q6
+ IHd3dy5oYWdnbGUuY29tDQpBY2NlcHQ6IGltYWdlL2dpZiwgaW1hZ2UveC14
+ Yml0bWFwLCBpbWFnZS9qcGVnLCBpbWFnZS9wanBlZw0KDQou5is0HoEGAMMA
+ AADDAAAAAGBwFXmbAOApBbsFCABFAAC17JxAAEAGB1DP7z4J0QFnXABQDBjm
+ AEuVCsp0n1AYfADhcAAASFRUUC8xLjAgMzA0IE5vdCBNb2RpZmllZA0KRGF0
+ ZTogRnJpLCAyNiBTZXAgMTk5NyAxNjo0MzoyNiBHTVQNClNlcnZlcjogU3Ry
+ b25naG9sZC8xLjMuNCBCZW4tU1NMLzEuMyBBcGFjaGUvMS4xLjMNCkNvbm5l
+ Y3Rpb246IEtlZXAtQWxpdmUNCg0KLuYrNC6oBgA8AAAAPAAAAADgKQW7BQBg
+ cBV5mwgARQAALEo9QAByBng40QFnXM/vPgkMGQBQCspzYQAAAABgAiAApzsA
+ AAIEBbQvaS7mKzQuqAYAOgAAADoAAAAAYHAVeZsA4CkFuwUIAEUAACzsnQAA
+ QAZH2M/vPgnRAWdcAFAMGcO2kLEKynNiYBJ8APbBAAACBAW0LuYrNC6oBgA8
+ AAAAPAAAAADgKQW7BQBgcBV5mwgARQAALEs9QAByBnc40QFnXM/vPgkMGgBQ
+ CspzZQAAAABgAiAApzYAAAIEBbQvaS7mKzQuqAYAOgAAADoAAAAAYHAVeZsA
+ 4CkFuwUIAEUAACzsngAAQAZH18/vPgnRAWdcAFAMGofDFgEKynNmYBJ8AK1g
+ AAACBAW0LuYrNO58CAA8AAAAPAAAAADgKQW7BQBgcBV5mwgARQAAKEw9QABy
+ BnY80QFnXM/vPgkMGQBQCspzYsO2kLJQECI4aEcAAEdFVCAvYy7mKzT+owgA
+ ZQEAAGUBAAAA4CkFuwUAYHAVeZsIAEUAAVdOPUAAcgZzDdEBZ1zP7z4JDBkA
+ UArKc2LDtpCyUBgiOPzHAABHRVQgL2dpZi9sY2F0MS5naWYgSFRUUC8xLjAN
+ CklmLU1vZGlmaWVkLVNpbmNlOiBUaHVyc2RheSwgMTAtT2N0LTk2IDIwOjQ5
+ OjAzIEdNVDsgbGVuZ3RoPTMzMQ0KUmVmZXJlcjogaHR0cDovL3d3dy5oYWdn
+ bGUuY29tL2FjY291bnQuaHRtbA0KQ29ubmVjdGlvbjogS2VlcC1BbGl2ZQ0K
+ VXNlci1BZ2VudDogTW96aWxsYS8zLjAyIChXaW5OVDsgVSkNClByYWdtYTog
+ bm8tY2FjaGUNCkhvc3Q6IHd3dy5oYWdnbGUuY29tDQpBY2NlcHQ6IGltYWdl
+ L2dpZiwgaW1hZ2UveC14Yml0bWFwLCBpbWFnZS9qcGVnLCBpbWFnZS9wanBl
+ Zw0KDQou5is0/qMIAGYBAABmAQAAAOApBbsFAGBwFXmbCABFAAFYTz1AAHIG
+ cgzRAWdcz+8+CQwaAFAKynNmh8MWAlAYIjirNQAAR0VUIC9naWYvcnBpZzAx
+ LmdpZiBIVFRQLzEuMA0KSWYtTW9kaWZpZWQtU2luY2U6IFRodXJzZGF5LCAw
+ OC1BdWctOTYgMjM6NDA6NTMgR01UOyBsZW5ndGg9MzAxDQpSZWZlcmVyOiBo
+ dHRwOi8vd3d3LmhhZ2dsZS5jb20vYWNjb3VudC5odG1sDQpDb25uZWN0aW9u
+ OiBLZWVwLUFsaXZlDQpVc2VyLUFnZW50OiBNb3ppbGxhLzMuMDIgKFdpbk5U
+ OyBVKQ0KUHJhZ21hOiBuby1jYWNoZQ0KSG9zdDogd3d3LmhhZ2dsZS5jb20N
+ CkFjY2VwdDogaW1hZ2UvZ2lmLCBpbWFnZS94LXhiaXRtYXAsIGltYWdlL2pw
+ ZWcsIGltYWdlL3BqcGVnDQoNCi7mKzT+owgAwwAAAMMAAAAAYHAVeZsA4CkF
+ uwUIAEUAALXsn0AAQAYHTc/vPgnRAWdcAFAMGcO2kLIKynSRUBh8AL6qAABI
+ VFRQLzEuMCAzMDQgTm90IE1vZGlmaWVkDQpEYXRlOiBGcmksIDI2IFNlcCAx
+ OTk3IDE2OjQzOjI2IEdNVA0KU2VydmVyOiBTdHJvbmdob2xkLzEuMy40IEJl
+ bi1TU0wvMS4zIEFwYWNoZS8xLjEuMw0KQ29ubmVjdGlvbjogS2VlcC1BbGl2
+ ZQ0KDQou5is0/qMIAMMAAADDAAAAAGBwFXmbAOApBbsFCABFAAC17KBAAEAG
+ B0zP7z4J0QFnXABQDBqHwxYCCsp0llAYfAB1SAAASFRUUC8xLjAgMzA0IE5v
+ dCBNb2RpZmllZA0KRGF0ZTogRnJpLCAyNiBTZXAgMTk5NyAxNjo0MzoyNiBH
+ TVQNClNlcnZlcjogU3Ryb25naG9sZC8xLjMuNCBCZW4tU1NMLzEuMyBBcGFj
+ aGUvMS4xLjMNCkNvbm5lY3Rpb246IEtlZXAtQWxpdmUNCg0KLuYrNH7cCQA8
+ AAAAPAAAAADgKQW7BQBgcBV5mwgARQAAKFA9QAByBnI80QFnXM/vPgkMGABQ
+ Csp0n+YATCJQECEeimsAAAIEBbQvaS7mKzS+6QwAPAAAADwAAAAA4CkFuwUA
+ YHAVeZsIAEUAAChRPUAAcgZxPNEBZ1zP7z4JDBkAUArKdJHDtpE/UBAhq2cY
+ AABHRVQgL2Mu5is0vukMADwAAAA8AAAAAOApBbsFAGBwFXmbCABFAAAoUj1A
+ AHIGcDzRAWdcz+8+CQwaAFAKynSWh8MWj1AQIasdtgAAR0VUIC9hPeYrNB6B
+ BgA2AAAANgAAAABgcBV5mwDgKQW7BQgARQAAKO3CAABABka3z+8+CdEBZ1wA
+ UAwY5gBMIgrKdJ9QEXwAL4gAAD3mKzTOLggAPAAAADwAAAAA4CkFuwUAYHAV
+ eZsIAEUAAChUPUAAcgZuPNEBZ1zP7z4JDBgAUArKdJ/mAEwjUBAhHopqAABH
+ RVQgL2c95is0/qMIADYAAAA2AAAAAGBwFXmbAOApBbsFCABFAAAo7c4AAEAG
+ RqvP7z4J0QFnXABQDBnDtpE/Csp0kVARfAAMwgAAPeYrNA7LCAA2AAAANgAA
+ AABgcBV5mwDgKQW7BQgARQAAKO3PAABABkaqz+8+CdEBZ1wAUAwah8MWjwrK
+ dJZQEXwAw18AAD3mKzSuUQoAPAAAADwAAAAA4CkFuwUAYHAVeZsIAEUAAChV
+ PUAAcgZtPNEBZ1zP7z4JDBkAUArKdJHDtpFAUBAhq2cXAAB0Y3BfZGk95is0
+ vngKADwAAAA8AAAAAOApBbsFAGBwFXmbCABFAAAoVj1AAHIGbDzRAWdcz+8+
+ CQwaAFAKynSWh8MWkFAQIasdtQAAMjIwIGhh
+ ---271644610-169652028-875293504=:8764--
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Doug Salot <dsalot@haggle.com>
+Subject: Re: general/1142: spurious POST or PUT without Content-length errors
+Date: Fri, 26 Sep 1997 20:06:46 -0700 (PDT)
+
+ 
+   This message is in MIME format.  The first part should be readable text,
+   while the remaining parts are likely unreadable without MIME-aware tools.
+   Send mail to mime@docserver.cac.washington.edu for more info.
+ 
+ ---271644610-740966034-875318759=:19194
+ Content-Type: TEXT/PLAIN; CHARSET=US-ASCII
+ Content-ID: <Pine.LNX.3.95dg3.970926200026.13596D@twinlark.arctic.org>
+ 
+ Ok I'm convinced that it's a bug with Netscape's keep-alive handling. 
+ 
+ In every case where it worked, netscape either created a new connection
+ for the POST, or it used an existing connection *which the server had not
+ yet timed out*.
+ 
+ In the case where it didn't work, it first attempted to use a connection
+ that the server had already timed out (client tcp port 3843).  Then it
+ correctly opened a new connection to retry (client tcp port 3846).  But it
+ only repeated the headers and didn't attempt to repost the actual data. 
+ 
+ I appears that netscape does POSTs in two packets -- the first packet
+ contains most of the POST headers.  The second contains the content-type,
+ the content-length, the trailing crlf, and the actual post message.  This
+ second packet is the one that it doesn't send when it had to re-connect to
+ the server.
+ 
+ I can't reproduce this with a linux Netscape 3.02.  I'm going to forward
+ this off to the rest of the apache group and see if we can narrow down
+ what browsers have this bug.
+ 
+ A workaround, should you want it, is to disable keep-alives.  You can also
+ increase your keep-alive timeout to, say, 60 seconds.  Most people will
+ type their userid/password before a minute is up.  The default is 15
+ seconds.
+ 
+ You should be able to reproduce this bug at will by visiting the page,
+ waiting 20 seconds, and then submitting your password.
+ 
+ Thanks for helping us narrow it this far. 
+ 
+ Dean
+ 
+ On Fri, 26 Sep 1997, Doug Salot wrote:
+ 
+ > OK, here's a more complete log.  The first couple of attempts didn't have
+ > the problem, but the third attempt did, so look for a POST near the end
+ > of the dump.
+ > 
+ > Doug Salot
+ > Haggle Online
+ > http://www.haggle.com
+ > 
+ 
+ ---271644610-740966034-875318759=:19194
+ Content-Type: APPLICATION/OCTET-STREAM; NAME="carl2.log.gz"
+ Content-Transfer-Encoding: BASE64
+ Content-ID: <Pine.LNX.3.95.970926200559.19194B@hagen.webdevelop.com>
+ Content-Description: 
+ 
+ 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
+ bfLnTdh8tq3D5419SpVKSxs7PnerlsHeznMZP/me9lzK/JTZmx0TagKi2JwV
+ m+OH3VXGfyiY5vZKv/ra5saKAZKmoRMHXThglRPgs8y/NGFV3r94c14etW/U
+ ZQfruDoRlt64PMLZ6sv4gvcYnRUcn63jImqxmAt51vG3LxVgOmbnKN+C3dje
+ eUvsTs1aP499Pmg9JtANUut+PDrk3fnJExa0RjIY3VWo9QOFyrIeU6GRFpzY
+ edOS1faR7KW9ljqItSuVrM2sNYuXvl48lcVxKLzv2Ec7v359vxUDB3sVeH67
+ fnqvvgqt2FVXadU6OqWkVctgvWEjGKSwZ05e7NXvmLxdymCsFDiOn1mxS31+
+ IVe4JR1z/ZBpac0LzQoO0rEO2ry+mZ0gaWC9qbVkOx1Q6+IaN1iMzChv1Sq5
+ cvsAQafYbULj5gGSWEHpJ7HfrJw0y3n2nEzmqlfW/iN3jSIyZecIVm9B5WrF
+ LyOW2EXw9ML+f3u9g+NzaH1ErYKxcmeR1F1yomo/g90yRM0Ya1MyJdaGIdRD
+ y3+mkbZk9BaKCDSUTQDgPnM2PUVE8FSOlCYigPmH+YCpHQVMx0ib/zxHLz1z
+ dRSsxi/yJjoSBBaNY1yBtslLTR3j1VGEY/STY5iOdWcIFi32yFLPu7/I8Vzy
+ 8rGVKkV32WvzxOZAzVzI4wvvpTQpdDFce4losELuUbY5qSpStliWXcbhD7pw
+ b9GMfez5YQ2eCZ7vik98/IqTSKLFdDpW0SQ3/Uix8sv1fHfPz4fu2saweG2S
+ bbu1q1tMg/1lt4KK1sGJh6yjRUJBMoPFneKXuWyOtvXEOo/+S98sr9cfW7l8
+ 3C4n7oaLUzksj3C9y82bFyx1rvWN/znNaGPbKZZrTs/O1HytzrQG5oBZdNkl
+ c3RHfMqFEUsi2B9X/5p3tArTtX2zastE7fmb1XyeSn6W0hycLbVD5qD0+Hvz
+ 50xYIH4Mc2BnpFCJQqtlWEl4bINCF/MxpFBnfkmFup75Dt/Ru6Rd3cDk8F2a
+ Pl60g7GQp1jhWcN13Xek3HGZQ+Uhxb7Dm4VVAxMOqXVfrU9yTaxU1ShPrudH
+ bnOJ1eom6G2Oi4YV1GNMNudS34LVak8dW/DvwPJqwfYzn82++SnbaoN/zOKB
+ 16BCNYmHUi0OjS0BsY0FX8yvWxOiZb1ZavXp7dXHlBfZdsKBkhZ523c1+nGR
+ +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
+ ---271644610-740966034-875318759=:19194--
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Jan 22 13:12:01 PST 1998
+State-Changed-Why:
+Netscape has fixed this bug as of version 3.04 of navigator.
+See <http://help.netscape.com/kb/client/971014-42.html> for
+more info.
+
+Dean
+>Unformatted:
+
+Hi,
+
+I got the same problem narrowed down to a particular version of Netscape
+(v3.03)
+on Windows NT 4.0 connected with RAS (PPP) over a modem link to our server.
+I'm
+setting up a version of Matt Wright's WWWBoard software and I can repeat
+the problem
+every first time I try to submit a new article to the WWWBoard. Every
+second time
+I try, it will come through and update the archive correctly.
+
+I'm using the standard Apache 1.1.3 with shared memory turned on. No extra
+modules.
+
+Using the MSIE I do not get the same problem and my collegues on Mac
+reports no 
+problems at all.
+
+If you like you can access the prototype WWWBoard configuration at:
+
+http://www.korridor.se/~joakim/wwwboard/wwwboard.html
+
+I will let it stay around for a couple of days or so for your reference and
+build
+my workaround elsewhere. Let me know if you need further details.
+
+I'm also eager to solve the problem.
+
+Joakim
+
+
+Full text of PR number 1140:
+
+From apwww@hyperreal.org  Tue Sep 16 23:56:15 1997
+Received: (from apwww@localhost)
+        by hyperreal.org (8.8.5/8.8.5) id XAA08636;
+        Tue, 16 Sep 1997 23:56:15 -0700 (PDT)
+Message-Id: <199709170656.XAA08636@hyperreal.org>
+Date: Tue, 16 Sep 1997 23:56:15 -0700 (PDT)
+From: doug salot <dsalot@haggle.com>
+Reply-To: dsalot@haggle.com
+To: apbugs@hyperreal.org
+Subject: spurious POST or PUT without Content-length errors
+X-Send-Pr-Version: 3.2
+
+
+
+
+
+-============================================================-
+ Joakim Larsson                 joakim@korridor.se
+ Korridor Datakommunikation AB  http://www.korridor.se
+ Tantogatan 5, 118 67 Stockholm tel +46 8 720 41 50
+ Sweden                         Fax +46 8 720 41 60
+-============================================================-
+  "Make things as simple as possible, but not simplier"
+-============================================================-
+
+
+

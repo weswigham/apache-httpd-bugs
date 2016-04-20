@@ -1,0 +1,208 @@
+Received: (qmail 6718 invoked by uid 2012); 1 Oct 1999 14:44:27 -0000
+Message-Id: <19991001144427.6717.qmail@hyperreal.org>
+Date: 1 Oct 1999 14:44:27 -0000
+From: Brent L.Bates <blbates@vigyan.com>
+Reply-To: blbates@vigyan.com
+To: apbugs@hyperreal.org
+Subject: Incorrect headers returned when trying to access protected directory
+X-Send-Pr-Version: 3.2
+
+>Number:         5090
+>Category:       mod_auth-any
+>Synopsis:       Incorrect headers returned when trying to access protected directory
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          feedback
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Oct  1 07:50:00 PDT 1999
+>Closed-Date:
+>Last-Modified:  Wed Jun 07 12:32:05 PDT 2000
+>Originator:     blbates@vigyan.com
+>Release:        1.3.9
+>Organization:
+>Environment:
+uname -R -a: IRIX indra 6.5 6.5.3f 01221642 IP22
+SGI's MIPSpro C compiler, version 7.2.1
+Problem occurs no matter what compiler options I use.  My configure script looks
+like this:
+
+env LDFLAGS="-n32 -mips3 -Wl,-s,-x" OPTIM="-n32 -O3 -mips3 -TARG:processor=r4000:platform=ip22_4k" configure --prefix=/disk1/httpd/apache --enable-suexec --suexec-caller=httpd --suexec-uidmin=100 --suexec-gidmin=19 --suexec-safepath="/usr/local/bin:/usr/bsd:/usr/freeware/bin:/usr/bin/:/usr/sbin:/sbin:/usr/lib/print" --enable-module=unique_id --enable-module=mime_magic --enable-module=rewrite --enable-module=speling --enable-module=auth_dbm --enable-module=auth_anon --enable-module=auth_digest --enable-module=cern_meta --enable-module=headers --enable-module=expires --enable-module=info --enable-module=so --enable-rule=PARANOID --enable-shared=max --verbose
+>Description:
+I've got the following type of environment set up in our http.conf file:
+
+<Directory /full_path_to_protected_directory>
+   AuthName "protected area"
+   AuthType Basic
+   AuthUserFile /full_path_to_password_file
+   AuthGroupFile /full_path_to_group_file
+   require group authorized
+   Satisfy all
+   AllowOverride None
+   Options ExecCGI FollowSymLinks Indexes Includes MultiViews
+   Order deny,allow
+   Deny from all
+   Allow from .vigyan.com
+   <Limit PUT DELETE PATCH PROPPATCH MKCOL COPY MOVE LOCK UNLOCK>
+      Deny from all
+   </Limit>
+</Directory>
+
+     When I used my standard Web browser (NCSA's X Mosaic 2.7b5) authorization
+would always fail.  I telneted into the Web site to check headers and this is
+what I saw:
+
+% telnet machine_name 80
+Trying 123.456.789.123...
+Connected to machine_name.
+Escape character is '^]'.
+GET /protected_directory/ HTTP/1.0
+
+HTTP/1.0 401
+Server: Apache/1.3.9 (Unix)
+Content-type: text/html
+WWW-Authenticate:
+
+     I tried all sorts of things to track the problem down.  Finally I discovered
+if I change the AuthName line so that the space was an `_' AND I deleted the quotes
+around everything, it works.  Here is the working headers:
+
+% telnet machine_name 80
+Trying 123.456.789.123...
+Connected to machine_name.
+Escape character is '^]'.
+GET /protected_directory/ HTTP/1.0
+
+HTTP/1.1 401 Authorization Required
+Date: Fri, 01 Oct 1999 14:03:21 GMT
+Server: Apache/1.3.9 (Unix)
+WWW-Authenticate: Basic realm="protected_area"
+Connection: close
+Content-Type: text/html
+
+    If you notice, I now get more information on the first line, a Date line, and
+the correct information in the `WWW-Authenticate:' line.  Before submitting this
+report, I checked the bug archive and found some similar, but not exactly the same
+type of bug reports.  Those did, however, lead me to my work around.
+>How-To-Repeat:
+
+>Fix:
+    Don't know how you want to fix it.  The AuthName doesn't accept blanks in the name
+unless the whole thing is quoted.  However, this causes messed up headers.  Either the
+the source needs to be changed to allow AuthName's with blanks or change the documentation
+to say that blanks in names isn't valid.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Fri Oct  1 08:21:24 PDT 1999
+State-Changed-Why:
+Are you positive that you don't have an "ErrorDocument 401"
+directive somewhere redirecting 401s to some broken CGI
+script?
+
+From: Marc Slemko <marcs@znep.com>
+To: "Brent L. Bates" <blbates@vigyan.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: mod_auth-any/5090: Incorrect headers returned when trying to
+ access protected directory
+Date: Fri, 1 Oct 1999 10:10:54 -0600 (MDT)
+
+ On Fri, 1 Oct 1999, Brent L. Bates wrote:
+ 
+ >     Actually, I did at first use a local error script, but that was before I
+ > read the case notes on the previous problems.  After reading those notes, I
+ > deleted the `ErrorDocument 401' line, restared the server, and tried again.  It
+ > still failed, but it sent back the Apache standard error page instead of the
+ > local one.
+ 
+ Exactly what were the headers in this case, ie. without the ErrorDocument
+ directive?
+ 
+
+From: "Brent L. Bates" <blbates@vigyan.com>
+To: Marc Slemko <marcs@znep.com>
+Cc: blbates@vigyan.com, "Apache bugs database" <apbugs@apache.org>
+Subject: Re: mod_auth-any/5090: Incorrect headers returned when trying to access protected directory
+Date: Fri, 1 Oct 1999 12:15:35 -0400
+
+      Same as the ones I posted to the case.  Using the standard internal error
+ routine didn't have any effect on the headers sent back.
+
+From: Marc Slemko <marcs@znep.com>
+To: "Brent L. Bates" <blbates@vigyan.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: mod_auth-any/5090: Incorrect headers returned when trying to
+ access protected directory
+Date: Fri, 1 Oct 1999 10:23:23 -0600 (MDT)
+
+ On Fri, 1 Oct 1999, Brent L. Bates wrote:
+ 
+ >      Same as the ones I posted to the case.  Using the standard internal error
+ > routine didn't have any effect on the headers sent back.
+ 
+ Yet you are _positive_ the body was the standard Apache error response and
+ you don't have any other script configured elsewhere for a 401?
+ 
+ The headers you sent originally do not match with anything Apache could
+ output without a ErrorDocument 401 unless something is really messed up 
+ or you made some other unusual changes elsewhere... 
+ 
+
+From: "Brent L. Bates" <blbates@vigyan.com>
+To: Marc Slemko <marcs@znep.com>
+Cc: blbates@vigyan.com, "Apache bugs database" <apbugs@apache.org>
+Subject: Re: mod_auth-any/5090: Incorrect headers returned when trying to access protected directory
+Date: Fri, 1 Oct 1999 12:40:13 -0400
+
+      YES, I'm positive.  I made sure error 401 only used the internal routines
+ and I even saw the standard Apache error message from the browser.  I'm sorry,
+ but Apache did output those headers and not a local error routine.  I have not
+ changed ANY Apache source files.  I ran the configuration script with the
+ parameters I posted.  The later tries were with Apache's own error routines for
+ error 401.  The messed up headers are not that different than the correct ones,
+ there is just a lot of information missing from them.
+
+From: "Brent L. Bates" <blbates@vigyan.com>
+To: Marc Slemko <marcs@znep.com>
+Cc: blbates@vigyan.com, "Apache bugs database" <apbugs@apache.org>
+Subject: Re: mod_auth-any/5090: Incorrect headers returned when trying to access protected directory
+Date: Tue, 12 Oct 1999 08:11:22 -0400
+
+      I haven't heard from you in over a week and was just wondering what was
+ going on and if you needed any more information on this bug.
+Comment-Added-By: coar
+Comment-Added-When: Wed Jun  7 12:32:05 PDT 2000
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

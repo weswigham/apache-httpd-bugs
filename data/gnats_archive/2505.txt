@@ -1,0 +1,171 @@
+Received: (qmail 449 invoked by uid 2012); 25 Jun 1998 20:55:59 -0000
+Message-Id: <19980625205559.448.qmail@hyperreal.org>
+Date: 25 Jun 1998 20:55:59 -0000
+From: George Ellenburg <gme@sundial.net>
+Reply-To: gme@sundial.net
+To: apbugs@hyperreal.org
+Subject: Error in running sh config
+X-Send-Pr-Version: 3.2
+
+>Number:         2505
+>Category:       config
+>Synopsis:       Error in running sh config
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jun 25 16:10:01 PDT 1998
+>Last-Modified:  Mon Jun 29 05:06:30 PDT 1998
+>Originator:     gme@sundial.net
+>Organization:
+>Release:        1.3.0
+>Environment:
+BSD/OS backup.sundial.net 3.1 BSDI BSD/OS 3.1 Kernel #0: Sun Feb  1 16:46:30 EST 1998     gme@backup.sundial.net:/usr/src/sys/compile/LOCAL  i386
+>Description:
+./configure --enable-shared=remain --enable-module=most --enable-mdule=auth_db --disable-module=auth_dbm --add-module=../apache-fp.130.b/files/mod_frontpage.c --enable-shared=frontpage --enable-suexec --suexec-caller=${www} --suexec-userdir=${public_html}
+
+Produces the following output:
+Configuring for Apache, Version 1.3.0
+ + on-the-fly added and activated frontpage module (modules/extra/mod_frontpage.o)
+Creating Makefile
+Creating Configuration.apaci in src
+ + enabling mod_so for DSO support
+Creating Makefile in src
+ + configured for BSDI platform
+Unrecognized switch: -V:cccdlflags.
+Unrecognized switch: -V:lddlflags.
+Unrecognized switch: -V:ccdlflags.
+ + setting C compiler to gcc
+
+** WARNING: We have no explicit knowledge about shared object
+** support for your particular platform. But perhaps you have
+** luck: We were able to guess the compiler and linker flags
+** for creating shared objects from your Perl installation.
+** If they actually work, please send the following information
+** for inclusion into later releases to new-httpd@apache.org or make
+** a suggestion report at http://www.apache.org/bug_report.html:
+**     PLATFORM=i386-whatever-bsdi
+**     CFLAGS_SHLIB=
+**     LDFLAGS_SHLIB=
+**     LDFLAGS_SHLIB_EXPORT=
+
+
+** FAILURE: Sorry, no shared object support available.
+** Either compile all modules statically (use AddModule instead
+** of SharedModule in the Configuration file) or at least provide
+** us with the appropriate compiler and linker flags via the
+** CFLAGS_SHLIB, LDFLAGS_SHLIB and LDFLAGS_SHLIB_EXPORT entries
+** in the Configuration file.
+
+>How-To-Repeat:
+I'm following the steps as outlined in:
+   http://www.westbend.net/~hetzels/apache-fp/#C
+
+Compiling the FrontPage Module for all supported Unix O/S systems
+
+1. Retrieve the following
+
+a. apache v1.3 sources
+b. latest FP Extensions
+
+Visit either the Microsoft web site or the RTR web site to download the latest FrontPage Extentions.
+
+c. latest apache-fp port from the above site
+
+ftp www.westbend.net
+get /pub/apache-fp/apache-fp.130.tgz
+
+2. Extract the sources & scripts
+
+tar -xvzf apache-fp.130.b.tgz
+tar -xvzf apache_1.3.0.tar.gz
+cd apache_1.3.0
+tar -xvzf ../fp30.<OS>.tar.Z frontpage/version3.0/fp_install.sh
+tar -xvzf ../fp30.<OS>.tar.Z frontpage/version3.0/change_server.sh
+
+3. apply the patches from the apache-fp port to the apache sources
+
+patch < ../apache-fp.130.b/patches/patch-f?
+
+NOTE: only the patch-f* series of patches are required, the pathc-a* series are *BSD specific.
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rse
+State-Changed-When: Mon Jun 29 05:06:28 PDT 1998
+State-Changed-Why:
+There was a bug in src/Configure which leads to
+the incorrect DSO flag guessing on your platform.
+As a workaround either apply the appended patch
+(and then send us the guessed DSO flags) or
+just remove the --enable-shared option from your
+configuration steps. 
+
+Index: src/Configure
+===================================================================
+RCS file: /e/apache/REPOS/apache-1.3/src/Configure,v
+retrieving revision 1.268
+diff -u -r1.268 Configure
+--- Configure   1998/06/17 13:34:02     1.268
++++ Configure   1998/06/29 11:59:02
+@@ -999,9 +999,9 @@
+                 if [ ".`$PERL -V:dlsrc 2>/dev/null | grep dlopen`" != . ]; then
+                     #   ...and actually uses the dlopen-style interface,
+                     #   so we can guess the flags from its knowledge
+-                    CFLAGS_SHLIB="`perl -V:cccdlflags | cut -d\' -f2`"
+-                    LDFLAGS_SHLIB="`perl -V:lddlflags | cut -d\' -f2`"
+-                    LDFLAGS_SHLIB_EXPORT="`perl -V:ccdlflags | cut -d\' -f2`"
++                    CFLAGS_SHLIB="`$PERL -V:cccdlflags | cut -d\' -f2`"
++                    LDFLAGS_SHLIB="`$PERL -V:lddlflags | cut -d\' -f2`"
++                    LDFLAGS_SHLIB_EXPORT="`$PERL -V:ccdlflags | cut -d\' -f2`"
+                     #   but additionally we have to inform the
+                     #   user that we are just guessing the flags
+                     echo ""
+
+>Unformatted:
+>>>>> I've tried with and without applying both patch series as listed above. --GME
+
+4. Edit the suexec.h file (optional, required only if using suexec)
+
+vi src/support/suexec.h
+
+Set the following defines to these values:
+
+#define DOC_ROOT "/usr/local/apache/htdocs"
+#define SYSTEM_CGI "/usr/local/apache/cgi-bin"
+
+and save the file.
+
+5. run the configure program.
+
+configure --enable-shared=remain \
+                --enable-module=most \
+                --enable-module=auth_db (1)\ 
+                --disable-module=auth_dbm (1)\ 
+                --add-module=../apache-fp.130.b/files/mod_frontpage.c \ 
+                --enable-shared=frontpage
+
+NOTE 1. You may need to reverse the enable/disable of auth_db/dbm.  [GME: I've tried it both ways]
+            2. If you wish to compile & install suexec, add the following options
+
+                --enable-suexec \
+                --suexec-caller=${HTTPD_USER} \
+                --suexec-userdir=${USER_DIR}
+
+where HTTPD_USER is the user the server runs as, and USER_DIR is the location of users home pages (i.e. public_html)
+
+           3. add any other additional options to set up the server for your environment.
+
+6. build & install the apache server
+
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+

@@ -1,0 +1,110 @@
+Received: (qmail 18286 invoked by uid 501); 26 Jan 2001 10:18:49 -0000
+Message-Id: <20010126101849.18284.qmail@apache.org>
+Date: 26 Jan 2001 10:18:49 -0000
+From: <nessie23@gmx.net>
+Reply-To: nessie23@gmx.net
+To: submit@bugz.apache.org
+Subject: src/Configure and (extra) modules with CRLF linebreaks
+X-Send-Pr-Version: 3.110
+
+>Number:         7134
+>Category:       config
+>Synopsis:       src/Configure and (extra) modules with CRLF linebreaks
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jan 26 02:20:01 PST 2001
+>Closed-Date:    Fri Jan 26 15:03:48 PST 2001
+>Last-Modified:  Fri Jan 26 15:03:48 PST 2001
+>Originator:     nessie23@gmx.net
+>Release:        1.3.14
+>Organization:
+>Environment:
+Linux mail 2.2.18 #8 Fri Dec 15 10:50:23 MET 2000 i686 unknown
+>Description:
+I downloaded an extra module for Apache, installed it and
+did "./configure" with the correct paramters. This worked fine,
+but i weren't able to compile Apache with "make":
+
+--------------------------------------------------------
+===> src/modules/extra
+gcc -c  -I../../os/unix -I../../include   -DLINUX=2 -DUSE_HSREGEX -DUSE_EXPAT -I../../lib/expat-lite -DNO_DL_NEEDED `../../apaci` mod_proxy_add_forward.c
+rm -f libextra.a
+ar cr libextra.a mod_proxy_add_forward.o
+ranlib libextra.a
+<=== src/modules/extra
+<=== src/modules
+gcc -c  -I./os/unix -I./include   -DLINUX=2 -DUSE_HSREGEX -DUSE_EXPAT -I./lib/expat-lite -DNO_DL_NEEDED `./apaci` modules.c
+modules.c:32: warning: data definition has no type or storage class
+modules.c:65: parse error before `;'
+modules.c:100: parse error before `;'
+make[2]: *** [modules.o] Error 1
+make[2]: Leaving directory `/usr/local/apache_1.3.14/src'
+make[1]: *** [build-std] Error 2
+make[1]: Leaving directory `/usr/local/apache_1.3.14'
+make: *** [build] Error 2
+mail:/usr/local/apache_1.3.14 #
+-------------------------------------------------------------
+
+The corresponing line in modules.c is:
+  &proxy_add_forward;^M_module,
+(The carriage return is replaced by "^M")
+
+The problem is: The downloaded file has CRLF line breaks.
+This is no problem for the compiler, it compiles fine, but when
+the src/Configure script of Apache tries to read the module
+definition:
+
+module MODULE_VAR_EXPORT proxy_add_forward_module;
+
+the trailing carriage return is not stripped, because the
+sed command strips only ";" with spaces and tabs following, not
+with carriage returns following.
+>How-To-Repeat:
+
+>Fix:
+With the following patch to src/Configure, everything after the
+";" will be stripped, so the "modules.c" file will be created without
+errors. (If there are side effects with stripping everything, maybe
+it's possible to add the carriage return to the list of to be stripped
+characters)
+
+mail:/usr/local/apache_1.3.14/src # diff Configure Configure.orig
+1724c1724
+<                       sed 's/[        ]*;.*$//'`
+---
+>                       sed 's/[        ]*;[    ]*$//'`
+mail:/usr/local/apache_1.3.14/src #
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: fanf
+State-Changed-When: Fri Jan 26 15:03:47 PST 2001
+State-Changed-Why:
+To be pedantic, this is a bug in the downloaded file, not in Apache.
+2.0 has a different configuration system and 1.3 is in maintenance mode,
+so I'm afraid we won't include your work-around.
+Thanks for using Apache!
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

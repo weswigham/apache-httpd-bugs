@@ -1,0 +1,171 @@
+Received: (qmail 16845 invoked by uid 501); 16 Nov 2001 10:16:18 -0000
+Message-Id: <20011116101618.16844.qmail@apache.org>
+Date: 16 Nov 2001 10:16:18 -0000
+From: Axel Beckert <axel@dagstuhl.de>
+Reply-To: axel@dagstuhl.de
+To: submit@bugz.apache.org
+Subject: SSI #exec cmd="..." doesn't work anymore (but worked in 2.0.16 beta)
+X-Send-Pr-Version: 3.110
+
+>Number:         8772
+>Category:       mod_include
+>Synopsis:       SSI #exec cmd="..." doesn't work anymore (but worked in 2.0.16 beta)
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Nov 16 02:20:00 PST 2001
+>Closed-Date:    Fri Nov 23 16:34:33 PST 2001
+>Last-Modified:  Fri Nov 23 16:34:33 PST 2001
+>Originator:     axel@dagstuhl.de
+>Release:        2.0.28
+>Organization:
+>Environment:
+uname -a:
+FreeBSD cip117.studcs.uni-sb.de 4.2-RELEASE FreeBSD 4.2-RELEASE #11: Wed Aug 22 09:45:09 CEST 2001 i386
+gcc -v:
+gcc version 2.95.2 19991024 (release)
+>Description:
+I upgrade from 2.0.16 beta to 2.0.28-dev from CVS about two weeks ago and have update to 2.0.28 beta a few days ago.
+
+Both 2.0.28 versions just ignore the SSI command #exec cmd="/bin/foo" in the way, that it's just absorbed. Neither in the error log nor in the documentation /bug database I found a note on this strange behaviour. Also a fast look over the diff on both mod_include.c versions didn't help (at least to me :-). And the only thing, I found in the CHANGES file I was an entry which states, that SSI command #exec *cgi* has been changed to work also on win32 platforms, but not the #exec cmd command.
+
+The SSI command #exec cgi="/cgi-bin/foo.cgi" still does work.
+>How-To-Repeat:
+http://cip117.studcs.uni-sb.de:8042/ doesn't show the two "uname -foo" commands embedded in the page since I update from 2.0.16 to 2.0.28-dev on that machine. But the fortune-like CGI script (embedded via #exec cgi) issuing another joke or saying on each request still works fine. (This server is just for playing around and not for performance. It will probably disappear at the end of the year. :-)
+>Fix:
+Sorry, not yet.
+>Release-Note:
+>Audit-Trail:
+Release-Changed-From-To: 2.0.28-dev CVS, 2.0.28 beta-2.0.28
+Release-Changed-By: slive
+Release-Changed-When: Fri Nov 16 07:04:55 PST 2001
+Comment-Added-By: jwoolley
+Comment-Added-When: Mon Nov 19 18:40:24 PST 2001
+Comment-Added:
+I have been unable to reproduce this problem on Linux 2.4.  Can you give me a more specific test case?
+
+From: "William A. Rowe, Jr." <wrowe@covalent.net>
+To: <apache-bugdb@apache.org>,
+	<axel@dagstuhl.de>,
+	<submit@bugz.apache.org>,
+	<jwoolley@apache.org>
+Cc:  
+Subject: Re: mod_include/8772: SSI #exec cmd="..." doesn't work anymore (but worked in 2.0.16 beta)
+Date: Tue, 20 Nov 2001 10:45:30 -0600
+
+ From: "Axel Beckert" <axel@dagstuhl.de>
+ Sent: Friday, November 16, 2001 4:16 AM
+ 
+ 
+ > Both 2.0.28 versions just ignore the SSI command #exec cmd="/bin/foo" in the way, that it's just absorbed. Neither in the error
+ log nor in the documentation /bug database I found a note on this strange behaviour. Also a fast look over the diff on both
+ mod_include.c versions didn't help (at least to me :-). And the only thing, I found in the CHANGES file I was an entry which states,
+ that SSI command #exec *cgi* has been changed to work also on win32 platforms, but not the #exec cmd command.
+ >
+ > The SSI command #exec cgi="/cgi-bin/foo.cgi" still does work.
+ > >How-To-Repeat:
+ > http://cip117.studcs.uni-sb.de:8042/ doesn't show the two "uname -foo" commands embedded in the page since I update from 2.0.16 to
+ 2.0.28-dev on that machine. But the fortune-like CGI script (embedded via #exec cgi) issuing another joke or saying on each request
+ still works fine. (This server is just for playing around and not for performance. It will probably disappear at the end of the
+ year. :-)
+ 
+ Here's where we are going wrong.  #exec cmd="/bin/uname" should work just fine.
+ #exec cmd="/bin/uname -foo" is probably what's broken.
+ 
+ That feature was broken forever and a year, if you query for ssi exec and suexec
+ you will see this bug repeated over and over.
+ 
+ We probably need to review the syntax overall, since the argv[0]/command are now
+ based on a literal interpretation of the cmd or (filesystem mapped) cgi argument.
+ 
+ Good catch, thanks for mentioning that 'argument' in the note.
+ 
+ Bill
+ 
+
+From: Axel Beckert <abe@cs.uni-sb.de>
+To: "William A. Rowe, Jr." <wrowe@covalent.net>
+Cc: apache-bugdb@apache.org, submit@bugz.apache.org, jwoolley@apache.org
+Subject: Re: mod_include/8772: SSI #exec cmd="..." doesn't work anymore (but worked in 2.0.16 beta)
+Date: Tue, 20 Nov 2001 18:57:38 +0100
+
+ Hi!
+ 
+ On Tue, Nov 20, 2001 at 10:45:30AM -0600, William A. Rowe, Jr. wrote:
+ > Here's where we are going wrong. #exec cmd="/bin/uname" should work
+ > just fine.
+ 
+ Sorry, but it doesn't. The mentioned page
+ 
+ 	http://xcip3.studcs.uni-sb.de:8042/
+ 
+ now has the three following commands and none of them works, all are
+ absorbed:
+ 
+ <!--#exec cmd="/usr/bin/uname -rs" -->
+ <!--#exec cmd="/usr/bin/uname -m" -->
+ <!--#exec cmd="/usr/bin/uname" -->
+ 
+ I set up a special page for this PR at
+ 
+ 	http://xcip3.studcs.uni-sb.de:8042/8772.shtml,
+ 
+ where all the mentioned issues are shown. There you also can get all
+ source codes of the used SSI documents and the used CGI script.
+ 
+ There is another problem reagrding SSIs which is mentioned on that
+ page and especially on the two pages
+ 
+ 	http://xcip3.studcs.uni-sb.de:8042/8772-2.shtml and
+ 	http://xcip3.studcs.uni-sb.de:8042/8772-3.shtml.
+ 
+ The output of the three CGI date variables seems to some format string
+ errors and contain binary garbage or values of other variables, and
+ that depends somehow on if there are #exec or #printenv in the SSI
+ file or not.
+ 
+ HTH.
+ 
+ 		Regards, Axel
+ -- 
+ Axel Beckert - abe@cs.uni-sb.de - http://abe.home.pages.de/
+ Student of Computer Science, University of Saarland (Germany)
+ Artificial Intelligence Laboratory (AI Lab), Prof. Dr. W. Wahlster;
+ WWW-/FTP-Administrator IBFI Schloß Dagstuhl; Students Representative CS
+State-Changed-From-To: open-closed
+State-Changed-By: rbb
+State-Changed-When: Fri Nov 23 16:34:32 PST 2001
+State-Changed-Why:
+I have just fixed this in the CVS tree.  I tried it with
+all of the examples in the report as well as some of
+my own examples.
+
+Before my patch, we were trying to take the command line
+from the r->filename variable, instead of using the program
+name from the SSI tag. My patch fixes this problem, and we
+now use the correct value for the command line.
+
+This will be available in the next version of Apache 2.0,
+thank you for the bug report.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

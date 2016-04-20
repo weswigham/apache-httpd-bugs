@@ -1,0 +1,119 @@
+Received: (qmail 61652 invoked by uid 501); 22 Feb 2001 18:57:19 -0000
+Message-Id: <20010222185719.61651.qmail@apache.org>
+Date: 22 Feb 2001 18:57:19 -0000
+From: Chris HOlland <cholland@whitecapdirect.com>
+Reply-To: cholland@whitecapdirect.com
+To: submit@bugz.apache.org
+Subject: The text lookup feature for modrewrite is not correctly parsing the ${} commands
+X-Send-Pr-Version: 3.110
+
+>Number:         7296
+>Category:       mod_rewrite
+>Synopsis:       The text lookup feature for modrewrite is not correctly parsing the ${} commands
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          duplicate
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Feb 22 11:00:01 PST 2001
+>Closed-Date:    Thu Feb 22 12:55:35 PST 2001
+>Last-Modified:  Thu Feb 22 12:55:35 PST 2001
+>Originator:     cholland@whitecapdirect.com
+>Release:        1.3.17
+>Organization:
+>Environment:
+I ran into the problem on a redhat 6.2 linux box.
+>Description:
+I have a configuration file with a rewrite map specified. Then I have a rewrite rule that tries to reference the keys in the map. The parsing doesn't work correctly.. I debuged it and here is the change I had to make.
+
+mod_rewrite.c:
+  function - static void do_expand(request_rec *r, char *input, char *buffer,
+                                   int nbuf, backrefinfo *briRR,
+                                   backrefinfo *briRC)
+
+
+the first if block:
+
+	if (inp[1] == '{') {
+	    char *endp;
+	    endp = find_closing_bracket(inp, '{', '}');
+
+I changed to:
+
+	if (inp[1] == '{') {
+	    char *endp;
+	    rewritelog( r, 9, "CALLING find closing with %s", inp+2 );
+	    endp = find_closing_bracket(inp+2, '{', '}');
+
+The find_closing_bracket function was getting too deep for the full parse of the line... so I made it pass the first starting bracket. It now works fine.
+>How-To-Repeat:
+Make any text or rnd rewrite map and try to use it.
+
+ex: main configuration file
+RewriteMap server rnd:/home/cholland/apache1317/apache-rproxy.conf-server
+
+RewriteRule ^/(.*)$                   to://${server:static}/$1
+
+
+Map file:
+
+static cholland|cholland|cholland
+dynamic cholland|cholland|cholland
+
+
+>Fix:
+yes:
+
+mod_rewrite.c:
+  function - static void do_expand(request_rec *r, char *input, char *buffer,
+                                   int nbuf, backrefinfo *briRR,
+                                   backrefinfo *briRC)
+
+
+the first if block:
+
+	if (inp[1] == '{') {
+	    char *endp;
+	    endp = find_closing_bracket(inp, '{', '}');
+
+I changed to:
+
+	if (inp[1] == '{') {
+	    char *endp;
+	    rewritelog( r, 9, "CALLING find closing with %s", inp+2 );
+	    endp = find_closing_bracket(inp+2, '{', '}');
+
+The find_closing_bracket function was getting too deep for the full parse of the line... so I made it pass the first starting bracket. It now works fine.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: slive
+State-Changed-When: Thu Feb 22 12:55:33 PST 2001
+State-Changed-Why:
+[This is a standard response.]
+This issue has been reported before;
+please search the FAQ and the bug database.
+Thanks for using Apache!
+Class-Changed-From-To: sw-bug-duplicate
+Class-Changed-By: slive
+Class-Changed-When: Thu Feb 22 12:55:33 PST 2001
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,245 @@
+Received: (qmail 29810 invoked by uid 2012); 11 Oct 1998 20:18:28 -0000
+Message-Id: <19981011201828.29809.qmail@hyperreal.org>
+Date: 11 Oct 1998 20:18:28 -0000
+From: Valerio Paolini <valdez@alinet.it>
+Reply-To: valdez@alinet.it
+To: apbugs@hyperreal.org
+Subject: Authorization skipped in ScriptAlias-ed directory
+X-Send-Pr-Version: 3.2
+
+>Number:         3182
+>Category:       mod_auth-any
+>Synopsis:       Authorization skipped in ScriptAlias-ed directory
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Oct 11 13:20:00 PDT 1998
+>Last-Modified:  Sun Oct 11 13:40:00 PDT 1998
+>Originator:     valdez@alinet.it
+>Organization:
+apache
+>Release:        1.3.3
+>Environment:
+Linux RedHat 5.0, Cyrix 166+, gcc 2.7, 
+>Description:
+If I invoke a script living in /cgi-bin/, Apache doesn't request user
+authentication even if authorization is required by an Auth directive in
+config files. I checked many times my config files and the problem doesn't
+seem to be there.
+Note that ordinary directories are protected by a pwd request; the directives
+given to Apache are the same everywhere. So authorization seems to works
+everywhere else, but not in scriptaliased directory.
+>How-To-Repeat:
+Protect a scriptaliased directory and try to access a script like test-cgi
+enclosed in any of your standard distribution. Apache will not challenge you
+and the evironment variable REMOTE_USER will be empty.
+>Fix:
+I can only say that the problem was not in apache 1.3.0
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Valerio Paolini <valdez@alinet.it>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_auth-any/3182: Authorization skipped in ScriptAlias-ed
+ directory
+Date: Sun, 11 Oct 1998 13:20:22 -0700 (PDT)
+
+ On 11 Oct 1998, Valerio Paolini wrote:
+ 
+ > >Release:        1.3.3
+ > >Environment:
+ > Linux RedHat 5.0, Cyrix 166+, gcc 2.7, 
+ > >Description:
+ > If I invoke a script living in /cgi-bin/, Apache doesn't request user
+ > authentication even if authorization is required by an Auth directive in
+ > config files. I checked many times my config files and the problem doesn't
+ > seem to be there.
+ 
+ Please give an example config where this happens, including the
+ ScriptAlias directive you are using and the directives you are using to
+ limit authentication.
+ 
+ 
+
+From: "Valerio VALDEZ Paolini" <valdez@alinet.it>
+To: Marc Slemko <marcs@znep.com>
+Cc: apbugs@Apache.Org
+Subject: Re: mod_auth-any/3182: Authorization skipped in ScriptAlias-ed
+  directory
+Date: Sun, 11 Oct 1998 22:34:44 +0200
+
+ Hello Marc,
+ 
+ 	please note that:
+ 
+ 1. the directory /cgi-bin/ isn't protected, only subdirs /cgi-bin/admin/
+ and /cgi-bin/servizi/ are protected; I saw the problem in the two subdirs
+ and not in the parent dir.
+ 
+ 2. there is no .htaccess file that overrides any restriction.
+ 
+ 	Thank you very much for your attention.
+ 
+ 	Here are my configs:
+ 
+ ----------------------------
+ SRM.CONF
+ ----------------------------
+ 
+ DocumentRoot /home/httpd/html
+ 
+ UserDir public_html/ /home/users/ 
+ 
+ DirectoryIndex home.shtml home.html home.htm index.shtml index.html index.htm
+ 
+ FancyIndexing on
+ 
+ ReadmeName README
+ HeaderName HEADER
+ 
+ IndexIgnore */.??* *~ *# */HEADER* */README* */RCS
+ 
+ AccessFileName .htaccess
+ 
+ #
+ # Directory dove possono essere eseguiti gli script cgi
+ #
+ 
+ ScriptAlias /cgi-bin/ /home/httpd/cgi-bin/
+ 
+ #
+ # Documenti html mostrati in caso di errore
+ #
+ ErrorDocument   400     /errori/400.shtml
+ ErrorDocument   401     /errori/401.shtml
+ ErrorDocument   402     /errori/402.shtml
+ ErrorDocument   403     /errori/403.shtml
+ ErrorDocument   404     /errori/404.shtml
+ ErrorDocument   405     /errori/405.shtml
+ ErrorDocument   500     /errori/500.shtml
+ ErrorDocument   501     /errori/501.shtml
+ ErrorDocument   503     /errori/503.shtml
+ 
+ -----------------------
+ ACCESS.CONF
+ -----------------------
+ 
+ 
+ #
+ # disabilitiamo qualunque accesso alla root dir
+ #
+ <Directory />
+ 	Options None
+ 	IndexOptions FancyIndexing ScanHTMLTitles
+ 	AllowOverride None
+ 	Order deny,allow
+ 	Deny from all
+ </Directory>
+ 
+ #
+ # concediamo l'accesso alle home degli utenti
+ #
+ <Directory /home/users/>
+ 	Options +Indexes +Includes
+ 	AllowOverride None
+ 	Order deny,allow
+ 	Allow from all
+ </Directory>
+ 
+ #
+ # definiamo chi puo' accedere agli script cgi generali
+ #
+ <Location /cgi-bin>
+ 	Options None
+ 	AllowOverride None
+ 	Order allow,deny
+ 	allow from all 
+ </Location>
+ 
+ #
+ # definiamo chi puo' accedere agli script cgi particolari
+ #
+ <Location /cgi-bin/admin>
+ 	Options -Indexes +Includes
+ 	Order deny,allow
+ 	deny from all 
+ 	AuthType Basic 
+ 	AuthUserFile /home/httpd/etc/passwd
+ 	AuthGroupFile /home/httpd/etc/group
+ 	AuthName "CariStudenti" 
+ 	Require group staff 
+ 	satisfy any 
+ </Location>
+ 
+ <Location /cgi-bin/servizi>
+ 	Options -Indexes +Includes
+ 	deny from all 
+ 	allow from cs.unibo.it
+ 	AuthType Basic 
+ 	AuthUserFile /home/httpd/etc/passwd
+ 	AuthName "CariStudenti" 
+ 	require valid-user 
+ 	satisfy any 
+ </Location>
+ 
+ #
+ # diamo l'accesso al web e alle sue sezioni
+ #
+ <Location />
+ 	Options +Indexes +Includes +FollowSymLinks
+ 	AllowOverride None
+ 	order allow,deny
+ 	allow from all
+ </Location>
+ 
+ <Location /admin>
+ 	Options +Indexes +Includes +FollowSymLinks
+ 	deny from all 
+ 	allow from cs.unibo.it 
+ 	AuthType Basic 
+ 	AuthUserFile /home/httpd/etc/passwd
+ 	AuthGroupFile /home/httpd/etc/group
+ 	AuthName "CariStudenti" 
+ 	Require group staff amministratori 
+ 	satisfy any 
+ </Location>
+ 
+ <Location /servizi>
+ 	Options +Indexes +Includes +FollowSymLinks
+ 	deny from all 
+ 	allow from cs.unibo.it 
+ 	AuthType Basic 
+ 	AuthUserFile /home/httpd/etc/passwd
+ 	AuthName "CariStudenti" 
+ 	require valid-user 
+ 	satisfy any 
+ </Location>
+ 
+ 
+ 
+ --------------------------------------------------------------------------
+  Valerio Paolini, studente del Corso di Laurea in Informatica della
+  Facolta' di Scienze MM.FF.NN. dell'Universita' di Bologna, Italia.
+ --------------------------------------------------------------------------
+  valdez@alinet.it			paolini@cs.unibo.it
+  caristudenti.cs.unibo.it/~paolini	(webmaster)
+ --------------------------------------------------------------------------
+  Via Matteotti 22, 40100 Bologna BO, Italia, tel. +39.051.361581
+ -------------------------------------------------------------------------- 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

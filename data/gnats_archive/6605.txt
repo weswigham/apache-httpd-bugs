@@ -1,0 +1,164 @@
+Received: (qmail 90827 invoked by uid 501); 29 Sep 2000 11:07:49 -0000
+Message-Id: <20000929110749.90825.qmail@locus.apache.org>
+Date: 29 Sep 2000 11:07:49 -0000
+From: Tetsuya Furukawa <tetsuya@secom-sis.co.jp>
+Reply-To: tetsuya@secom-sis.co.jp
+To: submit@bugz.apache.org
+Subject: SIGUSR1 isn't cared in spawning the other programs.
+X-Send-Pr-Version: 3.110
+
+>Number:         6605
+>Category:       general
+>Synopsis:       SIGUSR1 isn't cared in spawning the other programs.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Sep 29 04:10:01 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     tetsuya@secom-sis.co.jp
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+UNIX platforms.
+>Description:
+If the parent process catch SIGUSR1, it will send SIGUSR1 to the
+process group.  The external programs spawned with ErrorLog, CustomLog,
+TransferLog, CookieLog and RewriteMap should ignore the signal for the
+consistent action.
+
+The programs are spawned without any care of SIGUSR1, so they are
+spawned without signal(SIGUSR1, SIG_IGN) at the start of the parent
+process, while they are spawned with signal(SIGUSR1, SIG_IGN) at
+the restart of the parent process which caught SIGHUP or SIGUSR1.
+
+If the logging programs without ignoring SIGUSR1 catches the signal,
+they will instantly terminate, then the log messages from the active
+sessions at the moment are possible to be lost.
+
+The sudden termination of the RewriteMap programs may also cause
+some bad things.
+>How-To-Repeat:
+httpd.conf:
+    CustomLog "|/somewhere/prog >> /somewhere/log" common
+
+/somewhere/prog:
+    #!/usr/local/bin/perl
+    $| = 1;
+    print "SIGUSR1: <$SIG{USR1}>\n";
+    while (<STDIN>) {
+        print;
+    }
+
+/somewhere/cgi-bin/sleep:
+    #!/bin/sh
+    echo "Content-Type: text/plain"
+    echo ""
+    date
+    sleep 10
+    date
+
+tty1# apachectl start
+
+tty2% lynx -dump http://localhost/ > /dev/null
+
+tty2% cat /somewhere/log
+SIGUSR1: <>
+127.0.0.1 - - [...] "GET / HTTP/1.0" 200 1580
+
+tty2% lynx -dump http://localhost/cgi-bin/sleep > /dev/null
+
+tty1# apachectl graceful               (while the lynx is running)
+
+tty2% cat /somewhere/log
+SIGUSR1: <>
+127.0.0.1 - - [...] "GET / HTTP/1.0" 200 1580
+SIGUSR1: <IGNORE>
+
+tty2% lynx -dump http://localhost/ > /dev/null
+
+tty2% cat /somewhere/log
+SIGUSR1: <>
+127.0.0.1 - - [...] "GET / HTTP/1.0" 200 1580
+SIGUSR1: <IGNORE>
+127.0.0.1 - - [...] "GET / HTTP/1.0" 200 1580
+
+tty2% lynx -dump http://localhost/cgi-bin/sleep > /dev/null
+
+tty1# apachectl graceful               (while the lynx is running)
+
+tty2% cat /somewhere/log
+SIGUSR1: <>
+127.0.0.1 - - [...] "GET / HTTP/1.0" 200 1580
+SIGUSR1: <IGNORE>
+127.0.0.1 - - [...] "GET / HTTP/1.0" 200 1580
+127.0.0.1 - - [...] "GET /cgi-bin/sleep HTTP/1.0" 200 58
+>Fix:
+--- src/main/http_log.c.orig    Thu Feb  3 05:43:49 2000
++++ src/main/http_log.c Fri Sep 29 18:37:46 2000
+@@ -168,6 +168,10 @@
+     /* No concept of a child process on Win32 */
+     signal(SIGHUP, SIG_IGN);
+ #endif /* ndef SIGHUP */
++#ifdef SIGUSR1
++    /* No concept of a child process on Win32 */
++    signal(SIGUSR1, SIG_IGN);
++#endif /* ndef SIGUSR1 */
+ #if defined(NETWARE)
+     child_pid = spawnlp(P_NOWAIT, SHELL_PATH, (char *)cmd);
+     return(child_pid);
+@@ -608,6 +612,7 @@
+        ap_cleanup_for_exec();
+        signal(SIGCHLD, SIG_DFL);       /* for HPUX */
+        signal(SIGHUP, SIG_IGN);
++       signal(SIGUSR1, SIG_IGN);
+        execl(SHELL_PATH, SHELL_PATH, "-c", pl->program, NULL);
+        fprintf(stderr,
+            "piped_log_spawn: unable to exec %s -c '%s': %s\n",
+@@ -739,6 +744,9 @@
+     ap_cleanup_for_exec();
+ #ifdef SIGHUP
+     signal(SIGHUP, SIG_IGN);
++#endif
++#ifdef SIGUSR1
++    signal(SIGUSR1, SIG_IGN);
+ #endif
+ #if defined(NETWARE)
+     child_pid = spawnlp(P_NOWAIT, SHELL_PATH, (char *)cmd);
+--- src/modules/standard/mod_rewrite.c.orig     Mon Jan 17 03:06:30 2000
++++ src/modules/standard/mod_rewrite.c  Fri Sep 29 18:35:30 2000
+@@ -3429,6 +3429,9 @@
+ #ifdef SIGHUP
+     signal(SIGHUP, SIG_IGN);
+ #endif
++#ifdef SIGUSR1
++    signal(SIGUSR1, SIG_IGN);
++#endif
+ 
+     /*
+      * Exec() the child program
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

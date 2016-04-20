@@ -1,0 +1,69 @@
+Received: (qmail 87330 invoked by uid 65534); 14 Mar 2000 21:04:13 -0000
+Message-Id: <20000314210413.87329.qmail@locus.apache.org>
+Date: 14 Mar 2000 21:04:13 -0000
+From: Gary Shea <shea@gtsdesign.com>
+Reply-To: shea@gtsdesign.com
+To: submit@bugz.apache.org
+Subject: mod_usertrack overwrites cookies added by handlers preceding its fixup handler
+X-Send-Pr-Version: 3.110
+
+>Number:         5880
+>Category:       mod_usertrack
+>Synopsis:       mod_usertrack overwrites cookies added by handlers preceding its fixup handler
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Mar 14 13:10:00 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     shea@gtsdesign.com
+>Release:        all w/mod_usertrack
+>Organization:
+apache
+>Environment:
+present on all os, compilers, linkers, etc..  detected in:
+'Linux gmong.gtsdesign.com 2.2.13 #11 Sun Mar 12 01:16:42 MST 2000 i586'
+>Description:
+mod_usertrack adds its cookie in a fixup handler.  If another module has
+already added a cookie header via ap_table_add(r->headers_out,...), it will
+be smushed because mod_usertrack uses ap_table_setn which treats the tables
+as a 1-1 mapping from name to value, overwriting and/or deleting away any 
+pre-existing Set-Cookie headers.
+>How-To-Repeat:
+Have to write a pre-fixup or a fixup handler that precedes mod_usertrack.
+>Fix:
+The fix I have been using (against Apache 1.3.12) is:
+
+--- mod_usertrack.c.orig        Thu Mar  9 01:10:16 2000
++++ mod_usertrack.c     Thu Mar  9 01:10:49 2000
+@@ -213,7 +213,7 @@
+                                 dcfg->cookie_name, cookiebuf);
+     }
+
+-    ap_table_setn(r->headers_out, "Set-Cookie", new_cookie);
++    ap_table_add(r->headers_out, "Set-Cookie", new_cookie);
+     ap_table_setn(r->notes, "cookie", ap_pstrdup(r->pool, cookiebuf));   /*
+log first time */
+     return;
+ }
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

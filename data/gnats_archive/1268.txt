@@ -1,0 +1,96 @@
+Received: (qmail 26451 invoked by uid 2012); 20 Oct 1997 13:03:56 -0000
+Message-Id: <19971020130356.26450.qmail@hyperreal.org>
+Date: 20 Oct 1997 13:03:56 -0000
+From: Greg Colyer <greg@elysium.demon.co.uk>
+Reply-To: greg@elysium.demon.co.uk
+To: apbugs@hyperreal.org
+Subject: CGI scripts running as Apache user: security (suexec etc.)
+X-Send-Pr-Version: 3.2
+
+>Number:         1268
+>Category:       suexec
+>Synopsis:       CGI scripts running as Apache user: security (suexec etc.)
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Oct 20 06:10:01 PDT 1997
+>Last-Modified:  Mon Jun 15 07:55:05 PDT 1998
+>Originator:     greg@elysium.demon.co.uk
+>Organization:
+>Release:        1.2
+>Environment:
+Linux 2.0.various
+>Description:
+As has already been mentioned in PR#337, a CGI script running as the Apache
+user has access to protected parts of the document tree -- both protected
+scripts and protected static documents.
+
+This is a generic problem with CGI which cannot be solved without something like
+suexec. However, the presence of suexec as-is potentially makes matters worse,
+because such a script can then itself run suexec, and obtain further privileges.
+
+suexec checks that it is run by the Apache user. Both problems can be solved by
+ensuring that NO SCRIPT IS *EVER* RUN AS THIS USER. Currently, Apache does
+not call suexec for scripts within the document tree of the main server. Thus,
+a workaround is to have *no* main server -- only a virtual host. But this is
+inconvenient when it is desired to request documents via several different DNS
+names (e.g. an intranet name and an Internet name), or by address only (e.g.
+using HTTP/0.9, which sends only the path part of the URL).
+>How-To-Repeat:
+
+>Fix:
+Ensure that suexec is *ALWAYS* called (if enabled). Do this by un-overloading
+the User/Group directives within httpd.conf. E.g.: could have ServerUser/ServerGroup
+directives which specify the Apache user/group; User/Group directives then
+meaning the user/group which will run scripts, as they do within <VirtualHost>s.
+
+It would be *really* nice if the contexts of User/Group could be extended to
+"directory" as well... Then it would be easy to have (e.g.) a single directory
+of specially privileged scripts, without having to add a second layer of
+wrapper. In fact, without this functionality, a second layer of wrapper is
+dangerous for exactly the same reason as above: if the second wrapper can be run
+after suexec has switched to User/Group, then it can be run by any other script
+on that virtual host
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Mon Oct 20 23:25:02 PDT 1997
+State-Changed-Why:
+A good suggestion, actually this is how I thought it worked,
+but I guess not.
+
+You can also define a _default_ vhost like:
+
+<VirtualHost _default_>
+
+In which no CGI is allowed, and this essentially overrides
+the main/global server (and could use a different uid/gid).
+
+Dean
+State-Changed-From-To: feedback-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Feb 27 02:02:43 PST 1998
+State-Changed-Why:
+wrong state
+Comment-Added-By: dgaudet
+Comment-Added-When: Fri Feb 27 02:03:24 PST 1998
+Comment-Added:
+and wrong category
+Category-Changed-From-To: general-suexec
+Category-Changed-By: dgaudet
+Category-Changed-When: Fri Feb 27 02:03:24 PST 1998
+
+State-Changed-From-To: analyzed-suspended
+State-Changed-By: coar
+State-Changed-When: Mon Jun 15 07:55:04 PDT 1998
+State-Changed-Why:
+Marking for review during the next cycle..
+Release-Changed-From-To: 1.2.various-1.2
+Release-Changed-By: coar
+Release-Changed-When: Mon Jun 15 07:55:04 PDT 1998
+>Unformatted:
+

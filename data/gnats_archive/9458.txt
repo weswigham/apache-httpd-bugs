@@ -1,0 +1,107 @@
+Received: (qmail 23066 invoked by uid 501); 11 Jan 2002 14:51:25 -0000
+Message-Id: <20020111145125.23064.qmail@apache.org>
+Date: 11 Jan 2002 14:51:25 -0000
+From: Vaclav Ovsik <zito@i.cz>
+Reply-To: zito@i.cz
+To: submit@bugz.apache.org
+Subject: apache cannot execute cgi on path witch not fit into 8.3 limitation on NTFS on WinNT4.0.
+X-Send-Pr-Version: 3.110
+
+>Number:         9458
+>Category:       os-windows
+>Synopsis:       apache cannot execute cgi on path witch not fit into 8.3 limitation on NTFS on WinNT4.0.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Jan 12 03:30:01 PST 2002
+>Closed-Date:    
+>Last-Modified:  Mon Jan 14 03:20:00 PST 2002
+>Originator:     zito@i.cz
+>Release:        1.3.22
+>Organization:
+apache
+>Environment:
+Windows NT 4.0, service pack 6a, MSVC++ 6.0
+filesystem NTFS!
+>Description:
+On Windows NT4.0 with NTFS apache cannot execute cgi script (perl script)
+on path, witch not fit into short path. This problem not appear
+on Windows 2000 with NTFS (only NT4.0).
+Apache writes into error log:
+-------<snip>---------
+[Fri Jan 11 14:06:18 2002] [error] [client 127.0.0.1] d:/iczca/pp/scgi-bin/sys/i
+mport_data is not executable; cannot translate to a short path name. (GetShortPa
+thName() returns 0)
+[Fri Jan 11 14:06:18 2002] [error] [client 127.0.0.1] couldn't spawn child proce
+ss: d:/iczca/pp/scgi-bin/sys/import_data
+-------<snip>---------
+Problem is in src/main/util_script.c where a function GetShortPathName()
+is called. I compiled short prog to test this function.
+For path which fit into 8.3 it returns the same string (length),
+for other strings it returns zero - fail.
+>How-To-Repeat:
+Try long script file name on Win NT4.0 on NTFS.
+>Fix:
+Maybe in the case of GetShortPathName() failure try to use
+long file name version execution.
+Execution fails too in the worst case.
+>Release-Note:
+>Audit-Trail:
+
+From: Vaclav Ovsik <Vaclav.Ovsik@i.cz>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc:  
+Subject: Re: os-windows/9458: apache cannot execute cgi on path witch not fit into 8.3 limitation on NTFS on WinNT4.0.
+Date: Mon, 14 Jan 2002 12:14:20 +0100
+
+ This patch solves the problem:
+ 
+ ***********<snip>***********
+ --- src/main/util_script.c.orig	Mon Jan 14 09:39:03 2002
+ +++ src/main/util_script.c	Mon Jan 14 09:55:16 2002
+ @@ -1000,12 +1000,15 @@
+              {
+                  char shortname[MAX_PATH];
+                  DWORD rv = GetShortPathName(r->filename, shortname, MAX_PATH);
+ -                if (!rv || rv >= MAX_PATH) {
+ +                if ((!rv && strlen(r->filename) >= MAX_PATH)
+ +                        || rv >= MAX_PATH) {
+                      ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, r,
+                                    "%s is not executable; cannot translate "
+                                    "to a short path name.", r->filename);
+                      return (pid);
+                  }
+ +                if (!rv)
+ +                    strcpy(shortname, r->filename);
+                  invokename = ap_pstrdup(r->pool, shortname);
+  
+                  if (interpreter && *interpreter
+ ***********<snip>***********
+ 
+ -- 
+ 	Vaclav Ovsik		email: Vaclav.Ovsik@i.cz
+ 	ICZ a.s.		phone: +420 19 7488511
+ 				fax:   +420 19 7488506
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,188 @@
+Received: (qmail 5688 invoked by uid 2012); 10 Nov 1999 18:00:43 -0000
+Message-Id: <19991110180043.5684.qmail@hyperreal.org>
+Date: 10 Nov 1999 18:00:43 -0000
+From: Carl Strebel <strebelc@csis.gvsu.edu>
+Reply-To: strebelc@csis.gvsu.edu
+To: apbugs@hyperreal.org
+Subject: Repeatable performace decrease every 102 web hits
+X-Send-Pr-Version: 3.2
+
+>Number:         5284
+>Category:       general
+>Synopsis:       Repeatable performace decrease every 102 web hits
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          support
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Nov 10 10:10:04 PST 1999
+>Last-Modified:
+>Originator:     strebelc@csis.gvsu.edu
+>Organization:
+apache
+>Release:        1.3.9
+>Environment:
+Linux rune1.csis.gvsu.edu 2.2.5-22 #1 Wed Jun 2 09:02:27 EDT 1999 i686 unknown
+>Description:
+I am in the process of doing a performance study of apache and the
+various server technologies apache supports.
+
+In the process of conducting these studies, I have discovered a
+highly repeatable performance "quirk."  When repeatedly hitting the
+apache server for a single static web page, approximately every 102 hits the
+ap_invoke_handler() call in the  process_request_internal()function
+takes about 25% more time than usual.  This decrease in
+performance occurs regardless of the wall clock time taken between
+server hits.  It also occurs if  apache is run is single child mode
+(httpd -X) or in normal multi-child mode.
+
+I have ruled out the OS as the source of the decreased performance, as
+it occurs based on the number of the hit, and  not on time.
+
+I can see no reason in the code to cause such a "quirk."  Do you know of
+one?
+
+Randy Terbush (randy@covalent.net) said to file this as a bug.
+>How-To-Repeat:
+In http_request.c I added some data collection statments
+
+extern void firstEvent();
+unsigned long eax, edx,a,b;
+...
+__asm__ __volatile__("rdtsc":"=a" (eax), "=d" (edx)); //Get number of cpu cycles
+ 
+if ((access_status = ap_invoke_handler(r)) != 0) {
+  ap_die(access_status, r);
+  return;
+}
+__asm__ __volatile__("rdtsc":"=a" (a), "=d" (b)); //Get number of CPU cycles
+firstEvent(edx,eax,b,a);                    
+
+firstEvent is in timelogger.c  which I wrote to collect data
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <unistd.h>
+#include "/lab/web/htdocs/webperf/timer/lip/lip.h"
+ 
+typedef struct EVENTSAMPLE *EVENTSAMPLELIST;
+ 
+struct EVENTSAMPLE {
+        unsigned long start[2];
+        unsigned long stop[2];
+        EVENTSAMPLELIST nextevent;
+};
+ 
+typedef struct TIMESAMPLE *SAMPLELIST;
+ 
+struct TIMESAMPLE {
+        EVENTSAMPLELIST FirstEvent;
+        EVENTSAMPLELIST LastEvent;
+        SAMPLELIST next;
+};
+ 
+SAMPLELIST FirstSample=NULL;
+SAMPLELIST LastSample=NULL;
+ 
+void firstEvent(unsigned long startub, unsigned long startlb, unsigned long stopub, unsigned long stoplb) {
+        EVENTSAMPLELIST newEvent = (EVENTSAMPLELIST) malloc(sizeof(struct EVENTSAMPLE));
+        SAMPLELIST newSample = (SAMPLELIST) malloc(sizeof(struct TIMESAMPLE));
+        void outputTimeSamples();
+ 
+        newEvent->start[0] = startlb;
+        newEvent->start[1] = startub;
+        newEvent->stop[0] = stoplb;
+        newEvent->stop[1] = stopub;
+        newEvent->nextevent = NULL;
+ 
+        newSample->FirstEvent = newEvent;
+        newSample->LastEvent = newEvent;
+        newSample->next = NULL;
+ 
+        if (FirstSample == NULL) {
+                FirstSample = newSample;
+                LastSample = newSample;
+        } else {
+                LastSample ->next = newSample;
+                LastSample=newSample;
+        };                       
+ };
+
+ void outputTimeSamples()
+{
+        SAMPLELIST currentSample;
+        EVENTSAMPLELIST currentEvent;
+        FILE *out;
+        char filename[25];
+        verylong start = 0;
+        verylong stop = 0;
+        verylong  deltatime = 0;
+ 
+        sprintf(filename,"/tmp/timestamp%i",getpid());
+ 
+        if((out=fopen(filename,"w")) == NULL) {
+                perror(filename);
+                return;
+        };
+ 
+ 
+        while (FirstSample != NULL) {
+                while (FirstSample->FirstEvent != NULL) {
+                        zultoz(FirstSample->FirstEvent->start,2,&start);
+                        zultoz(FirstSample->FirstEvent->stop,2,&stop);
+                        zsub(stop,start,&deltatime);
+                        zfwrite(out,deltatime);
+                        if (FirstSample->FirstEvent->nextevent != NULL) fprintf(out,",");
+                        currentEvent = FirstSample->FirstEvent;
+                        FirstSample->FirstEvent = FirstSample->FirstEvent->nextevent;
+                        free(currentEvent);
+                };
+                fprintf(out,"\n");
+                currentSample = FirstSample;
+                FirstSample=FirstSample->next;
+                free(currentSample);
+        };
+        fclose(out);
+}; 
+
+};         
+
+To get the data, in http_main.c I changed the following:
+static void clean_child_exit(int code)
+{
+    extern outputTimeSamples();
+    outputTimeSamples();
+    if (pchild) {
+        ap_child_exit_modules(pchild, server_conf);
+        ap_destroy_pool(pchild);
+    }
+    chdir_for_gprof();
+    exit(code);
+}      
+
+The z* function calls are part of the FreeLip integer package from
+ftp.ox.ac.uk/pub/math/freelip
+
+If you hit the web server 1000 times for a single simple webpage, then graph
+the time vs request number you will see a periodic increase in the process time.
+>Fix:
+
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

@@ -1,0 +1,69 @@
+Received: (qmail 20774 invoked by uid 2012); 18 Sep 1999 01:35:28 -0000
+Message-Id: <19990918013528.20773.qmail@hyperreal.org>
+Date: 18 Sep 1999 01:35:28 -0000
+From: Paul Henson <henson@acm.org>
+Reply-To: henson@acm.org
+To: apbugs@hyperreal.org
+Subject: mod_user_dir inaccurate when network file system unavailable
+X-Send-Pr-Version: 3.2
+
+>Number:         5037
+>Category:       mod_userdir
+>Synopsis:       mod_user_dir inaccurate when network file system unavailable
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Sep 17 18:40:02 PDT 1999
+>Last-Modified:
+>Originator:     henson@acm.org
+>Organization:
+apache
+>Release:        1.3.9
+>Environment:
+Any OS with a networked file system.
+>Description:
+mod_user_dir uses the stat() call as it tries to determine which possible
+user directory to use. It assumes that a failed stat means the directory being
+tried is invalid and should be skipped. However, if the directory in question
+is on a network file system, the stat could return ETIIMEDOUT if the file system
+is unavailable. In that case, I think an error should be returned rather than
+trying the next possible user directory.
+>How-To-Repeat:
+n/a
+>Fix:
+If stat() fails, I propose testing the error and returning HTTP_SERVICE_UNAVAILABLE
+if it is ETIMEDOUT, as follows:
+
+      if (filename) {
+        if (!*userdirs || stat(filename, &statbuf) != -1) {
+          r->filename = ap_pstrcat(r->pool, filename, dname, NULL);
+            /* when statbuf contains info on r->filename we can save a syscall
+             * by copying it to r->finfo
+             */
+          if (*userdirs && dname[0] == 0)
+            r->finfo = statbuf;
+          return OK;
+        }
+        if (errno == ETIMEDOUT) return HTTP_SERVICE_UNAVAILABLE;
+      }
+
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

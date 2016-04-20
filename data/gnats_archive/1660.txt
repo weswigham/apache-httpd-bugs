@@ -1,0 +1,122 @@
+Received: (qmail 18937 invoked by uid 2012); 13 Jan 1998 04:52:57 -0000
+Message-Id: <19980113045257.18936.qmail@hyperreal.org>
+Date: 13 Jan 1998 04:52:57 -0000
+From: Paul Walmsley <ccshag@cclabs.missouri.edu>
+Reply-To: ccshag@cclabs.missouri.edu
+To: apbugs@hyperreal.org
+Subject: accept(2) serialization patch using MIPS ABI; two orders of magnitude faster than System V semaphores.
+X-Send-Pr-Version: 3.2
+
+>Number:         1660
+>Category:       os-irix
+>Synopsis:       accept(2) serialization patch using MIPS ABI; two orders of magnitude faster than System V semaphores.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jan 12 22:10:01 PST 1998
+>Last-Modified:  Wed May 20 19:51:47 PDT 1998
+>Originator:     ccshag@cclabs.missouri.edu
+>Organization:
+>Release:        1.3b3
+>Environment:
+IRIX nicar 6.2 03131015 IP22, IRIX orbital 6.3 12161207 IP32,
+probably everything from IRIX 5.3 on up.
+>Description:
+USE_SYSVSEM_SERIALIZED_ACCEPT is too slow.  Other options are available
+that provide better performance; one of them is the abilock(3) family
+of calls that the MIPS ABI supports.  Tests here indicate that MIPS ABI 
+mutexes are two orders of magnitude faster than System V semaphores and
+involve minimal kernel overhead.
+>How-To-Repeat:
+I created two test harnesses that do the following:
+
+	initialize lock;
+	repeat 500000 times {
+		acquire lock;
+		release lock;
+	}
+
+and tested one with the SYSVSEM_SERIALIZED_ACCEPT code and the other with
+the MIPS_ABILOCK_SERIALIZED_ACCEPT code (referenced in the 'suggested fix'
+section').
+
+The following is from the System V semaphore code:
+nicar /hosts/nicar/usr/people/shag/proj/apache > time ./a.out
+4.887u 18.781s 0:24.55 96.3% 0+0k 0+0io 0pf+0w
+nicar /hosts/nicar/usr/people/shag/proj/apache > time ./a.out
+3.789u 17.719s 0:23.69 90.7% 0+0k 0+0io 0pf+0w
+nicar /hosts/nicar/usr/people/shag/proj/apache > time ./a.out
+3.878u 17.755s 0:25.42 85.0% 0+0k 0+0io 0pf+0w
+
+The following is from the MIPS ABI ABILOCK code:
+nicar /hosts/nicar/usr/people/shag/proj/apache > time ./a.out
+0.120u 0.014s 0:00.27 48.1% 0+0k 4+0io 0pf+0w
+nicar /hosts/nicar/usr/people/shag/proj/apache > time ./a.out
+0.120u 0.011s 0:00.09 144.4% 0+0k 0+0io 0pf+0w
+nicar /hosts/nicar/usr/people/shag/proj/apache > time ./a.out
+0.120u 0.011s 0:00.00 0.0% 0+0k 0+0io 0pf+0w
+
+
+>Fix:
+Download the patches 
+
+<URL:http://www.nicar.org/~shag/mips_abilock_1.patch>
+and
+<URL:http://www.nicar.org/~shag/mips_abilock_2.patch>
+
+and integrate them into the Apache source tree.
+
+Multiprocessor systems -- especially NUMA ones like the Origin series -- may 
+experience less of a performance gain if false sharing occurs on the lock,
+but the speed gain should still be notable over the System V code. 
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Paul Walmsley <ccshag@cclabs.missouri.edu>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-irix/1660: accept(2) serialization patch using MIPS ABI; two orders of magnitude faster than System V semaphores.
+Date: Mon, 12 Jan 1998 22:38:10 -0800 (PST)
+
+ Did you give -DUSE_USLOCK_SERIALIZED_ACCEPT a try?  I found it to be a
+ huge win on multiprocessor IRIX boxes, but a huge loss on single processor
+ boxes (allow me to curse SGI).  It's mentioned in the perf-tuning docs.
+ 
+ Have you tested your code on both multiprocessor and uniprocessor boxes? 
+ 
+ Another thing -- I'm guessing that the kernel does not clean up those mips
+ abi locks if the task holding it exits.  If that's the case then you'll
+ need to add code a lot like the pthreads mutex code has to do cleanup on
+ task kill.
+ 
+ You may want to grab a recent snapshot of the 1.3b4-dev code from
+ ftp://dev.apache.org/from-cvs/ -- there's a file src/test/test-sem.c which
+ is a harness for testing the various semaphores that mimics the
+ fork()/multiple child behaviour of apache. 
+ 
+ Dean
+ 
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Fri Feb 27 01:56:19 PST 1998
+State-Changed-Why:
+I sent a message a while back asking for more info... I forgot
+to change the state then.
+State-Changed-From-To: feedback-closed
+State-Changed-By: brian
+State-Changed-When: Wed May 20 19:51:47 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

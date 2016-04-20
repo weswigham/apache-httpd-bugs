@@ -1,0 +1,380 @@
+Received: (qmail 40182 invoked by uid 501); 12 Jul 2000 01:18:45 -0000
+Message-Id: <20000712011845.40181.qmail@locus.apache.org>
+Date: 12 Jul 2000 01:18:45 -0000
+From: Doug Steinwand <dsteinwand@etoys.com>
+Reply-To: dsteinwand@etoys.com
+To: submit@bugz.apache.org
+Subject: apache bench can grow to a large size; it uses small buffers for headers
+X-Send-Pr-Version: 3.110
+
+>Number:         6299
+>Category:       other
+>Synopsis:       apache bench can grow to a large size; it uses small buffers for headers
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jul 11 18:20:00 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     dsteinwand@etoys.com
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+FreeBSD 3.3-RELEASE #0: Mon Sep 20 22:59:31 GMT 1999 root@dhcp3-83:/usr/src/sys/compile/D33 i386
+Linux 2.2.14 #4 SMP Wed Jun 21 15:41:37 PDT 2000 i686
+>Description:
+apache bench (src/support/ab) can grow large (VSZ of several megabytes) when 
+running for a long time. This is because timing information for each request is 
+stored in a dynamically-allocated array.
+
+The default header buffer is too small if the web server sends back many
+headers, for example, Set-Cookie's. This type of failure was somewhat cryptic.
+
+An additional #ifndef NO_APACHE_INCLUDES allows compiling ab outside of
+the apache source tree (not that anyone's planning on doing that).
+
+The diff included below fixes these problems. Timing information (min/max/avg) 
+is now calculated on the fly, instead of when the run is finished.
+>How-To-Repeat:
+ab -n 10000000 http://any-host/
+>Fix:
+*** ab.c        Sat Feb  5 01:50:54 2000
+--- /home/dsteinwand/ab.c       Wed Jun 28 18:08:45 2000
+***************
+*** 148,154 ****
+  #define STATE_CONNECTING  1
+  #define STATE_READ        2
+  
+! #define CBUFFSIZE       512
+  
+  struct connection {
+      int fd;
+--- 148,154 ----
+  #define STATE_CONNECTING  1
+  #define STATE_READ        2
+  
+! #define CBUFFSIZE       2048
+  
+  struct connection {
+      int fd;
+***************
+*** 170,175 ****
+--- 170,184 ----
+      int time;                 /* time in ms for connection */
+  };
+  
++ struct ab_summary_stats {
++   int totalcon;
++   int total;
++   int mincon;
++   int mintot;
++   int maxcon;
++   int maxtot;
++ } stats_sum = { 0,0,9999999,9999999,0,0 };
++ 
+  #define ap_min(a,b) ((a)<(b))?(a):(b)
+  #define ap_max(a,b) ((a)>(b))?(a):(b)
+  
+***************
+*** 188,197 ****
+  char *postdata;                       /* *buffer containing data from postfile
+ */
+  int postlen = 0;              /* length of data to be POSTed */
+  char content_type[1024];      /* content type to put in POST header */
+! char cookie[1024],            /* optional cookie line */
+       auth[1024],              /* optional (basic/uuencoded)
+                                 * authentification */
+!      hdrs[4096];              /* optional arbitrary headers */
+  int port = 80;                        /* port number */
+  
+  int use_html = 0;             /* use html in the report */
+--- 197,206 ----
+  char *postdata;                       /* *buffer containing data from postfile
+ */
+  int postlen = 0;              /* length of data to be POSTed */
+  char content_type[1024];      /* content type to put in POST header */
+! char cookie[4096],            /* optional cookie line */
+       auth[1024],              /* optional (basic/uuencoded)
+                                 * authentification */
+!      hdrs[8192];              /* optional arbitrary headers */
+  int port = 80;                        /* port number */
+  
+  int use_html = 0;             /* use html in the report */
+***************
+*** 214,227 ****
+  struct timeval start, endtime;
+  
+  /* global request (and its length) */
+! char request[512];
+  int reqlen;
+  
+  /* one global throw-away buffer to read stuff into */
+  char buffer[8192];
+  
+  struct connection *con;               /* connection array */
+! struct data *stats;           /* date for each request */
+  
+  fd_set readbits, writebits;   /* bits for select */
+  struct sockaddr_in server;    /* server addr structure */
+--- 223,236 ----
+  struct timeval start, endtime;
+  
+  /* global request (and its length) */
+! char request[8192];
+  int reqlen;
+  
+  /* one global throw-away buffer to read stuff into */
+  char buffer[8192];
+  
+  struct connection *con;               /* connection array */
+! /* xxx struct data stats;              summary date for requests */
+  
+  fd_set readbits, writebits;   /* bits for select */
+  struct sockaddr_in server;    /* server addr structure */
+***************
+*** 238,245 ****
+  
+  /* --------------------------------------------------------- */
+  
+! /* simple little function to perror and exit */
+  
+  static void err(char *s)
+  {
+      if (errno) {
+--- 247,264 ----
+  
+  /* --------------------------------------------------------- */
+  
+! static void ab_update_stats (struct data *p)
+! {
+!     stats_sum.mincon = ap_min(stats_sum.mincon, p->ctime);
+!     stats_sum.mintot = ap_min(stats_sum.mintot, p->time);
+!     stats_sum.maxcon = ap_max(stats_sum.maxcon, p->ctime);
+!     stats_sum.maxtot = ap_max(stats_sum.maxtot, p->time);
+!     stats_sum.totalcon += p->ctime;
+!     stats_sum.total += p->time;
+!     done++;
+! }
+  
++ /* simple little function to perror and exit */
+  static void err(char *s)
+  {
+      if (errno) {
+***************
+*** 367,385 ****
+      {
+        /* work out connection times */
+        int i;
+!       int totalcon = 0, total = 0;
+!       int mincon = 9999999, mintot = 999999;
+!       int maxcon = 0, maxtot = 0;
+! 
+!       for (i = 0; i < requests; i++) {
+!           struct data s = stats[i];
+!           mincon = ap_min(mincon, s.ctime);
+!           mintot = ap_min(mintot, s.time);
+!           maxcon = ap_max(maxcon, s.ctime);
+!           maxtot = ap_max(maxtot, s.time);
+!           totalcon += s.ctime;
+!           total += s.time;
+!       }
+        if (requests > 0) { /* avoid division by zero (if 0 requests) */
+            printf("\nConnnection Times (ms)\n");
+            printf("              min   avg   max\n");
+--- 386,398 ----
+      {
+        /* work out connection times */
+        int i;
+!       int totalcon = stats_sum.totalcon;
+!       int total    = stats_sum.total;
+!       int mincon   = stats_sum.mincon;
+!       int mintot   = stats_sum.mintot;
+!       int maxcon   = stats_sum.maxcon;
+!       int maxtot   = stats_sum.maxtot;
+! 
+        if (requests > 0) { /* avoid division by zero (if 0 requests) */
+            printf("\nConnnection Times (ms)\n");
+            printf("              min   avg   max\n");
+***************
+*** 475,494 ****
+  
+      {
+        /* work out connection times */
+!       int i;
+!       int totalcon = 0, total = 0;
+!       int mincon = 9999999, mintot = 999999;
+!       int maxcon = 0, maxtot = 0;
+! 
+!       for (i = 0; i < requests; i++) {
+!           struct data s = stats[i];
+!           mincon = ap_min(mincon, s.ctime);
+!           mintot = ap_min(mintot, s.time);
+!           maxcon = ap_max(maxcon, s.ctime);
+!           maxtot = ap_max(maxtot, s.time);
+!           totalcon += s.ctime;
+!           total += s.time;
+!       }
+  
+        if (requests > 0) { /* avoid division by zero (if 0 requests) */
+            printf("<tr %s><th %s colspan=4>Connnection Times (ms)</th></tr>\n",
+--- 488,499 ----
+  
+      {
+        /* work out connection times */
+!       int totalcon = stats_sum.totalcon;
+!       int total    = stats_sum.total;
+!       int mincon   = stats_sum.mincon;
+!       int mintot   = stats_sum.mintot;
+!       int maxcon   = stats_sum.maxcon;
+!       int maxtot   = stats_sum.maxtot;
+  
+        if (requests > 0) { /* avoid division by zero (if 0 requests) */
+            printf("<tr %s><th %s colspan=4>Connnection Times (ms)</th></tr>\n",
+***************
+*** 583,589 ****
+            s.read = c->read;
+            s.ctime = timedif(c->connect, c->start);
+            s.time = timedif(c->done, c->start);
+!           stats[done++] = s;
+        }
+      }
+  
+--- 588,595 ----
+            s.read = c->read;
+            s.ctime = timedif(c->connect, c->start);
+            s.time = timedif(c->done, c->start);
+!           ab_update_stats(&s);
+!           /* xxx stats[done++] = s; */
+        }
+      }
+  
+***************
+*** 652,658 ****
+            if (space)
+                return;
+            else {
+!               /* header is in invalid or too big - close connection */
+                ab_close(c->fd);
+                if (bad++ > 10) {
+                    err("\nTest aborted after 10 failures\n\n");
+--- 658,665 ----
+            if (space)
+                return;
+            else {
+!               fprintf(stderr, 
+!       "Response header is in invalid or too big - closing connection\n");
+                ab_close(c->fd);
+                if (bad++ > 10) {
+                    err("\nTest aborted after 10 failures\n\n");
+***************
+*** 741,747 ****
+            s.read = c->read;
+            s.ctime = timedif(c->connect, c->start);
+            s.time = timedif(c->done, c->start);
+!           stats[done++] = s;
+        }
+        c->keepalive = 0;
+        c->length = 0;
+--- 748,755 ----
+            s.read = c->read;
+            s.ctime = timedif(c->connect, c->start);
+            s.time = timedif(c->done, c->start);
+!           ab_update_stats(&s);
+!           /* xxx stats[done++] = s; */
+        }
+        c->keepalive = 0;
+        c->length = 0;
+***************
+*** 782,795 ****
+      con = malloc(concurrency * sizeof(struct connection));
+      memset(con, 0, concurrency * sizeof(struct connection));
+  
+!     stats = malloc(requests * sizeof(struct data));
+  
+      FD_ZERO(&readbits);
+      FD_ZERO(&writebits);
+  
+      /* setup request */
+      if (posting <= 0) {
+!       sprintf(request, "%s %s HTTP/1.0\r\n"
+                "User-Agent: ApacheBench/%s\r\n"
+                "%s" "%s" "%s"
+                "Host: %s\r\n"
+--- 790,803 ----
+      con = malloc(concurrency * sizeof(struct connection));
+      memset(con, 0, concurrency * sizeof(struct connection));
+  
+!     /* xxx stats = malloc(requests * sizeof(struct data)); */
+  
+      FD_ZERO(&readbits);
+      FD_ZERO(&writebits);
+  
+      /* setup request */
+      if (posting <= 0) {
+!       snprintf(request, sizeof(request), "%s %s HTTP/1.0\r\n"
+                "User-Agent: ApacheBench/%s\r\n"
+                "%s" "%s" "%s"
+                "Host: %s\r\n"
+***************
+*** 802,808 ****
+                cookie, auth, hostname, hdrs);
+      }
+      else {
+!       sprintf(request, "POST %s HTTP/1.0\r\n"
+                "User-Agent: ApacheBench/%s\r\n"
+                "%s" "%s" "%s"
+                "Host: %s\r\n"
+--- 810,816 ----
+                cookie, auth, hostname, hdrs);
+      }
+      else {
+!       snprintf(request, sizeof(request), "POST %s HTTP/1.0\r\n"
+                "User-Agent: ApacheBench/%s\r\n"
+                "%s" "%s" "%s"
+                "Host: %s\r\n"
+***************
+*** 1051,1056 ****
+--- 1059,1065 ----
+            strncat(cookie, optarg, sizeof(cookie));
+            strncat(cookie, "\r\n", sizeof(cookie));
+            break;
++ #ifndef NO_APACHE_INCLUDES
+        case 'A': 
+            /* assume username passwd already to be in colon separated form. Rea
+dy
+             * to be uu-encoded.
+***************
+*** 1077,1082 ****
+--- 1086,1092 ----
+            strncat(auth, tmp, sizeof(auth));
+            strncat(auth, "\r\n", sizeof(auth));
+            break;
++ #endif
+        case 'H':
+            strncat(hdrs, optarg, sizeof(hdrs));
+            strncat(hdrs, "\r\n", sizeof(hdrs));
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

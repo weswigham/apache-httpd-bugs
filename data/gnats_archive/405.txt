@@ -1,0 +1,335 @@
+From nobody@hyperreal.com  Wed Apr 16 10:30:23 1997
+Received: (from nobody@localhost)
+          by hyperreal.com (8.8.4/8.8.4)
+	  id KAA14800; Wed, 16 Apr 1997 10:30:23 -0700 (PDT)
+Message-Id: <199704161730.KAA14800@hyperreal.com>
+Date: Wed, 16 Apr 1997 10:30:23 -0700 (PDT)
+From: Andreas Papst <Andreas.Papst@univie.ac.at>
+Reply-To: Andreas.Papst@univie.ac.at
+To: apbugs@hyperreal.com
+Subject: <VirtualHost> ports
+X-Send-Pr-Version: 3.2
+
+>Number:         405
+>Category:       config
+>Synopsis:       <VirtualHost> ports
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Apr 16 10:40:01 1997
+>Last-Modified:  Fri Apr 18 14:57:29 PDT 1997
+>Originator:     Andreas.Papst@univie.ac.at
+>Organization:
+>Release:        1.2b7
+>Environment:
+AIX 4.2
+gcc 2.7.2.1
+>Description:
+Like number 68
+
+I want to set up a single daemon for multiple addresses listening
+to diffent ports too. One virtual server should listen to 1.2.3.4
+the other to 1.2.3.5:8000 (Port 8000 only). So I included following
+directives:
+
+Listen 80
+Listen 8000
+.
+.
+.
+<VirtualHost 1.2.3.4>
+.
+.
+.
+</VirtualHost>
+
+<VirtualHost 1.2.3.5:8000>
+.
+. (different DocumentRoot and Alias-commands)
+.
+</VirtualHost>
+
+However, Apache listen to 1.2.3.5:80 too (does not refuse a telnet
+connection to 1.2.3.5:80) and returns by request (http://1.2.3.5:80/)
+the html-page from http://1.2.3.5:8000/ but should not! It seems
+that the port-part auf the VirtualHost-definition does not work.
+
+So I cannot follow your reply to #68 that all works fine.
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: andreas.papst@univie.ac.at
+Subject: Re: config/405: <VirtualHost> ports
+Date: Thu, 17 Apr 1997 01:26:29 -0700 (PDT)
+
+ 
+ Please try apache 1.2b8, there was a bug fix related to listeners in it.
+ I think you'll find that your complaints are fixed.
+ 
+ If you specify:
+ 
+ Listen 1.2.3.4:80
+ Listen 1.2.3.5:8000
+ 
+ Then that's all it will listen on, which satisfies one of your complaints. 
+ The httpd only listens on sockets that you tell it to. 
+ 
+ The <VirtualHost> statements do not specify where the server should listen
+ for packets.  It's not possible to use them for that.  They just specify
+ how to handle packets that come in on particular addresses.  We invented
+ the Listen directive because it is absolutely necessary. There is no
+ portable method for the server to determine the optimal sockets to open so
+ instead we require the person configuring to do that.
+ 
+ For example it takes only one socket to listen to all addresses, port 80. 
+ But if you want to listen to specific addresses it takes as many sockets
+ as addresses you wish to listen to.  There's no way for the server to know
+ what addresses are on your server, so it has to be told where to listen. 
+ 
+ Dean
+ 
+ On Thu, 17 Apr 1997 andreas.papst@univie.ac.at wrote:
+ 
+ > > Content-Type: TEXT/PLAIN; charset=US-ASCII
+ > > 
+ > > That's odd that it couldn't bind to the address.  Which architecture are
+ > > you on?
+ > > 
+ > > BTW you should be able to add something like this:
+ > > 
+ > > <VirtualHost _default_:*>
+ > > <Directory />
+ > > order deny,allow
+ > > deny from all
+ > > </Directory>
+ > > </VirtualHost>
+ > > 
+ > > To deny all access to addresses/ports that you haven't explicitly enabled.
+ > 
+ > For all virtual hosts requests on the wrong port reply "The requested URL / was
+ > not found on this server". The defaultaddress not mentioned in a VirtualHost
+ > directive replies with "You don't have permission to access / on this server".
+ > I think the last answer is OK.
+ >    The problem is, that httpd shouldn't bind to IP-addresses/Ports it is not
+ > told. Therefore you invented the Listen directive. But this only works, if you
+ > use it once in your config or if you use it multiple, you have to avoid
+ > IP-addresses and must use only Ports! If you use multiple Listen directives
+ > with at least one address:port argument, the httpd dies with the message
+ > "httpd: could not bind to address IPADDRESS port PORT", where IPADDRESS and PORT
+ > are the arguments of the last! Listen directive in your config. No regarding
+ > how many (at least two of course) Listen directives you have nor the order of them.
+ > Everytime it is the last Listen directive which arguments are used for the error-
+ > message.
+ > 
+ > > 
+ > > BTW, is one of 1.2.3.4 or 1.2.3.5 the same as the address of the machine
+ > > the webserver is running on?
+ > 
+ > No. It's www.aco.net and www.vix.at. 193.171.255.70 should bind on Port 8001
+ > only!
+ > 
+ > > 
+ > > Dean
+ > > 
+ > > On Wed, 16 Apr 1997 andreas.papst@univie.ac.at wrote:
+ > > 
+ > > > > I was actually referring to this:
+ > > > > 
+ > > > > <VirtualHost 1.2.3.5:8000>
+ > > > > Port 8000
+ > > > > </VirtualHost>
+ > > > > 
+ > > > > You probably don't need the Port 8000 there, but I haven't checked. 
+ > > > 
+ > > > I do not need it! (checked)
+ > > > 
+ > > > > 
+ > > > > I think this is the basics of what will work for you:
+ > > > > 
+ > > > > Listen 1.2.3.4:80
+ > > > > Listen 1.2.3.5:8000
+ > > > > 
+ > > > > <VirtualHost 1.2.3.4:80>
+ > > > > ...
+ > > > > </VirtualHost>
+ > > > > 
+ > > > > <VirtualHost 1.2.3.5:8000>
+ > > > > ...
+ > > > > </VirtualHost>
+ > > > 
+ > > > This does not work (httpd: could not bind to address 1.2.3.5 port 8000)!
+ > > > 
+ > > > But I found following solution:
+ > > > 
+ > > > Listen 80
+ > > > Listen 8000
+ > > > 
+ > > > <VirtualHost 1.2.3.4:80>
+ > > > ...
+ > > > </VirtualHost>
+ > > > 
+ > > > <VirtualHost 1.2.3.5:8000>
+ > > > ...
+ > > > </VirtualHost>
+ > > > 
+ > > > Now you can connect to each port on each IP-address via telnet. But if
+ > > > you choose the wrong Port, you receive a "file not found" error. Next
+ > > > the primar host address (not mentioned in a VirtualHost directive) listens
+ > > > to each Port.
+ > > >    I can live with this, because the primary address (real host) is only for
+ > > > internal use (restricted access by IP-address of client). And in the other cases,
+ > > > you get something like a "refuse". But this is not a beautiful solution (nor
+ > > > do I think that this is a feature ;-). Maybe you have time and pleasure to
+ > > > change it in one of your next releases.
+ > > > 
+ > > > Thanks a lot for help
+ > > > 
+ > > > ap
+ > > > 
+ > > > 
+ > > > 
+ > > > > 
+ > > > > Dean
+ > > > > 
+ > > > > On Wed, 16 Apr 1997 andreas.papst@univie.ac.at wrote:
+ > > > > 
+ > > > > > > 
+ > > > > > > And you'll probably need to explicitly list a Port 80 or Port 8000
+ > > > > > > statement in each virtualhost.
+ > > > > > 
+ > > > > > Following configuration operates similar (that means it does not work):
+ > > > > > 
+ > > > > > Listen	80
+ > > > > > Listen	1.2.3.5:8000
+ > > > > > 
+ > > > > > If I config only
+ > > > > > 
+ > > > > > Listen 1.2.3.5:8000
+ > > > > > 
+ > > > > > without any Listen-directive more, httpd works only on this address and port.
+ > > > > > That means, I cannot connect to 1.2.3.4:80, 1.2.3.4:8000 and so on.
+ > > > > > 
+ > > > > > So I think I must reply yes on your question
+ > > > > > 
+ > > > > > ap
+ > > > > > 
+ > > > > > > 
+ > > > > > > Dean
+ > > > > > > 
+ > > > > > > On Wed, 16 Apr 1997, Marc Slemko wrote:
+ > > > > > > 
+ > > > > > > > You have to specify the IP address in the Listen directive otherwise it
+ > > > > > > > will listen on all IPs on that port and use the main server for any ones
+ > > > > > > > it doesn't have specific virtual hosts for.
+ > > > > > > > 
+ > > > > > > > On Wed, 16 Apr 1997, Andreas Papst wrote:
+ > > > > > > > 
+ > > > > > > > > 
+ > > > > > > > > 	The contract type is `' with a response time of 3 business hours.
+ > > > > > > > > 	A first analysis should be sent before: Wed Apr 16 14:00:01 PDT 1997
+ > > > > > > > > 
+ > > > > > > > > 
+ > > > > > > > > >Number:         405
+ > > > > > > > > >Category:       config
+ > > > > > > > > >Synopsis:       <VirtualHost> ports
+ > > > > > > > > >Confidential:   no
+ > > > > > > > > >Severity:       critical
+ > > > > > > > > >Priority:       medium
+ > > > > > > > > >Responsible:    apache (Apache HTTP Project)
+ > > > > > > > > >State:          open
+ > > > > > > > > >Class:          sw-bug
+ > > > > > > > > >Submitter-Id:   apache
+ > > > > > > > > >Arrival-Date:   Wed Apr 16 10:40:01 1997
+ > > > > > > > > >Originator:     Andreas.Papst@univie.ac.at
+ > > > > > > > > >Organization:
+ > > > > > > > > apache
+ > > > > > > > > >Release:        1.2b7
+ > > > > > > > > >Environment:
+ > > > > > > > > AIX 4.2
+ > > > > > > > > gcc 2.7.2.1
+ > > > > > > > > >Description:
+ > > > > > > > > Like number 68
+ > > > > > > > > 
+ > > > > > > > > I want to set up a single daemon for multiple addresses listening
+ > > > > > > > > to diffent ports too. One virtual server should listen to 1.2.3.4
+ > > > > > > > > the other to 1.2.3.5:8000 (Port 8000 only). So I included following
+ > > > > > > > > directives:
+ > > > > > > > > 
+ > > > > > > > > Listen 80
+ > > > > > > > > Listen 8000
+ > > > > > > > > .
+ > > > > > > > > .
+ > > > > > > > > .
+ > > > > > > > > <VirtualHost 1.2.3.4>
+ > > > > > > > > .
+ > > > > > > > > .
+ > > > > > > > > .
+ > > > > > > > > </VirtualHost>
+ > > > > > > > > 
+ > > > > > > > > <VirtualHost 1.2.3.5:8000>
+ > > > > > > > > .
+ > > > > > > > > . (different DocumentRoot and Alias-commands)
+ > > > > > > > > .
+ > > > > > > > > </VirtualHost>
+ > > > > > > > > 
+ > > > > > > > > However, Apache listen to 1.2.3.5:80 too (does not refuse a telnet
+ > > > > > > > > connection to 1.2.3.5:80) and returns by request (http://1.2.3.5:80/)
+ > > > > > > > > the html-page from http://1.2.3.5:8000/ but should not! It seems
+ > > > > > > > > that the port-part auf the VirtualHost-definition does not work.
+ > > > > > > > > 
+ > > > > > > > > So I cannot follow your reply to #68 that all works fine.
+ > > > > > > > > >How-To-Repeat:
+ > > > > > > > > 
+ > > > > > > > > >Fix:
+ > > > > > > > > 
+ > > > > > > > > >Audit-Trail:
+ > > > > > > > > >Unformatted:
+ > > > > > > > > 
+ > > > > > > > > 
+ > > > > > > > 
+ > > > > > > > 
+ > > > > > > 
+ > > > > > > 
+ > > > > > 
+ > > > > > 
+ > > > > 
+ > > > > 
+ > > > 
+ > > > ________________________________________________________________________
+ > > > Andreas Papst                      |  E-Mail: andreas.papst@univie.ac.at
+ > > > Vienna University Computer Center  |
+ > > > Universitaetsstrasse 7             |  Phone: +43 1 406-58-22 / 353
+ > > > A-1010 Vienna, Austria, Europe     |  Fax.:  +43 1 406-58-22 / 170
+ > > > 
+ > > 
+ > > 
+ > 
+ > ________________________________________________________________________
+ > Andreas Papst                      |  E-Mail: andreas.papst@univie.ac.at
+ > Vienna University Computer Center  |
+ > Universitaetsstrasse 7             |  Phone: +43 1 406-58-22 / 353
+ > A-1010 Vienna, Austria, Europe     |  Fax.:  +43 1 406-58-22 / 170
+ > 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Apr 18 14:57:28 PDT 1997
+State-Changed-Why:
+User reports that 1.2b8 clears up at least the config/listening
+problems.  But 1.2b8 introduces a problem where the httpd
+stops answering after a few hours.  I've asked him to submit
+a new ticket for that since it is likely an AIX problem.
+
+Dean
+>Unformatted:
+
+
+

@@ -1,0 +1,136 @@
+Received: (qmail 24852 invoked by uid 2012); 11 Sep 1998 20:00:39 -0000
+Message-Id: <19980911200039.24851.qmail@hyperreal.org>
+Date: 11 Sep 1998 20:00:39 -0000
+From: Alok Agrawal <aagrawal@us.oracle.com>
+Reply-To: aagrawal@us.oracle.com
+To: apbugs@hyperreal.org
+Subject: Dynamically Loaded module gets unloaded
+X-Send-Pr-Version: 3.2
+
+>Number:         2996
+>Category:       config
+>Synopsis:       Dynamically Loaded module gets unloaded
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Sep 11 13:10:00 PDT 1998
+>Last-Modified:  Sat Sep 19 23:53:26 PDT 1998
+>Originator:     aagrawal@us.oracle.com
+>Organization:
+>Release:        1.3.1
+>Environment:
+OS SunOS aagrawal-sun 5.5.1 Generic_103640-20 sun4u sparc SUNW,Ultra-1
+Compiler - gcc
+Apache version 1.3.1
+>Description:
+The problem is related to Apache's tendency to call read
+the configuration information twice and the way mod_so.c is behaving.
+
+I am using the core as SHARED_CORE on Solaris. I have written a custom
+module and the module is not loaded in the final childprocess
+as it is initially loaded and the eventually unloaded.
+I am including a trace of some printf statements I put in.
+
+
+The custom module I wrote is called "ndwfapd.c"
+
+I have piped all printfs to stderr so I initially see some errors
+on the screen and after a file they are directed to the error log.
+I am just shoing the concatenated version here.
+
+mod_so.c (load_module)
+1 Loading module /home/aagrawal/apache_1.3.1/src/modules/extra/ndwfapd.so ows_module
+
+http_config.c (ap_add_module)
+Adding modules ndwfapd.c Adding module before mod_setenvif.c
+
+http_config.c
+Doing  init for module ndwfapd.c
+ndwfapd.c
+Calling the init routine
+http_config.c
+Doing  init for module mod_setenvif.c
+Doing  init for module mod_so.c
+Doing  init for module mod_auth.c
+Doing  init for module mod_access.c
+Doing  init for module mod_alias.c
+Doing  init for module mod_userdir.c
+Doing  init for module mod_actions.c
+Doing  init for module mod_imap.c
+Doing  init for module mod_asis.c
+Doing  init for module mod_cgi.c
+Doing  init for module mod_dir.c
+Doing  init for module mod_autoindex.c
+Doing  init for module mod_include.c
+Doing  init for module mod_negotiation.c
+Doing  init for module mod_mime.c
+Doing  init for module mod_log_config.c
+Doing  init for module mod_env.c
+Doing  init for module http_core.c
+
+mod_so.c unload_module
+Removing loaded module ndwfapd.c
+http_config.c
+Remove module ndwfapd.c
+
+mod_so.c - load_module (Notice that the module is being loaded again)
+2 Loading module /home/aagrawal/apache_1.3.1/src/modules/extra/ndwfapd.s
+http_config.c (ap_add_module)
+Adding modules ndwfapd.c
+
+But the new module is not added the next time beacsue the code
+in ap_add_module checks for (m->next == NULL) which is not
+the case any more since the code that removes the module
+never sets it back to NULL (in ap_remove_module).
+The code just sets m->module_index to -1
+
+I have a fundamental problem with you guys reading the configuration
+information twice. Eventhough I have
+1 LoadModule statment in httpd.conf, the call load_module (the handler
+for LoadModule in mod_so.c) is called twice. This just creates
+a lot of  problems.
+
+The call ap_read_config (which eventually calls the handelers) is being
+called twice. Once from the main program and then again from 
+stanalone_main.
+>How-To-Repeat:
+It is failry easy to reproduce the problem.
+Compile the server with a shared code and mod_so enabled.
+Then write a dummy module and manually edit the httpd.conf
+file and add the LoadModule call. The module will not
+worl.
+>Fix:
+Yes. Either read the configuration information once or set 
+m->next = NULL in ap_remove_module (in http_config.c)
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Sat Sep 19 23:53:25 PDT 1998
+State-Changed-Why:
+Thanks for the report, the change to set m->next = NULL
+has been done and will be available in 1.3.2.
+
+Your module has to be able to deal with being reinited
+anyway for server restarts (eg. kill -HUP).  The reason
+why it is done twice on startup is to help ensure people
+deal with this, but more due to historical reasons; we
+can not remove it without many modules that assume it
+is there breaking.
+
+This will likely change for 2.0, but not before then.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

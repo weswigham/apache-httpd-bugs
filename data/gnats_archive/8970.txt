@@ -1,0 +1,123 @@
+Received: (qmail 14443 invoked by uid 501); 6 Dec 2001 23:41:13 -0000
+Message-Id: <20011206234113.14442.qmail@apache.org>
+Date: 6 Dec 2001 23:41:13 -0000
+From: Dan Manion <dmanion@netgateway.net>
+Reply-To: dmanion@netgateway.net
+To: submit@bugz.apache.org
+Subject: http_protocol missing one line that prohibits setting new cookies with cached(304) responses
+X-Send-Pr-Version: 3.110
+
+>Number:         8970
+>Category:       protocol
+>Synopsis:       http_protocol missing one line that prohibits setting new cookies with cached(304) responses
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Dec 06 15:50:01 PST 2001
+>Closed-Date:    Sat Dec 08 21:04:56 PST 2001
+>Last-Modified:  Sat Dec 08 21:04:56 PST 2001
+>Originator:     dmanion@netgateway.net
+>Release:        apache_1.3.22
+>Organization:
+>Environment:
+FreeBSD 4-4-RELEASE FreeBSD 4.4-RELEASE #0: Tue Nov  6 16:36:32 MST 2001
+>Description:
+file ==> http_protocol
+method ==> ap_send_error_response
+
+On HTTP_NOT_MODIFIED content 'Set-Cookie' is not one of the header options listed to be pulled from r->headers_out. Any cookies set with fixuphandlers or what not are ignored.
+>How-To-Repeat:
+--- compile with this mod ---
+#include "httpd.h"
+#include "http_config.h"
+#include "http_core.h"
+#if !defined(WIN32) && !defined(MPE) && !defined(TPF)
+#include <sys/time.h>
+#endif
+
+module MODULE_VAR_EXPORT testcookie_module;
+
+static int test_cookie(request_rec *r)
+{
+        ap_table_addn(r->err_headers_out,
+                      "Set-Cookie",
+                      "test=cookie; path=/; domain=.fubar.com");
+
+        return OK;
+}
+
+module MODULE_VAR_EXPORT testcookie_module = {
+        STANDARD_MODULE_STUFF,
+        NULL,                                           /* initializer */
+        NULL,                                           /* dir config creater */
+        NULL,                                           /* dir merger --- default is to override */
+        NULL,                                           /* server config */
+        NULL,                                           /* merge server configs */
+        NULL,                   /* command table */
+        NULL,                                           /* handlers */
+        NULL,                                           /* filename translation */
+        NULL,                                           /* check_user_id */
+        NULL,                                           /* check auth */
+        NULL,                                           /* check access */
+        NULL,                                           /* type_checker */
+        test_cookie,                            /* fixups */
+        NULL,                                           /* logger */
+        NULL,                                           /* header parser */
+        NULL,                                           /* child_init */
+        NULL,                                           /* child_exit */
+        NULL                                            /* post read-request */
+};
+
+=== telnet 123.123.123.123 80 ==
+GET /somefile.html HTTP/1.0
+
+you will see the Set-Cookie line in the response
+=== telnet 123.123.123.123 80 ==
+GET /somefile.html HTTP/1.0
+If-Modified-Since: {the timestamp returned on the above test goes here}
+
+the cookies will not be present in the headers
+
+
+>Fix:
+stats# diff -u http_protocol-old.c http_protocol.c
+--- http_protocol-old.c Thu Dec  6 16:32:41 2001
++++ http_protocol.c     Thu Dec  6 16:33:50 2001
+@@ -2646,6 +2646,7 @@
+                     "Warning",
+                     "WWW-Authenticate",
+                     "Proxy-Authenticate",
++                    "Set-Cookie",
+                     NULL);
+ 
+         terminate_header(r->connection->client);
+stats# 
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Sat Dec  8 21:04:56 PST 2001
+State-Changed-Why:
+It is not valid to set a cookie in a 304 response.  Please see section 10.3.5 of RFC2616.  That is the reason Apache explictly lists headers that will be sent and why Set-Cookie isn't one of them.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,136 @@
+Received: (qmail 18777 invoked by uid 501); 9 Aug 2000 19:38:15 -0000
+Message-Id: <20000809193815.18775.qmail@locus.apache.org>
+Date: 9 Aug 2000 19:38:15 -0000
+From: Lionel Clark <bishop@platypus.bc.ca>
+Reply-To: bishop@platypus.bc.ca
+To: submit@bugz.apache.org
+Subject: Use of directories (eg conf.d) for configuration of apache
+X-Send-Pr-Version: 3.110
+
+>Number:         6397
+>Category:       general
+>Synopsis:       Use of directories (eg conf.d) for configuration of apache
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Aug 09 12:40:01 PDT 2000
+>Closed-Date:    
+>Last-Modified:  Thu Sep 28 09:20:01 PDT 2000
+>Originator:     bishop@platypus.bc.ca
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Linux aegis 2.2.16-1.wl.msn2.bfw.bren.1 #1 Wed Jun 28 03:08:24 EDT 2000 i686 unknown
+>Description:
+Internally, we have two ways of adding configuration directives to the httpd.conf
+when an apache add-on is done:  the first way is to patch the httpd.conf file on
+the fly (either to include other files or the statements themselves) or a new 
+method I'm working on.  This new method is to define a configuration directory
+that apache will read on (re)load to determine its configuration.  The code
+included will modify a 1.3.12 source tree so that any include configuration
+directive can also search directories and include entire directories of 
+small config files.  I've finished the linux development and reformatted in 
+the apache style.  I think that this problem woul dbe the most secure means of 
+doing some kind of mass inclusion.  It's a lot like /etc/rc.d/init/ .
+>How-To-Repeat:
+
+>Fix:
+--- apache_1.3.12-orig/src/main/http_config.c   Tue Aug  8 14:44:41 2000
++++ apache_1.3.12/src/main/http_config.c        Wed Aug  9 14:52:00 2000
+@@ -1218,6 +1218,8 @@
+     const char *errmsg;
+     cmd_parms parms;
+     struct stat finfo;
++    struct dirent **dirents;
++    int numents, current;
+ 
+     fname = ap_server_root_relative(p, fname);
+ 
+@@ -1234,6 +1236,32 @@
+            return;
+     }
+ 
++    /* 
++     * here we want to check if the candidate file is really a
++     * directory, and most definitely NOT a symlink (to prevent
++     * horrible loops).  If so, let's recurse and toss it back into
++     * the function.
++     * 
++     * - lc957 
++     */
++    if (!ap_is_symlink(fname) && ap_is_directory(fname)) {
++        numents = scandir (fname, &dirents, NULL, alphasort);
++        for (current = 0 ; current < numents ; current++ ) {
++            /* editing out '..' and '.' to prevent obvious looping.
++             * Suggestions appreciated - lc957 */
++           if (strncmp(dirents[current]->d_name,".",
++                       strlen(dirents[current]->d_name)) && 
++               strncmp(dirents[current]->d_name,"..",
++                       strlen(dirents[current]->d_name))) {
++             fprintf (stderr, "Processing %s/%s\n", fname, dirents[current]->d_name);
++               ap_process_resource_config (s, ap_make_full_path (p, 
++                                                                 fname, 
++                                                                 dirents[current]->d_name), 
++                                           p, ptemp);
++            }
++        }
++       return;
++    }
+     /* GCC's initialization extensions are soooo nice here... */
+ 
+     parms = default_parms;
+--- apache_1.3.12-orig/src/main/util.c  Wed Feb 23 07:44:57 2000
++++ apache_1.3.12/src/main/util.c       Wed Aug  9 14:43:44 2000
+@@ -1640,6 +1640,16 @@
+     return (S_ISDIR(finfo.st_mode));
+ }
+ 
++API_EXPORT(int) ap_is_symlink(const char *path)
++{
++    struct stat finfo;
++
++    if (stat(path, &finfo) == -1)
++       return 0;               /* in error condition, just return no */
++
++    return (S_ISLNK(finfo.st_mode));
++}
++
+ API_EXPORT(char *) ap_make_full_path(pool *a, const char *src1,
+                                  const char *src2)
+ {
+>Release-Note:
+>Audit-Trail:
+
+From: mja@trudge.engr.sgi.com (Mike Abbott)
+To: apbugs@apache.org
+Cc:  
+Subject: general/6397: Use of directories (eg conf.d) for configuration of apache
+Date: Thu, 28 Sep 2000 09:08:12 -0700 (PDT)
+
+ >Fix:
+ Shouldn't ap_is_symlink() use lstat() instead of stat()?
+ -- 
+ Michael J. Abbott        mja@sgi.com        http://reality.sgi.com/mja/
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

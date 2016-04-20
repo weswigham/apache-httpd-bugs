@@ -1,0 +1,111 @@
+Received: (qmail 63335 invoked by uid 501); 17 Jul 2000 10:51:29 -0000
+Message-Id: <20000717105129.63334.qmail@locus.apache.org>
+Date: 17 Jul 2000 10:51:29 -0000
+From: Adam Richter <adam@yggdrasil.com>
+Reply-To: adam@yggdrasil.com
+To: submit@bugz.apache.org
+Subject: Apache 2.0a4 segfaults on config file syntax error
+X-Send-Pr-Version: 3.110
+
+>Number:         6318
+>Category:       general
+>Synopsis:       Apache 2.0a4 segfaults on config file syntax error
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jul 17 04:00:01 PDT 2000
+>Closed-Date:    Mon Jul 24 22:33:21 PDT 2000
+>Last-Modified:  Mon Jul 24 22:33:21 PDT 2000
+>Originator:     adam@yggdrasil.com
+>Release:        2.0a4
+>Organization:
+>Environment:
+Linux adam 2.4.0-test4 #2 SMP Sun Jul 16 21:16:15 PDT 2000 i686 unknown
+glibc-2.1.3
+>Description:
+I have a patch for this, so you do not need to study the traceback too
+carefully.  ap_read_config does not set parms.err_directive, but this
+field is derefenced by the routine that prints error messages relating to
+any syntax errors found.  So, instead, if apache core dumps when it tries
+to print the error message.
+
+#0  0x8054d0e in ap_process_resource_config (s=0x80842b4, 
+    fname=0xbffffd55 "/etc/httpd/conf/httpd.conf", conftree=0xbffffbb8, 
+    p=0x8083ef4, ptemp=0x8099fa4) at http_config.c:1322
+#1  0x8055305 in ap_read_config (process=0x8081f14, ptemp=0x8099fa4, 
+    confname=0xbffffd55 "/etc/httpd/conf/httpd.conf", conftree=0xbffffbb8)
+    at http_config.c:1588
+#2  0x8059452 in main (argc=3, argv=0xbffffc34) at http_main.c:383
+#3  0x400c68fa in __libc_start_main (main=0x8059210 <main>, argc=3, 
+    argv=0xbffffc34, init=0x804f568 <_init>, fini=0x807298c <_fini>, 
+    rtld_fini=0x40009ef0 <_dl_fini>, stack_end=0xbffffc2c)
+    at ../sysdeps/generic/libc-start.c:92
+>How-To-Repeat:
+Retrieve ftp://ftp.yggdrasil.com/private/adam/for_apache/httpd.conf.broken
+into a local file and run "httpd -f" on it.
+>Fix:
+Yes.  Here is a suggested patch.  Warning: all I did was stuff the undefined
+field with the only value that I saw laying around that was of the same
+data type.  I do not know if, for example, the line numbers in the resulting
+error message are correct.
+
+--- apache_2.0a4/src/main/http_config.c Sat Jun  3 09:27:03 2000
++++ apache/src/main/http_config.c       Mon Jul 17 03:36:19 2000
+@@ -1317,6 +1317,7 @@
+     parms.config_file = cfp;
+ 
+     errmsg = ap_build_config(&parms, p, ptemp, conftree);
++    parms.err_directive = *conftree;
+ 
+     if (errmsg != NULL) {
+        ap_log_error(APLOG_MARK, APLOG_STARTUP | APLOG_NOERRNO, 0, NULL,
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: abagchi
+State-Changed-When: Mon Jul 17 09:20:50 PDT 2000
+State-Changed-Why:
+This problem is due to the ClearModuleList/AddModule directives
+in your config file.  If those are removed, this config file
+will not cause a seg fault.
+
+We are currently discussing if those directives are really
+necessary in 2.0 or not.
+
+Ryan
+State-Changed-From-To: analyzed-closed
+State-Changed-By: abagchi
+State-Changed-When: Mon Jul 24 22:33:21 PDT 2000
+State-Changed-Why:
+ClearModuleList and AddModule were both set as EXEC_ON_READ
+and they don't need to be.  Because these were set as
+EXEC_ON_READ the server was seg faulting.  I have removed
+the EXEC_ON_READ definition, and tested this on my server.
+It seems to have worked.  These changes should be in the
+next alpha version of Apache 2.0.  Please try them, and let
+us know if this solves your problem.
+
+Thank you for your bug report, and I'm sorry it took so long
+to fix this problem.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,321 @@
+Received: (qmail 76115 invoked by uid 501); 26 Apr 2001 17:05:27 -0000
+Message-Id: <20010426170527.76114.qmail@apache.org>
+Date: 26 Apr 2001 17:05:27 -0000
+From: Taketo Kabe <kabe@sra-tohoku.co.jp>
+Reply-To: kabe@sra-tohoku.co.jp
+To: submit@bugz.apache.org
+Subject: [PATCH] byterange request for Range-capable CGI always return 416
+X-Send-Pr-Version: 3.110
+
+>Number:         7635
+>Category:       mod_cgi
+>Synopsis:       [PATCH] byterange request for Range-capable CGI always return 416
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Apr 26 10:10:00 PDT 2001
+>Closed-Date:    Mon Nov 19 11:00:51 PST 2001
+>Last-Modified:  Mon Nov 19 11:00:51 PST 2001
+>Originator:     kabe@sra-tohoku.co.jp
+>Release:        2.0.17-alpha
+>Organization:
+>Environment:
+
+SunOS 5.8 Generic_108528-05 sun4u sparc SUNW,Ultra-60
+gcc version 2.95.2 19991024 (release)
+
+httpd-2_0_17-alpha --enable-mod_cgid
+>Description:
+
+Problem:
+Even if a CGI was capable for setting out Content-Length, ETag and 
+byterange requests (which few CGIs ever implement),
+
+* Range request never work but always return "416 range not satisfiable"
+* And the 416 leaks out the CGI's ETag and Content-Range which should be wrong
+* For HEAD request, Content-Length is not returned even if the CGI
+  passed it out.
+
+
+Leaking validators to error response:
+
+First of all, server/util_script.c:ap_scan_script_header_err_core()
+which picks up CGI output headers, should also pick up
+ETag and Content-Range to (request_rec*)r->headers_out, not into
+r->err_headers_out which will be propagated to error output.
+
+This change will make BYTERANGE output filter bypass properly 
+if CGI was capable of range requests.
+Also ETag/Content-Range will not leak out to 416 response.
+
+
+Cannot Range: for CGIs which pass Content-Length:
+
+BYTERANGE filter modules/http/http_protocol.c:ap_byterange_filter()
+initially uses r->clength for range checking,
+but for CGI this is uninitialized thus zero so byterange requests 
+always fail with 416.
+(For normal files, the default_handler() uses ap_set_content_length()
+ to set both Content-Length and r->clength so byteranges work.)
+
+So I've changed server/util_script.c:ap_scan_script_header_err_core()
+to pick up Content-Length of the CGI output to r->clength.
+Of course this value could be incorrect (real length could be only
+known after all output was consumed), but at least byterange requests
+will work for CGIs handing out proper Content-Length.
+
+
+No Content-Length for HEAD response:
+	
+mod_cgid does NOT connect the CGI output to the brigade for HEAD
+requests, so CONTENT_LENGTH output filter will see no body and 
+reset to "Content-Length: 0".
+Then, HTTP_HEADER consider this smart and erases it.
+Even if the CGI passed out Content-Length, it will be erased.
+
+(HEAD req) ---> CGI ------> mod_cgid -------> BYTERANGE ------>
+                    C-L:xx           C-L:xx             C-L:xx
+                 w or w/o body      w/o body           w/o body
+
+--> CONTENT_LENGTH ------------> HTTP_HEADER -------------> (response)
+    empty body, so  C-L: 0     C-L:0 on HEAD, so (no C-L)
+
+So the change is to not reset Content-Length to zero for (HEAD && no body)
+in CONTENT_LENGTH filter.
+(for keepalives, Content-Length is not used for byte sync on HEAD so
+ no problem concerning this)
+
+>How-To-Repeat:
+
+You will need a Range-capable CGI (which is very rare) for full
+investigation, but to reproduce the easier problem (leaky ETag/no C-L),
+
+* Prepeare a CGI which gives out Content-Length and ETag.
+	#!/bin/sh
+	echo "Content-Type: text/plain"
+	echo 'ETag: "12-345-67"'
+	TMP=/tmp/env$$
+	trap "rm -f $TMP" 0 2
+	printenv >> $TMP
+	len=`ls -l $TMP | awk '{print $5}'
+	echo "Content-Length: $len"
+	echo ""
+	cat $TMP
+
+* Give a byterange request to the CGI, like
+	GET /cgi-bin/printenv-length HTTP/1.0
+	Range: bytes=10-20
+
+* It'll return "416 Requested Range Not Satisfiable" with 
+  ETag leaking out.
+
+If you have Range-capable CGI, the result will always be 416
+with CGI's Content-Range leaking out.
+To demonstrate it easy, add 'echo "Content-Range: bytes 10-20/30"'
+and watch the resulting 416 response.
+
+* Also, try out HEAD on the same CGI; the CGI passes out Content-Length
+  but HEAD response does not.
+>Fix:
+This will fix:
+	* Enable Range: request work for CGI output with Content-Length
+	* Properly match "If-Range:" with CGI output with ETag
+	* Don't leak ETag,Content-Range of the CGI to error response
+	* Properly bypass byterange filter for byterange-capable CGI
+	* Preserve Content-Length from CGI on HEAD request
+
+To make things cleaner, some reengineering should be done around 
+handing of r->clength for dynamic contents.
+
+
+##dist5
+#***************************** server/util_script.c eat-CGI-validators.patch
+#
+# o Pick up Content-Range and ETag from CGI output
+# o Pick up Content-Length from CGI output and fill r->clength
+#
+# o Don't clear Content-Length to zero in HEADER filter
+#   (it may had valid Content-Length without body, notably HEAD)
+#
+# o Pass out "Content-Range: */<len>" for 416 Unsatisfiable
+# o Generate "Content-Range: <s>-<e>/<len>" inside ap_set_byterange()
+#   This is needed if CGI gave a wrong Content-Length
+#   (this may not be neat, as ap_set_byterange() previously
+#    didn't have any header manipulations...)
+# o Properly pass 416 for contentless brigade+Range
+#   this fixes giving Range: for HEAD returning nothing
+#   (immediate connection close) for CGI with Content-Length
+#
+#
+/usr/local/gnu/bin/patch -p1 --backup --suffix=.dist5 << 'EOP'
+=============================== {{{{{{{
+diff -u httpd-2_0_17/modules/http/http_protocol.c.dist5 httpd-2_0_17/modules/http/http_protocol.c
+--- httpd-2_0_17/modules/http/http_protocol.c.dist5	Mon Apr 16 21:16:53 2001
++++ httpd-2_0_17/modules/http/http_protocol.c	Wed Apr 25 20:05:01 2001
+@@ -2207,6 +2207,11 @@
+             APR_BRIGADE_INSERT_TAIL(bsend, e);
+             e = apr_bucket_eos_create();
+             APR_BRIGADE_INSERT_TAIL(bsend, e);
++	    if (r->clength != 0) {
++		apr_table_setn(r->err_headers_out, "Content-Range",
++			       apr_psprintf(r->pool, "bytes */%" APR_OFF_T_FMT,
++					    r->clength));
++	    }
+             return ap_pass_brigade(f->next, bsend);
+         }
+         if (num_ranges == 0) {
+@@ -2289,6 +2294,12 @@
+             e = apr_bucket_pool_create(ts, strlen(ts), r->pool);
+             APR_BRIGADE_INSERT_TAIL(bsend, e);
+         }
++	if (ctx->num_ranges == 1) {
++	    /* build real Content-Range */
++	    apr_table_setn(r->headers_out, "Content-Range",
++			   apr_psprintf(r->pool, "bytes " BYTERANGE_FMT,
++					range_start, range_end, clength));
++	}
+         
+         e = apr_brigade_partition(bb, range_start);
+         e2 = apr_brigade_partition(bb, range_end + 1);
+@@ -2309,9 +2320,13 @@
+     }
+ 
+     if (found == 0) {
++	/* there was no valid range to output... */
+         ap_remove_output_filter(f);
+         r->status = HTTP_OK;
+-        return HTTP_RANGE_NOT_SATISFIABLE;
++	apr_brigade_cleanup(bsend);
++	e = ap_bucket_error_create(HTTP_RANGE_NOT_SATISFIABLE, NULL, r->pool);
++	APR_BRIGADE_INSERT_TAIL(bsend, e);
++	goto pass_bsend;
+     }
+ 
+     if (ctx->num_ranges > 1) {
+@@ -2324,6 +2339,7 @@
+         APR_BRIGADE_INSERT_TAIL(bsend, e);
+     }
+ 
++pass_bsend:
+     e = apr_bucket_eos_create();
+     APR_BRIGADE_INSERT_TAIL(bsend, e);
+ 
+@@ -2403,10 +2419,9 @@
+                              &range_start, &range_end)) <= 0) {
+             return rv;
+         }
+-        apr_table_setn(r->headers_out, "Content-Range",
+-                       apr_psprintf(r->pool, "bytes " BYTERANGE_FMT,
+-                                    range_start, range_end, r->clength));
+ 	apr_table_setn(r->headers_out, "Content-Type", ct);
++	/* don't build Content-Range here; the real total length
++	 * is not known before gulping down the brigade */
+ 
+         num_ranges = 1;
+     }
+diff -u httpd-2_0_17/server/util_script.c.dist5 httpd-2_0_17/server/util_script.c
+--- httpd-2_0_17/server/util_script.c.dist5	Thu Apr 19 20:33:32 2001
++++ httpd-2_0_17/server/util_script.c	Wed Apr 25 18:35:29 2001
+@@ -577,8 +577,23 @@
+ 	}
+ 	else if (!strcasecmp(w, "Content-Length")) {
+ 	    apr_table_set(r->headers_out, w, l);
++	    /* needs r->clength for byterange check;
++	     * if CGI gave it, use it for now */
++	    /* This is a bigger problem; what should be passed
++	     * along the output-filter chain to give "hints"
++	     * of the brigade length?
++	     * (Content-Length? r->clength?) */
++	    r->clength = atol(l);
++	}
++	else if (!strcasecmp(w, "ETag")) {
++	    apr_table_set(r->headers_out, w, l);
+ 	}
+ 	else if (!strcasecmp(w, "Transfer-Encoding")) {
++	    apr_table_set(r->headers_out, w, l);
++	}
++	else if (!strcasecmp(w, "Content-Range")) {
++	    /* needs this to bypass BYTERANGE output-filter
++	     * if CGI was byterange capable */
+ 	    apr_table_set(r->headers_out, w, l);
+ 	}
+ 	/*
+diff -u httpd-2_0_17/server/protocol.c.dist5 httpd-2_0_17/server/protocol.c
+--- httpd-2_0_17/server/protocol.c.dist5	Wed Apr 11 23:37:16 2001
++++ httpd-2_0_17/server/protocol.c	Wed Apr 25 20:39:55 2001
+@@ -920,7 +920,13 @@
+             ap_save_brigade(f, &ctx->saved, &b);
+             return APR_SUCCESS;
+         }
+-        ap_set_content_length(r, r->bytes_sent);
++	/* Don't reset the Content-Length if it was HEAD;
++	 * just preserve that in r->headers_out if any.
++	 * Brigade length may be zero if upstream was smart,
++	 * like mod_cgid which doesn't connect CGI output to the brigade. */
++	if (r->bytes_sent != 0 && !r->header_only) {
++	    ap_set_content_length(r, r->bytes_sent);
++	}
+     }
+     if (ctx->saved) {
+         APR_BRIGADE_CONCAT(ctx->saved, b);
+=============================== }}
+EOP
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: slive
+State-Changed-When: Wed Nov 14 12:47:33 PST 2001
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+
+From: <kabe@sra-tohoku.co.jp>
+To: slive@apache.org
+Cc: apache-bugdb@apache.org, kabe@sra-tohoku.co.jp, apbugs@apache.org
+Subject: Re: mod_cgi/7635: [PATCH] byterange request for Range-capable CGI always return 416
+Date: Tue, 20 Nov 2001 03:57:04 +0900 (JST)
+
+ The problem is still not fixed in 2.0.28, but since this PR
+ addresses many things at once, I will re-open another PR for the
+ latest release with better description.
+ 
+ please close this report for now.
+ --
+ kabe
+State-Changed-From-To: feedback-closed
+State-Changed-By: jwoolley
+State-Changed-When: Mon Nov 19 11:00:51 PST 2001
+State-Changed-Why:
+closed by user request
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

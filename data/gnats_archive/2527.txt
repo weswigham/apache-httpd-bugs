@@ -1,0 +1,205 @@
+Received: (qmail 8474 invoked by uid 2012); 29 Jun 1998 21:15:48 -0000
+Message-Id: <19980629211548.8473.qmail@hyperreal.org>
+Date: 29 Jun 1998 21:15:48 -0000
+From: Dossy <dossy@panoptic.com>
+Reply-To: dossy@panoptic.com
+To: apbugs@hyperreal.org
+Subject: Incorrect assumptions in the 1.3.0 Configure script for Linux 2.0.x/libc5 (non-glibc2) systems.
+X-Send-Pr-Version: 3.2
+
+>Number:         2527
+>Category:       os-linux
+>Synopsis:       Incorrect assumptions in the 1.3.0 Configure script for Linux 2.0.x/libc5 (non-glibc2) systems.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun 29 14:20:00 PDT 1998
+>Last-Modified:  Sun Jun 13 04:49:24 PDT 1999
+>Originator:     dossy@panoptic.com
+>Organization:
+>Release:        1.3.0
+>Environment:
+Linux ecwav.panoptic.com 2.0.34 #31337 Mon Jun 22 18:25:40 EDT 1998 i486 unknown
+Reading specs from /usr/lib/gcc-lib/i486-unknown-linuxlibc1/2.7.2.2/specs
+gcc version 2.7.2.2
+
+>Description:
+Building Apache 1.3.0 on my Linux 2.0.34 box yielded some unsatisfactory
+results.  Partly due to the configuration script's inability to detect
+the need for -ldl for the --enable-shared=max, and the use of -lcrypt
+(which is clearly documented as being needed for glibc 2.x, and my box
+is a libc 5.x system, yet the configure script thinks I'm also glibc 2.x).
+
+>How-To-Repeat:
+Here is the configure command I used:
+./configure --compat --prefix=/usr/www --proxycachedir=/usr/www/cache \
+  --enable-module=proxy --enable-module=expires --enable-module=log_referer \
+  --enable-module=status --enable-shared=max
+>Fix:
+Here is a diff with the changes necessary to get a clean build:
+
+--- apache_1.3.0/src/Configure.old      Tue May 12 08:13:50 1998
++++ apache_1.3.0/src/Configure  Mon Jun 29 16:44:35 1998
+@@ -1052,6 +1052,10 @@
+ if [ "x$using_shlib" = "x1" ] ; then
+     DL_LIB=""
+     case $PLAT in
++        *-linux* )
++            # linux libc5? requires -ldl for dl* functions.  -Dossy 980629
++            DL_LIB="-ldl"
++            ;;
+         *-ibm-aix* )
+             DL_LIB="-lld"
+             ;;
+@@ -1144,6 +1148,12 @@
+ 
+ # Use TestCompile to look for various LIBS
+ case "$PLAT" in
++    *-whatever-linux*)
++       # my non-glibc2 $PLAT is i486-whatever-linux2, which does not have
++       # -lcrypt.  The "*-linux*" needs to be rewritten to be more
++       # specific and only recognize glibc2 linux boxes.  -Dossy 980629
++       ;;
++
+     *-linux*)
+        # newer systems using glibc 2.x need -lcrypt
+        if ./helpers/TestCompile lib crypt; then
+
+---end-of-diff---
+
+The first change would be more appropriate in helpers/TestCompile lib dl,
+and have it properly recognize that Linux needs -ldl to build shared
+libraries.
+
+The second change should just require better identifying glibc 2.x systems
+or Linux systems that require -lcrypt in general.
+
+My patch was just a temporary fix to get Apache 1.3.0 to build cleanly
+and to illustrate the problems I encountered.
+
+Good luck, and if you need any more information, feel free to send me
+e-mail.
+
+-Dossy
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: rse
+State-Changed-When: Mon Aug  3 00:48:04 PDT 1998
+State-Changed-Why:
+I'm a little bit confused. Because first Apache built
+fine under Debian and RedHat boxes and the src/Configure
+script has correct entries to check for -ldl and -lcrypt
+IMHO. You say that it's unable to see that -ldl and
+-lcrypt is needed. When this is the case then
+the TestCompile stuff is broken for you. Can you
+try the two TestCompile command manually and see
+why they lead to incorrect results on your Linux box?
+
+From: Allanah Myles <dossy@panoptic.com>
+To: rse@apache.org
+Cc: apbugs@apache.org
+Subject: Re: os-linux/2527: Incorrect assumptions in the 1.3.0 Configure script for Linux 2.0.x/libc5 (non-glibc2) systems.
+Date: Mon, 3 Aug 1998 13:55:14 -0400
+
+ On 1998.08.03, rse@apache.org <rse@apache.org> wrote:
+ > [In order for any reply to be added to the PR database, ]
+ > [you need to include <apbugs@Apache.Org> in the Cc line ]
+ > [and leave the subject line UNCHANGED.  This is not done]
+ > [automatically because of the potential for mail loops. ]
+ > [If you do not include this Cc, your reply may be ig-   ]
+ > [nored unless you are responding to an explicit request ]
+ > [from a developer.                                      ]
+ > [Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+ > 
+ > 
+ > Synopsis: Incorrect assumptions in the 1.3.0 Configure script for Linux 2.0.x/libc5 (non-glibc2) systems.
+ > 
+ > State-Changed-From-To: open-feedback
+ > State-Changed-By: rse
+ > State-Changed-When: Mon Aug  3 00:48:04 PDT 1998
+ > State-Changed-Why:
+ > I'm a little bit confused. Because first Apache built
+ > fine under Debian and RedHat boxes and the src/Configure
+ > script has correct entries to check for -ldl and -lcrypt
+ > IMHO. You say that it's unable to see that -ldl and
+ > -lcrypt is needed. When this is the case then
+ > the TestCompile stuff is broken for you. Can you
+ > try the two TestCompile command manually and see
+ > why they lead to incorrect results on your Linux box?
+ 
+ I've discovered that the TestCompile script on my box doesn't
+ like the "trap" line at the top.  It seems that the TestCompile
+ script *always* exits with the status code of 1.  This obviously
+ breaks the Configure script for me.
+ 
+ If I duplicate the body of the "trap" code and place it at the
+ bottom of the TestCompile script, things work correctly:
+ 
+ if AP_PPSEARCHPATH=`pwd` ./$AP_PRINTPATH -s $TARGET ; then
+     exstat=0
+ fi
+ 
+ rm -f Makefile dummy testfunc.c testfunc
+ exit $exstat
+ 
+ If I don't do this, when the script executes the body of the
+ trap command upon script exit, $exstat is always "1".  I bet
+ my shell is replacing "exit $exstat" with "exit 1" as that's
+ what the value of $exstat is at the time the trap line
+ appears.  (Whereas, it shouldn't be substituting at that
+ point).  It sounds like this might just be a bug in my
+ /bin/sh (which is actually a link to /bin/bash).
+ 
+ Strange.  Anyway, that's just another possible workaround,
+ but I should grab a newer version of bash and see if that
+ clears it up.  But with my current bash, I need to stick
+ the rm/exit lines at the bottom of TestCompile to have it
+ work properly.
+ 
+ -Dossy
+ 
+ -- 
+ URL: http://www.panoptic.com/~dossy -< BORK BORK! >- E-MAIL: dossy@panoptic.com
+     Now I'm who I want to be, where I want to be, doing what I've always said I
+     would and yet I feel I haven't won at all...      (Aug 9, 95: Goodbye, JG.)
+ "You should change your .sig; not that the world revolves around me." -s. sadie
+State-Changed-From-To: feedback-open
+State-Changed-By: lars
+State-Changed-When: Sat Nov 14 09:02:19 PST 1998
+State-Changed-Why:
+issue is still open...
+
+State-Changed-From-To: open-feedback
+State-Changed-By: lars
+State-Changed-When: Thu Feb 11 13:05:36 PST 1999
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: lars
+State-Changed-When: Sun Jun 13 04:49:24 PDT 1999
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

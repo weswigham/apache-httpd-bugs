@@ -1,0 +1,171 @@
+Received: (qmail 925 invoked by uid 2012); 22 Mar 1999 11:00:21 -0000
+Message-Id: <19990322110021.924.qmail@hyperreal.org>
+Date: 22 Mar 1999 11:00:21 -0000
+From: Marcin Cieslak <saper@system.pl>
+Reply-To: saper@system.pl
+To: apbugs@hyperreal.org
+Subject: mod_mime_magic unable to handle compressed content larger than 4k
+X-Send-Pr-Version: 3.2
+
+>Number:         4097
+>Category:       mod_mime
+>Synopsis:       mod_mime_magic unable to handle compressed content larger than 4k
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Mar 22 03:10:00 PST 1999
+>Last-Modified:  Tue Apr 20 20:42:43 PDT 1999
+>Originator:     saper@system.pl
+>Organization:
+>Release:        1.3.4
+>Environment:
+FreeBSD 2.2.8-STABLE
+>Description:
+Due to the limit imposed by HOWMANY symbol, the zmagic() function in
+mod_mime_magic.c attempts to uncompress first 4k of the file only,
+and mod_mime_magic module is unable to detect the type of uncompressed
+contents.
+
+The following entry appears in the error_log:
+
+httpd: [Sun Mar 21 18:17:04 1999] [error] [client 127.0.0.1] mod_mime_magic:
+read failed /home/WWW/Home/cdrom/cc/td/doc/product/software/ssr91/rn_9_14/78116.htm
+
+This error is generated in mod_mime_magic.c:2198, since ap_bread()
+was unable to read any data from gzip process pipe.
+>How-To-Repeat:
+Discovered when browsing Cisco Documentation CD (it contains compressed
+HTML files) -- some file (smaller) were properly displayed by
+Netscape and lynx, while others were not. I guess that the module's
+primary objective is to allow browsing of Cisco CD, since it was
+submitted to you by Cisco:)
+
+Sample files can be downloaded from http://www.system.pl/internal/mod_mime_magic/
+(Note this server has mod_mime_magic disabled).
+
+The file small_gzipped.htm should work ok with a standard module.
+
+>Fix:
+In http://www.system.pl/internal/mod_mime_magic/patch I enclose a patch
+which allows to read large compressed files and fixes another bug
+(files without ending ".Z" cannot be verified by module due to the way
+"uncompress" utility works).
+
+I have modified the options given to gzip utility - now they include
+a file name. 
+I have tried to fix it loading the whole compressed file into memory,
+but this failed on large files (>100k) - like max_gzipped.htm on my site.
+There may be another bug in the way apache handles pipes to- and from- 
+process.
+E-mail me for further details.
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 13:43:18 PDT 1999
+State-Changed-Why:
+I get a 403 when I try to access the URLs you listed.
+
+We deliberately limit the amount sent to unzip/uncompress --
+because we don't want to use lots of memory or CPU time
+to do it.  The first 4k should be enough to identify all
+files...
+
+Also it uses "uncompress -c" and passes it the compressed
+data on stdin -- so uncompress never deals with a filename,
+so I don't see how it can complain about a lack of .Z.
+
+Dean
+
+From: Marcin Cieslak <saper@system.pl>
+To: dgaudet@apache.org
+Cc: apache-bugdb@apache.org, apbugs@apache.org
+Subject: Re: mod_mime/4097: mod_mime_magic unable to handle compressed content
+ larger than 4k
+Date: Tue, 20 Apr 1999 23:02:42 +0200 (MET DST)
+
+ On 20 Apr 1999 dgaudet@apache.org wrote:
+ 
+ > 
+ > Synopsis: mod_mime_magic unable to handle compressed content larger than 4k
+ > 
+ > I get a 403 when I try to access the URLs you listed.
+ 
+ My apologies. Now this is (hopefully) fixed.
+ 
+ > 
+ > We deliberately limit the amount sent to unzip/uncompress --
+ > because we don't want to use lots of memory or CPU time
+ > to do it.  The first 4k should be enough to identify all
+ > files...
+ 
+ It seems that we have to sacrifice CPU and memory.
+ I haven't found any way to force gzip to uncompress
+ a fragment of the file.
+ It fails with exit code 1 when the compressed file/
+ data stream is not complete.
+ Yes, it would be enough to supply first 4k of uncompressed contents.
+ Perhaps we should integrate mod_mime_magic with zlib.
+ 
+ Consider this:
+ 
+ Script started on Tue Apr 20 22:51:53 1999
+ tricord:/u/saper % gzip tf
+ tricord:/u/saper % ls -l tf.gz
+ -rwxr-xr-x   1 saper    staff      43276 Apr 20 22:50 tf.gz
+ tricord:/u/saper % dd if=tf.gz of=tf-first4k.gz count=8
+ 8+0 records in
+ 8+0 records out
+ tricord:/u/saper % ls -l tf*gz
+ -rw-r--r--   1 saper    staff       4096 Apr 20 22:52 tf-first4k.gz
+ -rwxr-xr-x   1 saper    staff      43276 Apr 20 22:50 tf.gz
+ tricord:/u/saper % gzip -d -c tf.gz > /dev/null
+ tricord:/u/saper % echo $status
+ 0
+ tricord:/u/saper % gzip -d -c tf-first4k.gz > /dev/null
+ 
+ gzip: tf-first4k.gz: unexpected end of file
+ tricord:/u/saper % echo $status
+ 1
+ script done on Tue Apr 20 22:52:50 1999
+ > Also it uses "uncompress -c" and passes it the compressed
+ > data on stdin -- so uncompress never deals with a filename,
+ > so I don't see how it can complain about a lack of .Z.
+ 
+ Yes, this is the "bug" introduced with my modification --
+ it uses the file on disk directly, and it doesn't have to
+ have a ".Z" or ".gz" extension. 
+ 
+ However, my patch allows me to browse Cisco Documentation CD
+ without any problems and with now need for proprietary
+ software supplied by Cisco for Windows and some commercial
+ UNIX platforms.
+ 
+ -- 
+                  << Marcin Cieslak // saper@system.pl >>
+ 
+ -----------------------------------------------------------------
+ SYSTEM Internet Provider                     http://www.system.pl
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 20:42:43 PDT 1999
+State-Changed-Why:
+Cool, thanks.  Patch applied to 1.3.7.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

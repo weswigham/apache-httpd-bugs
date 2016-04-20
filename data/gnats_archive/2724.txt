@@ -1,0 +1,221 @@
+Received: (qmail 3411 invoked by uid 2012); 28 Jul 1998 09:43:55 -0000
+Message-Id: <19980728094355.3410.qmail@hyperreal.org>
+Date: 28 Jul 1998 09:43:55 -0000
+From: Seth Chaiklin <seth@psy.au.dk>
+Reply-To: seth@psy.au.dk
+To: apbugs@hyperreal.org
+Subject: a permanent redirect (status code 301) to a non-existent file produces a  status code 403 (HTTP_FORBIDDEN)  instead of 404 (HTTP_NOT_FOUND)
+X-Send-Pr-Version: 3.2
+
+>Number:         2724
+>Category:       os-linux
+>Synopsis:       a permanent redirect (status code 301) to a non-existent file produces a  status code 403 (HTTP_FORBIDDEN)  instead of 404 (HTTP_NOT_FOUND)
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jul 28 02:50:00 PDT 1998
+>Last-Modified:  Sun Aug 15 01:42:11 PDT 1999
+>Originator:     seth@psy.au.dk
+>Organization:
+>Release:        1.3.1
+>Environment:
+Linux 2.0.33
+>Description:
+Have a permanent redirect like this (in srm.conf):
+
+Redirect permanent /~bo http://www.psy.aau.dk
+
+Happened that one of the redirects was to a nonexistent file.
+Here is an example from the access log file, which shows
+that the redirect (301) gives a "forbiddden" error (403), when in reality
+it should give a "not-found" (404).
+
+ocelot.eng.pgh.lycos.com - - [28/Jul/1998:00:52:05 +0200] "GET /~bo/staff/stats.
+html HTTP/1.0" 301 242
+ocelot.eng.pgh.lycos.com - - [28/Jul/1998:00:52:58 +0200] "GET /staff/stats.html
+ HTTP/1.0" 403 214  
+
+But according to src/main/http_request.c (lines 153 and 154) (version 1.3.1)
+
+     * Note that we don't reject accesses to nonexistent files (multiviews or
+     * the like may cons up a way to run the transaction anyway)...
+
+      
+>How-To-Repeat:
+Have a permanent redirect to a non-existent file. (I haven't tried with
+a temporary redirect...maybe the same problem?)
+>Fix:
+Didn't completely untangle the code after 10 minutes of trying...but the 
+problem is in src/main/http_request.c  I guess the ap_internal_redirect() 
+calls process_request_internal() which eventually calls directory_walk()
+which calls get_path_info() and THERE is where the mistake actually comes.
+I suspect the maintainer of this section of the code will see what needs
+to be done.
+
+And while I am at it....perhaps the ap_log_error() on line 251 (version 1.3.1)
+in the function get_path_info() should make some indication that the failure 
+was because of server configuration (as is done in mod_access) and not simply 
+"failed" as it presently does.
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Seth Chaiklin <seth@psy.au.dk>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/2724: a permanent redirect (status code 301) to a
+ non-existent file produces a  status code 403 (HTTP_FORBIDDEN)  instead of
+ 404 (HTTP_NOT_FOUND)
+Date: Tue, 28 Jul 1998 23:22:33 -0700 (PDT)
+
+ On 28 Jul 1998, Seth Chaiklin wrote:
+ 
+ > Have a permanent redirect like this (in srm.conf):
+ > 
+ > Redirect permanent /~bo http://www.psy.aau.dk
+ > 
+ > Happened that one of the redirects was to a nonexistent file.
+ > Here is an example from the access log file, which shows
+ > that the redirect (301) gives a "forbiddden" error (403), when in reality
+ > it should give a "not-found" (404).
+ > 
+ > ocelot.eng.pgh.lycos.com - - [28/Jul/1998:00:52:05 +0200] "GET /~bo/staff/stats.
+ > html HTTP/1.0" 301 242
+ > ocelot.eng.pgh.lycos.com - - [28/Jul/1998:00:52:58 +0200] "GET /staff/stats.html
+ >  HTTP/1.0" 403 214  
+ 
+ Erm... what does this have to do with the redirect?
+ 
+ Any access to /staff/stats.html gives the same error regardless of the
+ redirect. Somehow, you have your server configured to deny access to the
+ file.  This can be configured even though the file doesn't exist.
+ 
+
+From: seth@psy.au.dk
+To: Marc Slemko <marcs@znep.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/2724: a permanent redirect (status code 301) to a no
+Date: Wed, 29 Jul 1998 15:22:23 +0001
+
+ Thanks very much for your quick answer.
+ 
+ On 28 Jul 98 at 23:22, Marc Slemko wrote:
+ 
+ > Erm... what does this have to do with the redirect?
+ 
+ Nothing.  My mistake...I just noticed the problem in connection with 
+ a redirect, and misinterpreted the cause.  But I think I have now
+ clarifed the issue.
+ 
+ 
+ > Any access to /staff/stats.html gives the same error regardless of the
+ > redirect. Somehow, you have your server configured to deny access to the
+ > file.  This can be configured even though the file doesn't exist.
+ 
+ I respectfully beg to disagree.  I don't think it is a problem/issue 
+ with server configuration, but with the apache source code.
+ 
+ 
+ Here are the results of your tests.
+ 
+ From access_log:
+ 
+ 207-178-54-226.go2net.com - - [29/Jul/1998:08:23:00 +0200] "GET 
+ /staff/stats.htm HTTP/1.0" 404 209
+ 207-178-54-226.go2net.com - - [29/Jul/1998:08:23:06 +0200] "GET 
+ /staff/stats.html HTTP/1.0" 403 214
+ 207-178-54-226.go2net.com - - [29/Jul/1998:10:09:28 +0200] "GET 
+ /staff/stats.html HTTP/1.0" 403 214
+ 
+ From error_log:
+ 
+ [Wed Jul 29 08:23:00 1998] [error] File does not exist: 
+ /home/httpd/html/staff/stats.htm for 207-178-54-226.go2net.com
+ [Wed Jul 29 08:23:06 1998] [error] client 207-178-54-226.go2net.com 
+ denied by server configuration: /staff/stats.html
+ [Wed Jul 29 10:09:28 1998] [error] client 207-178-54-226.go2net.com 
+ denied by server configuration: /staff/stats.html
+ 
+ 
+ But why is it that your first attempt: /staff/stats.htm returns a 
+ "not found" (status 404) while your second (and third) attempt 
+ /staff/stats.html returns a "forbidden" (status 403)?
+ 
+ I have checked over my .conf files, and I have not made any
+ configurations for the /staff directory (or specific locations that 
+ involve /staff/stats.html).
+ 
+ But your test has helped me to localize what I believe to be the
+ main issue.  It arises because these files sit on a Novell server, 
+ which the Linux server can access.  The Linux Novell client can only 
+ read 8.3 filenames.  
+ 
+ Usually Apache will reply that the File name is too long.  And it
+ does so when I use a lynx browser...as shown below..
+ 
+ 1.  [Wed Jul 29 13:38:40 1998] [error] File does not exist: 
+ /home/httpd/html/staff/stats.htm for pc126.psy.aau.dk
+ 
+ 2.  [Wed Jul 29 13:38:57 1998] [error] (36)File name too long: client 
+ pc126.psy.aau.dk denied by server configuration: /staff/stats.html
+ 
+ 3.  [Wed Jul 29 13:39:20 1998] [error] (36)File name too long: client 
+ pc126.psy.aau.dk denied by server configuration: /staff/a.html
+ 
+ The first case is as it should be...the file does not exist.
+ The next two show that the .html is the problem.  (For some reason,
+ this "File name too long" does NOT show up when Netscape is used
+ as a browser.
+ 
+ Here is another example from another directory....just to show that
+ /staff is not a special case, because of configuration.
+ 
+ 1. [Wed Jul 29 13:40:46 1998] [error] File does not exist: 
+ /home/httpd/html/institut/a.htm for pc126.psy.aau.dk
+ 
+ 2. [Wed Jul 29 13:40:54 1998] [error] (36)File name too long: client 
+ pc126.psy.aau.dk denied by server configuration: /institut/a.html
+ 
+ I can see that '(36)File name too long' comes from the ap_log_error() 
+ in src/main/http_log.c and reflects the operating system (in this
+ case of Linux, the values come from /usr/include/asm/errno.h), and 
+ not the Apache code. The "denied by server configuration" is my 
+ own modification to the get_path_info() in /src/main/http_request.c 
+ but this leaves me still with two questions: 
+ 
+ 1.  Why does the lynx browser result in a file name too long error 
+ but the Netscape browser does not -- for the same URL?
+ 
+ 2.  For both browsers, when they try to read a "file name too long" 
+ file, the response is "HTTP_FORBIDDEN" ... shouldn't it be 
+ "HTTP_NOT_FOUND"?
+ 
+ Thanks for your consideration.
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: fielding
+State-Changed-When: Sun Aug 15 01:42:10 PDT 1999
+State-Changed-Why:
+
+Apache defaults to forbidden if it doesn't recognize the
+error response code, which in this case is a nonstandard
+error message rather than what would be expected.  There
+is no harm is this, since 403 is intended to be a general
+response for inaccessible resources.
+
+....Roy
+
+Category-Changed-From-To: general-os-linux
+Category-Changed-By: fielding
+Category-Changed-When: Sun Aug 15 01:42:10 PDT 1999
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

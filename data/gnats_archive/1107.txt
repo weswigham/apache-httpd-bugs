@@ -1,0 +1,71 @@
+From apwww@hyperreal.org  Tue Sep  9 11:20:39 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id LAA09914;
+	Tue, 9 Sep 1997 11:20:39 -0700 (PDT)
+Message-Id: <199709091820.LAA09914@hyperreal.org>
+Date: Tue, 9 Sep 1997 11:20:39 -0700 (PDT)
+From: Rick Franchuk <rickf@transpect.net>
+Reply-To: rickf@transpect.net
+To: apbugs@hyperreal.org
+Subject: Runaway httpd process under heavy load
+X-Send-Pr-Version: 3.2
+
+>Number:         1107
+>Category:       general
+>Synopsis:       Runaway httpd process under heavy load
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Sep  9 11:30:02 1997
+>Last-Modified:  Wed Sep 24 23:52:13 PDT 1997
+>Originator:     rickf@transpect.net
+>Organization:
+>Release:        1.2.4
+>Environment:
+Linux www 2.0.29 #5 Sat Sep 6 12:27:17 CDT 1997 i586 (also on 2.0.30)
+gcc version 2.7.2.1 (also 2.7.2.2)
+>Description:
+Under moderate to heavy loads (200+ open servers), apache servers will
+periodically "Lock Up". I compiled with -g on and found that select seems to be
+dying on select under heavy loads (possibly a result of insufficient FD's?)
+
+Killing the process always restores the machine to full operation. The problem
+in the code is a hard loop condition in http_main.c's child_main(), where if an error occurs
+resulting in a srv<=0, execution IMMEDIATELY loops back to get another select, with causes another error, and so on.
+>How-To-Repeat:
+Under heavy loads running Linux, the problem happens with enough frequency to be
+Real Damn Annoying(tm). Get a site doing 200+ simultaneous connections and theres
+a good chance it'll happen at some point.
+>Fix:
+In line 1783 (http_main/child_main), change the 'continue' to an 'exit'. If one
+SIGTERMs the runaway process, the undesirable behavior doesn't travel over to
+other children (not for a while, anyways).
+This is just a workaround. I think the problem lies within Linux itself
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Sep 12 22:33:39 PDT 1997
+State-Changed-Why:
+Yeah this is a sensable way to defend against this problem.
+It's odd though, my development platform is an SMP davem-2.0.31-pre2
+kernel ... and I've pushed it up over 700 req/s, and never
+seen this.  But we've had a dozen reports about it, so we
+should work around it.  I've submitted a patch for
+consideration.
+
+Dean
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Wed Sep 24 23:52:13 PDT 1997
+State-Changed-Why:
+A patch has been applied to the source tree similar to your
+suggestion.
+
+Dean
+>Unformatted:
+
+

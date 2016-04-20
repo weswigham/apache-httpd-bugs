@@ -1,0 +1,164 @@
+Received: (qmail 28267 invoked by uid 65534); 25 Jan 2000 04:45:46 -0000
+Message-Id: <20000125044546.28266.qmail@locus.apache.org>
+Date: 25 Jan 2000 04:45:46 -0000
+From: Blake Mills <blakem@blakem.com>
+Reply-To: blakem@blakem.com
+To: submit@bugz.apache.org
+Subject: int:tolower causes internal looping on null input
+X-Send-Pr-Version: 3.110
+
+>Number:         5638
+>Category:       mod_rewrite
+>Synopsis:       int:tolower causes internal looping on null input
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jan 24 20:50:01 PST 2000
+>Closed-Date:    
+>Last-Modified:  Mon Jan 24 23:20:00 PST 2000
+>Originator:     blakem@blakem.com
+>Release:        1.3.9
+>Organization:
+apache
+>Environment:
+SunOS 5.7 Generic_106541-08 sun4u sparc SUNW,Ultra-250
+ucbcc: WorkShop Compilers 5.0 98/12/15 C 5.0
+
+AND 
+
+Linux 2.0.36
+gcc 2.7.2.3
+>Description:
+I'm configuring mod_rewrite to handle name based virtual hosting.  This
+included the following lines:
+
+RewriteMap   lc            int:tolower
+RewriteCond  ${lc:%{HTTP_HOST}}        ^(www\.)?([^.]+)
+
+Which usually worked fine.  However, when HTTP_HOST is not set, httpd hangs
+and goes into an infinite loop.
+>How-To-Repeat:
+RewriteMap   lc            int:tolower
+RewriteCond  ${lc:%{HTTP_HOST}}        ^(www\.)?([^.]+)
+RewriteRule  . -
+-----
+% telnet localhost 80
+GET /
+>Fix:
+I can get around this problem by setting an environment variable to HTTP_HOST
+or a default value.  This ensures int:tolower wont be called with a null value.
+My kludgy workaround looks like:
+
+RewriteMap   lc            int:tolower
+RewriteCond %{HTTP_HOST}                (.+)
+RewriteCond www.defaultsite.com         (.+)
+RewriteRule .                  -        [E=HTTP_VHOST:${lc:%1}]
+
+Then I use %{ENV:HTTP_VHOST} instead of %{HTTP_HOST} elsewhere.
+
+I've looked at the code, and haven't seen any obvious reason why this is happening,
+however, I'm taking 1.3.11 for a test drive and will look into it further.
+>Release-Note:
+>Audit-Trail:
+
+From: "Blake D. Mills IV" <blakem@blakem.com>
+To: submit@bugz.apache.org
+Cc:  
+Subject: Re: mod_rewrite/5638: int:tolower causes internal looping on null input
+Date: Mon, 24 Jan 2000 21:41:51 -0800 (PST)
+
+ I missed an [OR] flag in my workaround stanza... It should actually look
+ like:
+ 
+ RewriteCond %{HTTP_HOST}                 (.+)                           [OR]
+ RewriteCond www.default.com              (.+)
+ RewriteRule .                  -         [E=HTTP_VHOST:${lc:%1}]
+ 
+ -Blake
+ 
+ 
+
+From: "Blake D. Mills IV" <blakem@blakem.com>
+To: submit@bugz.apache.org
+Cc:  
+Subject: Re: mod_rewrite/5638: int:tolower causes internal looping on null input
+Date: Mon, 24 Jan 2000 23:13:19 -0800 (PST)
+
+ I just installed a fresh 1.3.11 on a stock RedHat 6.1 system and it
+ exibited the same behavior.
+ 
+ Here is what I did...
+ 
+ $ tar -xvzf apache_1.3.11.tar.gz
+ $ cd cd apache_1.3.11
+ $ ./configure --prefix=/web/httpd_test \
+               --sbindir=/web/httpd_test/sbin \
+               --sysconfdir=/web/httpd_test/conf \
+               --localstatedir=/web/httpd_test \
+               --runtimedir=/web/httpd_test/run \
+               --logfiledir=/web/httpd_test/logs \
+               --proxycachedir=/web/httpd_test/proxy \
+               --enable-module=rewrite
+  
+ $ make
+ $ make install
+ $ mv /web/httpd_test/sbin/httpd /web/httpd_test/sbin/httpd_test
+ $ perl -p -i -e 's|sbin/httpd|sbin/httpd_test|' /web/httpd_test/sbin/apachectl
+ 
+ I then edited /web/httpd_test/conf/httpd.conf, changed the port number to
+ 8081 and added the following lines to the end:
+ 
+ RewriteEngine On
+ RewriteMap    lc                   int:tolower
+ RewriteCond   ${lc:%{HTTP_HOST}}   (.*)
+ RewriteRule   .                    -
+ 
+ After starting apache, I telneted to port 8081 and provided a host
+ name:
+ 
+ $ telnet localhost 8081
+ GET / HTTP/1.0       
+ HOST:www.test.com
+ 
+ I got the "It Worked" page back
+ 
+ However if I don't provide a hostname, ie
+ 
+ $ telnet localhost 8081
+ GET / 
+ 
+ The httpd process spins wildly out of control.
+ 
+ $ top
+   PID USER     PRI  NI  SIZE  RSS SHARE STAT  LIB %CPU %MEM   TIME COMMAND
+ 13698 nobody    11   0  1160 1160  1020 R       0 96.1  0.4   0:04 httpd_test
+ 
+ This system is pretty much out-of-the box RedHat 6.1
+ Linux 2.2.9
+ egcs-2.91.66
+ 
+ I had this same problem on a RH5.2 system and a Solaris machine.
+  
+ I've tried to provide some detail here, because I noticed a similiar
+ bug posted to the database that couldn't be replicated.
+ 
+ -Blake
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

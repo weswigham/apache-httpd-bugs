@@ -1,0 +1,272 @@
+Received: (qmail 3266 invoked by uid 2012); 11 Nov 1998 01:16:24 -0000
+Message-Id: <19981111011624.3265.qmail@hyperreal.org>
+Date: 11 Nov 1998 01:16:24 -0000
+From: Nick Koston <bdraco@darkorb.net>
+Reply-To: bdraco@darkorb.net
+To: apbugs@hyperreal.org
+Subject: Cgis takeover the world and send the system spiraling down to its death
+X-Send-Pr-Version: 3.2
+
+>Number:         3376
+>Category:       mod_cgi
+>Synopsis:       Cgis takeover the world and send the system spiraling down to its death
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Nov 10 17:20:01 PST 1998
+>Last-Modified:  Wed Nov 11 09:30:01 PST 1998
+>Originator:     bdraco@darkorb.net
+>Organization:
+>Release:        1.3.3
+>Environment:
+Test #1:
+Linux update.vdi.net 2.0.35 #22 Sep 5 15:26:44 EDT 1998 i686 unknown
+
+Test #2:
+FreeBSD southpark.vdi.net 2.2.6-RELEASE FreeBSD 2.2.6-RELEASE #0: Web Mar 25 02:
+28:49 GMT 1998      jkh@time.cdrom.com:/usr/src/sys/compile/GENERIC i386  
+>Description:
+Cgis have a tendency to go out of control if you have lots of generic people 
+running them. 
+>How-To-Repeat:
+#!/usr/bin/perl
+$|=1;
+print "Content-type: text/html\n\n"
+while (1) {
+	print "crash burn die\n";
+}
+exit;
+>Fix:
+--- mod_cgi.c.old       Mon Sep 21 17:09:51 1998
++++ mod_cgi.c   Tue Nov 10 19:20:33 1998
+@@ -96,11 +96,13 @@
+ 
+ #define DEFAULT_LOGBYTES 10385760
+ #define DEFAULT_BUFBYTES 1024
++#define DEFAULT_CGIPRIO 0
+ 
+ typedef struct {
+     char *logname;
+     long logbytes;
+     int bufbytes;
++    int cgiprio;
+ } cgi_server_conf;
+ 
+ static void *create_cgi_config(pool *p, server_rec *s)
+@@ -111,6 +113,7 @@
+     c->logname = NULL;
+     c->logbytes = DEFAULT_LOGBYTES;
+     c->bufbytes = DEFAULT_BUFBYTES;
++    c->cgiprio = DEFAULT_CGIPRIO;
+ 
+     return c;
+ }
+@@ -152,6 +155,16 @@
+     return NULL;
+ }
+ 
++static const char *set_cgi_priority(cmd_parms *cmd, void *dummy, char *arg)
++{
++    server_rec *s = cmd->server;
++    cgi_server_conf *conf =
++    (cgi_server_conf *) ap_get_module_config(s->module_config, &cgi_module);
++
++    conf->cgiprio = atoi(arg);
++    return NULL;
++}
++
+ static const command_rec cgi_cmds[] =
+ {
+     {"ScriptLog", set_scriptlog, NULL, RSRC_CONF, TAKE1,
+@@ -160,6 +173,8 @@
+      "the maximum length (in bytes) of the script debug log"},
+     {"ScriptLogBuffer", set_scriptlog_buffer, NULL, RSRC_CONF, TAKE1,
+      "the maximum size (in bytes) to record of a POST request"},
++    {"CgiPriority", set_cgi_priority, NULL, OR_FILEINFO, TAKE1,
++     "the priority to run cgis with"},
+     {NULL}
+ };
+ 
+@@ -350,6 +365,7 @@
+ 
+ static int cgi_handler(request_rec *r)
+ {
++    int child_pid;
+     int retval, nph, dbpos = 0;
+     char *argv0, *dbuf = NULL;
+     BUFF *script_out, *script_in, *script_err;
+@@ -428,13 +444,21 @@
+      * waiting for free_proc_chain to cleanup in the middle of an
+      * SSI request -djg
+      */
+-    if (!ap_bspawn_child(r->main ? r->main->pool : r->pool, cgi_child,
+-                        (void *) &cld, kill_after_timeout,
+-                        &script_out, &script_in, &script_err)) {
++
++    child_pid = ap_bspawn_child(r->main ? r->main->pool : r->pool, cgi_child,
++    (void *)&cld, kill_after_timeout, &script_out, &script_in, &script_err);
++
++    if (!child_pid) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, r,
+                    "couldn't spawn child process: %s", r->filename);
+        return HTTP_INTERNAL_SERVER_ERROR;
+     }
++
++#ifndef WIN32
++    if (conf->cgiprio) {
++           setpriority(0, child_pid, conf->cgiprio);
++    }
++#endif
+ 
+     /* Transfer any put/post args, CERN style...
+      * Note that if a buggy script fails to read everything we throw
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Wed Nov 11 08:56:28 PST 1998
+State-Changed-Why:
+Erm... how is nicing them going to do anything that useful?
+I mean, they will still be sitting around doing whatever
+bad things they are doing.  They shouldn't "send the system
+spiraling down to its death" anyway, and if they do then there
+is a bug in your OS.
+
+Otherwise, wouldn't appropriate settings of RLimit* make
+much more snese?
+Comment-Added-By: marc
+Comment-Added-When: Wed Nov 11 09:10:31 PST 1998
+Comment-Added:
+Very broken mailer bounced the response:
+
+<bdraco@darkorb.net>:
+209.201.10.102 failed after I sent the message.
+Remote host said: 550 Your E-Mail is redundant.  You cannot send E-Mail to yours
+elf (marc@apache.org).
+
+
+Completely nonsensical, since it shouldn't be parsing the
+To: header and trying to send to the recipients listed there,
+plus why should it care if I'm sending myself email?
+
+I'll try forwarding it manually, but if this mailer keeps acting up,
+the effort is just far too great to try to jump through hoops.
+
+From: Marc Slemko <marcs@znep.com>
+To: bdraco@darkorb.net
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: mod_cgi/3376: Cgis takeover the world and send the system spiral
+Date: Wed, 11 Nov 1998 09:15:18 -0800 (PST)
+
+ Please fix your horribly broken mailer.  Not only should it NEVER be
+ parsing for recipients to send to in the To: line, but  it is pretty
+ dumb to refuse to let people send mail to themself.
+ 
+ If it continues to act up, I won't have any choice but to close the PR due
+ to impossibility of communication.
+ 
+ ---------- Forwarded message ----------
+ Date: 11 Nov 1998 16:56:52 -0000
+ From: MAILER-DAEMON@hyperreal.org
+ To: marc@hyperreal.org
+ Subject: failure notice
+ 
+ Hi. This is the qmail-send program at hyperreal.org.
+ I'm afraid I wasn't able to deliver your message to the following addresses.
+ This is a permanent error; I've given up. Sorry it didn't work out.
+ 
+ <bdraco@darkorb.net>:
+ 209.201.10.102 failed after I sent the message.
+ Remote host said: 550 Your E-Mail is redundant.  You cannot send E-Mail to yourself (marc@apache.org).
+ 
+ --- Below this line is a copy of the message.
+ 
+ Return-Path: <marc@hyperreal.org>
+ Received: (qmail 25396 invoked by uid 149); 11 Nov 1998 16:56:29 -0000
+ Date: 11 Nov 1998 16:56:29 -0000
+ Message-ID: <19981111165629.25383.qmail@hyperreal.org>
+ To: apache-bugdb@apache.org, bdraco@darkorb.net, marc@apache.org
+ From: marc@apache.org
+ Subject: Re: mod_cgi/3376: Cgis takeover the world and send the system spiraling down to its death
+ 
+ [In order for any reply to be added to the PR database, ]
+ [you need to include <apbugs@Apache.Org> in the Cc line ]
+ [and leave the subject line UNCHANGED.  This is not done]
+ [automatically because of the potential for mail loops. ]
+ [If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request ]
+ [from a developer.                                      ]
+ [Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+ 
+ 
+ Synopsis: Cgis takeover the world and send the system spiraling down to its death
+ 
+ State-Changed-From-To: open-feedback
+ State-Changed-By: marc
+ State-Changed-When: Wed Nov 11 08:56:28 PST 1998
+ State-Changed-Why:
+ Erm... how is nicing them going to do anything that useful?
+ I mean, they will still be sitting around doing whatever
+ bad things they are doing.  They shouldn't "send the system
+ spiraling down to its death" anyway, and if they do then there
+ is a bug in your OS.
+ 
+ Otherwise, wouldn't appropriate settings of RLimit* make
+ much more snese?
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: marc
+State-Changed-When: Wed Nov 11 09:28:25 PST 1998
+State-Changed-Why:
+Broken mailer that doesn't accept all sorts of legit mail,
+no choice but to close PR.
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: mod_cgi/3376: Cgis takeover the world and send the system spiral
+Date: Wed, 11 Nov 1998 09:23:11 -0800 (PST)
+
+ Good grief.  Talk about a really broken mailer.  Lame.  Really lame.  It
+ won't accept mail from domains that only have a MX record.  
+ 
+ Even lamer is that I can't check what software they are running because
+ someone thought it would be cute to make it say:
+ 
+ 220 FTP server (Version wu-2.4.2-academ[BETA-15](1) Wed, 11 Nov 1998 12:25:58 -0500 (EST)) ready.
+ 
+ (well, ok, I know it is smail anyway, but...)
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Wed, 11 Nov 1998 09:16:16 -0800 (PST)
+ From: Mail Delivery Subsystem <MAILER-DAEMON>
+ To: marcs@znep.com
+ Subject: Returned mail: Service unavailable
+ 
+ The original message was received at Wed, 11 Nov 1998 09:15:18 -0800 (PST)
+ from marcs@localhost
+ 
+    ----- The following addresses had permanent fatal errors -----
+ <bdraco@darkorb.net>
+ 
+    ----- Transcript of session follows -----
+ ... while talking to root.darkorb.net.:
+ >>> MAIL From:<marcs@znep.com> SIZE=2628
+ <<< 552 Invalid domain "znep.com" specified in "MAIL from:".
+ 554 <bdraco@darkorb.net>... Service unavailable
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

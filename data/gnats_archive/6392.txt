@@ -1,0 +1,93 @@
+Received: (qmail 53940 invoked by uid 501); 8 Aug 2000 15:24:53 -0000
+Message-Id: <20000808152453.53939.qmail@locus.apache.org>
+Date: 8 Aug 2000 15:24:53 -0000
+From: Isaac Wilcox <jserv-bug@eatstatic.net>
+Reply-To: jserv-bug@eatstatic.net
+To: submit@bugz.apache.org
+Subject: getScheme() does not necessarily return the correct scheme
+X-Send-Pr-Version: 3.110
+
+>Number:         6392
+>Category:       mod_jserv
+>Synopsis:       getScheme() does not necessarily return the correct scheme
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Aug 08 08:30:01 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     jserv-bug@eatstatic.net
+>Release:        JServ 1.1b1 and above
+>Organization:
+apache
+>Environment:
+All
+>Description:
+org.apache.jserv.JServConnection.getScheme() does not return the
+correct scheme for HTTPS requests coming in on non-standard ports.
+
+If you set up an Apache virtual host to server content over SSL
+on port 10443, and then make a request to a servlet mounted on that
+virtual host, then HttpServletRequest.getScheme() will return the string 'http'.
+
+This is because the code for getScheme() in the JServ 1.1b1 and above
+versions of src/java/org/apache/jserv/JServConnection.java attempts
+to determine the scheme of the request from the port number the request
+came in on. It simply assumes any request on port 443 is secure, and all
+others are insecure. This does not comply with the JSDK2.0 spec.
+
+JServ 1.0 worked with Apache-SSL 1.39, because the JServ 1.0 code checks
+for the environment variable 'HTTPS' set by the Apache-SSL and StrongHold
+Apache modules (and maybe others) and decided from those whether the
+connection was HTTPS. I can't see why this code was taken out.
+ 
+You can see a diff between the 1.0 and 1.1b versions of getScheme()
+at this URL:
+	http://www.working-dogs.com/cvsweb/index.cgi/jserv/src/java/org/apache/jserv/JServConnection.java.diff?r1=1.49&r2=1.50
+
+Obviously this is not a failsafe solution, because there are probably
+other SSL modules that don't, but at least this system gave the right
+answer for most people. My personal opinion is that it's probably best
+to give the right answer for most people if possible rather than the wrong
+answer for all, as long as you add a note warning people of the fact
+that it 'only works for the following SSL modules...'.
+>How-To-Repeat:
+Described above. Besides, downloading ApacheJServ-1.1b1.tar.gz from
+java.apache.org, untar/gzing and examining lines 581 - 585 of
+src/java/org/apache/jserv/JServConnection.java removes need for example
+code/URLs.
+>Fix:
+No fixes, but workarounds...
+
+1. Add back in the old code that checks the 'HTTPS' environment variable.
+2. Set one of the SSL-related request attributes described in the JSDK 2.0
+    API documentation under javax.servlet.Servlet.getAttribute().
+    This would allow users to check these attributes to determine whether
+    HTTPS is the protocol for a request.
+3. If you could get the most commonly used SSL modules authors to support
+    the setting of the HTTPS environment variable, you'd have more cases
+    covered by (1).
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

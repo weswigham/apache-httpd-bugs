@@ -1,0 +1,93 @@
+From nobody@hyperreal.org  Thu Jul 31 01:18:54 1997
+Received: (from nobody@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id BAA29874;
+	Thu, 31 Jul 1997 01:18:54 -0700 (PDT)
+Message-Id: <199707310818.BAA29874@hyperreal.org>
+Date: Thu, 31 Jul 1997 01:18:54 -0700 (PDT)
+From: Pierre-Yves Kerembellec <pyk@vtcom.fr>
+Reply-To: pyk@vtcom.fr
+To: apbugs@hyperreal.org
+Subject: Related to PR#883 : when using NFS under a chroot-ed environment, crash the network layers
+X-Send-Pr-Version: 3.2
+
+>Number:         945
+>Category:       os-solaris
+>Synopsis:       Related to PR#883 : when using NFS under a chroot-ed environment, crash the network layers
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jul 31 01:20:01 1997
+>Last-Modified:  Mon Feb 23 03:53:36 PST 1998
+>Originator:     pyk@vtcom.fr
+>Organization:
+>Release:        1.2.1
+>Environment:
+Solaris 2.x
+>Description:
+Using a chroot-patched Apache version, you can crash the Solaris network layers
+if the accept-mutex lock file resides in an NFS-mounted area ... all the
+socket are closed (even telnet session sometimes !) and the httpd (child and
+parent) processes crash :-(
+>How-To-Repeat:
+Problem already solved
+>Fix:
+As explained in PR#883, setting the lock file outside a NFS mounted area
+resolved the problem ...
+Maybe a new real semaphore (using semget, ...) implementation 
+(USE_SEM_SERIALIZED_ACCEPT in http_main.c?) should be investigated for 
+systems that support semaphore facility (such as Solaris), instead of 
+file locking.
+
+I also think you should default the DEFAULT_LOCKFILE define in httpd.h to
+"/var/tmp/accept.lock", instead of "logs/accept.lock", since logs directories
+are often NFS-mounted for logs centralization
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Pierre-Yves Kerembellec <pyk@vtcom.fr>
+Subject: Re: os-solaris/945: Related to PR#883 : when using NFS under a chroot-ed environment, crash the network layers
+Date: Thu, 31 Jul 1997 20:33:20 -0700 (PDT)
+
+ 
+ If you write logs on an NFS mounted disk then your log files can quite
+ easily suffer from corruption.  It's not really a good idea to do that...
+ at any rate, the default used to be /var/tmp, but some systems don't have
+ that directory.
+ 
+ Yep we should use sysv semaphores as well wherever available.
+ 
+ Dean
+ 
+State-Changed-From-To: open-suspended
+State-Changed-By: dgaudet
+State-Changed-When: Thu Jul 31 21:01:16 PDT 1997
+State-Changed-Why:
+Two things:
+
+- let's start logging the lockfile (and scoreboard file)
+locations at startup
+
+- use sysv semaphores
+
+Dean
+Release-Changed-From-To: 1.1.1 to 1.2.1-1.2.1
+Release-Changed-By: coar
+Release-Changed-When: Thu Jan 22 08:42:44 PST 1998
+State-Changed-From-To: suspended-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Feb 23 03:53:36 PST 1998
+State-Changed-Why:
+We've found no good (portable) way to defend against this.  The
+LockFile directive can be used to retarget the lock file to a
+non-NFS mounted directory.  In 1.3 there are other locking options
+which don't require a file, and wouldn't break NFS... except they
+don't seem to be reliable on solaris either.  So there's not
+much we can do.
+>Unformatted:
+
+
+

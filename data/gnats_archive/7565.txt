@@ -1,0 +1,92 @@
+Received: (qmail 14426 invoked by uid 501); 15 Apr 2001 02:39:27 -0000
+Message-Id: <20010415023927.14425.qmail@apache.org>
+Date: 15 Apr 2001 02:39:27 -0000
+From: Jong Lee <jlee@bea.com>
+Reply-To: jlee@bea.com
+To: submit@bugz.apache.org
+Subject: Changing "StartServers" in httpd.conf has no effects
+X-Send-Pr-Version: 3.110
+
+>Number:         7565
+>Category:       config
+>Synopsis:       Changing "StartServers" in httpd.conf has no effects
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Apr 14 19:40:00 PDT 2001
+>Closed-Date:    Sun Sep 02 20:53:26 PDT 2001
+>Last-Modified:  Sun Sep 02 20:53:26 PDT 2001
+>Originator:     jlee@bea.com
+>Release:        2.0.16
+>Organization:
+>Environment:
+SunOS muir 5.7 Generic_106541-15 sun4u sparc SUNW,Ultra-60
+>Description:
+mpm -- threaded
+
+The server always started with 3 processes.  
+>How-To-Repeat:
+1) change "StartServers" to 1 in <IfModule threaded.c> block
+2) restart server
+I expect there is only 1 process created
+>Fix:
+in threaded.c:
+the function threaded_pre_config() has the following code:
+ap_daemons_to_start = DEFAULT_START_DAEMON;
+
+we might want to do the following:
+if (ap_daemons_to_start == 0)
+  ap_daemons_to_start = DEFAULT_START_DAEMON;
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rbb
+State-Changed-When: Sun Sep  2 20:53:26 PDT 2001
+State-Changed-Why:
+I do not believe this is actually a bug.  You are correct,
+you had three processes running, when you configured for
+only 1 process.  However, not all of these were serving
+requests.
+
+one of those processes was the parent process, it would have been running as root.  
+
+The second was the cgid daemon, this can be proven by 
+reconfiguring using the options --enable-cgi 
+--disable-cgid.
+
+The final process was actually serving requests.  This is
+what the StartServers 1 was doing.
+
+The reason you didn't see a change between the two 
+configurations, is that the default config in Apache
+2.0.16 started three processes, and then killed off
+two of them due to Min/Max SpareServers.  This should
+be fixed in the next release of 2.0.
+
+If you are able to reproduce this, with cgi instead of
+cgid, and all three processes are owned by the user
+specified in the config file, please let us know.
+
+Thank you for using Apache.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

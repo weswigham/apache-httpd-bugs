@@ -1,0 +1,99 @@
+Received: (qmail 94729 invoked by uid 501); 9 Mar 2001 01:30:33 -0000
+Message-Id: <20010309013033.94728.qmail@apache.org>
+Date: 9 Mar 2001 01:30:33 -0000
+From: Jim Brownfield <Jim_Brownfield@radical.com>
+Reply-To: Jim_Brownfield@radical.com
+To: submit@bugz.apache.org
+Subject: Apache JServ interface fails with no data returned
+X-Send-Pr-Version: 3.110
+
+>Number:         7378
+>Category:       os-sco
+>Synopsis:       Apache JServ interface fails with no data returned
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    brian
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Mar 08 17:40:00 PST 2001
+>Closed-Date:
+>Last-Modified:  Thu Mar 08 17:57:15 PST 2001
+>Originator:     Jim_Brownfield@radical.com
+>Release:        1.3.19
+>Organization:
+>Environment:
+SCO OPENSERVER 5.0.x
+SCO_SV 3.2 5.0.6 i386
+>Description:
+This is actually a problem between Apache and SCO, although the only time I've ever seen any effect from it was using mod_jserv.
+
+Even though SCO's documentation says it returns EAGAIN on a read that would block, it actually returns EWOULDBLOCK.  This throws off read completion checking in the Apache src/main/buff.c and src/main/http_protocol.c modules.  Adding a check for EWOULDBLOCK fixes the problem.
+>How-To-Repeat:
+
+>Fix:
+
+In Apache's src/main/buff.c module
+
+734c734
+<     else if (rv == -1 && errno != EAGAIN) {
+---
+>     else if (rv == -1 && (errno != EAGAIN) && (errno != EWOULDBLOCK)) {
+1054c1054
+<           if (errno != EAGAIN && errno != EINTR) {
+---
+>           if (errno != EAGAIN && errno != EINTR && errno != EWOULDBLOCK) {
+1088c1088,1089
+<       while (rv == -1 && (errno == EINTR || errno == EAGAIN)
+---
+>       while (rv == -1 &&
+>               (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
+1091c1092
+<           if (errno != EINTR && errno != EAGAIN) {
+---
+>           if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) {
+1128c1129
+<       if (errno != EAGAIN) {
+---
+>       if (errno != EAGAIN && errno != EWOULDBLOCK) {
+
+In Apache's src/main/http_protocol.c module:
+
+2312c2312
+<             if (n < 0 && errno != EAGAIN)
+---
+>             if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
+>Release-Note:
+>Audit-Trail:
+Comment-Added-By: jon@clearink.com
+Comment-Added-When: Thu Mar  8 17:57:14 PST 2001
+Comment-Added:
+not a jserv bug, but a httpd bug. 
+Responsible-Changed-From-To: jserv-brian
+Responsible-Changed-By: jon@clearink.com
+Responsible-Changed-When: Thu Mar  8 17:57:14 PST 2001
+Responsible-Changed-Why:
+assigning it to brian cause i don't know who in httpd land it should go to.
+Category-Changed-From-To: mod_jserv-os-sco
+Category-Changed-By: jon@clearink.com
+Category-Changed-When: Thu Mar  8 17:57:14 PST 2001
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

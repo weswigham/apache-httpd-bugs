@@ -1,0 +1,113 @@
+From nobody@hyperreal.com  Thu Jun 19 11:30:20 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id LAA24574;
+	Thu, 19 Jun 1997 11:30:20 -0700 (PDT)
+Message-Id: <199706191830.LAA24574@hyperreal.com>
+Date: Thu, 19 Jun 1997 11:30:20 -0700 (PDT)
+From: Paul Eggert <eggert@twinsun.com>
+Reply-To: eggert@twinsun.com
+To: apbugs@hyperreal.com
+Subject: GMT timestamps sometimes falsely claim to be PDT
+X-Send-Pr-Version: 3.2
+
+>Number:         754
+>Category:       general
+>Synopsis:       GMT timestamps sometimes falsely claim to be PDT
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jun 19 11:40:00 1997
+>Last-Modified:  Tue May  5 19:32:32 PDT 1998
+>Originator:     eggert@twinsun.com
+>Organization:
+>Release:        1.2
+>Environment:
+SunOS shade 5.5.1 Generic_103640-08 sun4u sparc SUNW,Ultra-1
+GCC snapshot 961108
+>Description:
+ht_time passes the output of gmtime to strftime, but on hosts where
+struct tm does not include a time zone name or offset, strftime must
+assume that its argument is local time, not GMT.  This causes strftime
+to mishandle %Z formats (and %z formats, on hosts that support this
+extension).  In particular, the DATE_GMT setting will be bogus.
+>How-To-Repeat:
+Using a debugger, invoke
+
+ht_time(anything, 0, "%Z", 1)
+
+under Solaris 2.5.1.  The result will say "PDT or "PST" (if in Pacific time);
+it should say "GMT".
+>Fix:
+Here's a patch.
+
+===================================================================
+RCS file: src/util.c,v
+retrieving revision 1.2
+retrieving revision 1.2.0.1
+diff -c -r1.2 -r1.2.0.1
+*** src/util.c	1997/04/12 04:24:59	1.2
+--- src/util.c	1997/06/19 18:26:15	1.2.0.1
+***************
+*** 77,86 ****
+--- 77,121 ----
+  
+  char *ht_time(pool *p, time_t t, const char *fmt, int gmt) {
+      char ts[MAX_STRING_LEN];
++     char tf[MAX_STRING_LEN];
+      struct tm *tms;
+  
+      tms = (gmt ? gmtime(&t) : localtime(&t));
+  
++     if(gmt) {
++ 	/* Convert %Z to "GMT" and %z to "+0000";
++ 	 * on hosts that do not have a time zone string in struct tm,
++ 	 * strftime must assume its argument is local time.
++ 	 */
++ 	const char *f;
++ 	char *p;
++ 	for(p = tf, f = fmt; p < tf + sizeof tf - 5 && (*p = *f); f++, p++) {
++ 	    if(*f == '%')
++ 		switch(f[1])
++ 		    {
++ 		case '%':
++ 		    *++p = *++f;
++ 		    break;
++ 		case 'Z':
++ 		    *p++ = 'G';
++ 		    *p++ = 'M';
++ 		    *p = 'T';
++ 		    f++;
++ 		    break;
++ 		case 'z': /* common extension */
++ 		    *p++ = '+';
++ 		    *p++ = '0';
++ 		    *p++ = '0';
++ 		    *p++ = '0';
++ 		    *p = '0';
++ 		    f++;
++ 		    break;
++ 		    }
++ 	}
++ 	*p = '\0';
++ 	fmt = tf;
++     }
++ 
+      /* check return code? */
+      strftime(ts,MAX_STRING_LEN,fmt,tms);
+      return pstrdup (p, ts);
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: brian
+State-Changed-When: Tue May  5 19:32:32 PDT 1998
+State-Changed-Why:
+Sorry it took so long to get to this.  This does fix a real
+bug - thanks for the patch, we've integrated it into 1.3 and
+1.2 source trees.
+>Unformatted:
+
+

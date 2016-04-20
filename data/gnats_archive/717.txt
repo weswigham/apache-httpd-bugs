@@ -1,0 +1,120 @@
+From nobody@hyperreal.com  Mon Jun  9 14:51:56 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id OAA23004;
+	Mon, 9 Jun 1997 14:51:56 -0700 (PDT)
+Message-Id: <199706092151.OAA23004@hyperreal.com>
+Date: Mon, 9 Jun 1997 14:51:56 -0700 (PDT)
+From: Lars Eilebrecht <sfx@unix-ag.org>
+Reply-To: sfx@unix-ag.org
+To: apbugs@hyperreal.com
+Subject: Strange behaviour of AccessConfig
+X-Send-Pr-Version: 3.2
+
+>Number:         717
+>Category:       config
+>Synopsis:       Strange behaviour of AccessConfig
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jun 10 17:10:02 1997
+>Last-Modified:  Mon Aug  4 23:48:37 PDT 1997
+>Originator:     sfx@unix-ag.org
+>Organization:
+>Release:        1.2.0
+>Environment:
+Ultrix 4.4, DECstation
+>Description:
+Maybe my assumption is wrong, but I had in mind that the directive
+AccessConfig used in a <VirtualHost> section overrides the default
+AccessConfig directive used in the main config.
+
+I've configured several virtual hosts on one of my web-server machines
+that all use the same srm.conf, but a different access config.
+Today I found out, that the default access.conf interferes in the
+access configurations of all virtual hosts. This is especially true
+for the Options directive, because any Options directive in a virtual
+host access configuration is ignored, eg. "Options None" is ignored.
+
+In general the virtual host access configurations are read and parsed
+(as shown by mod_info) and seem to work for most directives, eg. saying
+"require user foobar" works.
+
+I verified the effect with a minimal configuration, so I don't think there's
+any bug in my normal configuration producing this strange behaviour.
+
+I marked this bug report as 'critical', because the behaviour described
+above can be very critical if something like "Options -ExeCGI" is
+ignored (as it was on my server, because suddenly many people on my
+server where able to use CGI und SSI).
+
+As a workaround I'm know using "AccessConfig /dev/null" in my main
+server configuration and moved that config to an extra <VirtualHost>
+section.
+
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sun Jun 22 23:15:41 PDT 1997
+State-Changed-Why:
+Do you have any <Directory> sections which apply to the cgi that's
+being executed?  I've walked through the code ... and unless I
+blow away all my <Directory> sections I'm having a hard time repeating
+your problem.  An Options directive outside a directory section is very
+weak, and is overridden by any directory/location/files or .htaccess.
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Lars Eilebrecht <Lars.Eilebrecht@unix-ag.org>
+Subject: Re: config/717: Strange behaviour of AccessConfig
+Date: Mon, 23 Jun 1997 11:05:08 -0700 (PDT)
+
+ 
+ On Mon, 23 Jun 1997, Lars Eilebrecht wrote:
+ > main-access.conf _only_ includes:
+ > 
+ >   <Location />
+ >   Options All
+ >   </Location>
+ > 
+ > virtual-access.conf is set to:
+ > 
+ >   <Location /test>
+ >   Options None
+ >   </Location>
+ 
+ Aha!  This works with <Directory> because directories have hierarchy and
+ the filename is processed one component at a time.  i.e. it matches /,
+ then /usr, then /usr/local, then ... but <Location> is not like that,
+ it matches them in first to last order.  The main-access.conf is merged
+ into all virtual hosts at the end of all config parsing.  To "merge"
+ a location section it appends the main server's on to the end of the
+ virtual server's.  (Ditto for directory).
+ 
+ It might be more appropriate for us to include the main server's location
+ sections before the virtual host's.  But we have to be careful changing
+ that so that we don't break people's configs.  It isn't as much an issue
+ for <Directory> because of the hierarchical nature of them.  But it
+ still does have an effect on <Directory>.
+ 
+ Dean
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Aug  4 23:48:37 PDT 1997
+State-Changed-Why:
+The fix has been applied to 1.2.2 and 1.3a2.
+
+Dean
+>Unformatted:
+
+
+

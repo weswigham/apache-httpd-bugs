@@ -1,0 +1,388 @@
+Received: (qmail 48601 invoked by uid 501); 7 Mar 2002 09:46:40 -0000
+Message-Id: <20020307094640.48600.qmail@apache.org>
+Date: 7 Mar 2002 09:46:40 -0000
+From: Christian Schuit <chris@clockwork.nl>
+Reply-To: chris@clockwork.nl
+To: submit@bugz.apache.org
+Subject: Default documentroot is overridden by the 1st virtualhost documentroot
+X-Send-Pr-Version: 3.110
+
+>Number:         10065
+>Category:       os-solaris
+>Synopsis:       Default documentroot is overridden by the 1st virtualhost documentroot
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          support
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Mar 07 01:50:01 PST 2002
+>Closed-Date:    Thu Mar 07 08:00:46 PST 2002
+>Last-Modified:  Thu Mar 07 08:00:46 PST 2002
+>Originator:     chris@clockwork.nl
+>Release:        1.3.?
+>Organization:
+>Environment:
+SunOS bmf.clockwork.nl 5.7 Generic_106541-15 sun4u sparc SUNW,Ultra-250
+Apache is running in combination with Allaire's JRun.
+>Description:
+Hi,
+
+The default DocumentRoot is overridden by the DocumentRoot directive of the 1st VirtualHost, regardless the ServerName. When trying to insert a dummy VirtualHost before the 1st VH, the server ends up in some kind of loop & doesn't serve pages or takes a hell of a long time to find them.
+>How-To-Repeat:
+Don't actually know. I'll insert the httpd.conf here:
+
+### Section 1: Global Environment #########################################
+
+ServerType standalone
+ServerRoot "/spare/apache"
+PidFile /spare/apache/logs/httpd.pid
+ScoreBoardFile /spare/apache/logs/httpd.scoreboard
+
+Timeout 200
+KeepAlive On
+MaxKeepAliveRequests 1000
+KeepAliveTimeout 5
+
+MinSpareServers 5
+MaxSpareServers 10
+StartServers 5
+MaxClients 256
+MaxRequestsPerChild 250 
+
+LoadModule dynamo_module      libexec/dynamo.so
+
+### Section 2: 'Main' server configuration ################################
+
+User nobody
+Group nobody
+
+ServerAdmin beheer@clockwork.nl
+Port 80
+ServerName bmf.clockwork.nl
+DocumentRoot /www
+
+<Directory />
+    Options FollowSymLinks
+    AllowOverride None
+</Directory>
+
+<Directory "/www">
+    Options FollowSymLinks
+    AllowOverride Indexes 
+    Order allow,deny
+    Allow from all
+</Directory>
+
+<IfModule mod_userdir.c>
+    UserDir public_html
+</IfModule>
+
+<IfModule mod_dir.c>
+    DirectoryIndex index.html index.htm index.jhtml
+</IfModule>
+
+AccessFileName .htaccess
+
+<Files ~ "^\.ht">
+    Order allow,deny
+    Deny from all
+</Files>
+
+UseCanonicalName On
+
+<IfModule mod_mime.c>
+    TypesConfig /spare/apache/conf/mime.types
+</IfModule>
+
+DefaultType text/plain
+
+<IfModule mod_mime_magic.c>
+    MIMEMagicFile /spare/apache/conf/magic
+</IfModule>
+
+HostnameLookups Off
+
+LogLevel warn
+LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combine
+d
+ErrorLog "| /spare/apache/bin/rotatelogs /www/logs/apache/default_error_log 8640
+0"
+CustomLog "| /spare/apache/bin/rotatelogs /www/logs/apache/default_access_log co
+mbined 86400" combined
+
+ServerSignature Off
+
+<IfModule mod_alias.c>
+    Alias /icons/ "/spare/apache/icons/"
+
+    <Directory "/spare/apache/icons">
+        Options Indexes MultiViews
+        AllowOverride None
+        Order allow,deny
+        Allow from all
+    </Directory>
+
+    ScriptAlias /cgi-bin/ "/spare/apache/cgi-bin/"
+
+    <Directory "/spare/apache/cgi-bin">
+        AllowOverride None
+        Options None
+        Order allow,deny
+        Allow from all
+    </Directory>
+</IfModule>
+
+<IfModule mod_autoindex.c>
+    IndexOptions FancyIndexing
+    AddIconByEncoding (CMP,/icons/compressed.gif) x-compress x-gzip
+
+    AddIconByType (TXT,/icons/text.gif) text/*
+    AddIconByType (IMG,/icons/image2.gif) image/*
+    AddIconByType (SND,/icons/sound2.gif) audio/*
+    AddIconByType (VID,/icons/movie.gif) video/*
+
+    AddIcon /icons/binary.gif .bin 
+    AddIcon /icons/binhex.gif .hqx
+    AddIcon /icons/tar.gif .tar
+    AddIcon /icons/world2.gif .wrl .wrl.gz .vrml .vrm .iv
+    AddIcon /icons/compressed.gif .Z .z .tgz .gz .zip
+    AddIcon /icons/a.gif .ps .ai .eps
+    AddIcon /icons/layout.gif .html .shtml .htm .pdf
+    AddIcon /icons/text.gif .txt
+    AddIcon /icons/c.gif .c
+    AddIcon /icons/p.gif .pl .py
+    AddIcon /icons/f.gif .for
+    AddIcon /icons/dvi.gif .dvi
+    AddIcon /icons/uuencoded.gif .uu
+    AddIcon /icons/script.gif .conf .sh .shar .csh .ksh .tcl
+    AddIcon /icons/tex.gif .tex
+    AddIcon /icons/bomb.gif core
+
+    AddIcon /icons/back.gif ..
+    AddIcon /icons/hand.right.gif README
+    AddIcon /icons/folder.gif ^^DIRECTORY^^
+    AddIcon /icons/blank.gif ^^BLANKICON^^
+
+    DefaultIcon /icons/unknown.gif
+
+    ReadmeName README
+    HeaderName HEADER
+
+    IndexIgnore .??* *~ *# HEADER* README* RCS CVS *,v *,t
+</IfModule>
+
+<IfModule mod_mime.c>
+    AddEncoding x-compress Z
+    AddEncoding x-gzip gz tgz
+    AddLanguage da .dk
+    AddLanguage nl .nl
+    AddLanguage en .en
+    AddLanguage et .ee
+    AddLanguage fr .fr
+    AddLanguage de .de
+    AddLanguage el .el
+    AddLanguage he .he
+    AddCharset ISO-8859-8 .iso8859-8
+    AddLanguage it .it
+    AddLanguage ja .ja
+    AddCharset ISO-2022-JP .jis
+    AddLanguage kr .kr
+    AddCharset ISO-2022-KR .iso-kr
+    AddLanguage no .no
+    AddLanguage pl .po
+    AddCharset ISO-8859-2 .iso-pl
+    AddLanguage pt .pt
+    AddLanguage pt-br .pt-br
+    AddLanguage ltz .lu
+    AddLanguage ca .ca
+    AddLanguage es .es
+    AddLanguage sv .se
+    AddLanguage cz .cz
+    AddLanguage ru .ru
+    AddLanguage zh-tw .tw
+    AddLanguage tw .tw
+    AddCharset Big5         .Big5    .big5
+    AddCharset WINDOWS-1251 .cp-1251
+    AddCharset CP866        .cp866
+    AddCharset ISO-8859-5   .iso-ru
+    AddCharset KOI8-R       .koi8-r
+    AddCharset UCS-2        .ucs2
+    AddCharset UCS-4        .ucs4
+    AddCharset UTF-8        .utf8
+
+    <IfModule mod_negotiation.c>
+        LanguagePriority en da nl et fr de el it ja kr no pl pt pt-br ru ltz ca 
+es sv tw
+    </IfModule>
+
+    AddType application/x-tar .tgz
+</IfModule>
+
+ErrorDocument 500 "Sorry, this seems to be a server error. Please contact the sy
+stem administrator.
+ErrorDocument 404 "Sorry, this file doesn't seem to be where you expected it to 
+be. Please contact the system administrator.
+
+<IfModule mod_setenvif.c>
+    BrowserMatch "Mozilla/2" nokeepalive
+    BrowserMatch "MSIE 4\.0b2;" nokeepalive downgrade-1.0 force-response-1.0
+    BrowserMatch "RealPlayer 4\.0" force-response-1.0
+    BrowserMatch "Java/1\.0" force-response-1.0
+    BrowserMatch "JDK/1\.0" force-response-1.0
+</IfModule>
+
+### Section 3: Custom Settings BMF - Restricted Areas #####################
+
+<Directory "/spare/www/bmf.clockwork.nl/htdocs/chc/restrictedarea/morerestricted
+/cvs">
+    Order deny,allow
+    Deny from all
+    Allow from 24.132.26.151
+    Allow from 194.151.117.0/24
+    Allow from 213.201.148.81
+    Allow from 213.201.148.82
+</Directory>
+
+<Directory "/spare/www/www.echarter.nl/htdocs/bo">
+    Order deny,allow
+    Deny from all
+    Allow from 171.21.0.0/24
+    Allow from 213.201.148.81
+    Allow from 213.201.148.82
+</Directory>
+
+<Location "/oms/jsp">
+    AuthType Basic
+    AuthName "OMS website"
+    AuthUserFile /spare/apache/pwdfiles/oms.pwd
+    Require valid-user
+</Location>
+
+<Location "/oms/jspengels">
+    AuthType Basic
+    AuthName "OMS website"
+    AuthUserFile /spare/apache/pwdfiles/oms.pwd
+    Require valid-user
+</Location>
+
+### Section 4: Virtual Hosts ##############################################
+
+NameVirtualHost 195.64.40.20
+
+### Section 4a: BMF Host ##################################################
+
+<VirtualHost 195.64.40.20>
+    ServerName pon.clockwork.nl
+    ServerAdmin beheer@clockwork.nl
+    DocumentRoot /spare/www/www.pon.nl/htdocs/frontoffice
+    ErrorLog logs/pon-error_log
+    CustomLog logs/pon-access_log combined
+</VirtualHost>
+
+### Section 4b: KLM CityHopper Hosts ###########################################
+
+<VirtualHost 195.64.40.20>
+  ServerName klmcityhopper.com
+  ServerAdmin beheer@clockwork.nl
+  ServerAlias klmcityhopper.com *.klmcityhopper.com klmcityhopper.de *.klmcityho
+pper.de klmcityhopper.ch *.klmcityhopper.ch klmcityhopper.co.uk *.klmcityhopper.
+co.uk cityhopper.com *.cityhopper.com cityhopper.net *.cityhopper.net cityhopper
+.org.uk *.cityhopper.org.uk city-hopper.com *.city-hopper.com city-hopper.net *.
+cityhopper.net city-hopper.co.uk *.city-hopper.co.uk klm-cityhopper.com *.klm-ci
+tyhopper.com klm-cityhopper.org *.klm-cityhopper.org klm-cityhopper.net *.klm-ci
+tyhopper.net 
+  DocumentRoot /spare/www/www.klmcityhopper.nl/htdocs/
+  ErrorLog logs/klc-error_log
+  CustomLog logs/klc-custom_log combined
+</VirtualHost>
+
+<VirtualHost 195.64.40.20>
+  ServerName klmcityhopper.nl
+  ServerAlias *.klmcityhopper.nl klmcityhopper.nl *.cityhopper.nl cityhopper.nl
+  ServerAdmin beheer@clockwork.nl
+  DocumentRoot /spare/www/www.echarter.nl/htdocs
+  ErrorLog logs/klc_nl-error_log
+  CustomLog logs/klc_nl-custom_log combined
+</VirtualHost>
+
+### Section 4c: M-Tel Hosts ####################################################
+
+<VirtualHost 195.64.40.20>
+    ServerName www.3xdirect.com
+    ServerAdmin beheer@clockwork.nl
+    DocumentRoot /spare/www/3xdirect.com/htdocs/
+    ServerAlias 3xdirect.com www.3xdirect.nl 3xdirect.nl
+    ErrorLog logs/mtel.clockwork.nl-error_log
+    CustomLog logs/mtel.clockwork.nl-access_log combined
+</VirtualHost>
+
+### Section 4e: CBDirect hosts ###############################################
+
+<VirtualHost 195.64.40.20>
+    ServerName www.cbdirect.be
+    DocumentRoot /spare/www/www.cbdirect.be/htdocs/frontoffice/
+    ErrorLog logs/cbd-error_log
+    CustomLog logs/cbd-access_log combined
+</VirtualHost>
+
+
+### Section 5: Servers and Add-ons #############################################
+
+### Section 5a: Informix iSell #################################################
+
+DynamoManager localhost 8880
+
+### Section 5b: Allaire JRun ###################################################
+
+LoadModule jrun_module136 "/spare/JRun/connectors/apache/sparc-solaris/mod_jrun.
+so"
+<IfModule mod_jrun.c>
+    JRunConfig jrun.rootdir "/spare/JRun/bin/.."
+    JRunConfig jvmlist default
+    JRunConfig Verbose false
+    JRunConfig ProxyHost 127.0.0.1
+    JRunConfig ProxyPort 53001
+    JRunConfig Mappings "/spare/JRun/servers/default/local.properties"
+</IfModule>
+>Fix:
+No. I have already tried changing the whole conf, but either the default DocumentRoot is unreachable or the serving of paging won't work.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: slive
+State-Changed-When: Thu Mar  7 08:00:45 PST 2002
+State-Changed-Why:
+
+It is documented behavior that the "main" DocumentRoot
+has no effect when using Name-virtual-hosts.  As far
+as your problem insterting a "dummy" virtual host,
+you don't give enough details to figure out what
+is going on.
+
+Since this is almost surely a configuration issue,
+it should be addressed in a user-support forum,
+rather than the bug database.  Please see
+http://httpd.apache.org/docs/misc/FAQ.html#support
+
+Thanks for using Apache.
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

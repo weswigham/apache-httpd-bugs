@@ -1,0 +1,77 @@
+Received: (qmail 7558 invoked by uid 501); 2 Jan 2002 08:52:06 -0000
+Message-Id: <20020102085206.7557.qmail@apache.org>
+Date: 2 Jan 2002 08:52:06 -0000
+From: Michael Handler <handler@grendel.net>
+Reply-To: handler@grendel.net
+To: submit@bugz.apache.org
+Subject: New command line option to make the parent httpd process not daemonize
+X-Send-Pr-Version: 3.110
+
+>Number:         9341
+>Category:       config
+>Synopsis:       New command line option to make the parent httpd process not daemonize
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan 02 01:00:00 PST 2002
+>Closed-Date:
+>Last-Modified:
+>Originator:     handler@grendel.net
+>Release:        1.3.22
+>Organization:
+apache
+>Environment:
+built on: SunOS 5.6 Generic_105181-28 sun4u sparc SUNW,UltraSPARC-IIi-cEngine
+gcc version: 2.95.2
+executing on: SunOS 5.8 Generic_108528-09 sun4u sparc SUNW,UltraSPARC-IIi-cEngine
+>Description:
+I have a patch against a clean 1.3.22 tarball available at:
+
+http://www.sub-rosa.com/handler/pub/apache-1.3.22-daemontools-patch
+
+This patch adds a -F command line option to httpd, which makes the parent httpd process not daemonize, so it can be run under a process supervisor like dan bernstein's daemontools or SysV inittab or anything else that people might write. This is not the same as -x or -X, whichever the 'debug' flag is, because the intention is to make httpd run normally (i.e. preforking children, etc), but just not to have the parent process fork away from the invoking shell.
+Apache 2.0 already has this feature available as -DNO_DETACH, but I'd like to see this backported to 1.3.*, as that code branch appears that it's going to be with us for a while, before 2.0 stabilizes and people complete migration to it.
+
+NOTA BENE: The patch is designed deliberately so that only the fork(2) call is skipped, but the rest of detach() is completed. This is critical, because when the httpd is run under svscan & supervise from daemontools, it shares the same process group as svscan, and every other process started under svscan. Thus, the httpd receives a -TERM signal, it sends a -TERM to its entire process group, which kills all of its children -- but also kills svscan and all of its children as well.
+
+Bernstein mentions this in his (terse) daemontools FAQ:
+
+http://cr.yp.to/daemontools/faq/create.html#pgrphack
+
+Thus, it's critical that, even though the fork(2) is skipped, setsid(2) is still called.
+
+Note also that httpd -F invoked from a bash interactive shell will fail at the setsid call, because bash puts each process it executes into its own process group, probably as a preventative measure, and httpd's setsid(2) fails with EPERM because it's already a process group leader. It works fine under /bin/sh or other shells without job control, or when invoked under svscan & supervise.
+
+NOTA BENE II: As I was in the process of writing this, I further investigated 2.0's NO_DETACH behavior, and saw that NO_DETACH simply skips apr_proc_detach, which means that setsid(2) is not called. :( It would be much appreciated if Apache 2.0's httpd would run cleanly under svscan & supervise without needing pgrphack or the like -- can this be fixed? I haven't submitted a patch because I'm not yet as familiar with the 2.0 code structure as I'd like, but I'd be glad to take a stab at it if the developers would like that.
+
+Thanks for all of your excellent work on the Apache project. :)
+
+--michael
+>How-To-Repeat:
+
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

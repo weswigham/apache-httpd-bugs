@@ -1,0 +1,69 @@
+From apwww@hyperreal.org  Wed Sep  3 11:33:34 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id LAA27698;
+	Wed, 3 Sep 1997 11:33:34 -0700 (PDT)
+Message-Id: <199709031833.LAA27698@hyperreal.org>
+Date: Wed, 3 Sep 1997 11:33:34 -0700 (PDT)
+From: Greg Onufer <greg@cheers.Bungi>
+Reply-To: greg@cheers.Bungi
+To: apbugs@hyperreal.org
+Subject: '..' links from ftp proxy are often incorrect
+X-Send-Pr-Version: 3.2
+
+>Number:         1092
+>Category:       mod_proxy
+>Synopsis:       '..' links from ftp proxy are often incorrect
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Sep  3 11:40:02 1997
+>Last-Modified:  Fri Mar 20 02:45:54 PST 1998
+>Originator:     greg@cheers.Bungi
+>Organization:
+>Release:        1.2.4
+>Environment:
+SunOS 5.6, gcc 2.7.2.1.
+
+>Description:
+The page from an ftp url such as 'ftp://host/full/path/'
+ends up with '..' pointing to 'ftp://host/full/path' since the
+ftp code only strips off the last '/' in the path without first
+stripping off a trailing '/'.
+>How-To-Repeat:
+See 'Full Description'.
+>Fix:
+This change to proxy_ftp.c seems to work:
+
+@@ -340,6 +346,15 @@
+                 strncpy(newpath, path, sizeof(newpath)-1);
+                newpath[sizeof(newpath)-1] = '\0';
+                 newfile=strrchr(newpath,'/');
++               if (newfile != NULL && newfile[1] == '\0') {
++                       /*
++                        * Remove a trailing '/' before stripping the last
++                        * component of the path or all we strip off is the
++                        * trailing slash.
++                        */
++                       *newfile = '\0';
++                       newfile=strrchr(newpath,'/');
++               }
+                 if (newfile) *(newfile)=0;
+                 else newpath[0]=0;
+ 
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rse
+State-Changed-When: Fri Mar 20 02:45:54 PST 1998
+State-Changed-Why:
+This is already solved in Apache 1.3 by no longer
+generating absolute URLs. Instead relative
+URLs are used and the handling of ".." and "." is
+moved to the browser this way.
+>Unformatted:
+
+

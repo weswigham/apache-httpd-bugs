@@ -1,0 +1,271 @@
+Received: (qmail 53362 invoked by uid 501); 9 Nov 2001 16:57:28 -0000
+Message-Id: <20011109165728.53355.qmail@apache.org>
+Date: 9 Nov 2001 16:57:28 -0000
+From: Ghislaine Labouret <Ghislaine.Labouret@hsc.fr>
+Reply-To: Ghislaine.Labouret@hsc.fr
+To: submit@bugz.apache.org
+Subject: Multiple occurences of response headers get removed by mod_proxy
+X-Send-Pr-Version: 3.110
+
+>Number:         8724
+>Category:       mod_proxy
+>Synopsis:       Multiple occurences of response headers get removed by mod_proxy
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   unknown
+>Arrival-Date:   Fri Nov 09 09:00:00 PST 2001
+>Closed-Date:    
+>Last-Modified:  Fri Nov 30 13:30:00 PST 2001
+>Originator:     Ghislaine.Labouret@hsc.fr
+>Release:        1.3.22
+>Organization:
+apache
+>Environment:
+Tested on Solaris 2.6
+>Description:
+When the answer from a web server to mod_proxy includes, for exemple, several
+"Expires:" headers (I know, this is unusual...), only the first one is 
+transmitted to the client by mod_proxy.
+
+The cause is in proxy_http.c, line 511&512:
+    if ((datestr = ap_table_get(resp_hdrs, "Expires")) != NULL)
+        ap_table_set(resp_hdrs, "Expires", ap_proxy_date_canon(p, datestr));
+
+In the above code, ap_table_get only gets the first occurence of the header,
+and ap_table_set removes all other occurences.
+
+The same problem occurs for other response headers that are modified by 
+mod_proxy.
+>How-To-Repeat:
+
+>Fix:
+Use ap_table_do to get all occurences and recreate them all (ap_table_add).
+>Release-Note:
+>Audit-Trail:
+
+From: Ghislaine Labouret <Ghislaine.Labouret@hsc.fr>
+To: modproxy-dev@apache.org, apache-bugdb@apache.org
+Cc: apbugs@Apache.Org
+Subject: Re: mod_proxy/8724: Multiple occurences of response headers get removed by mod_proxy
+Date: Fri, 30 Nov 2001 16:25:14 +0100
+
+ On 9 Nov 2001 16:57:28 -0000, Ghislaine Labouret wrote:
+ 
+ > >Number:         8724
+ > >Category:       mod_proxy
+ > >Synopsis:       Multiple occurences of response headers get removed by mod_proxy
+ > >Confidential:   no
+ > >Severity:       non-critical
+ > >Priority:       medium
+ > >Responsible:    apache
+ > >State:          open
+ > >Quarter:        
+ > >Keywords:       
+ > >Date-Required:
+ > >Class:          sw-bug
+ > >Submitter-Id:   unknown
+ > >Arrival-Date:   Fri Nov 09 09:00:00 PST 2001
+ > >Closed-Date:
+ > >Last-Modified:
+ > >Originator:     Ghislaine.Labouret@hsc.fr
+ > >Release:        1.3.22
+ > >Organization:
+ > apache
+ > >Environment:
+ > Tested on Solaris 2.6
+ > >Description:
+ > When the answer from a web server to mod_proxy includes, for exemple, several
+ > "Expires:" headers (I know, this is unusual...), only the first one is 
+ > transmitted to the client by mod_proxy.
+ > 
+ > The cause is in proxy_http.c, line 511&512:
+ >     if ((datestr = ap_table_get(resp_hdrs, "Expires")) != NULL)
+ >         ap_table_set(resp_hdrs, "Expires", ap_proxy_date_canon(p, datestr));
+ > 
+ > In the above code, ap_table_get only gets the first occurence of the header,
+ > and ap_table_set removes all other occurences.
+ > 
+ > The same problem occurs for other response headers that are modified by 
+ > mod_proxy.
+ > >How-To-Repeat:
+ > 
+ > >Fix:
+ 
+ The following patch solves the issue. Would the mod_proxy team consider 
+ including it or somtehing to the same effect?
+ 
+ 
+ --- proxy_http.c-orig	Mon Nov 26 19:01:35 2001
+ +++ proxy_http.c	Fri Nov 30 18:09:39 2001
+ @@ -158,6 +158,29 @@
+      ap_table_unset(headers, "Connection");
+  }
+  
+ +struct proxy_date_canon_parms {
+ +    pool *pool;
+ +    table *table;
+ +};
+ +
+ +static int proxy_date_canon(void *rec, const char *key, const char *value)
+ +{
+ +    pool *p; 
+ +    table *new_resp_hdrs;
+ +
+ +    p = ((struct proxy_date_canon_parms *) rec)->pool;
+ +    new_resp_hdrs = ((struct proxy_date_canon_parms *) rec)->table;
+ +
+ +    if (   (strcasecmp(key, "Date") == 0)
+ +	|| (strcasecmp(key, "Last-Modified") == 0)
+ +	|| (strcasecmp(key, "Expires") == 0))
+ +	ap_table_add(new_resp_hdrs, key, ap_proxy_date_canon(p, value));
+ +    else
+ +	ap_table_add(new_resp_hdrs, key, value);
+ +
+ +    return 1;
+ +}
+ +
+  /*
+   * This handles http:// URLs, and other URLs using a remote proxy over http
+   * If proxyhost is NULL, then contact the server directly, otherwise
+ @@ -188,6 +211,7 @@
+      int destport = 0;
+      char *destportstr = NULL;
+      const char *urlptr = NULL;
+ +    struct proxy_date_canon_parms do_par;
+      const char *datestr;
+      struct tbl_do_args tdo;
+  #ifdef EAPI
+ @@ -504,12 +528,12 @@
+   * HTTP/1.0 requires us to accept 3 types of dates, but only generate
+   * one type
+   */
+ -    if ((datestr = ap_table_get(resp_hdrs, "Date")) != NULL)
+ -	ap_table_set(resp_hdrs, "Date", ap_proxy_date_canon(p, datestr));
+ -    if ((datestr = ap_table_get(resp_hdrs, "Last-Modified")) != NULL)
+ -	ap_table_set(resp_hdrs, "Last-Modified", ap_proxy_date_canon(p, datestr));
+ -    if ((datestr = ap_table_get(resp_hdrs, "Expires")) != NULL)
+ -	ap_table_set(resp_hdrs, "Expires", ap_proxy_date_canon(p, datestr));
+ +    do_par.pool = p;
+ +    do_par.table = ap_make_table(p, 20);
+ +    ap_table_do((int (*)(void *, const char *, const char *))proxy_date_canon,
+ +                (void *) &do_par, resp_hdrs, NULL);
+ +    ap_clear_table(resp_hdrs);
+ +    resp_hdrs = do_par.table;
+  
+      if ((datestr = ap_table_get(resp_hdrs, "Location")) != NULL)
+  	ap_table_set(resp_hdrs, "Location", proxy_location_reverse_map(r, datestr));
+ 
+ 
+ --
+ Ghislaine Labouret, Network security consultant
+ Hervé Schauer Consultants (HSC) - http://www.hsc.fr/
+ Phone (+33)-141-409-700 - Fax (+33)-141-409-709
+
+From: Graham Leggett <minfrin@sharp.fm>
+To: modproxy-dev@apache.org
+Cc: apache-bugdb@apache.org, apbugs@Apache.Org
+Subject: Re: mod_proxy/8724: Multiple occurences of response headers get removed 
+ by mod_proxy
+Date: Fri, 30 Nov 2001 22:22:49 +0100
+
+ This is a cryptographically signed message in MIME format.
+ 
+ --------------ms47569264855CD420C0E55A06
+ Content-Type: text/plain; charset=us-ascii
+ Content-Transfer-Encoding: 7bit
+ 
+ Ghislaine Labouret wrote:
+ 
+ > > In the above code, ap_table_get only gets the first occurence of the header,
+ > > and ap_table_set removes all other occurences.
+ > >
+ > > The same problem occurs for other response headers that are modified by
+ > > mod_proxy.
+ > > >How-To-Repeat:
+ > >
+ > > >Fix:
+ > 
+ > The following patch solves the issue. Would the mod_proxy team consider
+ > including it or somtehing to the same effect?
+ 
+ What does RFC2616 (etc) say about duplicated Date, Expires and
+ Last-Modified headers?
+ 
+ I can't see an application for having more than one of these headers in
+ a request - is the current proxy behavior (reducing many occurences to
+ one occurence) not the correct behavior?
+ 
+ Regards,
+ Graham
+ -- 
+ -----------------------------------------
+ minfrin@sharp.fm		"There's a moon
+ 					over Bourbon Street
+ 						tonight..."
+ --------------ms47569264855CD420C0E55A06
+ Content-Type: application/x-pkcs7-signature; name="smime.p7s"
+ Content-Transfer-Encoding: base64
+ Content-Disposition: attachment; filename="smime.p7s"
+ Content-Description: S/MIME Cryptographic Signature
+ 
+ MIIHyAYJKoZIhvcNAQcCoIIHuTCCB7UCAQExCzAJBgUrDgMCGgUAMAsGCSqGSIb3DQEHAaCC
+ BcYwggKVMIIB/qADAgECAgMEyOwwDQYJKoZIhvcNAQEEBQAwgZIxCzAJBgNVBAYTAlpBMRUw
+ EwYDVQQIEwxXZXN0ZXJuIENhcGUxEjAQBgNVBAcTCUNhcGUgVG93bjEPMA0GA1UEChMGVGhh
+ d3RlMR0wGwYDVQQLExRDZXJ0aWZpY2F0ZSBTZXJ2aWNlczEoMCYGA1UEAxMfUGVyc29uYWwg
+ RnJlZW1haWwgUlNBIDIwMDAuOC4zMDAeFw0wMTA1MTEwMDE3NDZaFw0wMjA1MTEwMDE3NDZa
+ MF0xEDAOBgNVBAQTB0xlZ2dldHQxDzANBgNVBCoTBkdyYWhhbTEXMBUGA1UEAxMOR3JhaGFt
+ IExlZ2dldHQxHzAdBgkqhkiG9w0BCQEWEG1pbmZyaW5Ac2hhcnAuZm0wgZ8wDQYJKoZIhvcN
+ AQEBBQADgY0AMIGJAoGBALX2zJvQ/9l+sCEpkfMNNwtnMcF8vmPM2sRpibT5nR87bYWyLVCt
+ XXWXU+UyDOkiQJt6UahnmYZV7u40a1/osbNnjHjyNybejOuUFjHYy1gDwjsElnxYbRRA2SZc
+ CmrZ4V0QFI0ZKuimGryZQj77UroiIV+Qq+v+PaxDEGwiqJqnAgMBAAGjLTArMBsGA1UdEQQU
+ MBKBEG1pbmZyaW5Ac2hhcnAuZm0wDAYDVR0TAQH/BAIwADANBgkqhkiG9w0BAQQFAAOBgQCO
+ l5bH8JXuFM+EZi01jfezzKML5iPBHx4BDj/4gl2lXw1t0v6o+9442F6TpnOVAk3LL1KTupvc
+ HfM+Bn71iWuD8ASCoSsmVpeoCbOv3lPGltrDgywcmM8phZyK1hHLvvJgfd4IMZbuH/rm0ZWp
+ WjRORFfik8yuO9DgahgjgAhkujCCAykwggKSoAMCAQICAQwwDQYJKoZIhvcNAQEEBQAwgdEx
+ CzAJBgNVBAYTAlpBMRUwEwYDVQQIEwxXZXN0ZXJuIENhcGUxEjAQBgNVBAcTCUNhcGUgVG93
+ bjEaMBgGA1UEChMRVGhhd3RlIENvbnN1bHRpbmcxKDAmBgNVBAsTH0NlcnRpZmljYXRpb24g
+ U2VydmljZXMgRGl2aXNpb24xJDAiBgNVBAMTG1RoYXd0ZSBQZXJzb25hbCBGcmVlbWFpbCBD
+ QTErMCkGCSqGSIb3DQEJARYccGVyc29uYWwtZnJlZW1haWxAdGhhd3RlLmNvbTAeFw0wMDA4
+ MzAwMDAwMDBaFw0wMjA4MjkyMzU5NTlaMIGSMQswCQYDVQQGEwJaQTEVMBMGA1UECBMMV2Vz
+ dGVybiBDYXBlMRIwEAYDVQQHEwlDYXBlIFRvd24xDzANBgNVBAoTBlRoYXd0ZTEdMBsGA1UE
+ CxMUQ2VydGlmaWNhdGUgU2VydmljZXMxKDAmBgNVBAMTH1BlcnNvbmFsIEZyZWVtYWlsIFJT
+ QSAyMDAwLjguMzAwgZ8wDQYJKoZIhvcNAQEBBQADgY0AMIGJAoGBAN4zMqZjxwklRT7Sbngn
+ Z4HF2ogZgpcO40QpimM1Km1wPPrcrvfudG8wvDOQf/k0caCjbZjxw0+iZdsN+kvx1t1hpfmF
+ zVWaNRqdknWoJ67Ycvm6AvbXsJHeHOmr4BgDqHxDQlBRh4M88Dm0m1SKE4f/s5udSWYALQmJ
+ 7JRr6aFpAgMBAAGjTjBMMCkGA1UdEQQiMCCkHjAcMRowGAYDVQQDExFQcml2YXRlTGFiZWwx
+ LTI5NzASBgNVHRMBAf8ECDAGAQH/AgEAMAsGA1UdDwQEAwIBBjANBgkqhkiG9w0BAQQFAAOB
+ gQBzG28mZYv/FTRLWWKK7US+ScfoDbuPuQ1qJipihB+4h2N0HG23zxpTkUvhzeY42e1Q9Dps
+ NJKs5pKcbsEjAcIJp+9LrnLdBmf1UG8uWLi2C8FQV7XsHNfvF7bViJu3ooga7TlbOX00/LaW
+ GCVNavSdxcORL6mWuAU8Uvzd6WIDSDGCAcowggHGAgEBMIGaMIGSMQswCQYDVQQGEwJaQTEV
+ MBMGA1UECBMMV2VzdGVybiBDYXBlMRIwEAYDVQQHEwlDYXBlIFRvd24xDzANBgNVBAoTBlRo
+ YXd0ZTEdMBsGA1UECxMUQ2VydGlmaWNhdGUgU2VydmljZXMxKDAmBgNVBAMTH1BlcnNvbmFs
+ IEZyZWVtYWlsIFJTQSAyMDAwLjguMzACAwTI7DAJBgUrDgMCGgUAoIGGMBgGCSqGSIb3DQEJ
+ AzELBgkqhkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTAxMTEzMDIxMjI1MFowIwYJKoZIhvcN
+ AQkEMRYEFOHzJgxqhHxKNDTFUEwBjCI3PBusMCcGCSqGSIb3DQEJDzEaMBgwBwYFKw4DAgcw
+ DQYIKoZIhvcNAwICASgwDQYJKoZIhvcNAQEBBQAEgYBGyZZ9u1JyXVxu6vMx+g3Q9Gv9aEe8
+ jstiOLAKnGLYqCyBCrYB+onjeEI/cdTzpfmg0K6QsGz9lMVVyhJGlS6wToBuVUQ47sCuBkRm
+ +6hxNLvFe4Am4GAcBtyphcla05j79tDJLxyynCL2Fds6L0TwKggSAe8dvGq9kWLKiqETJw==
+ --------------ms47569264855CD420C0E55A06--
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

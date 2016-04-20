@@ -1,0 +1,184 @@
+Received: (qmail 4652 invoked by uid 2012); 30 Mar 1998 17:03:34 -0000
+Message-Id: <19980330170334.4651.qmail@hyperreal.org>
+Date: 30 Mar 1998 17:03:34 -0000
+From: Jules Bean <jules@jellybean.co.uk>
+Reply-To: jules@jellybean.co.uk
+To: apbugs@hyperreal.org
+Subject: Under some circumstances files 'break' - and remain so.
+X-Send-Pr-Version: 3.2
+
+>Number:         2016
+>Category:       os-solaris
+>Synopsis:       Under some circumstances files 'break' - and remain so.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Mar 30 09:10:01 PST 1998
+>Last-Modified:  Mon Apr  6 23:46:51 PDT 1998
+>Originator:     jules@jellybean.co.uk
+>Organization:
+>Release:        1.3b5
+>Environment:
+Solaris 2.4, unpatched. gcc 2.7.2.x
+>Description:
+In this case, a GIF file, which is certainly 'OK' in general fails to
+download from a virtual server.  It is not a client issue - direct
+telnet confirms the problem.
+
+The identical file will download fine from a different virtual host on the
+same server.  Although the configs are not identical (of the two servers)
+making them so does not change the problem.
+
+Restarting the web server process does not fix the problem.  Sometimes,
+but not always, copying the file will fix the problem.  It is as if the file
+is 'locked' open (mmap()ed?).
+
+The server will always report a succesful (status 200) access.  The client
+will hang on 'host contacted, waiting for reply'
+
+I have extensively investigated this problem, and it's either very stupid,
+or very bizarre.  Although NFS is involved in our setup, I am confident that
+is not relevant (I can replicate the problem on a non-NFS set up).
+
+Although I have not tried to test it on another OS, I'm guessing that this is a
+solaris problem.
+>How-To-Repeat:
+The problem *is* rather erratic.  It can occasionally be made to go away
+by copying files.
+
+Currently, I have an example running as:
+
+http://www.erik.co.uk/TNGirl.gif
+http://www.eurotalk.co.uk/TNGirl.gif
+
+You will, I hope, find that the one under 'erik' works fine, the one under
+'eurotalk' doesn't.
+>Fix:
+Looks to me like something freaky to do with overrunning buffers, or 
+similar
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Jules Bean <jules@jellybean.co.uk>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-solaris/2016: Under some circumstances files 'break' - and remain so.
+Date: Mon, 30 Mar 1998 14:46:04 -0800 (PST)
+
+ I doubt it's directly an apache bug... but just in case it's related to
+ the pthreads problems in 1.3b5 could you try 1.3b6-dev?  Visit
+ ftp://dev.apache.org/httpd/from-cvs/ to find a snapshot of the current cvs
+ code.
+ 
+ BTW, solaris 2.4 unpatched is uh, unstable, and uh, lacking ;) 
+ 
+ Oh wait.  Damn.  You're not using pthreads because they're only used in
+ 2.5 and later.
+ 
+ Ok, edit main/http_protocol.c and add this:
+ 
+ #undef USE_MMAP_FILES
+ 
+ right before the first line that says
+ 
+ #ifdef USE_MMAP_FILES
+ 
+ Dean
+ 
+
+From: Jules Bean <jmlb2@hermes.cam.ac.uk>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-solaris/2016: Under some circumstances files 'break' - and remain so.
+Date: Tue, 31 Mar 1998 11:02:49 +0100 (BST)
+
+ USE_MMAP_FILES doesn't appear in my copy of http_protocol.c.
+ 
+ I decided to go into conf.h, and (within the SOLARIS #ifdef) replace
+ #define USE_MMAP_FILES with #undef USE_MMAP_FILES.
+ 
+ However, the problem hasn't gone away.
+ 
+ This is a very odd one - even actually restarting the server doesn't fix
+ the 'broken' file.
+ 
+ Unless you have any other ideas, I'm going to treat this as a Solaris bug,
+ and convince my clients to upgrade (all the way to 2.6, I hope).
+ 
+ Yours,
+ 
+ Jules Bean
+ 
+ /----------------+-------------------------------+---------------------\
+ |  Jelibean aka  | jules@jellybean.co.uk         |  6 Evelyn Rd	       |
+ |  Jules aka     |                               |  Richmond, Surrey   |
+ |  Julian Bean   | jmlb2@hermes.cam.ac.uk        |  TW9 2TF *UK*       |
+ +----------------+-------------------------------+---------------------+
+ |  War doesn't demonstrate who's right... just who's left.             |
+ |  When privacy is outlawed... only the outlaws have privacy.          |
+ \----------------------------------------------------------------------/
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Wed Apr  1 03:53:16 PST 1998
+State-Changed-Why:
+Yeah this really looks like a solaris 2.4 bug... you should
+probably start by applying any recommended 2.4 patches.  You
+could upgrade to 2.6 ... but you shouldn't need to go that far.
+
+Tell us how it goes though, or if you get any more data.
+
+Dean
+
+From: Jules Bean <jmlb2@hermes.cam.ac.uk>
+To: dgaudet@hyperreal.org
+Cc: apache-bugdb@apache.org, dgaudet@apache.org, apbugs@apache.org
+Subject: Re: os-solaris/2016: Under some circumstances files 'break' - and remain so.
+Date: Mon, 6 Apr 1998 15:25:43 +0100 (BST)
+
+ On 1 Apr 1998 dgaudet@hyperreal.org wrote:
+ 
+ > Yeah this really looks like a solaris 2.4 bug... you should
+ > probably start by applying any recommended 2.4 patches.  You
+ > could upgrade to 2.6 ... but you shouldn't need to go that far.
+ 
+ Yeah, well, I'd been advising them to for a while anyway.  The upgrade to
+ 2.6 has gone through, and the problem has vanished.  Indeed, performance
+ has also improved by almost an order of magnitude...
+ 
+ I regret not being able to investigate the problem as fully as I would
+ like to, but time is pressured, and I have to move on...
+ 
+ I advise anyone out there using 2.4 to move on to 2.6...
+ 
+ Yours,
+ 
+ Jules Bean
+ 
+ /----------------+-------------------------------+---------------------\
+ |  Jelibean aka  | jules@jellybean.co.uk         |  6 Evelyn Rd	       |
+ |  Jules aka     |                               |  Richmond, Surrey   |
+ |  Julian Bean   | jmlb2@hermes.cam.ac.uk        |  TW9 2TF *UK*       |
+ +----------------+-------------------------------+---------------------+
+ |  War doesn't demonstrate who's right... just who's left.             |
+ |  When privacy is outlawed... only the outlaws have privacy.          |
+ \----------------------------------------------------------------------/
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Apr  6 23:46:51 PDT 1998
+State-Changed-Why:
+User solved problem by upgrading to Solaris 2.6.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

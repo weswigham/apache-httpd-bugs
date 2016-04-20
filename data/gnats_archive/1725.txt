@@ -1,0 +1,271 @@
+Received: (qmail 20418 invoked by uid 2012); 23 Jan 1998 21:21:14 -0000
+Message-Id: <19980123212114.20417.qmail@hyperreal.org>
+Date: 23 Jan 1998 21:21:14 -0000
+From: Derek Balling <derek@speedchoice.com>
+Reply-To: derek@speedchoice.com
+To: apbugs@hyperreal.org
+Subject: When ErrorLog going to a pipe, only summary line makes it to handler
+X-Send-Pr-Version: 3.2
+
+>Number:         1725
+>Category:       suexec
+>Synopsis:       with suexec around some useful errors aren't logged well enough
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          analyzed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jan 23 13:30:00 PST 1998
+>Last-Modified:  Wed Feb 25 23:03:13 PST 1998
+>Originator:     derek@speedchoice.com
+>Organization:
+>Release:        1.2.5
+>Environment:
+Red Hat Linux 5.0, 2.0.33 Kernel	
+>Description:
+When Apache creates an errorlog file, STDERR from any CGI's are directed to
+the Apache ErrorLog directive file. However, when using a pipe as the ErrorLog
+only the "Date and Summary" line gets passed to the program. The STDERR from 
+the CGI goes nowhere (or at least never gets seen by the error handler)
+>How-To-Repeat:
+#!/usr/bin/perl
+open MYLOG, ">> /tmp/mylog";
+while (<>)
+{
+    print MYLOG;
+}
+
+And then create a CGI with syntax errors and you'll never see them there. :)
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Feb  7 03:58:11 PST 1998
+State-Changed-Why:
+Are you using ScriptLog or LogScript or whatever the directive is?
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: derek@speedchoice.com, apbugs@apache.org
+Cc:  Subject: Re: general/1725: When ErrorLog going to a pipe, only summary line makes it to handler
+Date: Sat, 7 Feb 1998 04:00:33 -0800 (PST)
+
+ On 7 Feb 1998 dgaudet@hyperreal.org wrote:
+ 
+ > Are you using ScriptLog or LogScript or whatever the directive is?
+ 
+ Oh the reason I'm asking this is because I can't reproduce your problem
+ with the stock config files + modified ErrorLog directive. 
+ 
+ Dean
+ 
+
+From: Derek Balling <derek@speedchoice.com>
+To: dgaudet@hyperreal.org
+Cc: apbugs@apache.org
+Subject: Re: general/1725: When ErrorLog going to a pipe, only summary
+  line makes it to handler
+Date: Sat, 07 Feb 1998 08:31:31 -0600
+
+ At 11:58 AM 2/7/98 -0000, you wrote:
+ >Are you using ScriptLog or LogScript or whatever the directive is?
+ 
+ No. The only logging directives in use are
+ 
+ ErrorLog "|/web/logs/error_handler.pl"
+ TransferLog "|/web/logs/access_handler.pl"
+ 
+ It was my understanding that I only use ScriptLog if I want the script's
+ STDERR to go "elsewhere" as opposed to the error log.
+ 
+
+From: Derek Balling <derek@speedchoice.com>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: general/1725: When ErrorLog going to a pipe, only summary
+  line makes it to handler
+Date: Sat, 07 Feb 1998 08:35:50 -0600
+
+ At 04:00 AM 2/7/98 -0800, you wrote:
+ >On 7 Feb 1998 dgaudet@hyperreal.org wrote:
+ >
+ >> Are you using ScriptLog or LogScript or whatever the directive is?
+ >Oh the reason I'm asking this is because I can't reproduce your problem
+ >with the stock config files + modified ErrorLog directive. 
+ 
+ Bizarre. Yeah, I just double checked the configs with grep and couldn't
+ find that directive anywhere in the configs (just to be sure).
+ 
+ I can make my configs available as a tarball if you think it would help any.
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Derek Balling <derek@speedchoice.com>
+Cc: apbugs@apache.org
+Subject: Re: general/1725: When ErrorLog going to a pipe, only summary  line makes it to handler
+Date: Sat, 7 Feb 1998 12:24:22 -0800 (PST)
+
+ I tested with:
+ 
+ ErrorLog "| cat >>/tmp/error_log"
+ 
+ What does that do for you?
+ 
+ Dean
+ 
+
+From: Derek Balling <derek@speedchoice.com>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: general/1725: When ErrorLog going to a pipe, only summary 
+  line makes it to handler
+Date: Sun, 08 Feb 1998 10:11:54 -0600
+
+ >ErrorLog "| cat >>/tmp/error_log"
+ 
+ Generates solely the "access to /path/to/filename.pl failed for
+ somehost.com, reason: Premature end of script headers" error. No perl
+ syntax errors of any kind were dumped to that file.
+ 
+ [Sun Feb  8 10:06:15 1998] Server configured -- resuming normal operations
+ [Sun Feb  8 10:06:29 1998] access to /home/derek/public_html/test.pl failed
+ for hostname.speedchoice.com, reason: Premature end of script headers.
+ 
+ Nothing in between. :(
+ 
+ 
+ 
+State-Changed-From-To: analyzed-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Sat Feb 14 03:24:53 PST 1998
+State-Changed-Why:
+I'm sorry but I can't reproduce this.  The only situation in which
+stderr won't go to the error log is when you have ScriptLog in
+use, but you say you're not using it.
+
+Another difference between your system and mine is that you are
+using glibc and I'm using linux libc 5.x.  I hate to blame the
+library, but it has been known to be unstable.  Unfortunately
+I'm not willing to "upgrade" any of my systems to it, so I
+can't test with it.
+
+You're going to have to do more digging.
+
+Like maybe run "strace -f -o trace.out ./httpd -d /path/to/serverroot"
+and make a request to a cgi that generates stderr output.  Then
+you'll have to kill -9 a bunch of the processes because strace
+will interfere with their proper exit.  Eventually you'll get
+strace to terminate, and you can look at the trace.out file to
+see what happens with stderr.  Or you can send me the trace.out
+file, but please only if it's <100k.
+
+Dean
+
+Dean
+
+From: Derek Balling <derek@speedchoice.com>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: general/1725: When ErrorLog going to a pipe, only summary 
+  line makes it to handler
+Date: Tue, 17 Feb 1998 06:51:33 -0600
+
+ Its entirely possible its a glibc RH5 issue, but in which case, is there
+ any estimate as to when someone will have corrected this issue for us RH5
+ users? :)
+ 
+ I think I might have 1.2.5 on a RH4.2 machine still in the office (if
+ nobody upgraded it while I wasn't looking), in which case I'll try it on
+ that and see what I get for results...
+ 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Derek Balling <derek@speedchoice.com>
+Cc: apbugs@apache.org
+Subject: Re: general/1725: When ErrorLog going to a pipe, only summary   line makes it to handler
+Date: Tue, 17 Feb 1998 12:01:01 -0800 (PST)
+
+ If it is a glibc issue then there's nothing we can do about it.  I forget
+ if I asked you to give me strace data... with strace data I can conclude
+ if it's glibc or not.  I tried building glibc on the weekend and I wasn't
+ able to reproduce the problem you're having.  Mind you, I built 2.0.7-pre1
+ to ensure I had the latest bug fixes.  You should be running at least
+ 2.0.6 btw, there's a redhat update rpm.
+ 
+ Incidentally, how are you starting httpd?  Where do you redirect stderr
+ when you do that?
+ 
+ To get the strace stuff try something like this:
+ 
+ - cp httpd.conf test.conf
+ - edit test.conf:
+     Port 8080
+     StartServers 1
+     MinSpareServers 1
+     MaxSpareServers 2
+ 
+ Then run ./httpd -f /path/to/test.conf and ensure the bug still happens.
+ 
+ Then run strace -ff -o trace.out ./httpd -f /path/to/test.conf and reproduce
+ the bug.  Then you may have to kill -9 the httpd and all its children
+ because of a deadlock issue with strace.  Don't kill strace... just keep killing
+ children of strace until strace exits cleanly (use pstree -lp to find the children).
+ 
+ Then gzip the output and mail it to me. 
+ 
+ Dean
+ 
+ 
+
+From: Derek Balling <dballing@speedchoice.com>
+To: Dean Gaudet <dgaudet@arctic.org>, apbugs@hyperreal.org
+Cc:  Subject: Re: general/1725: When ErrorLog going to a pipe, only summary   line makes it to handler
+Date: Wed, 25 Feb 1998 08:46:07 -0600
+
+ Found the problem after a bunch of testing.
+ 
+ Was running suexec and the file permissions on the CGI weren't "proper". 
+ 
+ All I had done was copy the CGI from the "main" server directory to a
+ "user" directory, and hadn't even considered that the CGI was never
+ getting run, (and an error was being reported in cgi.log stating that it
+ COULDN'T run the CGI).
+ 
+ I wonder if it might not be a good idea for future versions to have, if
+ suexec fails to execute the script for whatever reason, to log in both
+ cgi.log AND error.log. (e.g. instead of error.log only having a
+ "generic" failure, have it either refer to cgi.log for details or
+ contain a detail of the suexec failure itself).
+ 
+ Aside from that, for all intents and purposes, I think it is safe to
+ close this bug report, unless you want to turn it into a suggestion
+ ticket of some kind. :)
+ 
+ Derek
+State-Changed-From-To: feedback-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Wed Feb 25 23:03:12 PST 1998
+State-Changed-Why:
+Yup, suexec shouldn't help confuse the admin more than
+necessary.
+Synopsis-Changed-From: When ErrorLog going to a pipe, only summary line makes it to handler
+Synopsis-Changed-To: with suexec around some useful errors aren't logged well enough
+Synopsis-Changed-By: dgaudet
+Synopsis-Changed-When: Wed Feb 25 23:03:12 PST 1998
+Category-Changed-From-To: general-suexec
+Category-Changed-By: dgaudet
+Category-Changed-When: Wed Feb 25 23:03:12 PST 1998
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

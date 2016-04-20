@@ -1,0 +1,129 @@
+From nobody@hyperreal.com  Thu Feb 27 15:29:53 1997
+Received: by taz.hyperreal.com (8.8.4/V2.0) id PAA01718; Thu, 27 Feb 1997 15:29:53 -0800 (PST)
+Message-Id: <199702272329.PAA01718@taz.hyperreal.com>
+Date: Thu, 27 Feb 1997 15:29:53 -0800 (PST)
+From: Sevo Stille <sevo@inm.de>
+Reply-To: sevo@inm.de
+To: apbugs@hyperreal.com
+Subject: Add an option "never" to Expires
+X-Send-Pr-Version: 3.2
+
+>Number:         208
+>Category:       mod_expires
+>Synopsis:       Add an option "never" to Expires
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Feb 27 15:30:01 1997
+>Last-Modified:  Wed Oct 15 09:22:36 PDT 1997
+>Originator:     sevo@inm.de
+>Organization:
+>Release:        1.2
+>Environment:
+[recreated from cached copy of PR#96, originally
+submitted on Wed Jan  8 03:00:01 1997 and lost from
+GNATS on Thu Feb 27 1997]
+>Description:
+Netscape still has problems with animated GIF's which have an expiration date, 
+causing it to request the image at every iteration of the loop. Putting the 
+expires date into the remote future doesn't help, and moving the image to 
+another directory without expiration may not be a viable option. Since the 
+ability to mix expiring and none-expiring documents in one directory may be 
+desirable in other contexts as well, I propose adding an option "never" to 
+the expires module.
+>How-To-Repeat:
+
+>Fix:
+The following patch will add an option never, which doesn't send 
+an Expires header for the selected files, to mod_expires.c. 
+Please note that 'n' as a shorthand form for 'now' won't work 
+any more after the patch has been applied.
+--- mod_expires.c       Wed Dec  4 23:56:24 1996
++++ mod_expires.c       Wed Jan  8 11:42:32 1997
+@@ -124,6 +124,7 @@
+  *     access  
+  *     now             equivalent to 'access'
+  *     modification
++ *      never          don't send an Expires header
+  *
+  * where the 'plus' keyword is optional
+  *
+@@ -256,11 +257,13 @@
+     /* <base>
+      */
+     word = getword_conf( pool, &code );
+-    if ( !strncasecmp( word, "now", 1 ) ||
++    if ( !strncasecmp( word, "now", 2 ) ||
+         !strncasecmp( word, "access", 1 ) ) {
+        base = 'A';
+     } else if ( !strncasecmp( word, "modification", 1 ) ) {
+        base = 'M';
++    } else if ( !strncasecmp( word, "never", 2 ) ) {
++        base = 'N';
+     } else {
+        return pstrcat( pool, "bad expires code, unrecognised <base> '",
+                word, "'", NULL);
+@@ -430,6 +433,11 @@
+     /* we have our code */
+ 
+     switch (code[0]) {
++        case 'N':
++            /* never - don't return the expires header
++            */
++            return OK;
++            break;
+        case 'M':
+             base = r->finfo.st_mtime;
+            additional = atoi( &code[1] );%0
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: coar@decus.org
+State-Changed-When: Thu Feb 27 15:47:53 PST 1997
+State-Changed-Why:
+This would be an enhancement, and has missed the
+feature-freeze date for Apache 1.2.  I'll raise it
+for discussion.  The keyword "never" is not a good
+choice, IMO, because it implies "never expires" (e.g.,
+expiration-date=end-of-time) rather than "no
+expiration date given".  Even though it collides for
+the first two characters, I think "none" would be a
+better choice, or perhaps "omit". 
+Responsible-Changed-From-To: apache (Apache HTTP Project)-coar@decus.org
+Responsible-Changed-By: coar@decus.org
+Responsible-Changed-When: Thu Feb 27 15:47:53 PST 1997
+Responsible-Changed-Why:
+I'll track it.
+Comment-Added-By: dgaudet
+Comment-Added-When: Thu Jul  3 00:02:47 PDT 1997
+Comment-Added:
+Hi, thanks for the submission, but I'm pretty sure this
+does what you're trying to do without adding more code:
+
+<Files ~ \.gif$>
+ExpiresActive off
+</Files>
+
+And there's also <http://www.arctic.org/~dgaudet/patches/apache-1.2-gif89-expires-hack.patch>
+which is a more automatic way around this particular problem.
+
+Dean
+State-Changed-From-To: suspended-closed
+State-Changed-By: coar
+State-Changed-When: Wed Oct 15 09:22:36 PDT 1997
+State-Changed-Why:
+Since there's a way of doing this in the current set of
+configuration commands, this won't be added.
+
+Thanks for using Apache!
+Responsible-Changed-From-To: coar@decus.org-apache
+Responsible-Changed-By: coar
+Responsible-Changed-When: Wed Oct 15 09:22:36 PDT 1997
+Responsible-Changed-Why:
+Returning to general ownership on closure
+>Unformatted:
+
+

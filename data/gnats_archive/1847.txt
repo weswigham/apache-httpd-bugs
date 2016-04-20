@@ -1,0 +1,76 @@
+Received: (qmail 22146 invoked by uid 2012); 20 Feb 1998 10:51:20 -0000
+Message-Id: <19980220105120.22145.qmail@hyperreal.org>
+Date: 20 Feb 1998 10:51:20 -0000
+From: Charles Fu <ccwf@klab.caltech.edu>
+Reply-To: ccwf@klab.caltech.edu
+To: apbugs@hyperreal.org
+Subject: ap_cpystrn has off by one error
+X-Send-Pr-Version: 3.2
+
+>Number:         1847
+>Category:       general
+>Synopsis:       ap_cpystrn has off by one error
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Feb 20 03:00:00 PST 1998
+>Last-Modified:  Fri Feb 20 11:21:34 PST 1998
+>Originator:     ccwf@klab.caltech.edu
+>Organization:
+>Release:        1.3b5
+>Environment:
+Linux 2.0.33 i586 w/ glibc 2.0.5c
+gcc 2.7.2.3
+>Description:
+In the normal case where dst_size doesn't end the copy, the null-terminated
+string is copied, the pointer advanced, another null added, and the pointer
+to the extra null is returned.
+>How-To-Repeat:
+Try doing a "RewriteCond %{REQUEST_METHOD} =GET", turn on the rewrite log, and
+issue a GET request to the server.  The rewrite log will show that "input=''"
+because the ap_cpystrn error results in incorrect concatenation.  (The input
+winds up being \0GET\0\0\0.)
+>Fix:
+Try this replacement:
+
+API_EXPORT(char *) ap_cpystrn(char *dst, const char *src, size_t dst_size)
+{
+
+    char *d, *end;
+
+    if (!dst_size)
+        return (dst);
+
+    d = dst;
+    end = dst + dst_size - 1;
+
+    for (; d < end; ++d, ++src)
+	if (!(*d = *src))
+	    return (d);
+
+    *d = '\0';	/* always null terminate */
+
+    return (d);
+}
+
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Feb 20 11:21:34 PST 1998
+State-Changed-Why:
+D'ohh!  Yeah thanks, applied.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

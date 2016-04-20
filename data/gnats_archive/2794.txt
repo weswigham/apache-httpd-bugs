@@ -1,0 +1,96 @@
+Received: (qmail 15310 invoked by uid 2012); 5 Aug 1998 23:53:48 -0000
+Message-Id: <19980805235348.15302.qmail@hyperreal.org>
+Date: 5 Aug 1998 23:53:48 -0000
+From: Geoff Smith <gsmith@webventures.com.au>
+Reply-To: gsmith@webventures.com.au
+To: apbugs@hyperreal.org
+Subject: Session ID creation is not unique
+X-Send-Pr-Version: 3.2
+
+>Number:         2794
+>Category:       mod_jserv
+>Synopsis:       Session ID creation is not unique
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    jserv
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Aug  5 18:10:00 PDT 1998
+>Last-Modified:  Sun Sep 27 11:22:13 PDT 1998
+>Originator:     gsmith@webventures.com.au
+>Organization:
+>Release:        0.9.11
+>Environment:
+Linux server.webventures.com.au 2.0.27 #1 Sat Dec 21 23:44:11 EST 1996 i586
+>Description:
+ a 100,000 instruction  cycles of each other
+will get the same session id.
+
+
+    /**
+     * Get a session identifier. These should be unique identifier.
+     */
+    public static final String getIdentifier() {
+        //Unless this takes less than 1 millis second that shouldn't
+        //cause collision.
+        return Long.toString( System.currentTimeMillis() );
+    }
+
+In addition the use of a time-stamp only ( or any other
+predictable algorithm  ) has a big security hole when used
+with cookies. Its trivial to program a client application
+to emulate cookie presentation and knowing the current time 
+search for a hit on a user's session.
+
+Try something like this to fix the problem.
+
+  static private int session_count = 0;
+
+  /*
+   * Create a suitable string for session identification
+   * Use count and synchronized to ensure uniqueness.
+   * Use timestamp because it useful in session timeouts.
+   * Use random string to ensure timestamp cannot be guessed
+   * by programmed attack.
+   *
+   * format of id is <random-hex-string>.<count>.<timestamp-ms>
+   */
+  static synchronized private String createSessionId () {
+    String random = Long.toHexString(Double.doubleToLongBits(Math.random()));
+    String time = Long.toString(System.currentTimeMillis());
+    session_count++;	
+    return random+SESSIONSEP+session_count+SESSIONSEP+time;
+  }
+
+>How-To-Repeat:
+Not necessary - its a design flaw.
+>Fix:
+See code snippet.
+
+Note I made this critical because its a possible mechanism to breach 
+security of servers.
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: ianosh@iname.com
+State-Changed-When: Thu Aug  6 04:04:53 PDT 1998
+State-Changed-Why:
+This has been fixed under Apache-JServ 1.0. Currently avalilable under CVS.
+State-Changed-From-To: suspended-closed
+State-Changed-By: coar
+State-Changed-When: Sun Sep 27 11:22:13 PDT 1998
+State-Changed-Why:
+[Closed per note]
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

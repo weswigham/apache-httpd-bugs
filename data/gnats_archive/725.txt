@@ -1,0 +1,259 @@
+From nobody@hyperreal.com  Thu Jun 12 08:46:36 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id IAA27657;
+	Thu, 12 Jun 1997 08:46:36 -0700 (PDT)
+Message-Id: <199706121546.IAA27657@hyperreal.com>
+Date: Thu, 12 Jun 1997 08:46:36 -0700 (PDT)
+From: Chris Moeller <Chris.Moeller@cmscc05.hamilton-co.org>
+Reply-To: Chris.Moeller@cmscc05.hamilton-co.org
+To: apbugs@hyperreal.com
+Subject: The make process quits after an error in http_bprintf.c
+X-Send-Pr-Version: 3.2
+
+>Number:         725
+>Category:       os-aix
+>Synopsis:       The make process quits after an error in http_bprintf.c
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jun 12 08:50:01 1997
+>Originator:     Chris.Moeller@cmscc05.hamilton-co.org
+>Organization:
+>Release:        1.2.0
+>Environment:
+AIX 3.2
+>Description:
+This is a copy of the screen including the error message 
+        cc -c    -DAIX -U__STR__   alloc.c                                      
+        cc -c    -DAIX -U__STR__   http_main.c                                  
+        cc -c    -DAIX -U__STR__   http_core.c                                  
+        cc -c    -DAIX -U__STR__   http_config.c                                
+        cc -c    -DAIX -U__STR__   http_request.c                               
+        cc -c    -DAIX -U__STR__   http_log.c                                   
+        cc -c    -DAIX -U__STR__   http_protocol.c                              
+        cc -c    -DAIX -U__STR__   rfc1413.c                                    
+        cc -c    -DAIX -U__STR__   util.c                                       
+        cc -c    -DAIX -U__STR__   util_script.c                                
+        cc -c    -DAIX -U__STR__   modules.c                                    
+        cc -c    -DAIX -U__STR__   buff.c                                       
+        cc -c    -DAIX -U__STR__   md5c.c                                       
+        cc -c    -DAIX -U__STR__   util_md5.c                                   
+        cc -c    -DAIX -U__STR__   explain.c                                    
+        cc -c    -DAIX -U__STR__   http_bprintf.c                               
+"http_bprintf.c", line 292.65: 1506-025 (S) Operand must be a modifiable lvalue.
+The error code from the last failed command is 1.                               
+                                                                                
+Make Quitting.                                                                  
+>How-To-Repeat:
+Try to compile Apache_1.2.0 in AIX 3.2
+>Fix:
+No.  I noticed this same problem was brought up in PR10, but there did not seem to
+be a fix even though the PR was closed
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Thu Jun 12 09:27:16 PDT 1997
+State-Changed-Why:
+Sent user patch to try to track down problem.
+
+From: Marc Slemko <marcs@znep.com>
+To: Chris Moeller <Chris.Moeller@cmscc05.hamilton-co.org>
+Subject: Re: os-aix/725: The make process quits after an error in http_bprintf.c
+Date: Thu, 12 Jun 1997 10:28:37 -0600 (MDT)
+
+ 
+ On Thu, 12 Jun 1997, Chris Moeller wrote:
+ 
+ >         cc -c    -DAIX -U__STR__   http_bprintf.c                               
+ > "http_bprintf.c", line 292.65: 1506-025 (S) Operand must be a modifiable lvalue.
+ > The error code from the last failed command is 1.                               
+ 
+ Try the patch at the end of this message.  It will probably still not
+ compile properly, but it should help track down exactly what it doesn't
+ like.  It looks to be a bug in the compiler, but we will see what we can
+ do to work around it.
+ 
+ The reason the previous PR was closed was because we had no way of
+ replicating the problem or trying to fix it.  Hopefully we can with your
+ help.
+ 
+ Index: http_bprintf.c
+ ===================================================================
+ RCS file: /export/home/cvs/apache/src/http_bprintf.c,v
+ retrieving revision 1.8
+ diff -c -r1.8 http_bprintf.c
+ *** http_bprintf.c	1997/02/16 07:44:14	1.8
+ --- http_bprintf.c	1997/06/12 16:23:50
+ ***************
+ *** 289,295 ****
+   		    else
+   			{
+   			p = memchr(charPtrArg, '\0', precision);
+ ! 			buffReqd=(p == NULL) ? precision : p - charPtrArg;
+   			}
+   		    break;
+   
+ --- 289,299 ----
+   		    else
+   			{
+   			p = memchr(charPtrArg, '\0', precision);
+ ! 			buffReqd = 
+ ! 				( (p == NULL) ? 
+ ! 				  precision : 
+ ! 				  (p - charPtrArg) 
+ ! 				);
+   			}
+   		    break;
+   
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: apbugs@apache.org
+Subject: Re: os-aix/725: The make process quits after an error in  (fwd)
+Date: Thu, 12 Jun 1997 12:16:58 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Thu, 12 Jun 1997 13:56:37 -0400
+ From: Chris Moeller <Chris.Moeller@cmscc05.hamilton-co.org>
+ To: Marc Slemko <marcs@znep.com>
+ Cc: apbugs@apache.org
+ Subject: Re[2]: os-aix/725: The make process quits after an error in 
+ 
+      I applied the patch. The following is the result.
+         
+         cc -c    -DAIX -U__STR__   http_bprintf.c                               
+ "http_bprintf.c", line 296.39: 1506-025 (S) Operand must be a modifiable lvalue.
+ The error code from the last failed command is 1.                               
+                                                                                 
+ Make Quitting.                                                                  
+      
+        
+                                                                               
+   
+                                                                    
+ 
+ ______________________________ Reply Separator 
+ _________________________________
+ Subject: Re: os-aix/725: The make process quits after an error in htt
+ Author:  Marc Slemko <marcs@znep.com> at INTERNET
+ Date:    6/12/97 12:28 PM
+ 
+ 
+ On Thu, 12 Jun 1997, Chris Moeller wrote:
+ 
+ >         cc -c    -DAIX -U__STR__   http_bprintf.c                           
+   
+ 
+ > "http_bprintf.c", line 292.65: 1506-025 (S) Operand must be a modifiable 
+ lvalue.
+ > The error code from the last failed command is 1.                             
+      
+      
+ Try the patch at the end of this message.  It will probably still not 
+ compile properly, but it should help track down exactly what it doesn't 
+ like.  It looks to be a bug in the compiler, but we will see what we can 
+ do to work around it.
+      
+ The reason the previous PR was closed was because we had no way of 
+ replicating the problem or trying to fix it.  Hopefully we can with your 
+ help.
+      
+ Index: http_bprintf.c
+ =================================================================== 
+ RCS file: /export/home/cvs/apache/src/http_bprintf.c,v
+ retrieving revision 1.8
+ diff -c -r1.8 http_bprintf.c
+ *** http_bprintf.c      1997/02/16 07:44:14     1.8 
+ --- http_bprintf.c      1997/06/12 16:23:50 
+ ***************
+ *** 289,295 ****
+                     else
+                         {
+                         p = memchr(charPtrArg, '\0', precision);
+ !                       buffReqd=(p == NULL) ? precision : p - charPtrArg;
+                         }
+                     break;
+      
+ --- 289,299 ----
+                     else
+                         {
+                         p = memchr(charPtrArg, '\0', precision);
+ !                       buffReqd = 
+ !                               ( (p == NULL) ? 
+ !                                 precision : 
+ !                                 (p - charPtrArg) 
+ !                               );
+                         }
+                     break;
+      
+      
+      
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: marc
+State-Changed-When: Sun Jun 29 17:04:45 PDT 1997
+State-Changed-Why:
+Patch applied to fix.
+
+From: Marc Slemko <marcs@znep.com>
+To: Chris Moeller <Chris.Moeller@cmscc05.hamilton-co.org>
+Subject: Re: os-aix/725: The make process quits after an error in 
+Date: Sun, 29 Jun 1997 18:06:02 -0600 (MDT)
+
+ 
+ 
+ > On Thu, 12 Jun 1997, Chris Moeller wrote:
+ > 
+ > >         cc -c    -DAIX -U__STR__   http_bprintf.c                           
+ >   
+ > 
+ > > "http_bprintf.c", line 292.65: 1506-025 (S) Operand must be a modifiable 
+ > lvalue.
+ > > The error code from the last failed command is 1.                             
+ >      
+ 
+ The below patch should fix it and has been applied to the source tree.
+ 
+ Index: http_bprintf.c
+ ===================================================================
+ RCS file: /export/home/cvs/apache/src/http_bprintf.c,v
+ retrieving revision 1.9
+ diff -c -r1.9 http_bprintf.c
+ *** http_bprintf.c	1997/06/29 19:19:35	1.9
+ --- http_bprintf.c	1997/06/29 21:00:57
+ ***************
+ *** 286,292 ****
+   		    else
+   			{
+   			p = memchr(charPtrArg, '\0', precision);
+ ! 			buffReqd=(p == NULL) ? precision : p - charPtrArg;
+   			}
+   		    break;
+   
+ --- 286,295 ----
+   		    else
+   			{
+   			p = memchr(charPtrArg, '\0', precision);
+ ! 			if (p == NULL)
+ ! 				buffReqd = precision;
+ ! 			else
+ ! 				buffReqd = p - charPtrArg;
+   			}
+   		    break;
+   
+ 
+>Unformatted:
+
+>Last-Modified:  Sun Jun 29 17:04:45 PDT 1997
+
+
+
+

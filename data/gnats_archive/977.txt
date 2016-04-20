@@ -1,0 +1,158 @@
+From apwww@hyperreal.org  Thu Aug  7 09:45:49 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id JAA05559;
+	Thu, 7 Aug 1997 09:45:49 -0700 (PDT)
+Message-Id: <199708071645.JAA05559@hyperreal.org>
+Date: Thu, 7 Aug 1997 09:45:49 -0700 (PDT)
+From: Chris Craft <ccraft@cncc.cc.co.us>
+Reply-To: ccraft@cncc.cc.co.us
+To: apbugs@hyperreal.org
+Subject: Won't compile - http_main.c:158: syntax error before `jmpbuffer' \n http_main.c:158: warning: data definition has no type or storage class
+X-Send-Pr-Version: 3.2
+
+>Number:         977
+>Category:       config
+>Synopsis:       Won't compile - http_main.c:158: syntax error before `jmpbuffer' \n http_main.c:158: warning: data definition has no type or storage class
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Aug  7 09:50:01 1997
+>Last-Modified:  Fri Oct 24 18:54:58 PDT 1997
+>Originator:     ccraft@cncc.cc.co.us
+>Organization:
+>Release:        1.2.1
+>Environment:
+# uname -a
+NetBSD vax 1.2G NetBSD 1.2G (VS) #0: Sun Jun 15 12:08:31 MEST 1997     bertram@g
+roucho.bbb.sub.org:/u/src/sys/arch/vax/compile/VS vax
+# gcc --version
+2.7.2.2
+# grep '\-I' Configuration
+EXTRA_INCLUDES=-I/usr/include/machine -I/usr/include/sys
+#
+>Description:
+# ./Configure
+Using config file: Configuration
+Using Makefile template file: Makefile.tmpl
+ + configured for FreeBSD/NetBSD platform
+ + setting C compiler to gcc
+ + setting C compiler optimization-level to -O2
+# make
+gcc -c  -I/usr/include/machine -I/usr/include/sys -O2    alloc.c
+gcc -c  -I/usr/include/machine -I/usr/include/sys -O2    http_main.c
+http_main.c:158: syntax error before `jmpbuffer'
+http_main.c:158: warning: data definition has no type or storage class
+*** Error code 1
+
+Stop.
+# 
+>How-To-Repeat:
+Run ./Configure from apache.1.2.1/src with the extra
+includes as above, then run make on a VAXstation2000
+running NetBSD 1.2G.
+(Note: I added "#include "/usr/include/unistd.h" to
+       alloc.c to get this far.)
+>Fix:
+Missing ifdef or ifndef somewhere?
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Thu Aug  7 10:35:39 PDT 1997
+State-Changed-Why:
+What happens if you remove your extra directories from
+EXTRA_INCLUDES?
+
+What needed unistd.h included earlier?  It is already
+included in alloc.c by conf.h.
+
+What structures are defined in your /usr/include/setjmp.h?
+
+What type of structure does the setjmp man page say to
+call setjmp() with?  What include files does the man
+page say are needed?
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Subject: Re: config/977: Won't compile - http_main.c:158: syntax error before `jmpbuffer' \n http_main.c:158: warning: data definition has no type or storage class (fwd)
+Date: Sat, 16 Aug 1997 13:54:29 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Thu, 7 Aug 1997 13:12:51 -0600 (MDT)
+ From: Chris Craft <ccraft@cncc.cc.co.us>
+ To: Marc Slemko <marc@hyperreal.org>
+ Cc: apache-bugdb@apache.org, marc@apache.org
+ Subject: Re: config/977: Won't compile - http_main.c:158: syntax error before `jmpbuffer' \n http_main.c:158: warning: data definition has no type or storage class
+ 
+ As distributed, the make stops on alloc.c claiming no such file or 
+ directory on stdarg.h, errno.h and fcntl.h.  Putting in the extra 
+ includes gets me 'STDOUT_FILENO', 'STDIN_FILENO' and 'STDERR_FILENO' 
+ undeclared, therefore the #include "/usr/include/unistd.h" in alloc.c.
+ 
+ -Chris
+ ccraft@cncc.cc.co.us
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Subject: Re: config/977: Won't compile - http_main.c:158: syntax error before `jmpbuffer' \n http_main.c:158: warning: data definition has no type or storage class (fwd)
+Date: Sat, 16 Aug 1997 13:54:33 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Thu, 7 Aug 1997 13:32:38 -0600 (MDT)
+ From: Chris Craft <ccraft@cncc.cc.co.us>
+ To: Marc Slemko <marc@hyperreal.org>
+ Cc: apache-bugdb@apache.org, marc@apache.org
+ Subject: Re: config/977: Won't compile - http_main.c:158: syntax error before `jmpbuffer' \n http_main.c:158: warning: data definition has no type or storage class
+ 
+   The setjmp manpage gives the following on includes and function prototypes:
+ #include <setjmp.h>
+ 
+ int sigsetjmp(sigjmp_buf env, int savemask)
+ void siglongjump(sigjmp_buf env, int val)
+ int setjmp(jmp_buf env)
+ void longjmp(jmp_buf env, int val)
+ int _setjmp(jmp_buf env)
+ void _longjmp(jmp_buf env, int val)
+ void longjmperror(void)
+ 
+ setjmp.h includes <machine/setjmp.h> and defines
+ 
+ #ifndef _ANSI_SOURCE
+ typedef long sigjmp_buf[_JBLEN+1];
+ #endif /* not ANSI */
+ typedef long jmp_buf[_JBLEN]
+ 
+ then includes <sys/cdefs.h> and goes on with the declarations.
+ 
+ -Chris.
+ 
+Comment-Added-By: dgaudet
+Comment-Added-When: Thu Sep 25 00:36:43 PDT 1997
+Comment-Added:
+This is almost certainly because it's not defining any platform
+for conf.h to choose from ... try adding -D__NetBSD__ to your
+EXTRA_CFLAGS and rebuilding.
+
+Dean
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Oct 24 18:54:58 PDT 1997
+State-Changed-Why:
+Fixed in 1.3b3.
+
+Dean
+>Unformatted:
+
+
+
+

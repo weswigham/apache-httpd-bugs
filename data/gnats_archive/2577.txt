@@ -1,0 +1,143 @@
+Received: (qmail 16620 invoked by uid 2012); 9 Jul 1998 15:15:09 -0000
+Message-Id: <19980709151509.16619.qmail@hyperreal.org>
+Date: 9 Jul 1998 15:15:09 -0000
+From: Steve Waltner <Steve.Waltner@symbios.com>
+Reply-To: Steve.Waltner@symbios.com
+To: apbugs@hyperreal.org
+Subject: Return error 403 instead of 500 due to ProxyBlock directive
+X-Send-Pr-Version: 3.2
+
+>Number:         2577
+>Category:       mod_proxy
+>Synopsis:       Return error 403 instead of 500 due to ProxyBlock directive
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jul  9 08:20:00 PDT 1998
+>Last-Modified:  Wed Apr 28 08:30:31 PDT 1999
+>Originator:     Steve.Waltner@symbios.com
+>Organization:
+>Release:        1.3.0
+>Environment:
+HP-UX 9.05, GCC 2.6.3
+
+HP-UX mpdgw1 A.09.05 A 9000/735 2003401120 two-user license
+>Description:
+   I would prefer to have a 403 error reported if the request URL matches one of
+the hosts listed in a ProxyBlock directive, since in essence it's an access
+issue, not a server error. This is the behavior that CERN's httpd used and it
+worked quite well for our situation.
+
+   I am using the ProxyBlock directive to keep people from using the proxy
+server to visit sites on the Intranet as well as porn sites on the Internet and
+would like to give the user a custom error document that explains why they got
+an error. This works fine, but this document is then returned when there are
+errors like hostname unknown, connection timeout/refused, which can confuse the
+user.
+
+   I have tested out the included patch on my system, and this makes Apache
+behave how I want it to, although there might be a more elegant way to code
+this.
+>How-To-Repeat:
+
+>Fix:
+*** proxy.old/proxy_connect.c   Wed May 27 16:56:04 1998
+--- proxy/proxy_connect.c       Thu Jul  9 08:29:55 1998
+***************
+*** 134,140 ****
+      for (i = 0; i < conf->noproxies->nelts; i++) {
+        if ((npent[i].name != NULL && strstr(host, npent[i].name) != NULL)
+            || destaddr.s_addr == npent[i].addr.s_addr || npent[i].name[0] == '*')
+!           return ap_proxyerror(r, "Connect to remote machine blocked");
+      }
+  
+      switch (port) {
+--- 134,140 ----
+      for (i = 0; i < conf->noproxies->nelts; i++) {
+        if ((npent[i].name != NULL && strstr(host, npent[i].name) != NULL)
+            || destaddr.s_addr == npent[i].addr.s_addr || npent[i].name[0] == '*')
+!           return ap_proxyblockerror(r, "Connect to remote machine blocked");
+      }
+  
+      switch (port) {
+*** proxy.old/proxy_ftp.c       Wed May 27 16:56:05 1998
+--- proxy/proxy_ftp.c   Thu Jul  9 08:30:18 1998
+***************
+*** 552,558 ****
+      for (i = 0; i < conf->noproxies->nelts; i++) {
+        if ((npent[i].name != NULL && strstr(host, npent[i].name) != NULL)
+            || destaddr.s_addr == npent[i].addr.s_addr || npent[i].name[0] == '*')
+!           return ap_proxyerror(r, "Connect to remote machine blocked");
+      }
+  
+      Explain2("FTP: connect to %s:%d", host, port);
+--- 552,558 ----
+      for (i = 0; i < conf->noproxies->nelts; i++) {
+        if ((npent[i].name != NULL && strstr(host, npent[i].name) != NULL)
+            || destaddr.s_addr == npent[i].addr.s_addr || npent[i].name[0] == '*')
+!           return ap_proxyblockerror(r, "Connect to remote machine blocked");
+      }
+  
+      Explain2("FTP: connect to %s:%d", host, port);
+*** proxy.old/proxy_http.c      Wed May 27 16:56:05 1998
+--- proxy/proxy_http.c  Thu Jul  9 08:30:27 1998
+***************
+*** 229,235 ****
+      for (i = 0; i < conf->noproxies->nelts; i++) {
+        if ((npent[i].name != NULL && strstr(desthost, npent[i].name) != NULL)
+            || destaddr.s_addr == npent[i].addr.s_addr || npent[i].name[0] == '*')
+!           return ap_proxyerror(r, "Connect to remote machine blocked");
+      }
+  
+      if (proxyhost != NULL) {
+--- 229,235 ----
+      for (i = 0; i < conf->noproxies->nelts; i++) {
+        if ((npent[i].name != NULL && strstr(desthost, npent[i].name) != NULL)
+            || destaddr.s_addr == npent[i].addr.s_addr || npent[i].name[0] == '*')
+!           return ap_proxyblockerror(r, "Connect to remote machine blocked");
+      }
+  
+      if (proxyhost != NULL) {
+*** proxy.old/proxy_util.c      Fri May 29 12:20:59 1998
+--- proxy/proxy_util.c  Thu Jul  9 08:32:21 1998
+***************
+*** 789,794 ****
+--- 789,806 ----
+      return HTTP_INTERNAL_SERVER_ERROR;
+  }
+  
++ int ap_proxyblockerror(request_rec *r, const char *message)
++ {
++     ap_table_setn(r->notes, "error-notes",
++                 ap_pstrcat(r->pool, 
++                            "The proxy server could not handle the request "
++                            "<EM><A HREF=\"", r->uri, "\">",
++                            r->method, "&nbsp;", r->uri, "</A></EM>.<P>\n"
++                            "Reason: <STRONG>", message, "</STRONG>", NULL));
++     r->status_line = "403 Proxy Error";
++     return HTTP_FORBIDDEN;
++ }
++ 
+  /*
+   * This routine returns its own error message
+   */
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: martin
+State-Changed-When: Wed Apr 28 08:30:29 PDT 1999
+State-Changed-Why:
+Sorry for the late reply. This has been solved in a
+more flexible way in recent apache releases already.
+(e.g., 1.3.6). Anyway, thanks for your bug report!
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,272 @@
+Received: (qmail 13046 invoked by uid 2012); 7 Jan 1998 06:48:52 -0000
+Message-Id: <19980107064852.13045.qmail@hyperreal.org>
+Date: 7 Jan 1998 06:48:52 -0000
+From: Jay Soffian <jay@cimedia.com>
+Reply-To: jay@cimedia.com
+To: apbugs@hyperreal.org
+Subject: support for case conversion added to mod_rewrite
+X-Send-Pr-Version: 3.2
+
+>Number:         1631
+>Category:       mod_rewrite
+>Synopsis:       support for case conversion added to mod_rewrite
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jan  6 22:50:01 PST 1998
+>Last-Modified:  Mon Feb 23 23:22:55 PST 1998
+>Originator:     jay@cimedia.com
+>Organization:
+>Release:        1.3b3
+>Environment:
+Linux redshift.cimedia.com 2.0.32 #3 Tue Dec 2 13:51:44 EST 1997 i686 unknown
+>Description:
+SEE PR1628 for the same patches against 1.2.4
+
+I've added an internal map type to mod_rewrite in order to support
+internal case conversion. I've included only toupper and tolower internal
+map types, but additional internal maps should be trivial to add. I did
+this because I needed to be able to rewrite part of a URL to lowercase
+and I was not happy with using the program map type as a solution.
+
+There are two sets of patches here. The first set is identical to my
+1.2.4 patches, but modified to work with 1.3b3.
+
+The second set is slightly more efficient and is probably the way I
+should have done things the first time. This set is not really designed
+to be expanded beyond 'toupper' and 'tolower', but I really couldn't
+think of any other internal mapping functions that might be needed.
+>How-To-Repeat:
+
+>Fix:
+Patch Set 1:
+
+--- mod_rewrite.h.orig  Tue Jan  6 19:43:22 1998
++++ mod_rewrite.h       Wed Jan  7 01:40:23 1998
+@@ -184,6 +184,7 @@
+ #define MAPTYPE_TXT                 1<<0
+ #define MAPTYPE_DBM                 1<<1
+ #define MAPTYPE_PRG                 1<<2
++#define MAPTYPE_INT                 1<<3
+ 
+ #define ENGINE_DISABLED             1<<0
+ #define ENGINE_ENABLED              1<<1
+@@ -392,6 +393,7 @@
+ static char *lookup_map_dbmfile(request_rec *r, char *file, char *key);
+ #endif
+ static char *lookup_map_program(request_rec *r, int fpin, int fpout, char *key);
++static char *lookup_map_internal(request_rec *r, char *file, char *key);
+ 
+     /* rewriting logfile support */
+ static void  open_rewritelog(server_rec *s, pool *p);
+--- mod_rewrite.c.orig  Tue Jan  6 19:33:58 1998
++++ mod_rewrite.c       Wed Jan  7 01:40:23 1998
+@@ -93,6 +93,7 @@
+ #include <time.h>
+ #include <signal.h>
+ #include <errno.h>
++#include <ctype.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ #ifdef WIN32
+@@ -455,6 +456,11 @@
+         new->datafile = a2+4;
+         new->checkfile = a2+4;
+     }
++    else if (strncmp(a2, "int:", 4) == 0) {
++        new->type      = MAPTYPE_INT;
++       new->datafile  = a2+4;
++       new->checkfile = NULL;
++    }
+     else {
+         new->type      = MAPTYPE_TXT;
+         new->datafile  = a2;
+@@ -467,7 +473,12 @@
+                        && (stat(new->checkfile, &st) == -1))
+         return pstrcat(cmd->pool, "RewriteMap: map file or program not found:",
+                        new->checkfile, NULL);
+-
++    if (new->checkfile && (sconf->state == ENGINE_ENABLED)
++                       && (new->type == MAPTYPE_INT) 
++                       && (strcmp(new->datafile, "tolower") != 0)
++                       && (strcmp(new->datafile, "toupper") != 0))
++        return pstrcat(cmd->pool, "RewriteMap: internal map not found:",
++                       new->datafile, NULL);
+     return NULL;
+ }
+ 
+@@ -2533,6 +2544,17 @@
+                                s->name, key);
+                 }
+             }
++            else if (s->type == MAPTYPE_INT) {
++               if ((value = lookup_map_internal(r, s->datafile, key)) != NULL) {
++                    rewritelog(r, 5, "map lookup OK: map=%s key=%s -> val=%s", 
++                              s->name, key, value);
++                    return value;
++                }
++                else {
++                    rewritelog(r, 5, "map lookup FAILED: map=%s key=%s", 
++                              s->name, key);
++                }
++           }
+         }
+     }
+     return NULL;
+@@ -2641,8 +2663,28 @@
+         return pstrdup(r->pool, buf);
+ }
+ 
++static char *lookup_map_internal(request_rec *r, char *file, char *key)
++{
++    char *value = NULL;
++    char buf[MAX_STRING_LEN];
++    char *cp;
++    int (*fn)(int);
+ 
++    /* ASSUMPTION: key is NULL terminated */
+ 
++    value = pstrdup(r->pool, key);
++    
++    if (strcmp(file,"tolower") == 0)    
++      fn = tolower;
++    else if (strcmp(file,"toupper") == 0)
++      fn = toupper;
++    else            /* shouldn't happen, we already verified map */
++      return NULL;  /* is valid in cmd_rewritemap()              */
++
++    for (cp=value; cp && *cp; cp++) *cp = (char)fn((int)*cp);
++    
++    return value;
++}
+ 
+ /*
+ ** +-------------------------------------------------------+
+
+
+
+Patch Set 2:
+
+--- mod_rewrite.h.orig  Tue Jan  6 19:43:22 1998
++++ mod_rewrite.h       Wed Jan  7 01:31:40 1998
+@@ -184,6 +184,7 @@
+ #define MAPTYPE_TXT                 1<<0
+ #define MAPTYPE_DBM                 1<<1
+ #define MAPTYPE_PRG                 1<<2
++#define MAPTYPE_INT                 1<<3
+ 
+ #define ENGINE_DISABLED             1<<0
+ #define ENGINE_ENABLED              1<<1
+@@ -227,6 +228,7 @@
+     char *name;                    /* the name of the map */
+     char *datafile;                /* filename for map data files */
+     char *checkfile;               /* filename to check for map existence */
++    int (*fn)(int);                /* function pointer for internal map types */
+     int   type;                    /* the type of the map */
+     int   fpin;                    /* in  filepointer for program maps */
+     int   fpout;                   /* out filepointer for program maps */
+@@ -392,6 +394,7 @@
+ static char *lookup_map_dbmfile(request_rec *r, char *file, char *key);
+ #endif
+ static char *lookup_map_program(request_rec *r, int fpin, int fpout, char *key);
++static char *lookup_map_internal(request_rec *r, int (*fn)(int), char *key);
+ 
+     /* rewriting logfile support */
+ static void  open_rewritelog(server_rec *s, pool *p);
+--- mod_rewrite.c.orig  Tue Jan  6 19:33:58 1998
++++ mod_rewrite.c       Wed Jan  7 01:31:04 1998
+@@ -93,6 +93,7 @@
+ #include <time.h>
+ #include <signal.h>
+ #include <errno.h>
++#include <ctype.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ #ifdef WIN32
+@@ -435,6 +436,7 @@
+     new = push_array(sconf->rewritemaps);
+ 
+     new->name = a1;
++    new->fn = NULL;
+     if (strncmp(a2, "txt:", 4) == 0) {
+         new->type      = MAPTYPE_TXT;
+         new->datafile  = a2+4;
+@@ -455,6 +457,18 @@
+         new->datafile = a2+4;
+         new->checkfile = a2+4;
+     }
++    else if (strncmp(a2, "int:", 4) == 0) {
++        new->type      = MAPTYPE_INT;
++       new->datafile  = NULL;
++       new->checkfile = NULL;
++       if (strcmp(a2+4, "tolower") == 0) 
++         new->fn = tolower;
++       else if (strcmp(a2+4, "toupper") == 0)
++         new->fn = toupper;
++       else if (sconf->state == ENGINE_ENABLED)
++         return pstrcat(cmd->pool, "RewriteMap: internal map not found:",
++                        a2+4, NULL);     
++    }
+     else {
+         new->type      = MAPTYPE_TXT;
+         new->datafile  = a2;
+@@ -2533,6 +2547,17 @@
+                                s->name, key);
+                 }
+             }
++            else if (s->type == MAPTYPE_INT) {
++               if ((value = lookup_map_internal(r, s->fn, key)) != NULL) {
++                    rewritelog(r, 5, "map lookup OK: map=%s key=%s -> val=%s", 
++                              s->name, key, value);
++                    return value;
++                }
++                else {
++                    rewritelog(r, 5, "map lookup FAILED: map=%s key=%s", 
++                              s->name, key);
++                }
++           }
+         }
+     }
+     return NULL;
+@@ -2641,8 +2666,16 @@
+         return pstrdup(r->pool, buf);
+ }
+ 
++static char *lookup_map_internal(request_rec *r, int (*fn)(int), char *key)
++{
++    char *value, *cp;
+ 
+-
++    /* ASSUMPTION: key is NULL terminated */
++    
++    for (cp = value = pstrdup(r->pool, key);  cp && *cp;  cp++)
++      *cp = (char)fn((int)*cp);
++    return value;
++}
+ 
+ /*
+ ** +-------------------------------------------------------+
+
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Feb 23 23:22:54 PST 1998
+State-Changed-Why:
+Ralf took your code and recoded part of it, and extended it a bit
+and put it into 1.3b6-dev.
+
+Thanks a bunch!
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

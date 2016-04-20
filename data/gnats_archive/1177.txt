@@ -1,0 +1,106 @@
+From apwww@hyperreal.org  Mon Sep 29 08:24:14 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id IAA25427;
+	Mon, 29 Sep 1997 08:24:14 -0700 (PDT)
+Message-Id: <199709291524.IAA25427@hyperreal.org>
+Date: Mon, 29 Sep 1997 08:24:14 -0700 (PDT)
+From: Gordon Lack <gml4410@ggr.co.uk>
+Reply-To: gml4410@ggr.co.uk
+To: apbugs@hyperreal.org
+Subject: Fix for a bug I reported earlier today (sorry, no reference number).
+X-Send-Pr-Version: 3.2
+
+>Number:         1177
+>Category:       mod_cgi
+>Synopsis:       Fix for a bug I reported earlier today (sorry, no reference number).
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Sep 29 08:30:02 1997
+>Last-Modified:  Mon Sep 29 13:42:41 PDT 1997
+>Originator:     gml4410@ggr.co.uk
+>Organization:
+>Release:        1.2.4 & 1.3a1
+>Environment:
+Any/All
+>Description:
+I submitted a bug-report earlier this afternoon, but it hasn't shown up yet.
+
+This is the fix for it....
+
+The code pasted into the "suggested fix" box seems to fix the problem.
+
+It should *replace* the code in scan_script_header_err in the util_script.c file
+between lines 325 and 349.
+
+The buf_start and buf_allow recalculations could be reworked to work on
+only that which was read this time around, but it doesn't seem worth
+complicating ths code - this is easier to read.
+>How-To-Repeat:
+
+>Fix:
+    hard_timeout ("read script header", r);
+     
+/* GML - Need to allow for continuation lines */
+         
+   while(1) {
+      char *buf_start;
+      int buf_allow;
+      int buf_so_far;
+      int testc;
+         
+      buf_start = w;
+      buf_allow = MAX_STRING_LEN - 1;
+  
+      while(1) {
+/* GML Need a moving buf_start & buf_allow here */
+         if (fgets(buf_start, buf_allow, f) == NULL) {
+            kill_timeout (r);
+            log_reason ("Premature end of script headers", r->filename, r);
+            return SERVER_ERROR;
+         }
+/* Delete terminal (CR?)LF */
+         p = strlen(w);
+         if (p > 0 && w[p-1] == '\n') {
+            if (p > 1 && w[p-2] == '\015') w[p-2] = '\0';
+            else w[p-1] = '\0';
+         }  
+/* Blank line is EOH *regardless* of char1 on next line */
+         if (w[0] == '\0') {
+            kill_timeout (r);
+            return OK;
+         }
+/* Allow for continuation headers. ie. is the next character LWS */
+         testc = fgetc(f);
+         if (testc != EOF)   
+            ungetc(testc, f);
+         if (testc == ' ' || testc == '\t') {
+/* It's a continuation line - move buf_* vars and get the next line */
+            buf_so_far = strlen(w);
+            buf_start = w + buf_so_far;
+            buf_allow = MAX_STRING_LEN - 1 - buf_so_far;  
+            continue;
+         }
+/* Not a continuation line, so exit loop */
+         break;
+      }
+/* GML End of continuation line handling. */
+
+        /* if we see a bogus header don't ignore it. Shout and scream */
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Mon Sep 29 13:42:41 PDT 1997
+State-Changed-Why:
+This has been attached to the original report, #1176.
+Release-Changed-From-To: 1.2.4 7 1.3a1-1.2.4 & 1.3a1
+Release-Changed-By: coar
+Release-Changed-When: Mon Sep 29 13:42:41 PDT 1997
+>Unformatted:
+
+

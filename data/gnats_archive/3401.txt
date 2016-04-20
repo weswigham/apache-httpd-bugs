@@ -1,0 +1,172 @@
+Received: (qmail 25060 invoked by uid 2012); 14 Nov 1998 03:39:22 -0000
+Message-Id: <19981114033922.25059.qmail@hyperreal.org>
+Date: 14 Nov 1998 03:39:22 -0000
+From: Frank Jas <frank.jas@pacweb.com>
+Reply-To: frank.jas@pacweb.com
+To: apbugs@hyperreal.org
+Subject: no shutdown() of client socket in ap_bclose()
+X-Send-Pr-Version: 3.2
+
+>Number:         3401
+>Category:       general
+>Synopsis:       no shutdown() of client socket in ap_bclose()
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Nov 13 19:40:01 PST 1998
+>Last-Modified:  Fri Dec 11 18:46:22 PST 1998
+>Originator:     frank.jas@pacweb.com
+>Organization:
+>Release:        1.3.3
+>Environment:
+NeXT, netbsd, with NO_LINGCLOSE
+>Description:
+Wouldn't it be better to shutdown() the socket before close()ing it?
+As it stands the client may not get a FIN, and hence not realize no
+more data was coming.  On many OSes a close() of a socket doesn't automatically terminate the connection.  If no Content-Length header
+was generated in the reply (if it ever is), then the browser may sit
+for a while.
+>How-To-Repeat:
+
+>Fix:
+Check for B_SOCKET flag and call shutdown(fd, 1 or 2) before calling
+ap_pclosef ()  in main/buff.c:1421.  I'm not sure whether that should be done
+with alarms blocked or not.  May instead want to write ap_pclosesocket()
+for the UNIX side which is basically ap_pclosef() with a shutdown().
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Fri Nov 13 20:25:56 PST 1998
+State-Changed-Why:
+Can you give exact examples of OSes where a close() doesn't
+close the TCP connection?  On any Unix system it should, and
+if it doesn't that system is quite broken.  It certainly
+should under NetBSD.
+
+Are you sure you aren't doing something else to cause the
+behaviour you are seeing?
+
+From: Frank Jas <frank@jrware.com>
+To: marc@apache.org
+Cc: frank@tallis.jrware.com
+Subject: Re: general/3401: no shutdown() of client socket in ap_bclose()
+Date: Fri, 20 Nov 1998 13:22:15 -0800 (PST)
+
+ Thanks for the quick reply, sorry about my delay in replying to you.
+ In general, I have observed TCP connections going into a TIME-WAIT state
+ on the NeXT operating system and at least upto Sunos 5.4 (i.e. Solaris 2.4)
+ if a socket was closed before a shutdown() was performed.
+ 
+ The behaviour I saw with Apache
+ was I would read from the connection to the server until EOF,
+ and under certain (seemingly unrelated) circumstances the
+ close() wouldn't terminate the connection properly.
+ Running in the debugger, I was able
+ to stop the behavior by calling shutdown() from the debugger
+ prompt just before the call to close() in ap_pclosef().
+ 
+ When I began programming with sockets I was surprised to observe
+ that close() without a shutdown() could leave the socket
+ in a TIME-WAIT state until it timed out on its own.  I also
+ noticed that terminating a process with an active TCP socket could
+ leave the socket in the same state.  You would think the kernel
+ would cleanup the socket table and do the proper handshaking to
+ close the connection, but that is not what I have observed.
+ Perhaps my perspective is a holdover from UNIX OSes of 5-10 years ago, where the
+ TIME-WAIT behavior was quite common, but Solaris 2.4 still
+ exhibits that behavior.
+ 
+ Whether shutdown() is required is not discussed in the 'man' pages,
+ nor in text's on UNIX network programming.
+ 
+ As far as Apache is concerned, since the NeXT platform is dead, changing
+ the source on that account is fairly pointless.  On the other hand,
+ since the BUFF structure appears to keep track of whether the 'fd'
+ is a socket or not, adding shutdown() before close() in that case
+ is possible and is not incorrect.  Unfortunately, ap_pclosef() works
+ with alarms blocked(), so simply adding a shutdown() in ap_bclose()
+ may not be possible.  Changing the call inside ap_bclose() to
+ ap_pclosesocket() in the case when it is a socket won't have any affect unless
+ closesocket() is also changed to include a shutdown() call.
+ 
+ In order to make the change, you could move the #ifdef on buff.c, line 1405
+ down to between 1414 and 1415, so non WIN32 platforms would
+ also call ap_pclosesocket(), and then reimplement closesocket() 
+ as follows:
+ 
+ src/include/ap_config.h: 930
+ 
+ #define closesocket(s)		(shutdown (s, 2), close (s))
+ 
+ This way, you would be sure the other side of the connection wouldn't
+ go into TIME-WAIT, rather than relying on the sometimes unpredicatable
+ behavior UNIX OSes exhibit in this regard.
+ 
+ No reply is necessary, and thanks for the effort in maintaining/improving
+ this software.
+ 
+ Frank Jas
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Frank Jas <frank@jrware.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: general/3401: no shutdown() of client socket in ap_bclose()
+Date: Fri, 20 Nov 1998 14:07:11 -0800 (PST)
+
+ On Fri, 20 Nov 1998, Frank Jas wrote:
+ 
+ > Thanks for the quick reply, sorry about my delay in replying to you.
+ > In general, I have observed TCP connections going into a TIME-WAIT state
+ > on the NeXT operating system and at least upto Sunos 5.4 (i.e. Solaris 2.4)
+ > if a socket was closed before a shutdown() was performed.
+ 
+ TIME_WAIT is a completely normal state for a closed connection to go into
+ for a few minutes after it is closed and there is nothing at all wrong
+ with it.
+ 
+ > The behaviour I saw with Apache was I would read from the connection
+ > to the server until EOF, and under certain (seemingly unrelated)
+ > circumstances the close() wouldn't terminate the connection properly.
+ > Running in the debugger, I was able to stop the behavior by calling
+ > shutdown() from the debugger prompt just before the call to close() in
+ > ap_pclosef().
+ 
+ What do you mean by "wouldn't terminate the connection properly"?
+ 
+ > When I began programming with sockets I was surprised to observe
+ > that close() without a shutdown() could leave the socket
+ > in a TIME-WAIT state until it timed out on its own.  I also
+ 
+ That is correct behaviour and there is nothing wrong with it.
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: fielding
+State-Changed-When: Fri Dec 11 18:46:22 PST 1998
+State-Changed-Why:
+
+What you describe is normal behavior according to both the
+TCP specifications and most implementations.  TIME_WAIT is
+the state of a socket after it has been closed and the FIN
+acknowledgement has been received from the client. Calling
+shutdown before close will not have any effect, unless the
+implementation of shutdown is itself broken and sends a
+RST instead of a FIN to the client.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

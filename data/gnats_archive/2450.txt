@@ -1,0 +1,123 @@
+Received: (qmail 5101 invoked by uid 2012); 16 Jun 1998 01:59:37 -0000
+Message-Id: <19980616015937.5100.qmail@hyperreal.org>
+Date: 16 Jun 1998 01:59:37 -0000
+From: James Lick <jlick@drivel.com>
+Reply-To: jlick@drivel.com
+To: apbugs@hyperreal.org
+Subject: BUGID#2366 Seen on Solaris 2.5.1 also
+X-Send-Pr-Version: 3.2
+
+>Number:         2450
+>Category:       mod_log-any
+>Synopsis:       BUGID#2366 Seen on Solaris 2.5.1 also
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun 15 19:00:01 PDT 1998
+>Last-Modified:  Mon Jun 15 19:32:19 PDT 1998
+>Originator:     jlick@drivel.com
+>Organization:
+>Release:        1.3.0
+>Environment:
+uname -a: SunOS tcp.com 5.5.1 Generic_103640-14 sun4m sparc SUNW,SPARCstation-10
+Compiler: cc: WorkShop Compilers 4.2 30 Oct 1996 C 4.2
+BIND: 8.1.1
+>Description:
+Logging of hostnames and IP addresses often truncates the hostname or the
+IP address to the string up until the first dot.  Subsequent hits from
+the same client usually results in the full hostname and/or IP address being
+logged.  This also affects CGI variables REMOTE_HOST and REMOTE_ADDRESS, so
+it isn't strictly a logging bug.  This behavior is seen approximately 15-20%
+of the first hit from a particular client.  It is rarely seen on subsequent
+hits from the same client.  This behavior was not seen on any Apache of the
+1.2.x series on the same hardware/compiler/etc.
+
+I don't believe it is a BIND problem as the IP address can also get truncated,
+and the IP address is known directly by Apache.  A WAG is that the bug is in
+mod_usertrack since it uses the address up to the first dot in generating the
+cookie.
+
+Here are some log examples showing the problem (LogFormat is %h %l %u %t 
+\"%r\" %s %b \"%{User-agent}i\" %{Referer}i %{cookie}n):
+
+This is from virtual host http://justagirl.com/
+
+With HostNameLookups double or on:
+saturn5 - - [15/Jun/1998:18:03:16 -0700] "GET / HTTP/1.0" 200 6051 "Mozilla/4.05
+ [en] (X11; U; SunOS 5.7 sun4u)" - saturn56753897958994933
+saturn5.sun.com - - [15/Jun/1998:18:03:16 -0700] "GET /images/xfiles.jpg HTTP/1.
+0" 200 4641 "Mozilla/4.05 [en] (X11; U; SunOS 5.7 sun4u)" http://justagirl.com/
+saturn56753897958994933
+...
+r230h234 - - [15/Jun/1998:18:08:57 -0700] "GET /xfiles/ HTTP/1.1" 200 20262 "Moz
+illa/4.0 (compatible; MSIE 4.01; Windows 95)" http://netfind.aol.com/search.gw?c
+=web&lk=aolienew_us&search=hemeroid r230h234713189795933330
+r230h234 - - [15/Jun/1998:18:09:00 -0700] "GET / HTTP/1.1" 200 6071 "Mozilla/4.0
+ (compatible; MSIE 4.01; Windows 95)" - r230h234713189795933330
+...
+screen2r - - [15/Jun/1998:18:14:44 -0700] "GET / HTTP/1.0" 200 6051 "Mozilla/4.0
+2 [en] (X11; I; SunOS 5.5.1 sun4u)" - screen2r8111897959683249
+screen2r.baynetworks.com - - [15/Jun/1998:18:14:44 -0700] "GET /images/xfiles.jp
+g HTTP/1.0" 200 4641 "Mozilla/4.02 [en] (X11; I; SunOS 5.5.1 sun4u)" http://just
+agirl.com/ screen2r8111897959683249
+...
+203 - - [15/Jun/1998:18:36:56 -0700] "GET / HTTP/1.0" 200 6051 "Mozilla/4.05 [en
+] (Win95; I)" http://www.tcp.com/ 2037638897961015325
+203.230.227.93 - - [15/Jun/1998:18:37:27 -0700] "GET /xfiles/ HTTP/1.0" 200 2022
+7 "Mozilla/4.05 [en] (Win95; I)" http://justagirl.com/ 2037638897961015325
+
+Note that in all the above cases the second hit (with the exception of r230h234)
+resulted in the full hostname or IP address being logged.
+
+with HostNameLookups off:
+
+128 - - [15/Jun/1998:16:12:34 -0700] "GET /tahoe/ HTTP/1.0" 200 2168 "Mozilla/3.
+02 (Macintosh; I; PPC)" http://av.yahoo.com/bin/query?p=%22Lake+Tahoe+Pictures%2
+2&hc=0&hs=0 12824852897952353606
+128.32.169.54 - - [15/Jun/1998:16:12:36 -0700] "GET /tahoe/tahoe1s.jpg HTTP/1.0"
+ 200 2545 "Mozilla/3.02 (Macintosh; I; PPC)" http://justagirl.com/tahoe/ 1282485
+2897952353606
+...
+208 - - [15/Jun/1998:16:40:10 -0700] "GET /top5/brad/ HTTP/1.0" 200 4517 "Mozill
+a/3.01 (Win95; I)" http://av.yahoo.com/bin/query?p=%22ambrose+chapel%22&hc=0&hs=
+0 20821902897954009491
+208.140.96.140 - - [15/Jun/1998:16:40:14 -0700] "GET /top5/brad/bradtop.jpg HTTP
+/1.0" 200 7681 "Mozilla/3.01 (Win95; I)" http://justagirl.com/top5/brad/ 2082190
+2897954009491
+...
+152 - - [15/Jun/1998:17:01:46 -0700] "GET /top5/matthew/ HTTP/1.0" 200 3570 "Moz
+illa/2.0 (compatible; MSIE 3.0; AOL 3.0; Windows 95)" http://netfind.aol.com/sea
+rch.gw?search=Matthew+McConaughey&look=excite_netfind_us&sorig=rpage&nrm=n&pri=o
+n&xls=b&Search=Find%21 15221521897955305843
+152.163.206.219 - - [15/Jun/1998:17:01:51 -0700] "GET /top5/matthew/matthewhead.
+jpg HTTP/1.0" 200 5054 "Mozilla/2.0 (compatible; MSIE 3.0; AOL 3.0; Windows 95)"
+ http://justagirl.com/top5/matthew/ 15221521897955305843
+>How-To-Repeat:
+Since this is an intermittent problem, you may or may not see a corrupted
+REMOTE_HOST or REMOTE_USER field the first time you visit:
+
+http://www.tcp.com/cgi-bin/mess
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Mon Jun 15 19:32:18 PDT 1998
+State-Changed-Why:
+As the notes for PR2366 say, there is a patch for this and it
+has been committed to the tree.  Please use the patch
+from pr2366 if you need one...
+
+Thanks.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

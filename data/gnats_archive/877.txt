@@ -1,0 +1,72 @@
+From nobody@hyperreal.org  Thu Jul 17 09:38:49 1997
+Received: (from nobody@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id JAA01210;
+	Thu, 17 Jul 1997 09:38:49 -0700 (PDT)
+Message-Id: <199707171638.JAA01210@hyperreal.org>
+Date: Thu, 17 Jul 1997 09:38:49 -0700 (PDT)
+From: David MacKenzie <djm@va.pubnix.com>
+Reply-To: djm@va.pubnix.com
+To: apbugs@hyperreal.org
+Subject: apache dies if name servers become unreachable
+X-Send-Pr-Version: 3.2
+
+>Number:         877
+>Category:       general
+>Synopsis:       apache dies if name servers become unreachable
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jul 17 09:40:01 1997
+>Last-Modified:  Thu Jul 17 15:21:58 PDT 1997
+>Originator:     djm@va.pubnix.com
+>Organization:
+>Release:        1.2.1
+>Environment:
+Doesn't matter, but we're using BSDI BSD/OS 2.1.
+>Description:
+In apache 1.2.0, code was added to http_main.c:default_server_hostnames()
+that dies if it can't resolve ServerName.  It also uses the value of
+gethostbyname on that name to initialize the list of virtual addresses
+for the main server.  We run around 1000 apache servers for various customers, many of whom have DNS that we don't control.
+Some of them change their DNS to point to servers other than ours for awhile, or their name servers become unreachable periodically (like today, when the root name servers became corrupted).
+We specify BindAddress to force the IP address; we don't want ServerName used for that, because it's unreliable.  And apache should not die when there's a name server problem!  We don't want to set ServerName to an IP address because that would make redirects and imagemaps ugly for users of all our servers.
+>How-To-Repeat:
+In httpd.conf, put
+ServerName foo.xyz
+BindAddress a-valid-ipaddr-on-the-machine
+>Fix:
+If BindAddress is given, ServerName should be used just textually,
+and not resolved
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Jul 17 15:10:39 PDT 1997
+State-Changed-Why:
+Please read the htdocs/manual/dns-caveats.html file that comes
+with the server.  Apache absolutely requires the name of the
+server to issue redirects.  You have many options to workaround
+your particular problem.  I suggest that you do something like
+this:
+
+ServerName localhost
+BindAddress a.b.c.d
+<VirtualHost _default_>
+ServerName www.foobar.com
+...
+</VirtualHost>
+Comment-Added-By: dgaudet
+Comment-Added-When: Thu Jul 17 15:21:58 PDT 1997
+Comment-Added:
+Oh yeah, I should add that the server also needs the ip address
+of the "main server" to be able to figure out when to do HTTP/1.1
+virtual host (non-ip) support.  The implementation is kind of
+lame.  The "ServerName localhost" essentially disables this.
+
+Dean
+>Unformatted:
+
+

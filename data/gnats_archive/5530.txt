@@ -1,0 +1,223 @@
+Received: (qmail 15902 invoked by uid 2012); 3 Jan 2000 16:48:04 -0000
+Message-Id: <20000103164803.15901.qmail@hyperreal.org>
+Date: 3 Jan 2000 16:48:03 -0000
+From: Walter Kurtz <kurtz@ymail.de>
+Reply-To: kurtz@ymail.de
+To: apbugs@hyperreal.org
+Subject: Problems while reading data from "multipart/form-data" HTML-forms
+X-Send-Pr-Version: 3.2
+
+>Number:         5530
+>Category:       mod_jserv
+>Synopsis:       Problems while reading data from "multipart/form-data" HTML-forms
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    jserv
+>State:          feedback
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jan  3 08:50:00 PST 2000
+>Last-Modified:  Mon Jan  3 09:44:11 PST 2000
+>Originator:     kurtz@ymail.de
+>Organization:
+>Release:        Apache 1.39 / Jserv1.1b3
+>Environment:
+Linux glibc2.0
+Blackdown jdk 1.1.7
+>Description:
+With jserv1.1b3 I can't read data from a "multipart/form-data" HTML-Form.
+The function I use is working very well with jserv1.0. Please see the code
+below: The method returns a HashTable with the data of the HTML-Form.
+ 
+>How-To-Repeat:
+/**
+ *  This method parses the input, and
+ *  returns a hashtable of either String[] values (for parameters)
+ *  or Hashtable values (for files uploaded).  The values of the entries
+ *  in the hashtable are name, filename, Content-Type, and Contents.
+ *  Note that uploads should be capped in size by the calling method, since 
+ *  otherwise a denial of service attack on server memory becomes trivial.
+ */
+   public Hashtable parseMulti(String boundary, ServletInputStream in, FreemailPage p) throws IOException {
+   		try {		
+	       int buffSize = 1024*1024;
+	       Hashtable hash = new Hashtable();
+	       int result;
+	       String line;
+	       String lowerline;
+	       String boundaryStr = "--"+boundary;
+	       ByteArrayOutputStream content;
+	       String filename;
+	       String contentType;
+	       String name;
+	       String value;
+	
+	       byte[] b = new byte[buffSize];
+	
+	       result = in.readLine(b,0,b.length);
+	       // failure.
+	       if (result == -1) 
+	           return null;
+	           //throw new IllegalArgumentException("InputStream truncated");
+	       line = new String(b,0, result,new String("iso-8859-1"));
+	       // failure.
+	       if (!line.startsWith(boundaryStr))
+	       		return null; 
+	          //throw new IllegalArgumentException("MIME boundary missing: "+line);
+	       while (true) {
+	           // Some initialization
+	           filename = null;
+	           contentType = null;
+	           content = new ByteArrayOutputStream();
+	           name = null;
+	           // get next line (should be content disposition)
+	           result = in.readLine(b,0, b.length);
+	           if (result == -1) return hash;
+	           line = new String(b,0,result-2, new String("iso-8859-1"));
+	           lowerline = line.toLowerCase();
+	           if (!lowerline.startsWith("content-disposition"))
+	               // don't know what to do, so we'll keep looking...
+	               continue;
+	           // determine what the disposition is
+	           int ind = lowerline.indexOf("content-disposition: ");
+	           int ind2 = lowerline.indexOf(";");
+	           if (ind == -1 || ind2 == -1) 
+	               throw new IllegalArgumentException("Content Disposition line misformatted: "+line);
+	           String disposition = lowerline.substring(ind+21,ind2);
+	           if (!disposition.equals("form-data"))
+	               throw new IllegalArgumentException("Content Disposition of "+disposition+" is not supported");
+	           // determine what the name is
+	           int ind3 = lowerline.indexOf("name=\"",ind2);
+	           int ind4 = lowerline.indexOf("\"",ind3+7);
+	           if (ind3 == -1 || ind4 == -1) 
+	               throw new IllegalArgumentException("Content Disposition line misformatted: "+line);
+	           name = line.substring(ind3+6,ind4);
+	           // determine filename, if any
+	           int ind5 = lowerline.indexOf("filename=\"",ind4+2);
+	           int ind6 = lowerline.indexOf("\"",ind5+10);
+	                 if (ind5 != -1 && ind6 != -1) {
+	                     filename = line.substring(ind5+10,ind6);
+	           }
+	
+	           // Whew!  We now move onto the next line, which
+	           // will either be blank, or Content-Type, followed by blank.
+	           result = in.readLine(b,0,b.length);
+	           if (result == -1) return hash;
+	           line = new String(b,0,result-2, new String("iso-8859-1")); // -2 to remove \r\n
+	           lowerline = line.toLowerCase();
+	           if (lowerline.startsWith("content-type")) {
+	               int ind7 = lowerline.indexOf(" ");
+	               if (ind7 == -1) 
+	                         throw new IllegalArgumentException("Content-Type line misformatted: "+line);
+	               contentType = lowerline.substring(ind7+1);
+	               //  read blank header line
+	               result = in.readLine(b,0,b.length);
+	               if (result == -1) return hash;
+	               line = new String(b,0,result-2, new String("iso-8859-1")); // -2 to remove \r\n
+	               if (line.length() != 0) {
+	                         throw new IllegalArgumentException("Unexpected line in MIMEpart header: "+line);
+	               }
+	           } else if (line.length() != 0) {
+	               throw new IllegalArgumentException("Misformatted line following disposition: "+line);
+	           }
+	            
+	           //read content, implement readahead by one line
+	           boolean readingContent = true;
+	           boolean firstLine = true;
+	           byte[] buffbytes = new byte[buffSize];
+	           int buffnum = 0;
+	
+	           result = in.readLine(b,0,b.length);
+	           if (result == -1) return hash;
+	           line = new String(b,0,result, new String("iso-8859-1")); 
+	           if (!line.startsWith(boundaryStr)) {
+	               System.arraycopy(b,0,buffbytes,0,result);
+	               buffnum = result;
+	                     result = in.readLine(b,0,b.length);
+	                     if (result == -1) return hash;
+	                     line = new String(b,0,result, new String("iso-8859-1")); 
+	               firstLine = false;
+	               if (line.startsWith(boundaryStr)) {
+	                 readingContent = false;
+	               }
+	           } else {
+	               readingContent = false;
+	           }
+	
+	           while (readingContent) {
+	               content.write(buffbytes,0,buffnum);
+	               System.arraycopy(b,0,buffbytes,0,result);
+	               buffnum = result;
+	               result = in.readLine(b,0,b.length);
+	               if (result == -1) return hash;
+	               line = new String(b,0,result, new String("iso-8859-1")); 
+	               if (line.startsWith(boundaryStr)) readingContent = false;
+	           }
+	           if (!firstLine) {
+	               // -2 to trim \r\n
+	               if (buffnum>2)
+	                 content.write(buffbytes,0,buffnum-2); 
+	           }
+	
+	
+	           //now set appropriate variable, populate hashtable
+	           if (filename == null) {
+	              if (hash.get(name) == null) {
+	                String[] values = new String[1];
+	                values[0] = content.toString();
+	                hash.put(name,values);
+	              } else {
+	                Object prevobj = hash.get(name);
+	                if (prevobj instanceof String[]) {
+	                    String[] prev = (String[])prevobj;
+	                    String[] newStr = new String[prev.length+1];
+	                    System.arraycopy(prev,0,newStr,0,prev.length);
+	                    newStr[prev.length] = content.toString();
+	                    hash.put(name,newStr);
+	                } else {
+	                    //now what? I think this breaks the standard.
+	                    throw new IllegalArgumentException("failure in parseMulti hashtable building code");
+	                }
+	              }
+	            } else {
+	                // Yes, we don't return Hashtable[] for multiple files of same name.  AFAIK, that's not allowed.
+	                Hashtable filehash = new Hashtable(4);
+	                filehash.put("name",name);
+	                filehash.put("filename",filename);
+	                if (contentType == null) contentType = "application/octet-stream";
+	                filehash.put("content-type",contentType);
+	                filehash.put("content",content.toByteArray());
+	                hash.put(name,filehash);
+	           }
+	       }
+        }
+        catch (Exception ex) {
+			return null;
+        }
+	}
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: jon@clearink.com
+State-Changed-When: Mon Jan  3 09:44:10 PST 2000
+State-Changed-Why:
+i believe that this has already been fixed. please try the latest CVS and let me know if it works for you. you can get snapshots from here:
+
+http://www.working-dogs.com/daily/
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

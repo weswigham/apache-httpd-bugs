@@ -1,0 +1,152 @@
+Received: (qmail 10360 invoked by uid 2012); 22 Sep 1999 21:22:13 -0000
+Message-Id: <19990922212213.10359.qmail@hyperreal.org>
+Date: 22 Sep 1999 21:22:13 -0000
+From: Gary Bickford <garyb@fxt.com>
+Reply-To: garyb@fxt.com
+To: apbugs@hyperreal.org
+Subject: incompatible type in indirect function reference - compile fails for http_main.c
+X-Send-Pr-Version: 3.2
+
+>Number:         5053
+>Category:       general
+>Synopsis:       incompatible type in indirect function reference - compile fails for http_main.c
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Sep 22 14:30:02 PDT 1999
+>Closed-Date:    
+>Last-Modified:  Mon Feb 28 13:20:00 PST 2000
+>Originator:     garyb@fxt.com
+>Release:        1.3.9
+>Organization:
+apache
+>Environment:
+NeXT Mach 3.3: Mon Oct 24 13:56:37 PDT 1994; root(rcbuilder):mk-171.9.obj~2/RC_m68k/RELEASE_M68K
+gcc 2.8.1, make 3.77, associated libraries installed
+>Description:
+using 'gcc -c  -I../os/unix -I../include  -O -DNEXT -DUSE_HSREGEX -DUSE_EXPAT -I../lib/expat-lite  http_main.c
+I get some warnings in the 2.8.1/include/bsd/netinet/ip.h, then I get fatal errors like this:
+http_main.c: In function `ap_unregister_other_child':
+http_main.c:1504: incompatible type for argument 3 of indirect function call
+Same error at lines 1560, 2366, 2369, 2375
+>How-To-Repeat:
+Same error on 1.3.6, haven't tried elsewhere.
+>Fix:
+Outside my competence, but can the correct argument be cast to the desired type?  I tried tracking this down but I'm not up on my C/C++ these days.
+>Release-Note:
+>Audit-Trail:
+
+From: "Ralf S. Engelschall" <rse@engelschall.com>
+To: apbugs@apache.org
+Cc:  
+Subject: Re: general/5053: incompatible type in indirect function reference - compile fails for http_main.c
+Date: Sat, 5 Feb 2000 13:02:04 +0100
+
+ In article <19990922212213.10359.qmail@hyperreal.org> you wrote:
+ > 
+ >>Synopsis:       incompatible type in indirect function reference - compile fails for http_main.c
+ > [..]
+ > using 'gcc -c  -I../os/unix -I../include  -O -DNEXT -DUSE_HSREGEX -DUSE_EXPAT -I../lib/expat-lite  http_main.c
+ > I get some warnings in the 2.8.1/include/bsd/netinet/ip.h, then I get fatal errors like this:
+ > http_main.c: In function `ap_unregister_other_child':
+ > http_main.c:1504: incompatible type for argument 3 of indirect function call
+ > Same error at lines 1560, 2366, 2369, 2375
+ >>How-To-Repeat:
+ > Same error on 1.3.6, haven't tried elsewhere.
+ >>Fix:
+ > Outside my competence, but can the correct argument be cast to the desired type?  I tried tracking this down but I'm not up on my C/C++ these days.
+ 
+ I've tried to fix it by casting the -1 values to ap_wait_t for Apache 1.3.12.
+ Thanks for your feedback.
+                                        Ralf S. Engelschall
+                                        rse@engelschall.com
+                                        www.engelschall.com
+
+From: Dave Dykstra <dwd@bell-labs.com>
+To: apbugs@apache.org
+Cc: garyb@fxt.com, rse@engelschall.com
+Subject: Re: general/5053: incompatible type in indirect function reference - compile fails for http_main.c
+Date: Mon, 28 Feb 2000 13:42:20 -0600
+
+ This is in the src/CHANGES file for apache 1.3.12:
+ 
+   *) Cast integer ap_wait_t values in http_main.c to get rid of compile
+      time errors on platforms where "ap_wait_t" is not defined as "int"
+      (currently only the NEXT and UTS21 platforms).
+      [Gary Bickford <garyb@fxt.com>, Ralf S. Engelschall] PR#5053
+ 
+ I suspect I'm the only one still using UTS21, but this change broke there.
+ The compiler complained about not being able to cast to a structure.
+ It seems strange to cast an integer to a structure, but on the other hand
+ it must be doing it implicitly without the cast (with a warning, not an
+ error).  It is a union on UTS 2.1, but it is only an integer in size.  Is
+ the fix working on NEXT, Gary?
+ 
+ It looks to me like the status parameter isn't used by the "maintenance"
+ function anway.  Should we just get rid of it?
+ 
+ - Dave Dykstra
+
+From: Gary Bickford <garyb@fxt.com>
+To: Dave Dykstra <dwd@bell-labs.com>
+Cc: apbugs@apache.org, rse@engelschall.com
+Subject: Re: general/5053: incompatible type in indirect function reference - 
+ compile fails for http_main.c
+Date: Mon, 28 Feb 2000 13:10:25 -0800
+
+ Sorry,
+ I got caught up in a big project for a startup, haven't had time to sleep
+ since December (I'm weeks behind schedule now...)  I don't know when I'll
+ have time to look.  I appreciate your work on this, I'm sorry I couldn't hold
+ up my end of the bargain.  I defer to your wisdom on what to do.
+ 
+ G
+ 
+ Dave Dykstra wrote:
+ 
+ > This is in the src/CHANGES file for apache 1.3.12:
+ >
+ >   *) Cast integer ap_wait_t values in http_main.c to get rid of compile
+ >      time errors on platforms where "ap_wait_t" is not defined as "int"
+ >      (currently only the NEXT and UTS21 platforms).
+ >      [Gary Bickford <garyb@fxt.com>, Ralf S. Engelschall] PR#5053
+ >
+ > I suspect I'm the only one still using UTS21, but this change broke there.
+ > The compiler complained about not being able to cast to a structure.
+ > It seems strange to cast an integer to a structure, but on the other hand
+ > it must be doing it implicitly without the cast (with a warning, not an
+ > error).  It is a union on UTS 2.1, but it is only an integer in size.  Is
+ > the fix working on NEXT, Gary?
+ >
+ > It looks to me like the status parameter isn't used by the "maintenance"
+ > function anway.  Should we just get rid of it?
+ >
+ > - Dave Dykstra
+ 
+ --
+                 "Cyber is cyber, life is life."
+ Gary E Bickford         mailto:garyb@fxt.com
+ FXT Corporation         http://www.fxt.com/     tel:541-383-2749
+ mail:PO BOX 1808, SISTERS OR 97759      ship:66265 JERICHO ROAD, BEND OR 97701
+ 
+ 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

@@ -1,0 +1,141 @@
+From nobody@hyperreal.com  Wed Jun 25 05:44:16 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id FAA24964;
+	Wed, 25 Jun 1997 05:44:16 -0700 (PDT)
+Message-Id: <199706251244.FAA24964@hyperreal.com>
+Date: Wed, 25 Jun 1997 05:44:16 -0700 (PDT)
+From: George Carrette <george_carrette@iacnet.com>
+Reply-To: george_carrette@iacnet.com
+To: apbugs@hyperreal.com
+Subject: RLimitMEM, RLimitCPU, hard limit ignored when userid is not 0
+X-Send-Pr-Version: 3.2
+
+>Number:         783
+>Category:       config
+>Synopsis:       RLimitMEM, RLimitCPU, hard limit ignored when userid is not 0
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jun 25 05:50:01 1997
+>Last-Modified:  Thu Jun 10 04:58:49 PDT 1999
+>Originator:     george_carrette@iacnet.com
+>Organization:
+>Release:        1.2
+>Environment:
+Apache 1.2 as released.
+SunOS sandnews 5.5 Generic sun4m sparc SUNW,SPARCstation-20
+gcc version 2.7.2.1
+
+>Description:
+If you are not running with userid 0 then a config option like this:
+RLimitCPU 10 20
+will give an error message:
+Must be uid 0 to raise maximum
+
+The logic used to generate that message is in error, because I am only trying
+to lower the hard cpu limit to 20, not raise it. Non-root users are allowed
+to do that.
+ 
+>How-To-Repeat:
+Just use RLimitCPU 10 20 with httpd started non-root.
+>Fix:
+Yes, here is the fix to the procedure set_rlimit in the file http_core.c
+which I have applied at my site. 
+
+    /* if we aren't running as root, cannot increase max */
+    if (geteuid()) {
+        limit->rlim_cur = cur;
+        if (max && limit->rlim_max && (max > limit->rlim_max))
+            log_printf(cmd->server, "Must be uid 0 to raise maximum %s",
+                      cmd->cmd->name);
+        else if (max)
+          limit->rlim_max = max;
+    }
+    else {
+        if (cur)
+            limit->rlim_cur = cur;
+        if (max)
+            limit->rlim_max = max;
+    }
+
+%0
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Subject: Re: config/783: RLimitMEM, RLimitCPU, hard limit ignored when userid is not 0 (fwd)
+Date: Sat, 16 Aug 1997 13:41:26 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Wed, 25 Jun 1997 14:33:04 +0000
+ From: George Carrette <George_Carrette@iacnet.com>
+ To: Dean Gaudet <dgaudet@iacnet.com>
+ Cc: George Carrette <george_carrette@iacnet.com>,
+     apache-bugdb <apache-bugdb@iacnet.com>
+ Subject: Re: config/783: RLimitMEM, RLimitCPU, hard limit ignored when userid is not 0
+ 
+ I think the reason the check for userid == 0 was originally in the code
+ was that setrlimit will fail completely, failing even to set the soft limit,
+ if you call it with a structure which will attempt to set the hard limit 
+ upward.
+ 
+ So whoever put the check in was trying to be nice and at least allow some
+ limit to be set.
+ 
+ That is why I left the check in, and simply made the algorithm consistent
+ with the comment and error message.
+ 
+ By the way, I've got another bug fix, not yet read, to RLimitMEM and RLimitCPU.
+ 
+ The bug is that these are only in effect for cgi scripts and server side 
+ include exec's.
+ But I've been using the Perl Module stuff, with people who had buggy perl code.
+ 
+ So I've made a modification that allows you to configure RLimit's inside of 
+ child_main.
+ 
+ It is really essential for general use of Perl Module when debugging Perl code
+ that behaves differently in the slightly different environment.
+ 
+ Anyway, I've got to clean that stuff up first.
+ 
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Subject: Re: config/783: RLimitMEM, RLimitCPU, hard limit ignored when userid is not 0 (fwd)
+Date: Sat, 16 Aug 1997 13:56:38 -0600 (MDT)
+
+ 
+ ---------- Forwarded message ----------
+ Date: Wed, 25 Jun 1997 11:07:26 -0700 (PDT)
+ From: Dean Gaudet <dgaudet@arctic.org>
+ To: George Carrette <george_carrette@iacnet.com>
+ Cc: apache-bugdb@apache.org
+ Subject: Re: config/783: RLimitMEM, RLimitCPU, hard limit ignored when userid is not 0
+ 
+ There shouldn't even be a need to test the uid.  The setrlimit call should
+ be made and a getrlimit call can be made to test if it was successful.
+ Non-root users can also raise their soft limits up to their hard limit.
+ 
+ Dean
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: jim
+State-Changed-When: Thu Jun 10 04:58:49 PDT 1999
+State-Changed-Why:
+Very old PR on a very old version of Apache
+>Unformatted:
+
+
+
+

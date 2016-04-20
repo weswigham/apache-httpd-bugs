@@ -1,0 +1,75 @@
+From nobody@hyperreal.com  Tue Apr 22 06:39:49 1997
+Received: (from nobody@localhost)
+          by hyperreal.com (8.8.4/8.8.4)
+	  id GAA23485; Tue, 22 Apr 1997 06:39:49 -0700 (PDT)
+Message-Id: <199704221339.GAA23485@hyperreal.com>
+Date: Tue, 22 Apr 1997 06:39:49 -0700 (PDT)
+From: Sebastian Andersson <sa@hogia.net>
+Reply-To: sa@hogia.net
+To: apbugs@hyperreal.com
+Subject: Server can not log to NFS mounted filesystem.
+X-Send-Pr-Version: 3.2
+
+>Number:         452
+>Category:       os-linux
+>Synopsis:       Server can not log to NFS mounted filesystem.
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Apr 22 06:40:01 1997
+>Last-Modified:  Tue Apr 22 11:32:50 PDT 1997
+>Originator:     sa@hogia.net
+>Organization:
+>Release:        1.1.3
+>Environment:
+Linux 2.0.30 as NFS client.
+>Description:
+If the server is started as root and later runs as another user when the logging
+doesn't work and possibly the scoreboard file doesn't work as it should. The problem
+is because root creates the logfiles and when the server changes to a new user
+that tries to write to the open files the linux kernel sends the new uid/gid to
+the NFS server and that user may not write to the logfiles.
+>How-To-Repeat:
+
+>Fix:
+The author of the NFS client code for linux claimed that the NFS standard
+supported this "bug" and if that is the case when the forked servers will
+have to log to a pipe to a process that run as root which in turn writes to
+logfiles.
+A temporary fix is to use CustomLog |"cat >file" format but this doesn't work
+very well when you've got 100 Virtual hosts with their own log files. A solution
+that works better is to use another program instead of cat that
+reads the from stdin and writes to different logfiles depending on the type
+of message that comes in the logfile
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 22 11:32:49 PDT 1997
+State-Changed-Why:
+This is an operating system issue which apache cannot easily
+work around without compromising security.  There are other
+reasons you shouldn't log to an NFS partition, including
+performance and reliability.  NFS doesn't guarantee the same
+atomicity of O_APPEND opened files that is guaranteed by
+local filesystems.  It's strongly urged that you put your
+ServerRoot on a local filesystem.
+
+BTW if you really have to log via NFS and are using a piped
+program to do it then you should consider using CustomLog and
+opening exactly one logfile which includes the vhost name as
+the first field, which your pipe'd program could then split
+up the log on.  This saves you descriptors in the httpd letting
+you run far more virtualhosts.
+
+You can add -DHAVE_SHMGET to your Configuration to at least
+eliminate the use of the scoreboard file.
+
+Thanks for using Apache!
+Dean
+>Unformatted:
+
+

@@ -1,0 +1,160 @@
+Received: (qmail 5968 invoked by uid 501); 13 Jun 2001 20:23:39 -0000
+Message-Id: <20010613202339.5967.qmail@apache.org>
+Date: 13 Jun 2001 20:23:39 -0000
+From: Robin Thellend <apachebug@robin.pfft.net>
+Reply-To: apachebug@robin.pfft.net
+To: submit@bugz.apache.org
+Subject: %2F in PATH_INFO
+X-Send-Pr-Version: 3.110
+
+>Number:         7865
+>Category:       protocol
+>Synopsis:       %2F in PATH_INFO
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jun 13 13:30:01 PDT 2001
+>Closed-Date:
+>Last-Modified:  Fri Jun 13 15:03:27 PDT 2003
+>Originator:     apachebug@robin.pfft.net
+>Release:        1.3.20
+>Organization:
+>Environment:
+linux 2.4.5
+gcc 2.95.3
+>Description:
+http://yourhost/yourscript/path/info
+
+Normally, this will execute 'yourscript' with PATH_INTO set to '/path/info'.
+This is the correct behaviour.
+
+http://yourhost/yourscript/path%2Finfo
+
+This should produce the exact same result but instead gives 404 everytime and
+the script is never executed.
+
+So from my observations, I concluded that whenever there is a %2F *after* the
+script name (i.e. in PATH_INFO), apache always returns a 404 result code.
+>How-To-Repeat:
+http://pfft.net/robin/foo.php/foo/bar
+http://pfft.net/robin/foo.php/foo%2Fbar
+>Fix:
+*shrugs*
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Wed Jun 13 17:38:40 PDT 2001
+State-Changed-Why:
+Please read this section of RFC2616 _very_ carefully.
+
+   Characters other than those in the "reserved" and "unsafe" sets (see
+   RFC 2396 [42]) are equivalent to their ""%" HEX HEX" encoding.
+
+   For example, the following three URIs are equivalent:
+
+      http://abc.com:80/~smith/home.html
+      http://ABC.com/%7Esmith/home.html
+      http://ABC.com:/%7esmith/home.html
+
+According to this standard, %2F is _not_ equivilant to '/'.
+In fact, the '/' is defined a uri resource segment seperator
+while %2F remains entirely undefined.  It's a '/' that is
+defined as 'not a path seperator'.
+
+That meaning is bogus to httpd, so it is disallowed.
+
+This behavior, for security reasons, is by design.
+
+
+
+
+From: Robin Thellend <apachebug@robin.pfft.net>
+To: <wrowe@apache.org>
+Cc: <apache-bugdb@apache.org>, <apbugs@apache.org>
+Subject: Re: general/7865: %2F in PATH_INFO
+Date: Wed, 13 Jun 2001 22:15:45 -0500 (CDT)
+
+ No where in RFC 2396 does it mention that %2F is illegal in a URI. Like
+ you say, %2F is a '/' that's not a path seperator.
+ 
+ In my particular example:
+ 
+   http://pfft.net/robin/foo.php/foo%2Fbar
+ 
+ %2F should be passed to script 'foo.php' unaltered and it is up to the
+ script the interpret the meaning of it.
+ 
+ The security concerns should be limited to accessing the filesystem. Then
+ and only then should you make sure there is no %2F in the path. However,
+ in my example, the filesystem access ends at foo.php. Everything else
+ after it has nothing to do with accessing a file and should be passed to
+ the script.
+ 
+ Thank you for your time.
+ /Robin
+ 
+ 
+ 
+ On 14 Jun 2001 wrowe@apache.org wrote:
+ 
+ > Synopsis: %2F in PATH_INFO
+ >
+ > State-Changed-From-To: open-closed
+ > State-Changed-By: wrowe
+ > State-Changed-When: Wed Jun 13 17:38:40 PDT 2001
+ > State-Changed-Why:
+ > Please read this section of RFC2616 _very_ carefully.
+ >
+ >    Characters other than those in the "reserved" and "unsafe" sets (see
+ >    RFC 2396 [42]) are equivalent to their ""%" HEX HEX" encoding.
+ >
+ >    For example, the following three URIs are equivalent:
+ >
+ >       http://abc.com:80/~smith/home.html
+ >       http://ABC.com/%7Esmith/home.html
+ >       http://ABC.com:/%7esmith/home.html
+ >
+ > According to this standard, %2F is _not_ equivilant to '/'.
+ > In fact, the '/' is defined a uri resource segment seperator
+ > while %2F remains entirely undefined.  It's a '/' that is
+ > defined as 'not a path seperator'.
+ >
+ > That meaning is bogus to httpd, so it is disallowed.
+ >
+ > This behavior, for security reasons, is by design.
+ >
+ >
+ >
+ >
+ 
+Comment-Added-By: coar
+Comment-Added-When: Fri Jun 13 15:03:27 PDT 2003
+Comment-Added:
+This has been addressed in Apache 2.0.46 through the AllowEncodedSlashes directive.
+Category-Changed-From-To: general-protocol
+Category-Changed-By: coar
+Category-Changed-When: Fri Jun 13 15:03:27 PDT 2003
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

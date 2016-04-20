@@ -1,0 +1,149 @@
+Received: (qmail 57922 invoked by uid 501); 29 Jun 2000 10:22:04 -0000
+Message-Id: <20000629102204.57920.qmail@locus.apache.org>
+Date: 29 Jun 2000 10:22:04 -0000
+From: Erik "Agsjö" <erik.agsjo@aktiedirekt.com>
+Reply-To: erik.agsjo@aktiedirekt.com
+To: submit@bugz.apache.org
+Subject: Reason for failed fopen not checked in default_handler
+X-Send-Pr-Version: 3.110
+
+>Number:         6254
+>Category:       general
+>Synopsis:       Reason for failed fopen not checked in default_handler
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jun 29 03:30:02 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     erik.agsjo@aktiedirekt.com
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Development:
+SunOS plumpen 5.6 Generic_105181-11 sun4m sparc SUNW,SPARCstation-10
+gcc version 2.95.2 19991024 (release)
+
+Production:
+SunOS molly 5.6 Generic_105181-17 sun4u sparc SUNW,UltraSPARC-IIi-cEngine
+
+Apache setup:
+
+# ./httpd -l
+Compiled-in modules:
+  http_core.c
+  mod_env.c
+  mod_log_config.c
+  mod_mime.c
+  mod_status.c
+  mod_include.c
+  mod_dir.c
+  mod_actions.c
+  mod_alias.c
+  mod_access.c
+  mod_auth.c
+  mod_proxy.c
+  mod_setenvif.c
+  mod_ssl.c
+  mod_jserv.c
+  mod_cookieauth.c
+  mod_error.c
+
+# ./httpd -V
+Server version: Apache/1.3.12 (Unix)
+Server built:   Jun 28 2000 13:34:33
+Server's Module Magic Number: 19990320:7
+Server compiled with....
+ -D EAPI
+ -D EAPI_MM
+ -D EAPI_MM_CORE_PATH="logs/httpd.mm"
+ -D HAVE_MMAP
+ -D USE_MMAP_SCOREBOARD
+ -D USE_MMAP_FILES
+ -D USE_FCNTL_SERIALIZED_ACCEPT
+ -D HTTPD_ROOT="/usr/local/apache"
+ -D SUEXEC_BIN="/usr/local/apache/bin/suexec"
+ -D DEFAULT_PIDLOG="logs/httpd.pid"
+ -D DEFAULT_SCOREBOARD="logs/httpd.scoreboard"
+ -D DEFAULT_LOCKFILE="logs/httpd.lock"
+ -D DEFAULT_XFERLOG="logs/access_log"
+ -D DEFAULT_ERRORLOG="logs/error_log"
+ -D TYPES_CONFIG_FILE="conf/mime.types"
+ -D SERVER_CONFIG_FILE="conf/httpd.conf"
+ -D ACCESS_CONFIG_FILE="conf/access.conf"
+ -D RESOURCE_CONFIG_FILE="conf/srm.conf"
+
+The error and cookieauth modules are internally developed modules at our site.
+>Description:
+Our servers experience strange problems after they have been running for a while.
+Random accesses get "file permissions deny server access" errors while other accesses to the same file work prefectly.
+In our efforts to find the problem we added the child process pid to the error logs, but the problem seamed to appear on all children.
+
+While looking at the code we realized that the default handler assumes that a failed fopen is because of file permission problems.
+This is not the case for us, as the following patch showed.
+The reason for the failed fopen is still a mystery, since errno is set to 0.
+>How-To-Repeat:
+Well, if you can think up a situation where fopen would fail while file permissions allow access, you would see the erroneous "file permissions deny server access".
+>Fix:
+Here is a patch with a suggested fix for checking errno on failed fopen.
+A workaround for our real problem is to set maxrequests to 100 or something until someone comes up with a solution.
+
+---------------------------------------------------------
+
+*** http_core.old       Fri Feb 18 21:41:47 2000
+--- http_core.c Wed Jun 28 13:34:09 2000
+***************
+*** 3108,3116 ****
+  #endif
+  
+      if (f == NULL) {
+!         ap_log_rerror(APLOG_MARK, APLOG_ERR, r,
+!                    "file permissions deny server access: %s", r->filename);
+!         return FORBIDDEN;
+      }
+        
+      ap_update_mtime(r, r->finfo.st_mtime);
+--- 3108,3126 ----
+  #endif
+  
+      if (f == NULL) {
+!       if (errno == EACCES) {
+!           ap_log_rerror(APLOG_MARK, APLOG_ERR, r,
+!                         "file permissions deny server access: %s",
+!                         r->filename);
+!           return FORBIDDEN;
+!       }
+!       else {
+!           ap_log_rerror(APLOG_MARK, APLOG_ERR, r,
+!                         "file open error: %s, OS error: %s",
+!                         r->filename,
+!                         strerror(errno));
+!           return SERVER_ERROR;
+!       }
+      }
+        
+      ap_update_mtime(r, r->finfo.st_mtime);
+
+---------------------------------------------------------
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

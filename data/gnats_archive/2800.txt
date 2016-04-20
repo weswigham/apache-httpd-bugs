@@ -1,0 +1,79 @@
+Received: (qmail 6591 invoked by uid 2012); 6 Aug 1998 19:06:46 -0000
+Message-Id: <19980806190646.6588.qmail@hyperreal.org>
+Date: 6 Aug 1998 19:06:46 -0000
+From: Ari Halberstadt <ari@shore.net>
+Reply-To: ari@shore.net
+To: apbugs@hyperreal.org
+Subject: cookie max age overflows at about 25 days
+X-Send-Pr-Version: 3.2
+
+>Number:         2800
+>Category:       mod_jserv
+>Synopsis:       cookie max age overflows at about 25 days
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Aug  6 12:10:00 PDT 1998
+>Last-Modified:  Sun Nov  1 12:50:44 PST 1998
+>Originator:     ari@shore.net
+>Organization:
+>Release:        1.3
+>Environment:
+not relevant, it's a java source bug
+>Description:
+Here is the existing code in org.apache.jserv.JServUtils.encodeCookie:
+
+        ...
+        int age = cookie.getMaxAge();
+        if ( cookie.getMaxAge() > 0 ) {
+            buf.append( "; expires=" );
+            buf.append( cookieDate.format(new Date(System.currentTimeMillis() + age * 1000)));
+        } else if ( cookie.getMaxAge() == 0 ) {
+        ...
+
+The multiplication of the int by 1000 causes integer overflow.
+
+History: this problem was detected by Sean Hammon (sean-h@mailhost) in a post to   java-apache-users in early June; I added the analysis of the problem and suggested fix.
+>How-To-Repeat:
+Use a cookie expiration time of about 25 days,
+
+25 days in milliseconds:  25*3600*24*1000 = 2160000000
+Integer.MAX_INT: 0x7fffffff = 2^31-1=       2147483647
+>Fix:
+This should be changed to use long (64-bit) arithmetic, for instance
+
+         ...
+       long age = cookie.getMaxAge();
+        if ( age > 0 ) {
+            buf.append( "; expires=" );
+            buf.append( cookieDate.format(new Date(System.currentTimeMillis() + age * 1000)));
+        } else if ( age == 0 ) {
+        ...
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: ianosh@iname.com
+State-Changed-When: Sat Aug  8 15:08:52 PDT 1998
+State-Changed-Why:
+Fixed and committed to CVS. This will be included into next release (1.0 Beta) of JServ.
+State-Changed-From-To: suspended-closed
+State-Changed-By: ed
+State-Changed-When: Sun Nov  1 12:50:43 PST 1998
+State-Changed-Why:
+marked closed based on more reasonable criteria (since the
+fix is available in source form...).
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

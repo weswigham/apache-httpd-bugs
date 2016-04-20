@@ -1,0 +1,105 @@
+Received: (qmail 22872 invoked by uid 501); 22 Aug 2000 01:44:14 -0000
+Message-Id: <20000822014414.22870.qmail@locus.apache.org>
+Date: 22 Aug 2000 01:44:14 -0000
+From: Anthony Thyssen <anthony@cit.gu.edu.au>
+Reply-To: anthony@cit.gu.edu.au
+To: submit@bugz.apache.org
+Subject: as per PR#2612 - Apachectl may not start httpd after reboot - Solution
+X-Send-Pr-Version: 3.110
+
+>Number:         6441
+>Category:       general
+>Synopsis:       as per PR#2612 - Apachectl may not start httpd after reboot - Solution
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Aug 21 18:50:00 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     anthony@cit.gu.edu.au
+>Release:        1.3.9
+>Organization:
+apache
+>Environment:
+Problem will be on any UNIX environment
+SunFreeware Apache 1.3.9 for Solaris 2.6
+>Description:
+I hit the same fault as described in PR#2612, in that the apchectl script
+failed to reconise that the PID given in httpd.pid file is NOT a httpd process
+after a reboot, as so failed to start the apache web server.
+
+The following is a patch which should work on ALL UNIX VARIENTS, to test if
+the PID listed in "httpd.pid" is actually a httpd process.
+
+This is different to the `hack' in PR#2162, PR#2414 and PR#2285 which 
+will fail on some UNIX machines due to different ps command flags.
+This version performs the test again if the ps failed (posibily due to not
+understanding the SysV -p flag).
+
+
+=======8<--------CUT HERE----------axes/crowbars permitted---------------
+*** apachectl.orig      Tue Aug 22 11:18:58 2000
+--- apachectl   Tue Aug 22 11:28:34 2000
+***************
+*** 51,61 ****
+      if [ -f $PIDFILE ] ; then
+        PID=`cat $PIDFILE`
+        if [ "x$PID" != "x" ] && kill -0 $PID 2>/dev/null ; then
+!           STATUS="httpd (pid $PID) running"
+!           RUNNING=1
+!       else
+            STATUS="httpd (pid $PID?) not running"
+            RUNNING=0
+        fi
+      else
+        STATUS="httpd (no pid file) not running"
+--- 51,69 ----
+      if [ -f $PIDFILE ] ; then
+        PID=`cat $PIDFILE`
+        if [ "x$PID" != "x" ] && kill -0 $PID 2>/dev/null ; then
+!           # First lets try with a -p SysV ps flag
+!           ps=`/bin/ps -p $pid 2>/dev/null | awk '/[ \(\/]httpd( |\)|$)/'`
+!           if [ "x$ps" = 'x' ]; then
+!             # that ps failed, so lets try a BSD ps (no -p flag)
+!             ps=`/bin/ps $pid 2>/dev/null | awk '/[ \(\/]httpd( |\)|$)/'`
+!           fi
+!           if [ "x$ps" = 'x' ]; then
+            STATUS="httpd (pid $PID?) not running"
+            RUNNING=0
++           else
++           STATUS="httpd (pid $PID) running"
++           RUNNING=1
++           fi
+        fi
+      else
+        STATUS="httpd (no pid file) not running"
+=======8<--------CUT HERE----------axes/crowbars permitted---------------
+>How-To-Repeat:
+Stop the httpd server, set the httpd.pid to a PID of come other still
+running process, then try   apachectl start.   Server will NOT be started!
+>Fix:
+See Above for Patch
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,92 @@
+Received: (qmail 5558 invoked by uid 501); 18 Sep 2000 23:27:15 -0000
+Message-Id: <20000918232715.5556.qmail@locus.apache.org>
+Date: 18 Sep 2000 23:27:15 -0000
+From: Mike Abbott <mja@sgi.com>
+Reply-To: mja@sgi.com
+To: submit@bugz.apache.org
+Subject: 2.0a6 doesn't flush buffered access logs
+X-Send-Pr-Version: 3.110
+
+>Number:         6550
+>Category:       mod_log-any
+>Synopsis:       2.0a6 doesn't flush buffered access logs
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Sep 18 16:30:01 PDT 2000
+>Closed-Date:    Mon Oct 09 16:37:08 PDT 2000
+>Last-Modified:  Mon Oct 09 16:37:08 PDT 2000
+>Originator:     mja@sgi.com
+>Release:        2.0a6
+>Organization:
+>Environment:
+Irix 6.5
+>Description:
+Terse version:  mod_log_config in 2.0a6 doesn't flush buffered log entries
+upon server termination or -- if applicable -- child process exit.
+
+For the verbose version see my message to new-httpd on Sep. 13:
+Message-Id: <200009131852.LAA35105@trudge.engr.sgi.com>
+and the response(s) to it, and also
+Message-Id: <200009142151.OAA40159@trudge.engr.sgi.com>
+>How-To-Repeat:
+Compile with BUFFERED_LOGS defined and watch the access log be too short
+after terminating the server or a child process.
+>Fix:
+The verbose version suggests several ways to fix this problem.  It seems
+that the design and use of the log pool (called plog) is incomplete.
+I suggest that plog should be a child of the child pool pchild but I
+don't see how to do that cleanly without changing some fundamental APIs
+(such as the pre- and post-config hooks and ap_mpm_run()) or else that
+MPMs must apr_clear_pool(plog) in the appropriate places but that seems
+contrary to the lifetime of plog as described in main().
+>Release-Note:
+>Audit-Trail:
+
+From: mja@trudge.engr.sgi.com (Mike Abbott)
+To: apbugs@apache.org
+Cc:  
+Subject: Re: mod_log-any/6550: 2.0a6 doesn't flush buffered access logs
+Date: Tue, 19 Sep 2000 19:42:36 -0700 (PDT)
+
+ >Fix:
+ One new solution that works is for mod_log_config to register a
+ child_init hook which registers a cleanup to call flush_all_logs() on
+ its pchild argument.  This is only half the solution, however.  The
+ other half is to change init_config_log() to use the config pool for
+ everything rather than the log pool (I simply renamed its second
+ argument from p to pl and its first from pc to p).  This leaves the log
+ pool entirely unused throughout Apache/2.0 though so it just can't be
+ right, although it works as far as I've tested it.
+State-Changed-From-To: open-closed
+State-Changed-By: rbb
+State-Changed-When: Mon Oct  9 16:37:07 PDT 2000
+State-Changed-Why:
+This has been fixed in CVS.  We need to have a child_init
+phase, which just registers a cleanup iff BUFFERED_LOGS is
+on.  plog was not designed for use with child processes.  The
+purpose behind plog, is to allow logging to continue to work
+when the config file is re-read.  See PR 4456 for a description
+of why this pool was originally added.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

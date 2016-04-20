@@ -1,0 +1,281 @@
+Received: (qmail 26159 invoked by uid 501); 7 Jan 2001 14:04:40 -0000
+Message-Id: <20010107140440.26158.qmail@apache.org>
+Date: 7 Jan 2001 14:04:40 -0000
+From: Christian Bottelier <c.bottelier@quicknet.nl>
+Reply-To: c.bottelier@quicknet.nl
+To: submit@bugz.apache.org
+Subject: Commandline option dor running apache superviced
+X-Send-Pr-Version: 3.110
+
+>Number:         7040
+>Category:       os-linux
+>Synopsis:       Commandline option dor running apache superviced
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Jan 07 06:10:00 PST 2001
+>Closed-Date:    
+>Last-Modified:  Mon Jan  8 15:50:02 PST 2001
+>Originator:     c.bottelier@quicknet.nl
+>Release:        1.3.14
+>Organization:
+apache
+>Environment:
+unix / linux, kernel independed, svscan / init
+>Description:
+Patch to option parser and main process detach points to add -F option. When the -F option is given, the main proccess does not detach itself. This way it is possible to run apache directly for inittab or supervices through svscan.
+>How-To-Repeat:
+
+>Fix:
+--- http_main.c.old	Thu Sep 28 15:32:36 2000
++++ http_main.c		Sun Jan  7 15:35:38 2001
+@@ -321,6 +321,13 @@
+ 
+ static int one_process = 0;
+ 
++// Added the -F option to run the apache http daemon in the
++// foreground. This way apache can run directly under init or
++// superviced under the svscan facility.
++// Christian Bottelier <c.bottelier@quicknet.nl>
++
++static int foregroundmode = 0;
++
+ /* set if timeouts are to be handled by the children and not by the parent.
+  * i.e. child_timeouts = !standalone || one_process.
+  */
+@@ -4615,7 +4622,11 @@
+     is_graceful = 0;
+ 
+     if (!one_process) {
+-	detach();
++	// Added the -F option to run the apache http daemon in the
++	// foreground. This way apache can run directly under init or
++	// superviced under the svscan facility.
++	// Christian Bottelier <c.bottelier@quicknet.nl>
++	if (!foregroundmode) detach();
+     }
+     else {
+ 	MONCONTROL(1);
+@@ -4939,6 +4950,13 @@
+ 	case 'X':
+ 	    ++one_process;	/* Weird debugging mode. */
+ 	    break;
++	// Added the -F option to run the apache http daemon in the
++	// foreground. This way apache can run directly under init or
++	// superviced under the svscan facility.
++	// Christian Bottelier <c.bottelier@quicknet.nl>
++	case 'F':
++	    ++foregroundmode;
++	    break;
+ #ifdef TPF
+ 	case 'x':
+ 	    os_tpf_child(&input_parms.child);
+@@ -5879,7 +5897,11 @@
+ 	max_jobs_after_exit_request = max_jobs_per_exe / 10;
+ 
+     if (!one_process)
+-	detach();
++	// Added the -F option to run the apache http daemon in the
++	// foreground. This way apache can run directly under init or
++	// superviced under the svscan facility.
++	// Christian Bottelier <c.bottelier@quicknet.nl>
++	if (!foregroundmode) detach();
+ 
+     my_pid = getpid();
+ 
+@@ -6810,6 +6832,13 @@
+ 
+ 	case 'X':
+ 	    ++one_process;	/* Weird debugging mode. */
++	    break;
++	// Added the -F option to run the apache http daemon in the
++	// foreground. This way apache can run directly under init or
++	// superviced under the svscan facility.
++	// Christian Bottelier <c.bottelier@quicknet.nl>
++	case 'F':
++	    ++foregroundmode;
+ 	    break;
+ 	case 't':
+ 	    ap_configtestonly = 1;
+
+>Release-Note:
+>Audit-Trail:
+
+From: "C. Bottelier" <c.bottelier@quicknet.nl>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc:  
+Subject: Re: os-linux/7040: Commandline option dor running apache
+  superviced
+Date: Sun, 07 Jan 2001 16:12:58 +0100
+
+ Forget old patch use this one!
+  8< -------------------------
+ 
+ --- http_main-old.c	Sun Jan  7 16:52:01 2001
+ +++ http_main.c	Sun Jan  7 17:11:44 2001
+ @@ -321,6 +321,14 @@
+  
+  static int one_process = 0;
+  
+ +/* foregroundmode --- flag indicating apache must run in the foreground; this
+ + * variable is set from the command line with the -F flag. If set apache will
+ + * not detach the main process. This is extremely usefull when running apache
+ + * superviced under svscan or directly from inittab.
+ + */
+ +
+ +static int foregroundmode = 0;
+ +
+  /* set if timeouts are to be handled by the children and not by the parent.
+   * i.e. child_timeouts = !standalone || one_process.
+   */
+ @@ -1046,9 +1054,9 @@
+  	pad[i] = ' ';
+      pad[i] = '\0';
+  #ifdef SHARED_CORE
+ -    fprintf(stderr, "Usage: %s [-R directory] [-D name] [-d directory] [-f
+ file]\n", bin);
+ +    fprintf(stderr, "Usage: %s [-R directory] [-D name] [-d directory] [-f
+ file] [-F]\n", bin);
+  #else
+ -    fprintf(stderr, "Usage: %s [-D name] [-d directory] [-f file]\n", bin);
+ +    fprintf(stderr, "Usage: %s [-D name] [-d directory] [-f file] [-F]\n",
+ bin);
+  #endif
+      fprintf(stderr, "       %s [-C \"directive\"] [-c \"directive\"]\n",
+ pad);
+      fprintf(stderr, "       %s [-v] [-V] [-h] [-l] [-L] [-S] [-t] [-T]\n",
+ pad);
+ @@ -1062,6 +1070,7 @@
+      fprintf(stderr, "  -D name          : define a name for use in
+ <IfDefine name> directives\n");
+      fprintf(stderr, "  -d directory     : specify an alternate initial
+ ServerRoot\n");
+      fprintf(stderr, "  -f file          : specify an alternate
+ ServerConfigFile\n");
+ +    fprintf(stderr, "  -F               : do not detach apache main
+ process\n");
+      fprintf(stderr, "  -C \"directive\"   : process directive before
+ reading config files\n");
+      fprintf(stderr, "  -c \"directive\"   : process directive after
+ reading config files\n");
+      fprintf(stderr, "  -v               : show version number\n");
+ @@ -4615,7 +4624,7 @@
+      is_graceful = 0;
+  
+      if (!one_process) {
+ -	detach();
+ +	if (!foregroundmode) detach();
+      }
+      else {
+  	MONCONTROL(1);
+ @@ -4895,7 +4904,7 @@
+      ap_setup_prelinked_modules();
+  
+      while ((c = getopt(argc, argv,
+ -				    "D:C:c:xXd:f:vVlLR:StTh"
+ +				    "D:C:c:xXFd:f:vVlLR:StTh"
+  #ifdef DEBUG_SIGSTOP
+  				    "Z:"
+  #endif
+ @@ -4939,6 +4948,9 @@
+  	case 'X':
+  	    ++one_process;	/* Weird debugging mode. */
+  	    break;
+ +	case 'F':
+ +	    ++foregroundmode;
+ +	    break;
+  #ifdef TPF
+  	case 'x':
+  	    os_tpf_child(&input_parms.child);
+ @@ -5879,7 +5891,7 @@
+  	max_jobs_after_exit_request = max_jobs_per_exe / 10;
+  
+      if (!one_process)
+ -	detach();
+ +	if (!foregroundmode) detach();
+  
+      my_pid = getpid();
+  
+ @@ -6702,7 +6714,7 @@
+      ap_cpystrn(ap_server_root, cwd, sizeof(ap_server_root));
+  #endif
+  
+ -    while ((c = getopt(argc, argv, "D:C:c:Xd:f:vVlLZ:iusStThk:n:")) != -1) {
+ +    while ((c = getopt(argc, argv, "D:C:c:XFd:f:vVlLZ:iusStThk:n:")) != -1) {
+          char **new;
+  	switch (c) {
+  	case 'c':
+ @@ -6811,6 +6823,9 @@
+  	case 'X':
+  	    ++one_process;	/* Weird debugging mode. */
+  	    break;
+ +	case 'F':
+ +	    ++foregroundmode;
+ +	    break;
+  	case 't':
+  	    ap_configtestonly = 1;
+  	    ap_docrootcheck = 1;
+ @@ -7112,11 +7127,12 @@
+       * but only handle the -L option 
+       */
+      llp_dir = SHARED_CORE_DIR;
+ -    while ((c = getopt(argc, argv, "D:C:c:Xd:f:vVlLR:SZ:tTh")) != -1) {
+ +    while ((c = getopt(argc, argv, "D:C:c:XFd:f:vVlLR:SZ:tTh")) != -1) {
+  	switch (c) {
+  	case 'D':
+  	case 'C':
+  	case 'c':
+ +	case 'F':
+  	case 'X':
+  	case 'd':
+  	case 'f':
+ 
+ 
+
+From: Tony Finch <dot@dotat.at>
+To: apbugs@apache.org, c.bottelier@quicknet.nl
+Cc:  
+Subject: Re: os-linux/7040: Commandline option dor running apache superviced
+Date: Mon, 8 Jan 2001 23:40:39 +0000
+
+ Christian Bottelier <c.bottelier@quicknet.nl> wrote:
+ >
+ >Patch to option parser and main process detach points to add -F
+ >option. When the -F option is given, the main proccess does not
+ >detach itself. This way it is possible to run apache directly for
+ >inittab or supervices through svscan.
+ 
+ Looks pretty good to me, although you haven't included the
+ corresponding changes to the documentation.
+ 
+ This is unlikely to go into 1.3 because we are only fixing bugs in
+ that version now, not adding features. Apache-2.0 has this feature
+ already, if you run it with the environment variable NO_DETACH set.
+ 
+ Tony.
+ -- 
+ f.a.n.finch    fanf@covalent.net    dot@dotat.at
+ "Then they attacked a town. A small town, I'll admit.
+ But nevertheless a town of people. People who died."
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

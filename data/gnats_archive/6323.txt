@@ -1,0 +1,284 @@
+Received: (qmail 32759 invoked by uid 501); 18 Jul 2000 08:58:36 -0000
+Message-Id: <20000718085836.32758.qmail@locus.apache.org>
+Date: 18 Jul 2000 08:58:36 -0000
+From: Ralf Hildebrandt <Ralf.Hildebrandt@innominate.de>
+Reply-To: Ralf.Hildebrandt@innominate.de
+To: submit@bugz.apache.org
+Subject: Build fails
+X-Send-Pr-Version: 3.110
+
+>Number:         6323
+>Category:       general
+>Synopsis:       Build fails
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jul 18 02:00:01 PDT 2000
+>Closed-Date:    Fri Dec 01 10:28:15 PST 2000
+>Last-Modified:  Fri Dec 01 10:28:15 PST 2000
+>Originator:     Ralf.Hildebrandt@innominate.de
+>Release:        2.0a4
+>Organization:
+>Environment:
+HP-UX stahlw06 B.10.20 A 9000/715 unknown 
+ecent patches
+gcc-2.95.1
+Autoconf version 2.13
+automake (GNU automake) 1.4
+>Description:
+===> lib/apr/network_io/unix
+/users2/gnu/apache_2.0a4/src/lib/apr/network_io/unix
+make[3]: Entering directory `/mnt/disk4/gnu/apache_2.0a4/src/lib/apr/network_io/unix'
+gcc -O -I/users2/local/include  -D_REENTRANT  -c -I../../include -I. sockets.c
+sockets.c: In function `ap_connect':
+sockets.c:194: `h_errno' undeclared (first use in this function)
+sockets.c:194: (Each undeclared identifier is reported only once
+sockets.c:194: for each function it appears in.)                                                                                                    
+>How-To-Repeat:
+
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: abagchi
+State-Changed-When: Wed Jul 26 16:55:53 PDT 2000
+State-Changed-Why:
+It looks like we are not including the header file that
+defines h_errno on your machine.  I have been unable to
+duplicate this problem on the only HPUX machine I have access
+to.
+
+Basically, on my machine, h_errno is defined in netdb.h.  This
+header file is included by sockets.c, through networkio.h.
+
+There are two possible causes for this error.
+
+1)  netdb.h doesn't define h_errno.
+2)  netdb.h isn't being included on your system.
+
+Please look at netdb.h to determine if it exists, and if it
+defines h_errno.  If both of those things are true, then
+please look at src/lib/apr/include/apr_private.h and search
+for HAVE_NETDB_H.  If this is 1, then we are including the
+file and I am at a loss for what is happening.  If it is 0,
+then Autoconf can't find the file, and we need to figure out
+why.
+
+If netdb.h does not define h_errno.h, please let us know what
+header file does define it.
+
+Thank you for the bug report
+
+From: Ralf Hildebrandt <Ralf.Hildebrandt@innominate.de>
+To: abagchi@apache.org, apbugs@Apache.Org
+Cc: apache-bugdb@apache.org, ralf.hildebrandt@innominate.de
+Subject: Re: general/6323: Build fails
+Date: Mon, 31 Jul 2000 14:00:39 +0200
+
+ --Fh0SynPkUvrWGMR0
+ Content-Type: text/plain; charset=us-ascii
+ Content-Disposition: inline
+ Content-Transfer-Encoding: quoted-printable
+ 
+ > Synopsis: Build fails
+ >=20
+ > State-Changed-From-To: open-feedback
+ > State-Changed-By: abagchi
+ > State-Changed-When: Wed Jul 26 16:55:53 PDT 2000
+ > State-Changed-Why:
+ > It looks like we are not including the header file that
+ > defines h_errno on your machine.  I have been unable to
+ > duplicate this problem on the only HPUX machine I have access
+ > to.
+ >=20
+ > Basically, on my machine, h_errno is defined in netdb.h.  This
+ > header file is included by sockets.c, through networkio.h.
+ >=20
+ > There are two possible causes for this error.
+ >=20
+ > 1)  netdb.h doesn't define h_errno.
+ > 2)  netdb.h isn't being included on your system.
+ >=20
+ > Please look at netdb.h to determine if it exists, and if it
+ 
+ Yes, in /usr/include/netdb.h
+ 
+ /*
+  * Error return codes from gethostbyname() and gethostbyaddr()
+  * (left in extern int h_errno).
+  */
+ =20
+ #ifdef _XOPEN_SOURCE_EXTENDED
+ extern int h_errno;
+ #endif                                                      =20
+ 
+ Aha! _XOPEN_SOURCE_EXTENDED needs to be defined!
+ 
+ > defines h_errno.  If both of those things are true, then
+ > please look at src/lib/apr/include/apr_private.h and search
+ > for HAVE_NETDB_H.  If this is 1, then we are including the
+ > file and I am at a loss for what is happening.  If it is 0,
+ > then Autoconf can't find the file, and we need to figure out
+ > why.
+ 
+ /* Define if you have the <netdb.h> header file.  */
+ #define HAVE_NETDB_H 1                                                     =
+  =20
+ 
+ > If netdb.h does not define h_errno.h, please let us know what
+ > header file does define it.
+ >=20
+ > Thank you for the bug report
+ =20
+ 
+ --Fh0SynPkUvrWGMR0
+ Content-Type: application/pgp-signature
+ Content-Disposition: inline
+ 
+ -----BEGIN PGP SIGNATURE-----
+ Version: GnuPG v1.0.1h (GNU/Linux)
+ Comment: For info see http://www.gnupg.org
+ 
+ iQCVAwUBOYVqY0nh/jPvZzKNAQEZSgP/fKRqM9fE5bRyw45GvjfEYH3xSfIe305r
+ NE0p4jXgGwxMbBUc+4D7mw+5xtBMoE1abTr3jHhF1XCXcoyN+FNsXm9XDcQ0OXgr
+ gULRV9eaCWXC1MfQmVqCXN3ilbrJE4tVdzBGWYYFkVHYke4cJb8mukuSRYmarFzq
+ whb/qBwLBKk=
+ =lAWZ
+ -----END PGP SIGNATURE-----
+ 
+ --Fh0SynPkUvrWGMR0--
+
+From: rbb@covalent.net
+To: apache-bugdb@apache.org
+Cc: abagchi@apache.org, apbugs@apache.org, ralf.hildebrandt@innominate.de
+Subject: Re: general/6323: Build fails
+Date: Mon, 31 Jul 2000 07:35:31 -0700 (PDT)
+
+ On Mon, 31 Jul 2000, Ralf Hildebrandt wrote:
+ 
+ > Yes, in /usr/include/netdb.h
+ > 
+ > /*
+ >  * Error return codes from gethostbyname() and gethostbyaddr()
+ >  * (left in extern int h_errno).
+ >  */
+ >  
+ > #ifdef _XOPEN_SOURCE_EXTENDED
+ > extern int h_errno;
+ > #endif                                                       
+ > 
+ > Aha! _XOPEN_SOURCE_EXTENDED needs to be defined!
+ 
+ ARRRRR!  Sometimes I hate that every Unix platform is this different.  On
+ my HP/UX machine, I don't need to have _XOPEN_SOURCE_EXTENDED defined to
+ get h_errno, but I do need it defined to get a clean build without
+ warnings.  Let me look into some stuff, and I'll try to post a patch later
+ today to fix this.
+ 
+ Ryan
+ 
+ _______________________________________________________________________________
+ Ryan Bloom                        	rbb@apache.org
+ 406 29th St.
+ San Francisco, CA 94131
+ -------------------------------------------------------------------------------
+ 
+
+From: Ralf Hildebrandt <Ralf.Hildebrandt@innominate.de>
+To: rbb@covalent.net
+Cc: apache-bugdb@apache.org, abagchi@apache.org, apbugs@apache.org,
+	ralf.hildebrandt@innominate.de
+Subject: Re: general/6323: Build fails
+Date: Mon, 31 Jul 2000 16:43:43 +0200
+
+ --1aa3fXZUP8Xb8QnO
+ Content-Type: text/plain; charset=us-ascii
+ Content-Disposition: inline
+ 
+ Am 31.07.2000 um 07:35:31 -0700 schrieb rbb@covalent.net folgendes:
+ 
+ > ARRRRR!  Sometimes I hate that every Unix platform is this different.  On
+ > my HP/UX machine, I don't need to have _XOPEN_SOURCE_EXTENDED defined to
+ > get h_errno, but I do need it defined to get a clean build without
+ > warnings.  Let me look into some stuff, and I'll try to post a patch later
+ > today to fix this.
+ 
+ 10.20 or 11.x ?
+ 
+ --1aa3fXZUP8Xb8QnO
+ Content-Type: application/pgp-signature
+ Content-Disposition: inline
+ 
+ -----BEGIN PGP SIGNATURE-----
+ Version: GnuPG v1.0.1h (GNU/Linux)
+ Comment: For info see http://www.gnupg.org
+ 
+ iQCVAwUBOYWQnknh/jPvZzKNAQEPoAP/c4xzmTb172EtqZUK48NNPPlPUeC6SSYp
+ /Vm8IFJdUft2LWm22wE4rPgNnxFGh0mVdrQC5Dn+LMvJCRObYnNs6ZTaaqhJ++my
+ 5wr+p0K+ja4e+6o61TzwB5FrbG8a8yrFdP7yj+NVWlfSJx4d1Xv7C646DsIc2EXK
+ exIht1MuR2o=
+ =leNu
+ -----END PGP SIGNATURE-----
+ 
+ --1aa3fXZUP8Xb8QnO--
+
+From: rbb@covalent.net
+To: Ralf Hildebrandt <Ralf.Hildebrandt@innominate.de>
+Cc: rbb@covalent.net, apache-bugdb@apache.org, abagchi@apache.org,
+   apbugs@apache.org
+Subject: Re: general/6323: Build fails
+Date: Mon, 31 Jul 2000 08:25:13 -0700 (PDT)
+
+ On Mon, 31 Jul 2000, Ralf Hildebrandt wrote:
+ 
+ > Am 31.07.2000 um 07:35:31 -0700 schrieb rbb@covalent.net folgendes:
+ > 
+ > > ARRRRR!  Sometimes I hate that every Unix platform is this different.  On
+ > > my HP/UX machine, I don't need to have _XOPEN_SOURCE_EXTENDED defined to
+ > > get h_errno, but I do need it defined to get a clean build without
+ > > warnings.  Let me look into some stuff, and I'll try to post a patch later
+ > > today to fix this.
+ > 
+ > 10.20 or 11.x ?
+ 
+ 11.00
+ 
+ Ryan
+ 
+ _______________________________________________________________________________
+ Ryan Bloom                        	rbb@apache.org
+ 406 29th St.
+ San Francisco, CA 94131
+ -------------------------------------------------------------------------------
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: rbb
+State-Changed-When: Fri Dec  1 10:28:14 PST 2000
+State-Changed-Why:
+This problem has been solved in the CVS version of Apache
+2.0, and will be available in the next alpha release.
+
+Thank you for using Apache
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

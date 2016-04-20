@@ -1,0 +1,222 @@
+Received: (qmail 3089 invoked by uid 2012); 23 Oct 1997 00:57:36 -0000
+Message-Id: <19971023005736.3088.qmail@hyperreal.org>
+Date: 23 Oct 1997 00:57:36 -0000
+From: Andrey Chernov <ache@nagual.pp.ru>
+Reply-To: ache@nagual.pp.ru
+To: apbugs@hyperreal.org
+Subject: Apache is *very* unprotected against characters with 8bit set
+X-Send-Pr-Version: 3.2
+
+>Number:         1305
+>Category:       general
+>Synopsis:       Apache is *very* unprotected against characters with 8bit set
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          analyzed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Oct 22 22:50:01 PDT 1997
+>Last-Modified:  Thu Oct 23 10:00:01 PDT 1997
+>Originator:     ache@nagual.pp.ru
+>Organization:
+>Release:        1.3b2
+>Environment:
+FreeBSD
+>Description:
+According to both POSIX and ANSI specs valiad range for ctype macros is
+EOF,0..255 (for 8bit chars). It means that calls like isupper(-179) is illegal
+and may cause addressing beyoud ctype table bounds causing page fault or random bits can be picked
+from this memory region. But call with negative arg can happen on every "signed char"
+type making ctype_macro((char)) illegal for all characters with 8bit set due
+to sign extension: char -> int. 
+
+There is two ways to fix it: first one is add isascii() check before any ctype 
+macro including tolower and toupper (assuming you want to deal with only ascii data),
+second one is add "(unsigned char)" cast directly to ctype macro argument. Second
+way is faster. BTW, it can't be solve at OS level since recognition of EOF (-1)
+still wanted (which is not different from '\377' after sign extension), 
+so is is application task to pass correct arg.
+
+Second problem that you indirectly assume that default system ctype table is ascii.
+Expansion of default system table from ascii to superceeded charset not violates
+POSIX, so system default ctype table can be iso-8859-1 f.e. You can force ascii
+by calling setlocale() with ascii locale name as argument, but the name is different
+in different platforms and setlocale() itself is not always available. Alternative method
+is checking isascii() before things like isalpha(), isalnum(), etc. in all cases
+you assume ascii only.
+
+
+>How-To-Repeat:
+
+>Fix:
+I made mega-patch trying to fix all incorrect ctype macros usage in Apache.
+Since the patch is over 50K I can't cut&paste it here, but make it available at
+http://www.nagual.pp.ru/~ache/apache_ctype.patch
+
+Surprisingly I find that new mod_mime_magic provides few examples of the same
+ctype macros usage as I recommend, but I think they comes from 3rd party code..
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Oct 23 02:10:52 PDT 1997
+State-Changed-Why:
+Adding (unsigned char) casts everywhere introduces more potential bugs
+than it is worth (i.e. it hides other potential signed/unsigned issues).
+Any ANSI compiler worth its salt has an option for unsigned chars, gcc
+included (-funsigned-char).  Does your patch have other things in it?
+
+And as you mention we'll have a heck of a time doing locale() stuff
+on every platform.  Which is why this has not been solved.
+
+But if you're keen on working on it, that's cool, but it needs
+to be investigated across multiple platforms... and you should
+join the new-httpd mailing list (via majordomo@apache.org).
+
+Thanks
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: =?KOI8-R?B?4c7E0sXKIP7F0s7P1w==?= <ache@nagual.pp.ru>
+Cc: apbugs@apache.org
+Subject: Re: general/1305: Apache is *very* unprotected against characters with 8bit set
+Date: Thu, 23 Oct 1997 02:47:42 -0700 (PDT)
+
+ On Thu, 23 Oct 1997, [KOI8-R] =E1=CE=C4=D2=C5=CA =FE=C5=D2=CE=CF=D7 wrote:
+ 
+ > On 23 Oct 1997 dgaudet@hyperreal.org wrote:
+ >=20
+ > > Adding (unsigned char) casts everywhere introduces more potential bugs
+ > > than it is worth (i.e. it hides other potential signed/unsigned issues)=
+ =2E
+ >=20
+ > Hmm, what potential bugs your mean? I see no absolutely no bugs with this
+ > cast. Of course I mean not "everywhere" but only in ctype macros.
+ > Lots of popular software (like tin-unoff f.e.) already do that.
+ 
+ I just mean in general, any time you add a cast you are defeating the
+ C compiler's type protection mechanisms... and they're already weak
+ enough to begin with.
+ 
+ > > Any ANSI compiler worth its salt has an option for unsigned chars, gcc
+ > > included (-funsigned-char).  Does your patch have other things in it?
+ >=20
+ > Of course making default char "unsigned" will be a sort of solution, if
+ > Apache not essentialy use char as signed in some places. This solution
+ > looks too global for me and can cause some prototypes problem...
+ 
+ If Apache assumes char is signed anywhere then that is a bug.  ANSI leaves
+ signed/unsigned char up to the compiler implementation.  So we could
+ easily be bitten by this on some platforms.
+ 
+ > (unsigned char) cast of ctype macro arg is absolutely safe in any
+ > platform.
+ 
+ Consider this:
+ 
+     char *s;
+     foo =3D islower((unsigned char)s);
+ 
+ the programmer probably meant to do this:
+ 
+     foo =3D islower((unsigned char)*s);
+ 
+ The cast lets that go through... without a warning.  Seems like a pretty
+ silly thing to do, but I assure you that it'll happen if we start
+ making (unsigned char) casts all over the place.  Besides, it's difficult
+ for us to maintain (unsigned char) as we move forward -- we have to
+ remember to add it everywhere.
+ 
+ I think I'd be a lot happier dictating that I18N requires a "good enough"
+ C compiler.=20
+ 
+ > > But if you're keen on working on it, that's cool, but it needs
+ > > to be investigated across multiple platforms... and you should
+ > > join the new-httpd mailing list (via majordomo@apache.org).
+ >=20
+ > Uh, maybe, but I have no time for another project right now...
+ > I prefer to continue discuss issues I touch with anybody who interested
+ > without reading yet one mailing list...
+ 
+ understandable :)
+ 
+ Dean
+ 
+
+From: =?KOI8-R?B?4c7E0sXKIP7F0s7P1w==?= <ache@nagual.pp.ru>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: general/1305: Apache is *very* unprotected against characters with 8bit set
+Date: Thu, 23 Oct 1997 14:14:12 +0400 (MSD)
+
+ On Thu, 23 Oct 1997, Dean Gaudet wrote:
+ 
+ > If Apache assumes char is signed anywhere then that is a bug.  ANSI leaves
+ > signed/unsigned char up to the compiler implementation.  So we could
+ > easily be bitten by this on some platforms.
+ 
+ Well, I'll try to build Apache with default char unsigned and tell you
+ results.
+ 
+ >     foo = islower((unsigned char)s);
+ 
+ I agree, I mean no runtime bugs, not no programmer bugs :-)
+ 
+ > I think I'd be a lot happier dictating that I18N requires a "good enough"
+ > C compiler. 
+ 
+ Please note that it is not i18n or l10n issue but simple protection
+ of Apache against 8bit chars in *any* platform. Well, gcc have an option
+ to make default char unsigned, but other platforms may not have this
+ option so they remain not protected.
+ 
+ -- 
+ Andrey A. Chernov
+ <ache@nietzsche.net>
+ http://www.nagual.pp.ru/~ache/
+ 
+
+From: =?KOI8-R?B?4c7E0sXKIP7F0s7P1w==?= <ache@nagual.pp.ru>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: general/1305: Apache is *very* unprotected against characters with 8bit set
+Date: Thu, 23 Oct 1997 20:51:57 +0400 (MSD)
+
+ On Thu, 23 Oct 1997, Dean Gaudet wrote:
+ 
+ > > > Any ANSI compiler worth its salt has an option for unsigned chars, gcc
+ > > > included (-funsigned-char).  Does your patch have other things in it?
+ 
+ I just test Apache running with -funsigned-char and it works well.
+ So, please consider to make it default option for gcc or just add
+ following patch if you aren't sure for all platforms:
+ 
+ *** src/Configure.bak	Thu Oct 16 22:56:55 1997
+ --- src/Configure	Thu Oct 23 20:06:21 1997
+ ***************
+ *** 306,317 ****
+ --- 306,319 ----
+   	;;
+       *486-*-freebsd*|*486-*-netbsd*)
+   	OS='FreeBSD/NETBSD on 486'
+ + 	CFLAGS="$CFLAGS -funsigned-char"
+   	LIBS="$LIBS -lcrypt"
+   	DBM_LIB=""
+   	DB_LIB=""
+   	;;
+       *-freebsd*|*-netbsd*)
+   	OS='FreeBSD/NetBSD'
+ + 	CFLAGS="$CFLAGS -funsigned-char"
+   	LIBS="$LIBS -lcrypt"
+   	DBM_LIB=""
+   	DB_LIB=""
+ 
+ 
+ -- 
+ Andrey A. Chernov
+ <ache@nietzsche.net>
+ http://www.nagual.pp.ru/~ache/
+ 
+>Unformatted:
+

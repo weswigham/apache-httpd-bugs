@@ -1,0 +1,94 @@
+Received: (qmail 58126 invoked by uid 501); 16 Mar 2001 09:51:21 -0000
+Message-Id: <20010316095121.58117.qmail@apache.org>
+Date: 16 Mar 2001 09:51:21 -0000
+From: David Ford <david@blue-labs.org>
+Reply-To: david@blue-labs.org
+To: submit@bugz.apache.org
+Subject: ap_get_local_host() doesn't resolve '127.0.0.1' so apache segfaults
+X-Send-Pr-Version: 3.110
+
+>Number:         7424
+>Category:       general
+>Synopsis:       ap_get_local_host() doesn't resolve '127.0.0.1' so apache segfaults
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Mar 16 02:00:01 PST 2001
+>Closed-Date:    Fri Mar 16 05:49:51 PST 2001
+>Last-Modified:  Fri Mar 16 05:49:51 PST 2001
+>Originator:     david@blue-labs.org
+>Release:        1.3.19
+>Organization:
+>Environment:
+Apache 1.3.19, probably earlier as well.  Linux 2.4.2, gcc 2.95.2
+>Description:
+Fairly simple, mail/util.c:2048 returns a NULL pointer if gethostbyname(str) fails to lookup str.  The next use of *p is an indirection, p->h_addr_list.  Thus dereferencing a NULL pointer.
+
+Since nearly all systems have their hostname defined, pretty much nobody experiences this.  With my quick patch applied, httpd falls through to the next part which emits the following:
+
+penguin:/usr/local/apache# bin/httpd -t                                       
+[Thu Mar 15 18:27:07 2001] [alert] httpd: Could not determine the server's fully qualified domain name, using 127.0.0.1 for ServerName
+
+It isn't a serious bug as again, normally localhost/127.0.0.1 is defined.
+>How-To-Repeat:
+simply arrange your system so the configuration's fqdn doesn't resolve for ap_get_local_host().
+>Fix:
+# diff -ruN util.c~ util.c
+--- util.c~     Thu Feb  1 02:06:37 2001
++++ util.c      Fri Mar 16 01:28:02 2001
+@@ -2047,11 +2047,15 @@
+         str[sizeof(str) - 1] = '\0';
+         if ((!(p = gethostbyname(str))) 
+             || (!(server_hostname = find_fqdn(a, p)))) {
+-            /* Recovery - return the default servername by IP: */
+-            if (p->h_addr_list[0]) {
+-                ap_snprintf(str, sizeof(str), "%pA", p->h_addr_list[0]);
+-               server_hostname = ap_pstrdup(a, str);
+-                /* We will drop through to report the IP-named server */
++            if (!p)
++               server_hostname=NULL;
++            else {
++                   /* Recovery - return the default servername by IP: */
++               if (p->h_addr_list[0]) {
++                      ap_snprintf(str, sizeof(str), "%pA", p->h_addr_list[0]);
++                  server_hostname = ap_pstrdup(a, str);
++                     /* We will drop through to report the IP-named server */
++                   }
+             }
+         }
+        else
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: trawick
+State-Changed-When: Fri Mar 16 05:49:51 PST 2001
+State-Changed-Why:
+This was fixed a few days ago and will be in the next release.
+
+Thanks for your report, and thanks for using Apache!
+
+
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

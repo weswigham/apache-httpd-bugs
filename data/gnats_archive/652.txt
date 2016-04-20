@@ -1,0 +1,125 @@
+From nobody@hyperreal.com  Sun Jun  1 18:28:57 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id SAA29215;
+	Sun, 1 Jun 1997 18:28:57 -0700 (PDT)
+Message-Id: <199706020128.SAA29215@hyperreal.com>
+Date: Sun, 1 Jun 1997 18:28:57 -0700 (PDT)
+From: Homer Smith <homer@lightlink.com>
+Reply-To: homer@lightlink.com
+To: apbugs@hyperreal.com
+Subject: load spikes every few minutes
+X-Send-Pr-Version: 3.2
+
+>Number:         652
+>Category:       os-sunos
+>Synopsis:       load spikes every few minutes
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Jun  1 18:30:01 1997
+>Last-Modified:  Sun Jun 29 21:00:27 PDT 1997
+>Originator:     homer@lightlink.com
+>Organization:
+>Release:        1.2b11
+>Environment:
+
+     SunOS 4.1.4 sun4m fully patched to present time from SunSolve.
+ 
+     gcc 2.7.2.f.1
+>Description:
+
+     This is a long standing problem from WAY BACK, that we have
+fixed only by commenting out certain parts of the code in http_main.c
+ 
+     As a vanilla apache runs, we get significant load spikes
+that send the load to 10 or more every few minutes.  This causes
+momentary freezing of the system and general stickiness.  
+ 
+      The load spikes do NOT seem to be CPU based, but I/O based,
+as no particular process shows a high cpu utilization using top
+at that moment.  ps never shows anything.  The spikes are VERY fast,
+and subside as fast as they come.  They are quite visible using
+xload under X11.
+ 
+     By commenting out a certain section of http_main.c, the
+load spikes go away and everything runs smoothly.
+ 
+     The problem is not repeatable, we have never been able to cause
+it happen at will by hitting on any single web page.  However 
+they happen randomly and continuously every few minutes.
+
+     
+>How-To-Repeat:
+
+>Fix:
+
+     Yes, the patch that fixes it is at
+ 
+     ftp://ftp.lightlink.com/pub/homer/apache
+ 
+    
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Homer Smith <homer@lightlink.com>
+Subject: Re: general/652: load spikes every few minutes
+Date: Wed, 4 Jun 1997 11:54:52 -0700 (PDT)
+
+ 
+ Hypothesis: select() under sunos 4.x wakes up all waiting children when an
+ event happens.  All the children then race down to the accept() and block
+ in there.  That'll spike momentarily.  Most OSs have this behaviour
+ actually. 
+ 
+ See <http://www.apache.org/bugdb.cgi/full/467> and give the suggestions
+ there a try.  That should achieve the same thing as your patch without
+ requiring you to hack up the code (and also supporting multiple Listen
+ statements, which yours doesn't). 
+ 
+ It's looking more and more plausible for us to use serialized accepts on
+ all architectures. 
+ 
+ Dean
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sun Jun 22 22:06:25 PDT 1997
+State-Changed-Why:
+Haven't heard back... assuming that the serialisation fix did
+the trick.
+
+Dean
+Comment-Added-By: fielding
+Comment-Added-When: Tue Jun 24 13:17:12 PDT 1997
+Comment-Added:
+Since SunOS4 does not have a FIN_WAIT_2 timeout, a busy
+server will quickly fill its mbuf table and crash if
+persistent connections are enabled.
+
+Homer reports that setting
+
+    KeepAlive Off
+
+in httpd.conf seems to fix the problems.
+Category-Changed-From-To: general-os-sunos
+Category-Changed-By: fielding
+Category-Changed-When: Tue Jun 24 13:17:12 PDT 1997
+
+>Unformatted:
+
+
+---------- Forwarded message ----------
+Date: Fri, 27 Jun 1997 22:57:06 -0400 (EDT)
+From: "Homer W. Smith" <homer@lightlink.com>
+To: dgaudet@hyperreal.com
+Cc: apache-bugdb@apache.org, dgaudet@apache.org
+Subject: Re: general/652: load spikes every few minutes
+
+
+    KeepAlives Off fixed both spiking and run away finwait_2's
+
+

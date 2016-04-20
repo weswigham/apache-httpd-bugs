@@ -1,0 +1,161 @@
+From nobody@hyperreal.org  Mon Jul 21 11:40:38 1997
+Received: (from nobody@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id LAA09502;
+	Mon, 21 Jul 1997 11:40:38 -0700 (PDT)
+Message-Id: <199707211840.LAA09502@hyperreal.org>
+Date: Mon, 21 Jul 1997 11:40:38 -0700 (PDT)
+From: Paul Robertson <proberts@clark.net>
+Reply-To: proberts@clark.net
+To: apbugs@hyperreal.org
+Subject: Authentication for CGIs not always working
+X-Send-Pr-Version: 3.2
+
+>Number:         893
+>Category:       other
+>Synopsis:       Authentication for CGIs not always working
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jul 21 11:50:01 1997
+>Originator:     proberts@clark.net
+>Organization:
+>Release:        1.1.3
+>Environment:
+RH Linux 4.1, gcc 2.7.2.1.  
+>Description:
+As in problem 737, I am seeing authentication failures for CGI scripts, 
+requests are proxied, and failure is common, but not 100% repeatable.
+
+smtpgate.gannett.com - - [21/Jul/1997:13:44:13 -0400] "POST /cgi/gancar.cgi HTTP
+/1.0" 401 -
+smtpgate.gannett.com - - [21/Jul/1997:13:44:29 -0400] "POST /cgi/gancar.cgi HTTP
+/1.0" 401 -
+smtpgate.gannett.com - gancar [21/Jul/1997:13:44:29 -0400] "POST /cgi/gancar.cgi
+ HTTP/1.0" 200 183
+
+The successful request was the result of a relaod, 
+ScriptAlias /cgi/ /home/httpd/html/GC/cgi-bin/
+is in srm.conf
+
+Scripts live in /home/httpd/html/GC/cgi-bin  .htaccess was in GC, and now is in
+all directories.  Access.conf contains:
+AllowOverried Authconfig for /home/httpd/html
+
+along with:
+
+<Directory /home/httpd/html/GC/cgi-bin>
+AllowOverride All
+Options All
+</Directory>
+
+CGI in question is doing HTTP file upload, browser Netcape 3.01, error message
+box says "A network error occured while Netscape was sending data.  (Network Error: Connection aborted)  Try connecting again."
+
+ 
+>How-To-Repeat:
+It would seem that queries coming through a proxy are more likely to trigger 
+the event.  I am unable to provide a URL, but would be happy to provide the
+CGI scripts and libraries.  It also seems that only POSTs to 
+enctype=multipart/form-data (HTTP file upload) trigger this.
+>Fix:
+Not at this tim
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Mon Jul 21 13:13:33 PDT 1997
+State-Changed-Why:
+1.1 is no longer supported; please try 1.2.  This specific
+problem sounds like something fixed in 1.2 for most
+platforms, Linux included.  It happens when the server
+closes the connection while the client is still sending
+data; this happens when the server tells the client that
+authorization is required.  Because the client is still
+sending data, it breaks.
+
+From: Marc Slemko <marcs@znep.com>
+To: apbugs@apache.org
+Subject: Re: other/893: Authentication for CGIs not always working (fwd)
+Date: Mon, 21 Jul 1997 15:13:38 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Mon, 21 Jul 1997 16:32:46 -0400 (EDT)
+ From: "Paul D. Robertson" <proberts@clark.net>
+ To: Marc Slemko <marc@hyperreal.org>
+ Cc: apache-bugdb@apache.org, marc@apache.org
+ Subject: Re: other/893: Authentication for CGIs not always working
+ 
+ On Mon, 21 Jul 1997, Marc Slemko wrote:
+ 
+ > Date: Mon, 21 Jul 1997 13:13:35 -0700 (PDT)
+ > From: Marc Slemko <marc@hyperreal.org>
+ > To: apache-bugdb@apache.org, marc@apache.org, proberts@clark.net
+ > Subject: Re: other/893: Authentication for CGIs not always working
+ > 
+ > Synopsis: Authentication for CGIs not always working
+ > 
+ > State-Changed-From-To: open-closed
+ > State-Changed-By: marc
+ > State-Changed-When: Mon Jul 21 13:13:33 PDT 1997
+ > State-Changed-Why:
+ > 1.1 is no longer supported; please try 1.2.  This specific
+ > problem sounds like something fixed in 1.2 for most
+ > platforms, Linux included.  It happens when the server
+ > closes the connection while the client is still sending
+ > data; this happens when the server tells the client that
+ > authorization is required.  Because the client is still
+ > sending data, it breaks.
+ 
+ I upgraded to the current release with no changes in operation.
+ Re-authenticating with a different username/password then going back
+ succeeds.  The initial behaviour is still broken.  
+ 
+ Paul
+ -----------------------------------------------------------------------------
+ Paul D. Robertson      "My statements in this message are personal opinions
+ proberts@clark.net      which may have no basis whatsoever in fact."
+                                                                      PSB#9280
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: "Paul D. Robertson" <proberts@clark.net>
+Subject: Re: other/893: Authentication for CGIs not always working
+Date: Mon, 21 Jul 1997 22:32:38 -0600 (MDT)
+
+ 
+ On Mon, 21 Jul 1997, Paul D. Robertson wrote:
+ 
+ > On Mon, 21 Jul 1997, Dean Gaudet wrote:
+ > 
+ > > You say the requests are going through a proxy.  Please provide more
+ > > details, such as how the proxy is configured, and what proxy it is.  Are
+ > > you sure it's not the proxy that's messing things up?  Have you tried
+ > > doing a tcpdump and analysing the transaction between the proxy and the
+ > > server?
+ > 
+ > I've tried it with both http-gw, and the Apache server configured in 
+ > proxy mode.  Both fail, and again not for every single transaction, but 
+ > reliably.
+ 
+ It is possibly partly a proxy problem when going through a proxy.  This
+ certainly looks to be the known issue I mentioned earlier.  If the proxy
+ and server are both running Apache 1.2 on the right platforms it should
+ work fine.
+ 
+ Please state the exact setup of what version of what program running on
+ what OS is being used for both the server and the proxy.  Is the problem
+ that the Apache proxy causes problems or is the problem that accessing an
+ Apache server causes problems.
+ 
+>Unformatted:
+
+
+>Last-Modified:  Mon Jul 21 13:13:34 PDT 1997
+
+

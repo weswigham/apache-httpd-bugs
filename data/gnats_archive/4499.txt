@@ -1,0 +1,106 @@
+Received: (qmail 15902 invoked by uid 2012); 31 May 1999 12:41:47 -0000
+Message-Id: <19990531124147.15901.qmail@hyperreal.org>
+Date: 31 May 1999 12:41:47 -0000
+From: Joe Orton <jeo101@york.ac.uk>
+Reply-To: jeo101@york.ac.uk
+To: apbugs@hyperreal.org
+Subject: Expect 100-continue handling -- error case
+X-Send-Pr-Version: 3.2
+
+>Number:         4499
+>Category:       protocol
+>Synopsis:       Expect 100-continue handling -- error case
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon May 31 05:50:00 PDT 1999
+>Last-Modified:  Mon Jul 19 03:18:19 PDT 1999
+>Originator:     jeo101@york.ac.uk
+>Organization:
+>Release:        1.3.6
+>Environment:
+Linux pc061s 2.0.33 #1 Wed Jan 21 11:21:12 GMT 1998 i586 unknown
+>Description:
+[Tried posting this to new-httpd, maybe that's not open to non-subscribers]
+(Regarding PR#3910, PR#3806, PR#3575)
+
+Can't get 100 continue handling in the error case working.
+PR#3806 says it's fixed by the patch in #3910 - I don't think it is
+(the patch fixes the NON-ERROR case.) Problem is the same with and
+without the patch.
+
+The problem is as described in PR#3806, but applies to ALL methods
+not just POST.
+>How-To-Repeat:
+With, e.g. NO put handler installed:
+
+PUT /foobar HTTP/1.1
+Host: localhost
+Content-Length: 1
+Expect: 100-continue
+
+<<<httpd waits for body, breaking draft-06
+>Fix:
+Ahhh... use IIS. Or you could try this change to ap_discard_request_body
+(which works for me):
+
+--- http_protocol.c~    Wed Mar 10 17:42:42 1999
++++ http_protocol.c     Sat May 29 14:49:09 1999
+@@ -1858,13 +1858,13 @@
+ {
+     int rv;
+
++    /* If the client is waiting for 100 Continue, don't send it,
++     * and the body is never sent, hence is discarded. */
++    if (r->expecting_100)
++        return OK;
++
+     if ((rv = ap_setup_client_block(r, REQUEST_CHUNKED_PASS)))
+         return rv;
+-
+-    /* If we are discarding the request body, then we must already know
+-     * the final status code, therefore disable the sending of 100 continue.
+-     */
+-    r->expecting_100 = 0;
+
+     if (ap_should_client_block(r)) {
+         char dumpbuf[HUGE_STRING_LEN];
+
+
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: fielding
+State-Changed-When: Mon Jul 19 03:18:18 PDT 1999
+State-Changed-Why:
+
+I have committed a similar, though more complete, change
+to the source for 1.3.7.  Thanks for the report,
+
+.....Roy
+>Unformatted:
+>>>client sends body
+<<<httpd returns the error
+HTTP/1.1 405 blah blah
+
+That's the error with no PUT handler. The same works when e.g., you DO have a PUT
+handler, and authentication is turned on, then the server returns 401 after
+waiting for the body, etc etc.
+
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+

@@ -1,0 +1,247 @@
+From nobody@hyperreal.com  Tue Mar 25 12:45:55 1997
+Received: by taz.hyperreal.com (8.8.4/V2.0) id MAA06471; Tue, 25 Mar 1997 12:45:55 -0800 (PST)
+Message-Id: <199703252045.MAA06471@taz.hyperreal.com>
+Date: Tue, 25 Mar 1997 12:45:55 -0800 (PST)
+From: Sam Lantinga <slouken@cs.ucdavis.edu>
+Reply-To: slouken@cs.ucdavis.edu
+To: apbugs@hyperreal.com
+Subject: I would like to do: ln -s http://www.somesite.org/foo.html foo.html and have it work.
+X-Send-Pr-Version: 3.2
+
+>Number:         258
+>Category:       general
+>Synopsis:       I would like to do: ln -s http://www.somesite.org/foo.html foo.html and have it work.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    contrib@apache.org
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Mar 25 12:50:01 1997
+>Last-Modified:  Mon Feb 23 03:33:41 PST 1998
+>Originator:     slouken@cs.ucdavis.edu
+>Organization:
+>Release:        1.2b7
+>Environment:
+Solaris, GCC, etc, etc.
+>Description:
+
+Why hasn't anyone implemented this before? :-)
+
+URL symbolic links within HTTP filesystems
+
+(Patch included)
+>How-To-Repeat:
+
+>Fix:
+Patchfile relative to 1.2b7:
+
+--
+diff -rc --new-file src-orig/Configuration src/Configuration
+*** src-orig/Configuration	Tue Mar 25 11:04:44 1997
+--- src/Configuration	Tue Mar 25 11:07:49 1997
+***************
+*** 235,239 ****
+--- 235,242 ----
+  
+  # Module proxy_module        modules/proxy/libproxy.a
++ 
++ # URL Symlink Module
++ Module symlink_module mod_symlink.o
+  
+  # PHP Module
+  Module php_module   mod_php.o
+diff -rc --new-file src-orig/http_request.c src/http_request.c
+*** src-orig/http_request.c	Tue Mar 25 11:04:40 1997
+--- src/http_request.c	Tue Mar 25 11:23:53 1997
+***************
+*** 139,144 ****
+--- 139,145 ----
+  
+  int get_path_info(request_rec *r)
+  {
++     int (*statfunc)(const char *filename, struct stat *sb);
+      char *cp;
+      char *path = r->filename;
+      char *end = &path[strlen(path)];
+***************
+*** 150,155 ****
+--- 151,157 ----
+      for (cp = end; cp > path && cp[-1] == '/'; --cp)
+  	continue;
+      
++     statfunc = stat;
+      while (cp > path) {
+        
+  	/* See if the pathname ending here exists... */
+***************
+*** 157,163 ****
+  	*cp = '\0';
+  
+  	errno = 0;
+! 	rv = stat(path, &r->finfo);
+  
+  	if (cp != end) *cp = '/';
+        
+--- 159,165 ----
+  	*cp = '\0';
+  
+  	errno = 0;
+! 	rv = (*statfunc)(path, &r->finfo);
+  
+  	if (cp != end) *cp = '/';
+        
+***************
+*** 195,213 ****
+  	 * letting us know that you needed to do this.  Please be
+  	 * sure to include the operating system you are using.  
+  	 */
+- 
+  	else {
+  #endif
+! 	    last_cp = cp;
+  	
+! 	    while (--cp > path && *cp != '/')
+! 		continue;
+  
+! 	    while (cp > path && cp[-1] == '/')
+! 		--cp;
+! 	} 
+  #if defined(ENOENT) && defined(ENOTDIR)
+! 	else {
+  #if defined(EACCES)
+  	    if (errno != EACCES) 
+  #endif 
+--- 197,219 ----
+  	 * letting us know that you needed to do this.  Please be
+  	 * sure to include the operating system you are using.  
+  	 */
+  	else {
+  #endif
+! 	    if ( statfunc == lstat ) {
+! 		last_cp = cp;
+  	
+! 		while (--cp > path && *cp != '/')
+! 		    continue;
+  
+! 		while (cp > path && cp[-1] == '/')
+! 		    --cp;
+! 	    } else {
+! 		/* Do one check with lstat */
+! 		statfunc = lstat;
+! 		continue;
+! 	    }
+  #if defined(ENOENT) && defined(ENOTDIR)
+! 	} else {
+  #if defined(EACCES)
+  	    if (errno != EACCES) 
+  #endif 
+diff -rc --new-file src-orig/httpd.h src/httpd.h
+*** src-orig/httpd.h	Tue Mar 25 11:04:40 1997
+--- src/httpd.h	Tue Mar 25 11:08:24 1997
+***************
+*** 347,352 ****
+--- 347,353 ----
+  #define MAP_FILE_MAGIC_TYPE "application/x-type-map"
+  #define ASIS_MAGIC_TYPE "httpd/send-as-is"
+  #define DIR_MAGIC_TYPE "httpd/unix-directory"
++ #define LNK_MAGIC_TYPE "httpd/url-symlink"
+  #define STATUS_MAGIC_TYPE "application/x-httpd-status"
+  
+  /* Just in case your linefeed isn't the one the other end is expecting. */
+diff -rc --new-file src-orig/mod_mime.c src/mod_mime.c
+*** src-orig/mod_mime.c	Tue Mar 25 11:04:41 1997
+--- src/mod_mime.c	Tue Mar 25 11:08:25 1997
+***************
+*** 228,233 ****
+--- 228,237 ----
+          r->content_type = DIR_MAGIC_TYPE;
+  	return OK;
+      }
++     if (S_ISLNK(r->finfo.st_mode)) {
++         r->content_type = LNK_MAGIC_TYPE;
++         return OK;
++     }
+  
+      /* TM -- FIXME
+       * 
+diff -rc --new-file src-orig/mod_symlink.c src/mod_symlink.c
+*** src-orig/mod_symlink.c	Wed Dec 31 16:00:00 1969
+--- src/mod_symlink.c	Tue Mar 25 12:28:11 1997
+***************
+*** 0 ****
+--- 1,51 ----
++ 
++ /*
++  * http_symlink.c: Stuff for dealing with remote symlinks
++  * 
++  * Originally written 3/25/97
++  *                    by Sam Lantinga	(slouken@cs.ucdavis.edu)
++  */
++ 
++ #include "httpd.h"
++ #include "http_config.h"
++ 
++ int handle_lnk(request_rec *r)
++ {
++     char linkbuf[HUGE_STRING_LEN];
++     int  linklen;
++ 
++     /* If the link is not a true URL symlink, return FORBIDDEN */
++     if ( (linklen=readlink(r->filename, linkbuf, HUGE_STRING_LEN-1)) > 0 ) {
++         linkbuf[linklen] = '\0';
++ 
++         /* Look for service://host.name/path/name/ */
++         if ( strstr(linkbuf, "://") != NULL ) {
++             table_set (r->headers_out, "Location", linkbuf);
++             return REDIRECT;
++         }
++     }
++     return FORBIDDEN;
++ }
++ 
++ handler_rec lnk_handlers[] = {
++ { LNK_MAGIC_TYPE, handle_lnk },
++ { NULL }
++ };
++ 
++ module symlink_module = {
++    STANDARD_MODULE_STUFF,
++    NULL,			/* initializer */
++    NULL,			/* dir config creater */
++    NULL,			/* dir merger --- default is to override */
++    NULL,			/* server config */
++    NULL,			/* merge server config */
++    NULL,			/* command table */
++    lnk_handlers,		/* handlers */
++    NULL,			/* filename translation */
++    NULL,			/* check_user_id */
++    NULL,			/* check auth */
++    NULL,			/* check access */
++    NULL,			/* type_checker */
++    NULL,			/* fixups */
++    NULL				/* logger */
++ };%0
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: marc
+State-Changed-When: Tue Apr 22 08:56:55 PDT 1997
+State-Changed-Why:
+Interesting idea, too late for 1.2.  We will consider if
+this is appropriate for the base source after 1.2.
+State-Changed-From-To: suspended-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Feb 23 03:33:40 PST 1998
+State-Changed-Why:
+I don't believe this is a feature that apache needs to support,
+given that it's possible to do this already with configuration
+directives; and it wouldn't work for WIN32.
+Responsible-Changed-From-To: apache-contrib@apache.org
+Responsible-Changed-By: dgaudet
+Responsible-Changed-When: Mon Feb 23 03:33:40 PST 1998
+Responsible-Changed-Why:
+mark it for contrib anyway%0
+>Unformatted:
+
+

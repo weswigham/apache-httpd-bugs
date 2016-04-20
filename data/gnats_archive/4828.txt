@@ -1,0 +1,201 @@
+Received: (qmail 16254 invoked by uid 2012); 6 Aug 1999 17:24:38 -0000
+Message-Id: <19990806172438.16253.qmail@hyperreal.org>
+Date: 6 Aug 1999 17:24:38 -0000
+From: Ian Holsman <Ianholsman@iname.com>
+Reply-To: Ianholsman@iname.com
+To: apbugs@hyperreal.org
+Subject: jserv_mmap.c tries to include sys/mman.h on a NT system
+X-Send-Pr-Version: 3.2
+
+>Number:         4828
+>Category:       mod_jserv
+>Synopsis:       jserv_mmap.c tries to include sys/mman.h on a NT system
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Aug  6 10:30:04 PDT 1999
+>Last-Modified:  Wed Sep 22 16:14:42 PDT 1999
+>Originator:     Ianholsman@iname.com
+>Organization:
+>Release:        1.3.6
+>Environment:
+NT SP5.. Visual C++ 6 sp3
+>Description:
+Using source out of CVS,
+
+ap_config.h defines HAVE_MMAP (on a standard win32 install)
+
+jserv_mmap.c uses this to include sys/mman.h.
+>How-To-Repeat:
+get source out of CVS
+>Fix:
+Either find a NT method of implementing this feature, or add && !defined(WIN32)
+to the code so that it doesn't use mem mapping...
+
+>Audit-Trail:
+
+From: "jon *" <jon@clearink.com>
+To: Ianholsman@iname.com
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_jserv/4828: jserv_mmap.c tries to include sys/mman.h on a
+	 NT system
+Date: Fri, 06 Aug 1999 13:06:22 -0700
+
+ >>Fix:
+ > Either find a NT method of implementing this feature, or add && 
+ !defined(WIN32)
+ > to the code so that it doesn't use mem mapping...
+ 
+ does this fix the problem?
+ 
+ -jon
+ 
+   Index: jserv_mmap.c
+   ===================================================================
+   RCS file: /products/cvs/master/jserv/src/c/jserv_mmap.c,v
+   retrieving revision 1.11
+   retrieving revision 1.12
+   diff -u -r1.11 -r1.12
+   --- jserv_mmap.c 1999/07/14 07:39:50 1.11
+   +++ jserv_mmap.c 1999/08/06 19:54:58 1.12
+   @@ -60,12 +60,12 @@
+     *              process found it was not present. (fail-over part)
+ *
+     * Comments:    MT-unsafe
+ *
+     * Author:      Jean-Luc Rochat <jlrochat@jnix.com>
+ *
+   - * Version:     $Revision: 1.11 $
+ *
+   + * Version:     $Revision: 1.12 $
+ *
+ 
+ ****************************************************************************
+ */
+ 
+    #include "jserv.h"
+ 
+   -#ifdef HAVE_MMAP
+   +#ifdef HAVE_MMAP && !defined(WIN32)
+    /*
+ ========================================================================= */
+    /* we are on a system with the mmapp POSIX system call.
+ */
+    /* mmap'ed file is a shared memory read/write by all processes.
+ */
+ 
+ 
+   
+
+From: Ian Holsman <IanHolsman@iname.com>
+To: jon * <jon@clearink.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_jserv/4828: jserv_mmap.c tries to include sys/mman.h on aNT 
+ system
+Date: Fri, 06 Aug 1999 13:25:02 -0700
+
+ might want to try
+ +#if defined(HAVE_MMAP) && !defined(WIN32)
+ 
+ 
+ 
+ oh... I found another prob in jserv_ajpv12.c it is missing the include file
+ http_core.h
+ it is needed for ap_get_server_name/ ap_get_server_port
+ just #including it seemed to work.
+ 
+ ..Ian
+ 
+ jon * wrote:
+ 
+ > >>Fix:
+ > > Either find a NT method of implementing this feature, or add &&
+ > !defined(WIN32)
+ > > to the code so that it doesn't use mem mapping...
+ >
+ > does this fix the problem?
+ >
+ > -jon
+ >
+ >   Index: jserv_mmap.c
+ >   ===================================================================
+ >   RCS file: /products/cvs/master/jserv/src/c/jserv_mmap.c,v
+ >   retrieving revision 1.11
+ >   retrieving revision 1.12
+ >   diff -u -r1.11 -r1.12
+ >   --- jserv_mmap.c 1999/07/14 07:39:50 1.11
+ >   +++ jserv_mmap.c 1999/08/06 19:54:58 1.12
+ >   @@ -60,12 +60,12 @@
+ >     *              process found it was not present. (fail-over part)
+ > *
+ >     * Comments:    MT-unsafe
+ > *
+ >     * Author:      Jean-Luc Rochat <jlrochat@jnix.com>
+ > *
+ >   - * Version:     $Revision: 1.11 $
+ > *
+ >   + * Version:     $Revision: 1.12 $
+ > *
+ >
+ > ****************************************************************************
+ > */
+ >
+ >    #include "jserv.h"
+ >
+ >   -#ifdef HAVE_MMAP
+ >   +#ifdef HAVE_MMAP && !defined(WIN32)
+ >    /*
+ > ========================================================================= */
+ >    /* we are on a system with the mmapp POSIX system call.
+ > */
+ >    /* mmap'ed file is a shared memory read/write by all processes.
+ > */
+ >
+ >
+ 
+
+From: "jon *" <jon@clearink.com>
+To: Ian Holsman <IanHolsman@iname.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_jserv/4828: jserv_mmap.c tries to include sys/mman.h on
+	 aNT  system
+Date: Fri, 06 Aug 1999 13:50:53 -0700
+
+ > might want to try
+ > +#if defined(HAVE_MMAP) && !defined(WIN32)
+ 
+ i'm an idiot. ;-)
+ 
+ > oh... I found another prob in jserv_ajpv12.c it is missing the include file
+ > http_core.h
+ > it is needed for ap_get_server_name/ ap_get_server_port
+ > just #including it seemed to work.
+ 
+ fixed. (did the include in jserv.h)
+ 
+ -jon
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: jon@clearink.com
+State-Changed-When: Wed Sep 22 16:14:42 PDT 1999
+State-Changed-Why:
+this has been fixed in cvs
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

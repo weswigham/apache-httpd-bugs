@@ -1,0 +1,86 @@
+Received: (qmail 49163 invoked by uid 501); 11 Sep 2001 19:40:37 -0000
+Message-Id: <20010911194037.49162.qmail@apache.org>
+Date: 11 Sep 2001 19:40:37 -0000
+From: Barbara Landy <barbara@vicor-nb.com>
+Reply-To: barbara@vicor-nb.com
+To: submit@bugz.apache.org
+Subject: See bug 1978 which was closed with"No response from submitter, assuming issue has been resolved."
+X-Send-Pr-Version: 3.110
+
+>Number:         8320
+>Category:       mod_auth-any
+>Synopsis:       See bug 1978 which was closed with"No response from submitter, assuming issue has been resolved."
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Sep 11 12:50:00 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     barbara@vicor-nb.com
+>Release:        1.3
+>Organization:
+apache
+>Environment:
+FreeBSD osaka.vicor-nb.com 4.2-STABLE FreeBSD 4.2-STABLE #0: Thu Jan  4 17:43:57 PST 2001     jrh@osaka.vicor-nb.com:/usr/obj/usr/src/sys/GENERIC  i386
+
+>Description:
+The bug is fully described in #1978 which was submitted in Feb 1999.  The code
+which checks the require lines in mod_auth_dbm.c (dbm_check_auth()) has not
+changed in your most recent alpha (httpd-2_0_18-alpha), so the problem still
+remains.   The problem is that the requirement checking in mod_auth_dbm.c is
+NOT CONSISTENT with the requirement checking in mod_auth.c. In particular,
+mod_auth_dbm.c checks only 1 "require group" directive if any "require group"
+directive is given in the .htaccess file.  If a "require group" directive exists,
+it does not check any "require user" directive.  It returns AUTH_REQUIRED (with
+the default value of AuthDBMAuthoritative on) if the user does not happen to
+be in a group given on that single directive line without continuing to test
+for another require directive.  See the article
+http://www.apacheweek.com/features/userauth
+in the section "Using Groups" which explains that multiple require directives
+may be used, both directives for user and group with have an "OR"'d effect.
+mod_auth_dbm.c does not conform to this method of checking require directives
+because it exits from the loop reading the require directives by returning
+AUTH_REQUIRED (HTTP_UNAUTHORIZED) or DECLINED when checking a "require group" directive.
+>How-To-Repeat:
+With a dbm file with both users and groups:
+	.	put userx into groupx
+	.	leave usery outside any group
+	.	put userz into groupz
+
+On a directory with an html page in it, add an .htaccess file referencing the
+dbm file for user and groups.  Add the require directives:
+	require user usery
+	require group groupx
+	require group groupz
+Neither usery nor userz will be able to access the page.
+>Fix:
+The loop in the dbm_check_auth() should conform to the coding method used
+in mod_auth.c (check_user_access()) where the code returns an OK if the
+user is found in a named group or on a require user statement.  The code should
+wait until the end of the loop when NO criterion has been satisfied in order
+to send AUTH_REQUIRED (HTTP_UNAUTHORIZED in the newer code) or DECLINED 
+depending on the setting of AuthDBMAuthoritative directive.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

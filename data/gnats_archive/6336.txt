@@ -1,0 +1,138 @@
+Received: (qmail 78546 invoked by uid 501); 24 Jul 2000 15:25:17 -0000
+Message-Id: <20000724152517.78545.qmail@locus.apache.org>
+Date: 24 Jul 2000 15:25:17 -0000
+From: Brian Eidelman <beidelman@netegrity.com>
+Reply-To: beidelman@netegrity.com
+To: submit@bugz.apache.org
+Subject: Apache child crash processing custom error responses when mod_proxy (in ¡§ProxyPass¡¨ mode) is being used.
+X-Send-Pr-Version: 3.110
+
+>Number:         6336
+>Category:       general
+>Synopsis:       Apache child crash processing custom error responses when mod_proxy (in ¡§ProxyPass¡¨ mode) is being used.
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jul 24 08:30:00 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     beidelman@netegrity.com
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Solaris 5.6 and 5.7 currently patched.  SUNWspro 5.0 compiler and GNU compiler.
+>Description:
+Our module (running in the ¡§Check Access¡¨ hook) calls the Apache API function ap_custom_response to register a response for HTTP_SERVER_ERROR before returning HTTP_SERVER_ERROR.   An example of such code would be: 
+
+ap_custom_response(m_rq, HTTP_STATUS_SERVER_ERROR, ¡§Server Error¡¨);
+return HTTP_STATUS_SERVER_ERROR;
+
+Everything works fine if mod_proxy is off, but with mod_proxy enabled in reverse proxy mode (with ProxyPass and ProxyPassReverse directives) Apache children crash on subsequent requests when our module returns HTTP_STATUS_UNAUTHORIZED for which no custom response was set.  When we catch this crash in the debugger we indeed find that the Apache child is crashing in the ap_die function trying to read a custom response which is not NULL, but who¡¦s memory is no longer valid.  If I add a custom response for HTTP_STATUS_UNAUTHORIZED (which I don¡¦t want to do), then the crash does not occur.  Also, note again that for normal (non-proxy) http requests, this problem does not occur.
+
+I see this crash as being caused by two problems in the APACHE code.
+
+1) The first problem is that ap_custom_response points the permanent pointers in the core modules response_code_strings array to temporary memory from the request_rec pool which gets destroyed at the end of the request.  So, after the request is finished, the response_code_strings entry for a given response is pointing at invalid memory until ap_custom_response is called again for that response.  I see this as very dangerous and the first step in the crash problem that we are seeing.
+
+API_EXPORT(void) ap_custom_response(request_rec *r, int status, char *string)
+{
+    core_dir_config *conf =
+        ap_get_module_config(r->per_dir_config, &core_module);
+    int idx;
+
+    if(conf->response_code_strings == NULL) {
+        conf->response_code_strings =
+            ap_pcalloc(r->pool,
+                    sizeof(*conf->response_code_strings) *
+                    RESPONSE_CODES);
+    }
+
+    idx = ap_index_of_response(status);
+
+    conf->response_code_strings[idx] =
+       ((ap_is_url(string) || (*string == '/')) && (*string != '"')) ?
+       ap_pstrdup(r->pool, string) : ap_pstrcat(r->pool, "\"", string, NULL);
+}
+
+2) The second problem is that in a ProxyPass request, Apache is somehow trying to use the custom response registered in the previous request for HTTP_SERVER_ERROR, even though it is processing for HTTP_ STATUS_UNAUTHORIZED for which no custom response is registered.  Since the memory it is trying to reference is invalid because of problem 1, we have a crash issue.
+
+I am including the stack trace along with the code snippet from ap_die in http_core.c where Apache is crashing.
+
+
+Stack Trace:
+
+  main(argc = 1, argv = 0xeffffc5c)
+   standalone_main(argc = 1, argv = 0xeffffc5c)
+   startup_children(number_to_start = 3)
+   make_child(s = 0x1722c0, slot = 2, now = 963945933)
+   child_main(child_num_arg = 2)
+   ap_process_request(r = 0x1b8b70)
+   process_request_internal(r = 0x1b8b70)
+   decl_die(status = 401, phase = 0x169fac "check access", r =
+ 0x1b8b70)
+  ap_die(type = 401, r = 0x1b8b70)
+
+Crash Code Snippet:
+API_EXPORT(void) ap_die(int type, request_rec *r)
+{
+    int error_index = ap_index_of_response(type);
+    char *custom_response = ap_response_code_string(r, error_index);
+    int recursive_error = 0;
+
+V
+V
+V
+V
+
+    if ((r->status != HTTP_NOT_MODIFIED) && (r->status != HTTP_NO_CONTENT)
+        && !ap_status_drops_connection(r->status)
+        && r->connection && (r->connection->keepalive != -1)) {
+
+        (void) ap_discard_request_body(r);
+    }
+
+    /*
+     * Two types of custom redirects --- plain text, and URLs. Plain text has
+     * a leading '"', so the URL code, here, is triggered on its absence
+     */
+
+    if (custom_response && custom_response[0] != '"') {  „² **** CRASH IS HERE ****
+
+        if (ap_is_url(custom_response)) {
+            /*
+             * The URL isn't local, so lets drop through the rest of this
+             * apache code, and continue with the usual REDIRECT handler.
+             * But note that the client will ultimately see the wrong
+             * status...
+             */
+            r->status = REDIRECT;
+            ap_table_setn(r->headers_out, "Location", custom_response);
+
+>How-To-Repeat:
+
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,96 @@
+From apwww@hyperreal.org  Sat Aug 23 09:07:18 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id JAA07007;
+	Sat, 23 Aug 1997 09:07:18 -0700 (PDT)
+Message-Id: <199708231607.JAA07007@hyperreal.org>
+Date: Sat, 23 Aug 1997 09:07:18 -0700 (PDT)
+From: Alex Tutubalin <lexa@lexa.ru>
+Reply-To: lexa@lexa.ru
+To: apbugs@hyperreal.org
+Subject: 'software' VirtualHost do not work with portnumber differ, than specified in 'Port' directive
+X-Send-Pr-Version: 3.2
+
+>Number:         1049
+>Category:       general
+>Synopsis:       'software' VirtualHost do not work with portnumber differ, than specified in 'Port' directive
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Aug 23 09:10:01 1997
+>Last-Modified:  Fri Oct 24 00:19:57 PDT 1997
+>Originator:     lexa@lexa.ru
+>Organization:
+>Release:        1.2.4
+>Environment:
+uname -a: FreeBSD home.lexa.ru 3.0-970807-SNAP FreeBSD 3.0-970807-SNAP #0:
+Compiler: gcc version 2.7.2.1
+>Description:
+Say, I've following setup:
+in DNS files:
+xxx IN A 1.2.3.4
+yyy IN CNAME xxx
+
+in httpd.conf:
+Port 80
+Listen 80
+Listen 8000
+Listen 8001
+DocumentRoot /www/ht-xxx
+<VirtualHost yyy:*>
+DocumentRoot /www/ht-yyy
+</VirtualHost>
+
+In this case, when I'm accessing URL http://xxx:80 or http://yyy:80
+with Netscape Navigator, I'll get right document. 
+But when I'm accessing URL http://yyy:8000,
+I'll get document with URL http://xxx:8000.
+
+
+Source of problem:
+
+Netscape set Host: header in HTTP-request to hostname:port
+(of course, if port specified in URL string). 
+
+In file http_protocol.c, in function check_hostalias, line 715-716
+we can see:
+  if (port && (port != r->server->port))
+    return;
+where port - portnumber, given from Host: header.
+In this case, check_hostalias not performs any hostalias/virtualhost
+checks and main server context (or default Virtual host) is assumed. 
+>How-To-Repeat:
+Sorry, I have no test-server on-line. You can repeat this bug
+by using example config given above.
+>Fix:
+Comment out piece of code, described above (lines 715-716 in
+http_protocol.c%2
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Sep 12 19:55:15 PDT 1997
+State-Changed-Why:
+Yes you appear to be correct.  I'm pretty sure I know what
+this was attempting to workaround in pre 1.2 code, but I think
+the issues have been resolved otherways in 1.2.  It's definately
+incorrect to do this check in 1.3 (where vhosts were again
+hacked on).  I'm submitting a patch for consideration in
+1.2.5 and 1.3b1.
+
+Thanks
+Dean
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Oct 24 00:19:56 PDT 1997
+State-Changed-Why:
+This won't be fixed in the 1.2 series, but it is fixed in
+the 1.3 series.
+
+Thanks
+Dean
+>Unformatted:
+
+

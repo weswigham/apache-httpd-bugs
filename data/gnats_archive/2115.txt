@@ -1,0 +1,277 @@
+Received: (qmail 21649 invoked by uid 2012); 22 Apr 1998 15:20:09 -0000
+Message-Id: <19980422152009.21648.qmail@hyperreal.org>
+Date: 22 Apr 1998 15:20:09 -0000
+From: M.D.Parker <mdpc@netcom.com>
+Reply-To: mdpc@netcom.com
+To: apbugs@hyperreal.org
+Subject: Change Mod status output
+X-Send-Pr-Version: 3.2
+
+>Number:         2115
+>Category:       mod_status
+>Synopsis:       Change Mod status output
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    jim
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Apr 22 08:30:00 PDT 1998
+>Last-Modified:  Mon Mar 15 10:19:34 PST 1999
+>Originator:     mdpc@netcom.com
+>Organization:
+>Release:        1.3b6
+>Environment:
+UNIX / Linux
+>Description:
+The following patch does the following:
+
+1.  Changes the ordering of the output lines to something in downward
+    newer if that makes any sense.  Server build, server restart, current time.
+
+2.  Format output is now UNIX consistant (wow a time zone now)
+
+3.  The default format for the "long" status report gets the more detailed
+    accounting information but does not output all the server information.
+    I like the less abbreviated form as it fits on one page and is more
+    detailed.  However, see #4
+
+4.  If you want the "current" long format, you must append "?long" after
+    the URI used for the status handler.
+
+5.  The port number used for the status connection is put in the header
+    after the sitename.
+
+Default output (assumming that you have built apache with full status):
+
+                                                                                                                      Apache Status
+ 
+                                        Apache Server Status for xyzzy.com:80
+ 
+   Server Version: Apache/1.3b6 MDP/1.3b6/LINUX
+   Server Built: Tue Apr 21 08:48:41 PDT 1998 - Build #14
+   Restart Time: Wed Apr 22 05:53:49 PDT 1998
+   Current Time: Wed Apr 22 08:15:19 PDT 1998
+   Server uptime: 2 hours 21 minutes 30 seconds
+   Total Accesses: 303892 - Total Traffic: 1.3 GB
+   CPU Usage: u162.1 s231.28 cu89.2 cs27.34 - 6.01% CPU Load
+   35.8 requests/sec - 161.5 kB/second - 4620 B/request
+   160 requests currently being processed, 28 idle servers
+KKKWK_WKWKKKKK_WWK_KKKKKK_KR_KKKKKWKRKKKKKK_KKWKKKKKKKKKKKKKRKKK
+KKKKK_WKKKKKKWKKKWKKKKK_K_KKWKKKKKKKK_WRKKKK_KKKKKKKKKKRKKKKKKWK
+KKKKKKKKK_KKKWKR_KRKKKKKKKKK_KRK_KKK_KWKKKK_K__K______R___......
+...K.K..........................................................
+................................................................
+................................................................
+................................................................
+................................................................
+ 
+   Scoreboard Key:
+   "_" Waiting for Connection, "S" Starting up, "R" Reading Request,
+   "W" Sending Reply, "K" Keepalive (read), "D" DNS Lookup,
+   "L" Logging, "G" Gracefully finishing, "." Open slot with no current process
+
+>How-To-Repeat:
+oh yes...
+
+>Fix:
+Patch is to mod_status.c in the src/modules/standard directory:
+
+*** mod_status.c.dist	Mon Apr 20 18:17:16 1998
+--- mod_status.c	Mon Apr 20 22:21:59 1998
+***************
+*** 136,141 ****
+--- 136,144 ----
+  #define	MBYTE			1048576L
+  #define	GBYTE			1073741824L
+  
++ #define	STBUFMAX		100
++ #define	STFMTSTR		"%a %b %d %H:%M:%S %Z %Y"
++ 
+  module MODULE_VAR_EXPORT status_module;
+  
+  #ifdef STATUS
+***************
+*** 193,198 ****
+--- 196,202 ----
+  #define STAT_OPT_REFRESH	0
+  #define STAT_OPT_NOTABLE	1
+  #define STAT_OPT_AUTO		2
++ #define STAT_OPT_LONG		3
+  
+  struct stat_opt {
+      int id;
+***************
+*** 205,210 ****
+--- 209,215 ----
+      {STAT_OPT_REFRESH, "refresh", "Refresh"},
+      {STAT_OPT_NOTABLE, "notable", NULL},
+      {STAT_OPT_AUTO, "auto", NULL},
++     {STAT_OPT_LONG, "long", NULL},
+      {STAT_OPT_END, NULL, NULL}
+  };
+  
+***************
+*** 234,245 ****
+  #endif /* STATUS */
+      int short_report = 0;
+      int no_table_report = 0;
+      server_rec *server = r->server;
+      short_score score_record;
+      parent_score ps_record;
+      char stat_buffer[HARD_SERVER_LIMIT];
+      clock_t tu, ts, tcu, tcs;
+! 
+      tu = ts = tcu = tcs = 0;
+  
+      if (!ap_exists_scoreboard_image()) {
+--- 239,251 ----
+  #endif /* STATUS */
+      int short_report = 0;
+      int no_table_report = 0;
++     int full_report_ok = 0;
+      server_rec *server = r->server;
+      short_score score_record;
+      parent_score ps_record;
+      char stat_buffer[HARD_SERVER_LIMIT];
+      clock_t tu, ts, tcu, tcs;
+! 	char sttbuf[STBUFMAX];
+      tu = ts = tcu = tcs = 0;
+  
+      if (!ap_exists_scoreboard_image()) {
+***************
+*** 269,274 ****
+--- 275,283 ----
+  		    else
+  			ap_table_set(r->headers_out, status_options[i].hdr_out_str, "1");
+  		    break;
++ 		case STAT_OPT_LONG:
++ 			full_report_ok = 1;
++ 			break;
+  		case STAT_OPT_NOTABLE:
+  		    no_table_report = 1;
+  		    break;
+***************
+*** 324,337 ****
+      if (!short_report) {
+  	ap_rputs("<HTML><HEAD>\n<TITLE>Apache Status</TITLE>\n</HEAD><BODY>\n", r);
+  	ap_rputs("<H1>Apache Server Status for ", r);
+! 	ap_rvputs(r, server->server_hostname, "</H1>\n\n", NULL);
+! 	ap_rvputs(r, "Server Version: ", ap_get_server_version(), "<br>\n",
+! 	       NULL);
+! 	ap_rvputs(r, "Server Built: ", ap_get_server_built(), "<br>\n<hr>\n",
+! 	       NULL);
+! 	ap_rvputs(r, "Current Time: ", asctime(localtime(&nowtime)), "<br>\n", NULL);
+! 	ap_rvputs(r, "Restart Time: ", asctime(localtime(&ap_restart_time)), "<br>\n",
+! 	       NULL);
+  	ap_rputs("Server uptime: ", r);
+  	show_time(r, up_time);
+  	ap_rputs("<br>\n", r);
+--- 333,345 ----
+      if (!short_report) {
+  	ap_rputs("<HTML><HEAD>\n<TITLE>Apache Status</TITLE>\n</HEAD><BODY>\n", r);
+  	ap_rputs("<H1>Apache Server Status for ", r);
+!  	ap_rprintf(r,"%s:%d </H1>\n\n",server->server_hostname,server->port);
+! 	ap_rvputs(r, "Server Version: ", ap_get_server_version(), "<br>\n", NULL);
+! 	ap_rvputs(r, "Server Built: ", ap_get_server_built(), "<br>\n", NULL);
+!  	strftime(&sttbuf[0], STBUFMAX, STFMTSTR, localtime(&ap_restart_time));
+! 	ap_rvputs(r, "Restart Time: ", sttbuf, "<br>\n", NULL);
+!  	strftime(&sttbuf[0], STBUFMAX, STFMTSTR, localtime(&nowtime));
+! 	ap_rvputs(r, "Current Time: ", sttbuf, "<br>\n", NULL);
+  	ap_rputs("Server uptime: ", r);
+  	show_time(r, up_time);
+  	ap_rputs("<br>\n", r);
+***************
+*** 358,364 ****
+  	    ap_rprintf(r, "BytesPerReq: %g\n", KBYTE * (float) kbcount / (float) count);
+      }
+      else {			/* !short_report */
+! 	ap_rprintf(r, "Total accesses: %lu - Total Traffic: ", count);
+  	format_kbyte_out(r, kbcount);
+  
+  #ifndef NO_TIMES
+--- 366,372 ----
+  	    ap_rprintf(r, "BytesPerReq: %g\n", KBYTE * (float) kbcount / (float) count);
+      }
+      else {			/* !short_report */
+! 	ap_rprintf(r, "Total Accesses: %lu - Total Traffic: ", count);
+  	format_kbyte_out(r, kbcount);
+  
+  #ifndef NO_TIMES
+***************
+*** 368,374 ****
+  		tu / tick, ts / tick, tcu / tick, tcs / tick);
+  
+  	if (ts || tu || tcu || tcs)
+! 	    ap_rprintf(r, " - %.3g%% CPU load", (tu + ts + tcu + tcs) / tick / up_time * 100.);
+  #endif
+  
+  	ap_rputs("<br>\n", r);
+--- 376,382 ----
+  		tu / tick, ts / tick, tcu / tick, tcs / tick);
+  
+  	if (ts || tu || tcu || tcs)
+! 	    ap_rprintf(r, " - %.3g%% CPU Load", (tu + ts + tcu + tcs) / tick / up_time * 100.);
+  #endif
+  
+  	ap_rputs("<br>\n", r);
+***************
+*** 410,415 ****
+--- 418,425 ----
+  	    ap_rputs("\n", r);
+      }
+  
++ 
++ 
+      if (short_report)
+  	ap_rputs("\n", r);
+      else {
+***************
+*** 425,430 ****
+--- 435,447 ----
+  	ap_rputs("\"<B><code>G</code></B>\" Gracefully finishing, \n", r);
+  	ap_rputs("\"<B><code>.</code></B>\" Open slot with no current process<P>\n", r);
+      }
++ 
++      if (full_report_ok == 0)          
++        {
++          ap_rputs("</BODY></HTML>\n", r);
++        ap_kill_timeout(r);            
++        return 0;
++        }
+  
+  #if defined(STATUS)
+      if (!short_report) {
+
+%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: jim
+State-Changed-When: Fri May  1 05:54:57 PDT 1998
+State-Changed-Why:
+1.3.0 is in feature freeze right now, but I will keep this
+in mind for inclusion for possibly 1.3.1
+Responsible-Changed-From-To: apache-jim
+Responsible-Changed-By: jim
+Responsible-Changed-When: Fri May  1 05:54:57 PDT 1998
+Responsible-Changed-Why:
+I'll try to remember :)
+Comment-Added-By: coar
+Comment-Added-When: Mon Jun 15 08:13:51 PDT 1998
+Comment-Added:
+[Reminder for Jim, since he owns this, said he'd try
+to get it into 1.3.1, and 1.3.1 is a-growing..]
+State-Changed-From-To: analyzed-closed
+State-Changed-By: jim
+State-Changed-When: Mon Mar 15 10:19:34 PST 1999
+State-Changed-Why:
+closed
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,404 @@
+Received: (qmail 17411 invoked by uid 2012); 11 Jan 1998 14:47:45 -0000
+Message-Id: <19980111144745.17410.qmail@hyperreal.org>
+Date: 11 Jan 1998 14:47:45 -0000
+From: Sergei Laskavy <laskavy@cs.msu.su>
+Reply-To: laskavy@cs.msu.su
+To: apbugs@hyperreal.org
+Subject: .htaccess is searched UNDER DocumentRoot
+X-Send-Pr-Version: 3.2
+
+>Number:         1649
+>Category:       config
+>Synopsis:       .htaccess is searched UNDER DocumentRoot
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Jan 11 06:50:00 PST 1998
+>Last-Modified:  Wed Jan 21 07:20:00 PST 1998
+>Originator:     laskavy@cs.msu.su
+>Organization:
+>Release:        1.2.5
+>Environment:
+FreeBSD ask.cs.msu.su 2.2.5-STABLE FreeBSD 2.2.5-STABLE #0: Mon Jan  5 23:04:41 MSK 1998     laskavy@ask.cs.msu.su:/usr/src/sys/compile/HEDGEHOG  i386
+Server is running with DocumentRoot = /home/laskavy/www/docs
+>Description:
+Here is the ktrace(1) output:
+   413 httpd    GIO   fd 3 read 7 bytes
+       "GET /\r"
+413 httpd    NAMI  "/home/laskavy/www/data"
+413 httpd    NAMI  "/.htaccess"
+413 httpd    NAMI  "/home/.htaccess"
+413 httpd    NAMI  "/home/laskavy/.htaccess"
+413 httpd    NAMI  "/home/laskavy/www/.htaccess"
+>How-To-Repeat:
+run ktrace ./httpd; kdump -l | more under BSD, or truss ./httpd under Solaris
+>Fix:
+Maybe, this is not a bug, but it seems to me strange that
+web server searches for .htaccess files UNDER the DocumentRoo
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Sun Jan 11 07:49:13 PST 1998
+State-Changed-Why:
+This is correct behaviour; the server looks for and
+processes .htaccess files any time a document request
+resolves to a file in the filesystem.  Otherwise the
+only way you could tailor behaviour for subdirectories
+under the DocumentRoot would be by modifying the server
+config files, and then they wouldn't take effect until
+you reloaded the server.
+
+Thanks for your concern, and for using Apache!
+Category-Changed-From-To: general-config
+Category-Changed-By: coar
+Category-Changed-When: Sun Jan 11 07:49:13 PST 1998
+
+
+From: Marc Slemko <marcs@znep.com>
+To: laskavy@cs.msu.su
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: config/1649: .htaccess is searched UNDER DocumentRoot
+Date: Sun, 11 Jan 1998 10:05:09 -0700 (MST)
+
+ On 11 Jan 1998 coar@hyperreal.org wrote:
+ 
+ > This is correct behaviour; the server looks for and
+ > processes .htaccess files any time a document request
+ > resolves to a file in the filesystem.  Otherwise the
+ > only way you could tailor behaviour for subdirectories
+ > under the DocumentRoot would be by modifying the server
+ > config files, and then they wouldn't take effect until
+ > you reloaded the server.
+ 
+ In addition, if you want to disable searching for them somewhere you can
+ use AllowOverride None in your config file for that part of the fs.
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: config/1649: .htaccess is searched UNDER DocumentRoot (fwd)
+Date: Tue, 20 Jan 1998 07:42:16 -0700 (MST)
+
+   This message is in MIME format.  The first part should be readable text,
+   while the remaining parts are likely unreadable without MIME-aware tools.
+   Send mail to mime@docserver.cac.washington.edu for more info.
+ 
+ ---559023410-1804928587-885306867=:7647
+ Content-Type: TEXT/PLAIN; CHARSET=US-ASCII
+ Content-ID: <Pine.BSF.3.95.980120074201.12668H@alive.znep.com>
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Tue, 20 Jan 1998 16:34:27 +0200 (MET)
+ From: Aidas Kasparas <kaspar@soften.ktu.lt>
+ To: coar@hyperreal.org, marcs@znep.com, laskavy@cs.msu.su, vuori@sci.fi
+ Subject: re: .htaccess is searched UNDER DocumentRoot
+ 
+ Dear Colleagues,
+ 
+ I know official state of this question is "closed" but I had problems
+ with this behavior, I made some changes and would like to share my
+ results.
+ 
+ 	Let's count:
+ 	o in standard installation with documents located in
+ /usr/local/etc/httpd/htdocs apache tries to open .htaccess file in 5
+ directories above the point where all documents are stored;
+ 	o in case of user www space (i.e. documents under
+ /home/user/public_html) 3 opens;
+ 	o in case of expert installation (i.e.  /web/{cust1, cust2, ...,
+ custN} - 2 opens.
+ 
+ 	If in any of these paths indirect automounter map is involved (I
+ know - this is lame, but we do live in not perfect world)  -
+ one risks to get his log filled with messages that system can't mount some
+ .htaccess files for the simple reason that they do not exist.
+ 
+ 	Are these files used in practice in these places? IMHO on 99.9% of
+ all servers - no (I may be wrong). The only use for them that comes to my
+ mind is configuring hierarchies like:
+ /web/
+      cheap_plan_cust/
+                     .htaccess
+                     cust11/
+                     cust12/
+                     ....
+      expensive_plan_cust/
+                     .htaccess
+                     cust21/
+                     cust22/
+                     ...
+ 
+ 	but even in this case it is possible to achieve required
+ functionality by inspecting only a limited number of directories above
+ corresponding document space (that could be configured at startup with
+ default to 0).
+ 
+ 	So my patch tries to force server start search of access files
+ from corresponding document root. It seams that it succeeds in case of
+ server documents or ~user files. But can fail if rewrite module or some
+ other module that maps URIs to filenames in funny way is in use. To handle
+ this correctly it is necessary to make more global changes to server code
+ (in particular - require that filename formation code separate path into
+ 2 parts - document root and path within document space).
+ 
+ 	You are welcome to use this patch in any way but I am not
+ responsible for any consequences. I also will be happy to answer your
+ questions and discuss further about this problem.
+ 
+ 
+ Aidas
+ 
+ ---559023410-1804928587-885306867=:7647
+ Content-Type: TEXT/PLAIN; CHARSET=US-ASCII; NAME="AK1.diff"
+ Content-Transfer-Encoding: BASE64
+ Content-ID: <Pine.GSO.3.96.980120163426.7647B@sefas>
+ Content-Description: patch
+ 
+ SW5kZXg6IGFwYWNoZS9zcmMvaHR0cF9yZXF1ZXN0LmMNCj09PT09PT09PT09
+ PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+ PT09PT09PT09PT0NClJDUyBmaWxlOiAvaG9tZS9hZG0va2FzcGFyL0NWUy9h
+ cGFjaGUvc3JjL2h0dHBfcmVxdWVzdC5jLHYNCnJldHJpZXZpbmcgcmV2aXNp
+ b24gMS4xLjEuMQ0KcmV0cmlldmluZyByZXZpc2lvbiAxLjMNCmRpZmYgLXIx
+ LjEuMS4xIC1yMS4zDQoyNTVjMjU1DQo8ICAgICBpbnQgbnVtX2RpcnMsIHJl
+ czsNCi0tLQ0KPiAgICAgaW50IG51bV9kaXJzLCBVUklfbnVtX2RpcnMsIHJl
+ czsNCjM0MWEzNDIsMzQ4DQo+ICAgICANCj4gICAgIA0KPiAgICAgLyoNCj4g
+ ICAgICAgIFdlIGRvbid0IG5lZWQgdG8gY2hlY2sgcHJlc2VuY2Ugb2YgLmh0
+ YWNjZXNzIGZpbGVzIA0KPiAgICAgICAgYWJvdmUgZG9jdW1lbnQgc3BhY2Ug
+ KGVpdGhlciBvZiBzZXJ2ZXIgb3Igb2YgdXNlcikuDQo+ICAgICAgICBXZSB0
+ cnkgdG8gbGltaXQgbnVtYmVyIG9mIGRpcmVjdG9yaWVzIGluc3BlY3RlZCB0
+ byANCj4gICAgICAgIG51bWJlcl9vZl9zbGFzaGVzX2luX1VSSS4NCjM0M2Mz
+ NTAsMzYyDQo8ICAgICBmb3IgKGkgPSAxOyBpIDw9IG51bV9kaXJzOyArK2kp
+ IHsNCi0tLQ0KPiAgICAgICAgQlVHOiBUaGlzIGNvZGUgc3RpbGwgY2hlY2sg
+ Lmh0YWNjZXNzIGZpbGVzIGFib3ZlIGRvY3VtZW50IHNwYWNlDQo+ICAgICAg
+ ICBpZiBvdGhlciBtb2R1bGVzIGludGVycHJldHMgVVJJJ3MgImRpcmVjdG9y
+ aWVzIiB0aGVpciBvd24gd2F5Lg0KPiAgICAgICAgQnV0IGFueXdheSB0aGVy
+ ZSB3aWxsIGJlIG5vIG1vcmUgY2hlY2tzIHRoYW4gaW4gb3JpZ2luYWwgdmVy
+ c2lvbi4NCj4gICAgICAgIFRvIGZpeCBpdCB3ZSBuZWVkIHRvIGZvcmNlIGFs
+ bCBmaWxlIHJld3JpdGluZyBtb2R1bGVzIHRvIHNlcGFyYXRlDQo+ICAgICAg
+ ICBwYXRocyB0byBkb2N1bWVudCBzcGFjZSBhbmQgd2l0aGluIGl0Lg0KPiAN
+ Cj4gICAgICAgIFBPVEVOVElBTCBGRUFUVVJFOiBGb3IgdGhvc2Ugd2hvIHJl
+ bGllZCBvbiBvbGQgYmVoYXZpb3IgaXQgaXMgDQo+ICAgICAgICBwb3NzaWJs
+ ZSB0byBtYWtlIGNvbmZpZ3VyYXRpb24gZGlyZWN0aXZlIENoZWNrc0Fib3Zl
+ RG9jU3BhY2UgdGhhdCANCj4gICAgICAgIHdpbGwgdGVsbCBob3cgbXVjaCBk
+ aXJlY3RvcmllcyB0byBjaGVjay4NCj4gICAgICAgIAkJCQkJCS0tQUsgKi8N
+ Cj4gICAgIFVSSV9udW1fZGlycyA9IGNvdW50X1VSSV9kaXJzKHItPnVyaSk7
+ DQo+IA0KPiAgICAgZm9yIChpID0gKFVSSV9udW1fZGlycyA8IG51bV9kaXJz
+ ICsxKT8gbnVtX2RpcnMgLSBVUklfbnVtX2RpcnMrMTogMSA7IGkgPD0gbnVt
+ X2RpcnM7ICsraSkgew0KSW5kZXg6IGFwYWNoZS9zcmMvdXRpbC5jDQo9PT09
+ PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+ PT09PT09PT09PT09PT09PT09DQpSQ1MgZmlsZTogL2hvbWUvYWRtL2thc3Bh
+ ci9DVlMvYXBhY2hlL3NyYy91dGlsLmMsdg0KcmV0cmlldmluZyByZXZpc2lv
+ biAxLjEuMS4xDQpyZXRyaWV2aW5nIHJldmlzaW9uIDEuMg0KZGlmZiAtcjEu
+ MS4xLjEgLXIxLjINCjM3OWEzODAsMzk0DQo+IGludCBjb3VudF9VUklfZGly
+ cyhjb25zdCBjaGFyICpwYXRoKSB7DQo+ICAgICByZWdpc3RlciBpbnQgeCxu
+ Ow0KPiANCj4gICAgIGZvcih4PTAsbj0wO3BhdGhbeF07eCsrKXsNCj4gICAg
+ ICAgICBpZihwYXRoW3hdID09ICc/JykgYnJlYWs7DQo+ICAgICAgICAgaWYo
+ cGF0aFt4XSA9PSAnLycpIG4rKzsNCj4gICAgIH0NCj4gICAgIC8qIGEgaGFj
+ ayB0byB0YWtlIGludG8gYWNjb3VudCB1c2VycycgZGlyZWN0b3JpZXMgLS1B
+ SyAqLw0KPiAgICAgaWYgKCEqcGF0aCkgcmV0dXJuIG47DQo+ICAgICAvKiBu
+ b3cgaXQncyBzYWZlIHRvIGFjY2VzcyBzZWNvbmQgY2hhcmFjdGVyIC0tQUsg
+ Ki8NCj4gICAgIGlmIChwYXRoWzFdID09ICd+JykgcmV0dXJuIG4tMTsNCj4g
+ ICAgIHJldHVybiBuOw0KPiB9DQo+IA0KPiANCg==
+ ---559023410-1804928587-885306867=:7647--
+
+From: Marc Slemko <marcs@znep.com>
+To: Aidas Kasparas <kaspar@soften.ktu.lt>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: config/1649: .htaccess is searched UNDER DocumentRoot
+Date: Tue, 20 Jan 1998 07:44:59 -0700 (MST)
+
+ On Tue, 20 Jan 1998, Aidas Kasparas wrote:
+ 
+ > Dear Colleagues,
+ > 
+ > I know official state of this question is "closed" but I had problems
+ > with this behavior, I made some changes and would like to share my
+ > results.
+ > 
+ > 	Let's count:
+ > 	o in standard installation with documents located in
+ > /usr/local/etc/httpd/htdocs apache tries to open .htaccess file in 5
+ > directories above the point where all documents are stored;
+ > 	o in case of user www space (i.e. documents under
+ > /home/user/public_html) 3 opens;
+ > 	o in case of expert installation (i.e.  /web/{cust1, cust2, ...,
+ > custN} - 2 opens.
+ > 
+ > 	If in any of these paths indirect automounter map is involved (I
+ > know - this is lame, but we do live in not perfect world)  -
+ > one risks to get his log filled with messages that system can't mount some
+ > .htaccess files for the simple reason that they do not exist.
+ > 
+ > 	Are these files used in practice in these places? IMHO on 99.9% of
+ > all servers - no (I may be wrong). The only use for them that comes to my
+ > mind is configuring hierarchies like:
+ 
+ I'm confused about why you don't just use "AllowOverride none" as I
+ suggested before.  
+ 
+ <Directory />
+ AllowOverride None
+ </Directory>
+ <Direoctory /whatever/path>
+ AllowOverride whateveryouwant
+ </Directory>
+ ... and so on.
+ 
+ The problem with trying to guess where the documentroot is is that I'm not
+ convinced you will always get it right.
+ 
+
+From: Aidas Kasparas <kaspar@soften.ktu.lt>
+To: Marc Slemko <marcs@znep.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: config/1649: .htaccess is searched UNDER DocumentRoot
+Date: Tue, 20 Jan 1998 17:01:24 +0200 (MET)
+
+ > I'm confused about why you don't just use "AllowOverride none" as I
+ > suggested before.  
+ > 
+ > <Directory />
+ > AllowOverride None
+ > </Directory>
+ > <Direoctory /whatever/path>
+ > AllowOverride whateveryouwant
+ > </Directory>
+ > ... and so on.
+ 
+ 	This will not do what I want. If we have document root at
+ /doc/root/dir and I ask for document /blah/blah/blah.html in standard way
+ it will do
+ 
+ stat("/doc/root/dir/blah/blah/blah.html");
+ open("/.htaccess");
+ open("/doc/.htaccess");
+ open("/doc/root/.htaccess");
+ open("/doc/root/dir/.htaccess");
+ open("/doc/root/dir/blah/.htaccess");
+ open("/doc/root/dir/blah/blah/.htaccess");
+ 
+ 	And I want it did:
+ stat("/doc/root/dir/blah/blah/blah.html");
+ open("/doc/root/dir/.htaccess");
+ open("/doc/root/dir/blah/.htaccess");
+ open("/doc/root/dir/blah/blah/.htaccess");
+ 	which is shorter by 3 sys calls.
+ 
+ > 
+ > The problem with trying to guess where the documentroot is is that I'm not
+ > convinced you will always get it right.
+ 
+ 	Well. Hack alone can't reliably do that. But modules that maps
+ URIs to filenames knows that info for sure. Why don't ask them to share
+ this information with those that checks access?
+ 
+ 
+ Aidas
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Aidas Kasparas <kaspar@soften.ktu.lt>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: config/1649: .htaccess is searched UNDER DocumentRoot
+Date: Tue, 20 Jan 1998 08:06:21 -0700 (MST)
+
+ On Tue, 20 Jan 1998, Aidas Kasparas wrote:
+ 
+ > > I'm confused about why you don't just use "AllowOverride none" as I
+ > > suggested before.  
+ > > 
+ > > <Directory />
+ > > AllowOverride None
+ > > </Directory>
+ > > <Direoctory /whatever/path>
+ > > AllowOverride whateveryouwant
+ > > </Directory>
+ > > ... and so on.
+ > 
+ > 	This will not do what I want. If we have document root at
+ > /doc/root/dir and I ask for document /blah/blah/blah.html in standard way
+ > it will do
+ >
+ 
+ I'm sorry, why won't it do what you want?  I don't understand the problem.
+ 
+ If you set AllowOvrride None it will not look for htaccess files.  Only
+ set some other AllowOverride for paths inside your documentroot or
+ wherever else you want to serve files.
+  
+ > stat("/doc/root/dir/blah/blah/blah.html");
+ > open("/.htaccess");
+ > open("/doc/.htaccess");
+ > open("/doc/root/.htaccess");
+ > open("/doc/root/dir/.htaccess");
+ > open("/doc/root/dir/blah/.htaccess");
+ > open("/doc/root/dir/blah/blah/.htaccess");
+ > 
+ > 	And I want it did:
+ > stat("/doc/root/dir/blah/blah/blah.html");
+ > open("/doc/root/dir/.htaccess");
+ > open("/doc/root/dir/blah/.htaccess");
+ > open("/doc/root/dir/blah/blah/.htaccess");
+ > 	which is shorter by 3 sys calls.
+ 
+ <Directory />
+ AllowOverride None
+ </Directory>
+ <Directory /doc/root/dir>
+ AllowOverride whatever-you-want
+ </Directory
+ 
+ 
+ > 
+ > > 
+ > > The problem with trying to guess where the documentroot is is that I'm not
+ > > convinced you will always get it right.
+ > 
+ > 	Well. Hack alone can't reliably do that. But modules that maps
+ > URIs to filenames knows that info for sure. Why don't ask them to share
+ > this information with those that checks access?
+ > 
+ > 
+ > Aidas
+ > 
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: config/1649: .htaccess is searched UNDER DocumentRoot (fwd)
+Date: Wed, 21 Jan 1998 08:13:43 -0700 (MST)
+
+ ---------- Forwarded message ----------
+ Date: Wed, 21 Jan 1998 09:27:03 +0200 (MET)
+ From: Aidas Kasparas <kaspar@soften.ktu.lt>
+ To: Marc Slemko <marcs@znep.com>
+ Subject: Re: config/1649: .htaccess is searched UNDER DocumentRoot
+ 
+ > <Directory />
+ > AllowOverride None
+ > </Directory>
+ > <Directory /doc/root/dir>
+ > AllowOverride whatever-you-want
+ > </Directory
+ 
+ 	Ok. It will do that I want. Sorry, I read docs not carefully
+ enough. Thanks for your help.
+ 
+ 
+ Aidas
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

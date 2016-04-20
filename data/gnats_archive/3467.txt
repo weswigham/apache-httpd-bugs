@@ -1,0 +1,275 @@
+Received: (qmail 22206 invoked by uid 2012); 1 Dec 1998 03:55:09 -0000
+Message-Id: <19981201035509.22205.qmail@hyperreal.org>
+Date: 1 Dec 1998 03:55:09 -0000
+From: Christopher Curtis <ccurtis@aet-usa.com>
+Reply-To: ccurtis@aet-usa.com
+To: apbugs@hyperreal.org
+Subject: Broken client connections not detected
+X-Send-Pr-Version: 3.2
+
+>Number:         3467
+>Category:       os-solaris
+>Synopsis:       Broken client connections not detected
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          feedback
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Nov 30 21:10:00 PST 1998
+>Last-Modified:  Wed Dec  2 09:50:01 PST 1998
+>Originator:     ccurtis@aet-usa.com
+>Organization:
+>Release:        1.3.3
+>Environment:
+SunOS yacht 5.4 Generic_101945-44 sun4m sparc
+GCC 2.7.2.f.1
+mod_php 3.0.5
+>Description:
+I have a PHP page that sits in an infinite loop.  When a browser leaves this page, the child httpd recieves a SIGPIPE, but ignores it, and continues to run, even though the client is long gone.  The output of a truss:
+
+read(7, "05 C h r i s\t 9 1 2 4 8".., 52)       = 52
+read(7, "01\0\0\n", 4)                          = 4
+read(7, "FE", 1)                                = 1
+write(6, " < f o n t   c o l o r =".., 182)     Err#32 EPIPE
+    Received signal #13, SIGPIPE [ignored]
+>How-To-Repeat:
+The URL is
+ http://www.ee.fit.edu/users/ccurtis/lords/chat/
+but please dont.
+>Fix:
+I haven't looked at the source code, but it seems like a good idea not to ignore SIGPIPE.  There may be other reasons to ignore it that I'm not aware of, however.
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Tue Dec  1 09:22:47 PST 1998
+State-Changed-Why:
+Do you have any reason for thinking this is an Apache issue
+and not a PHP issue?
+
+From: "Christopher W. Curtis" <ccurtis@aet-usa.com>
+To: marc@apache.org
+Cc: apache-bugdb@apache.org, apbugs@apache.org
+Subject: Re: os-solaris/3467: Broken client connections not detected
+Date: Tue, 01 Dec 1998 18:21:24 -0500
+
+ marc@apache.org wrote:
+ > 
+ > Synopsis: Broken client connections not detected
+ > 
+ > State-Changed-From-To: open-feedback
+ > State-Changed-By: marc
+ > State-Changed-When: Tue Dec  1 09:22:47 PST 1998
+ > State-Changed-Why:
+ >
+ > Do you have any reason for thinking this is an Apache issue
+ > and not a PHP issue?
+ 
+ I posted it to the PHP list, but it seems unlikely to me that PHP would
+ be it.  PHP does not patch anything in Apache, and I am 99.997% sure
+ that PHP is using the Apache-style read/write calls (PHP implements
+ flush() because Apache buffers writes...).  I looked at the code in
+ http_main.c and think I know where the signal is being ignored, but I'm
+ not familiar enough with the internals to know why everything happening
+ in there that is.  It does appear to make sense to ignore the signal,
+ but for some reason the child is not exiting gracefully when it should. 
+ Maybe there is a hook that PHP uses to disable the pending_signal (was
+ that it?) check; I really don't know.  Neither Rasmus or Jim (both of
+ whom are on the PHP list) have said anything about it, so I would have
+ to conclude that they would agree here, but that may be presumptuous.
+ 
+ I was going to truss further for you, but the server is hosed again and
+ I need to drive over to reboot it.  From what I remember, after the
+ ignored SIGPIPE, there was an alerm(0); some setsigprocmask()s (two
+ statements, I forget exactly which); then another alarm(non-zero).
+ 
+ Apache/PHP and this script are apparently killing the server not less
+ than twice a day, on average, since yesterday.  A netstat -a shows each
+ of these connections in a FIN_WAIT2, and the server-status handler show
+ that they will stick in "G" mode when given a -USR1.  When given a -HUP
+ signal, httpd blocks for up to several minutes, presumably waiting to
+ rebind to the port.  Again, here, I'm not too sure the details...
+ 
+ Thanks for any help,
+ Christopher
+ -- 
+ Oh My God!  They Killed init!  You Bastards!!
+
+From: Marc Slemko <marcs@znep.com>
+To: "Christopher W. Curtis" <ccurtis@aet-usa.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: os-solaris/3467: Broken client connections not detected
+Date: Tue, 1 Dec 1998 22:41:49 -0800 (PST)
+
+ On Tue, 1 Dec 1998, Christopher W. Curtis wrote:
+ 
+ > marc@apache.org wrote:
+ > > 
+ > > Synopsis: Broken client connections not detected
+ > > 
+ > > State-Changed-From-To: open-feedback
+ > > State-Changed-By: marc
+ > > State-Changed-When: Tue Dec  1 09:22:47 PST 1998
+ > > State-Changed-Why:
+ > >
+ > > Do you have any reason for thinking this is an Apache issue
+ > > and not a PHP issue?
+ > 
+ > I posted it to the PHP list, but it seems unlikely to me that PHP would
+ > be it.  PHP does not patch anything in Apache, and I am 99.997% sure
+ > that PHP is using the Apache-style read/write calls (PHP implements
+ 
+ Yea, but it can do it wrong.
+ 
+ > flush() because Apache buffers writes...).  I looked at the code in
+ > http_main.c and think I know where the signal is being ignored, but I'm
+ > not familiar enough with the internals to know why everything happening
+ > in there that is.  It does appear to make sense to ignore the signal,
+ > but for some reason the child is not exiting gracefully when it should. 
+ 
+ If it is inside an ap_soft_timeout then php needs to be checking
+ r->connection->aborted and the return value from the write functions.
+ 
+ There are many many modules that do handle this properly.
+ 
+
+From: "Christopher W. Curtis" <ccurtis@aet-usa.com>
+To: Marc Slemko <marcs@znep.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: os-solaris/3467: Broken client connections not detected
+Date: Wed, 02 Dec 1998 11:34:37 -0500
+
+ Marc Slemko wrote:
+ > 
+ > On Tue, 1 Dec 1998, Christopher W. Curtis wrote:
+ > 
+ > > be it. PHP does not patch anything in Apache, and I am 99.997% sure
+ > > that PHP is using the Apache-style read/write calls (PHP implements
+ > 
+ > Yea, but it can do it wrong.
+ 
+ Ahh.  Hmm.
+ 
+ > If it is inside an ap_soft_timeout then php needs to be checking
+ > r->connection->aborted and the return value from the write functions.
+ > 
+ > There are many many modules that do handle this properly.
+ 
+ Okay ... here's a message I composed yesterday:
+ 
+ ---
+ I purposefully broke a connection and truss'd it.  The first write after
+ the connection was broken gives no error.  The second write gives:
+ 
+ write(6, " < f o n t c o l o r =".., 198)       Err#32 EPIPE
+     Received signal #13, SIGPIPE [ignored]
+ alarm(0)                                        = 0
+ sigaction(SIGALRM, 0xEFFFE780, 0xEFFFE830)      = 0
+ sigprocmask(SIG_BLOCK, 0xEFFFE820, 0xEFFFE810)  = 0
+ alarm(10)                                       = 0
+ sigsuspend(0xEFFFE800)          (sleeping...) 
+ 
+ ... and then it continues to try to write as the page continues to spit
+ out data.  The server-status handler shows two active processes writing,
+ where there should only be one.  Contrary to what I said before, there
+ are no open ports associated with the child that ignores SIGPIPE and
+ continues to run.  Another truss gives:
+ 
+ read(7, "05 C h r i s\t 9 1 2 5 6".., 55)       = 55
+ read(7, "01\0\0\n", 4)                          = 4
+ read(7, "FE", 1)                                = 1
+ alarm(0)                                        = 0
+ sigaction(SIGALRM, 0xEFFFE780, 0xEFFFE830)      = 0
+ sigprocmask(SIG_BLOCK, 0xEFFFE820, 0xEFFFE810)  = 0
+ alarm(10)                                       = 0
+ sigsuspend(0xEFFFE800)          (sleeping...)
+ 
+ That first line is data that *should* be written to the browser.  It
+ looks like Apache has given up trying to write anything entirely.  Maybe
+ this is a better indication of what is going on.  Maybe the signal
+ handler sets some flag that isn't fully qualified?  Just guessing...
+ 
+ Thanks again,
+ Christopher
+ -- 
+ Oh My God!  They Killed init!  You Bastards!!
+
+From: Marc Slemko <marcs@znep.com>
+To: "Christopher W. Curtis" <ccurtis@aet-usa.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: os-solaris/3467: Broken client connections not detected
+Date: Wed, 2 Dec 1998 09:42:17 -0800 (PST)
+
+ On Wed, 2 Dec 1998, Christopher W. Curtis wrote:
+ 
+ > Marc Slemko wrote:
+ > > 
+ > > On Tue, 1 Dec 1998, Christopher W. Curtis wrote:
+ > > 
+ > > > be it. PHP does not patch anything in Apache, and I am 99.997% sure
+ > > > that PHP is using the Apache-style read/write calls (PHP implements
+ > > 
+ > > Yea, but it can do it wrong.
+ > 
+ > Ahh.  Hmm.
+ > 
+ > > If it is inside an ap_soft_timeout then php needs to be checking
+ > > r->connection->aborted and the return value from the write functions.
+ > > 
+ > > There are many many modules that do handle this properly.
+ > 
+ > Okay ... here's a message I composed yesterday:
+ > 
+ > ---
+ > I purposefully broke a connection and truss'd it.  The first write after
+ > the connection was broken gives no error.  The second write gives:
+ > 
+ > write(6, " < f o n t c o l o r =".., 198)       Err#32 EPIPE
+ >     Received signal #13, SIGPIPE [ignored]
+ > alarm(0)                                        = 0
+ > sigaction(SIGALRM, 0xEFFFE780, 0xEFFFE830)      = 0
+ > sigprocmask(SIG_BLOCK, 0xEFFFE820, 0xEFFFE810)  = 0
+ > alarm(10)                                       = 0
+ > sigsuspend(0xEFFFE800)          (sleeping...) 
+ > 
+ > ... and then it continues to try to write as the page continues to spit
+ > out data.  The server-status handler shows two active processes writing,
+ > where there should only be one.  Contrary to what I said before, there
+ > are no open ports associated with the child that ignores SIGPIPE and
+ > continues to run.  Another truss gives:
+ > 
+ > read(7, "05 C h r i s\t 9 1 2 5 6".., 55)       = 55
+ > read(7, "01\0\0\n", 4)                          = 4
+ > read(7, "FE", 1)                                = 1
+ > alarm(0)                                        = 0
+ > sigaction(SIGALRM, 0xEFFFE780, 0xEFFFE830)      = 0
+ > sigprocmask(SIG_BLOCK, 0xEFFFE820, 0xEFFFE810)  = 0
+ > alarm(10)                                       = 0
+ > sigsuspend(0xEFFFE800)          (sleeping...)
+ > 
+ > That first line is data that *should* be written to the browser.  It
+ > looks like Apache has given up trying to write anything entirely.  Maybe
+ > this is a better indication of what is going on.  Maybe the signal
+ > handler sets some flag that isn't fully qualified?  Just guessing...
+ 
+ There are any number of things it could be doing, but I have seen no
+ reason to think that Apache is doing anything wrong.  As I said before,
+ there are many many Apache modules that do handle this thing just fine.
+ There are also many ways to use the Apache API that will cause it to not
+ work properly.  We can't debug every third party module out there, so
+ unless you have some reason to think this is something inherent to all
+ modules and not just a problem of php...
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

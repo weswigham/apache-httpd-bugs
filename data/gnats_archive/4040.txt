@@ -1,0 +1,95 @@
+Received: (qmail 15553 invoked from network); 11 Mar 1999 16:04:46 -0000
+Message-Id: <199903111605.LAA00392@siam.gensym.com>
+Date: Thu, 11 Mar 1999 11:05:25 -0500 (EST)
+From: bhyde@pobox.com
+To: Todd Vierling <tv@pobox.com>
+Cc: apbugs@Apache.Org
+In-Reply-To: <Pine.NEB.4.05.9903101631560.12716-100000@duhnet.net>
+Subject: Re: os/unix/os.c dlclose()s objects before module cleanups are complete
+References: <199903102123.QAA18308@siam.gensym.com>
+	<Pine.NEB.4.05.9903101631560.12716-100000@duhnet.net>
+
+>Number:         4040
+>Category:       pending
+>Synopsis:       Re: os/unix/os.c dlclose()s objects before module cleanups are complete
+>Confidential:   yes
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    gnats-admin
+>State:          closed
+>Class:          mistaken
+>Submitter-Id:   unknown
+>Arrival-Date:   Thu Mar 11 08:10:00 PST 1999
+>Last-Modified:  Thu Mar 11 12:46:19 PST 1999
+>Originator:     
+>Organization:
+>Release:        
+>Environment:
+>Description:
+>How-To-Repeat:
+>Fix:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: bhyde
+State-Changed-When: Thu Mar 11 12:46:19 PST 1999
+State-Changed-Why:
+[This is a standard response.]
+This is a CGI programming or basic configuration issue.
+As mentioned on the main bug database page, we must refer
+all such basic or non-Apache-related questions to the
+comp.infosystems.www.servers.unix and related newsgroups.
+Please ask your question there.
+Please also search the FAQ and the bug database.
+Thanks for using Apache!
+Class-Changed-From-To: sw-bug-mistaken
+Class-Changed-By: bhyde
+Class-Changed-When: Thu Mar 11 12:46:19 PST 1999
+Severity-Changed-From-To: serious-non-critical
+Severity-Changed-By: bhyde
+Severity-Changed-When: Thu Mar 11 12:46:19 PST 1999
+>Unformatted:
+Todd Vierling writes:
+> Just as a test case, try hooking into the cleanups for a module which is
+> LoadModule'd and AddModule'd later in the config file than an arbitrary
+...
+
+Ok I took a stab at reproducing the "random pattern."
+
+I have a config file like so:
+
+    $ grep '^Load' local/conf/httpd.conf
+    LoadFile /usr/local/lib/libz.so
+    LoadFile /usr/lib/libw.so
+    LoadModule env_module         libexec/mod_env.so
+    LoadModule config_log_module  libexec/mod_log_config.so
+    LoadModule access_module      libexec/mod_access.so
+    LoadModule setenvif_module    libexec/mod_setenvif.so
+    
+and I added some fprintf into mod_so at the calls it makes
+to load and unload things and then I get this in my
+error log.  A quick glance suggests the order is fine.
+
+... 
+httpd: [Thu Mar 11 10:53:03 1999] [notice] SIGHUP received.  Attempting to restart
+Calling ap_os_dso_unload for module module: setenvif_module at ef641db0
+Calling ap_os_dso_unload for module module: access_module at ef6416f4
+Calling ap_os_dso_unload for module module: config_log_module at ef6409cc
+Calling ap_os_dso_unload for module module: env_module at ef491d94
+Calling ap_os_dso_unload to unload file at ef4907f4
+Calling ap_os_dso_unload to unload file at ef490490
+Loaded file /usr/local/lib/libz.so at ef490624
+Loaded file /usr/lib/libw.so at ef490ad4
+Loaded module env_module at ef640284
+Loaded module config_log_module at ef4d01f0
+Loaded module access_module at ef4d083c
+Loaded module setenvif_module at ef4d0e40
+httpd: [Thu Mar 11 10:53:03 1999] [notice] Apache/1.3.4 (Unix) configured -- resuming normal operations
+...
+
+I have no idea why the handle addresses don't match,
+but it's unlikely that is anything other than a typo
+on my part.
+
+So... I remain unconvinced.
+ 
+  - ben

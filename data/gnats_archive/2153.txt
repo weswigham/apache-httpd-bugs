@@ -1,0 +1,84 @@
+Received: (qmail 26389 invoked by uid 2012); 28 Apr 1998 23:30:43 -0000
+Message-Id: <19980428233043.26388.qmail@hyperreal.org>
+Date: 28 Apr 1998 23:30:43 -0000
+From: Jim Patterson <Jim.Patterson@Cognos.COM>
+Reply-To: Jim.Patterson@Cognos.COM
+To: apbugs@hyperreal.org
+Subject: Apache installation could be simplified by rolling ApacheCore into Apache.exe
+X-Send-Pr-Version: 3.2
+
+>Number:         2153
+>Category:       os-windows
+>Synopsis:       Apache installation could be simplified by rolling ApacheCore into Apache.exe
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Apr 28 16:40:00 PDT 1998
+>Last-Modified:  Thu May 28 05:15:17 PDT 1998
+>Originator:     Jim.Patterson@Cognos.COM
+>Organization:
+>Release:        1.3b6
+>Environment:
+Windows NT 4.0 SP 3
+Visual C++ 5.0
+>Description:
+This is a suggestion for simplifying the configuration of the Apache web server for Windows NT/95.
+
+The Beta versions of Apache have been distributed with a stub mainline executable and a large DLL (ApacheCore.dll) which contains the actual Apache implementation code. Presumably, this was done so that the Apache modules could call into the Apache implementation code. However, it's a little known fact that dynamically loaded modules can call an executable just like they can call another DLL, if that executable is the program that loaded them.
+
+I would therefore like to suggest that you get rid of ApacheCore.dll and move the code into Apache.exe, similar to how the configuration is on other systems.
+
+>How-To-Repeat:
+
+>Fix:
+Rather than send diff's of makefiles and workspaces, I'm just going to describe the steps to make the modification. This also makes a master workspace which controls building of the entire project. You may already have such a thing; if you don't, it's definitely worth building one.
+
+- Create (or load, if you already have it) a workspace to go with Apache.dsp .
+- "Insert" the ApacheCore.dsp project into this workspace (menu item Project/Insert Project into Workspace).
+- Move the contents of the "Source" and "Header" folders from ApacheCore to "Apache". Move the "Generated Files" folter to "Apache" as well. Drop ApacheCore.def however; all exports are handled directly in the source code.
+- Remove main_win32.c from this workspace; it won't be needed.
+- Remove the WIN32 code surrounding the definition of main (or REALMAIN) in http_main.c
+- "Insert" the ap.dsp, ApacheOS.dsp, regex.dsp gen_test_char.dsp and gen_uri_delims.dsp projects into this workspace. Make Apache depend on all of them (from Project/Dependencies).
+- Modify the Apache project's C++ settings to correspond to those of ApacheCore . I think the only setting is to set Preprocessor/Include path to ".\include" .
+- Modify the Apache project's Link settings to agree with ApacheCore. I think the only setting change is to add wsock32.lib to the library list.
+- Set Apache as the Active project.
+
+Now, you should be set up to build the Apache project.
+
+Having build an integrated workspace, you can use the resulting makefile to
+build Apache; it's no longer necessary to maintain makefile.nt. This command
+will build the Apache executable from scratch. Other projects can be added
+to build all modules, for example, or the entire distribution. 
+
+    nmake -f Apache.mak CFG="Apache - Win32 Release"
+
+
+All we have done at this point is to break the external module DLLs. To fix them up again, go into each one and change "..\..\CoreX\ApacheCore.lib" to "..\..\ApacheX\Apache.lib" .  In the workspace, you should also make Apache a dependency of each module. I suggest that you add all of these module projects into the Apache workspace as well; this makes it easy to select one, several or all of them to build.
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: ben
+State-Changed-When: Sun May  3 03:59:42 PDT 1998
+State-Changed-Why:
+This seems like a great deal of effort for virtually no payback.
+Why should we do this? Note that this also prevents any standalone
+program from using Apache core functions.
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Thu May 28 05:15:16 PDT 1998
+State-Changed-Why:
+As has been pointed out, this was a design decision made
+to promote modularity and ease of enhancement rather than
+simplicity.  But thanks for the suggestion, and for using
+Apache!
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

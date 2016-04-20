@@ -1,0 +1,132 @@
+Received: (qmail 15594 invoked by uid 501); 18 Jul 2001 22:32:34 -0000
+Message-Id: <20010718223234.15593.qmail@apache.org>
+Date: 18 Jul 2001 22:32:34 -0000
+From: Manni Wood <manniwood@yahoo.com>
+Reply-To: manniwood@yahoo.com
+To: submit@bugz.apache.org
+Subject: cookie names mis-identified by mod_usertrack (more detailed exploration of bug 5811)
+X-Send-Pr-Version: 3.110
+
+>Number:         8048
+>Category:       mod_usertrack
+>Synopsis:       cookie names mis-identified by mod_usertrack (more detailed exploration of bug 5811)
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jul 18 15:40:00 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     manniwood@yahoo.com
+>Release:        1.3.20
+>Organization:
+apache
+>Environment:
+Linux 2.2.16-22 i686
+gcc version 2.96 20000731 (Red Hat Linux 7.1 2.96-85)
+>Description:
+More detailed analysis of bug 5811:
+
+Because of the use of strstr() on line 234, a cookie named "BID" could
+mistakenly get recognised and used by mod_usertrack as a cookie whose
+name is a substring of "BID", such as "ID".
+>How-To-Repeat:
+1. With mod_usertrack compiled in, set httpd.conf:
+<IfModule mod_usertrack.c>
+CookieTracking on
+CookieName ID
+CookieExpires 2147483647
+LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\" \"%{cookie}n\"" cookiecombined
+</IfModule>
+# CustomLog /usr/local/apache_1.3.20/logs/access_log common
+<IfModule !mod_usertrack.c>
+CustomLog /usr/local/apache_1.3.20/logs/access_log common
+</IfModule>
+<IfModule mod_usertrack.c>
+CustomLog /usr/local/apache_1.3.20/logs/access_log cookiecombined
+</IfModule>
+
+2. Hit your site with Netscape Navigator (or any browser that allows cookie
+manipulation) to allow the cookie to be set. tail -f logs/access if you'd like
+to watch the cookie get set (it'll be the last entry of each log line)
+
+3. Quit Netscape Navigator.
+
+4. Edit $HOME/.netscape/cookies and change the cookie named "ID" to "BID"
+
+5. Restart Netscape Navigator and hit your site, watching a "tail -f logs/access"
+You will see that the cookie named "BID" is getting logged, because it is
+being recognised as the cookie "ID". What *should* happen is a new cookie
+named "ID" should get set on your browser, as BID should not be recognised.
+>Fix:
+Correctly parse the cookies into an Apache table, favouring ap_getword()
+over strstr() and retrieve the cookie you are interested in from the table.
+
+Here is a patch:
+
+--- /usr/local/src/apache_1.3.20/src/modules/standard/mod_usertrack.c	Thu Feb  1 08:07:29 2001
++++ mod_usertrack.c	Wed Jul 18 18:04:44 2001
+@@ -230,21 +230,30 @@
+         return DECLINED;
+     }
+ 
+-    if ((cookie = ap_table_get(r->headers_in, "Cookie")))
+-        if ((value = strstr(cookie, dcfg->cookie_name))) {
+-            char *cookiebuf, *cookieend;
++    if ((cookie = ap_table_get(r->headers_in, "Cookie"))) {
++	const char *pair;
++	table *cookie_table;
++	const char *cookiebuf;
+ 
+-            value += strlen(dcfg->cookie_name) + 1;  /* Skip over the '=' */
+-            cookiebuf = ap_pstrdup(r->pool, value);
+-            cookieend = strchr(cookiebuf, ';');
+-            if (cookieend)
+-                *cookieend = '\0';      /* Ignore anything after a ; */
++	cookie_table = ap_make_table(r->pool, 4);
++	while (*cookie && (pair = ap_getword(r->pool, &cookie, ';'))) {
++	    const char *name, *value;
++	    if (*cookie == ' ') ++cookie;
++	    name = ap_getword(r->pool, &pair, '=');
++	    while (*pair && (value = ap_getword(r->pool, &pair, '&'))) {
++		ap_unescape_url((char *)value);
++		ap_table_add(cookie_table, name, value);
++	    }
++	}
+ 
++	if (cookiebuf = ap_table_get(cookie_table, dcfg->cookie_name)) {
+             /* Set the cookie in a note, for logging */
+             ap_table_setn(r->notes, "cookie", cookiebuf);
+ 
+-            return DECLINED;    /* There's already a cookie, no new one */
+-        }
++	    return DECLINED;    /* There's already a cookie, no new one */
++	}
++    }
++
+     make_cookie(r);
+     return OK;                  /* We set our cookie */
+ }
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

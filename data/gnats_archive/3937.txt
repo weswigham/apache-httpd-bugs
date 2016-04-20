@@ -1,0 +1,126 @@
+Received: (qmail 18665 invoked by uid 2012); 22 Feb 1999 10:57:35 -0000
+Message-Id: <19990222105735.18664.qmail@hyperreal.org>
+Date: 22 Feb 1999 10:57:35 -0000
+From: Anthony Howe <achowe@snert.com>
+Reply-To: achowe@snert.com
+To: apbugs@hyperreal.org
+Subject: Design issues concerning shared memory.
+X-Send-Pr-Version: 3.2
+
+>Number:         3937
+>Category:       general
+>Synopsis:       Design issues concerning shared memory.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Feb 22 04:10:00 PST 1999
+>Last-Modified:  Wed Mar 10 05:10:03 PST 1999
+>Originator:     achowe@snert.com
+>Organization:
+apache
+>Release:        1.3.4
+>Environment:
+Linux kerberos.alcyonis.fr 2.0.35 #18 Fri Sep 4 16:19:31 GMT 1998 i586 unknown
+>Description:
+I've just completed a rewrite of the mod_throttle.c code for Apache 1.3.x that
+allows throttling based on virtual servers.  This module requires the use of
+shared memory in order to properly keep track of the number of bytes_sent for
+a virtual server. 
+
+Now there is no pool management for shared memory, that I can see.  Also there
+doesn't not appear to be any module handler called when parent server terminates,
+which would permit the proper release of shared memory.
+
+As a result, shared memory resources appear to "leak" in that they are consumed
+and never released when ever the server is stopped and/or restarted.  User 
+intervention is then required to issue an "ipcrm" command.
+
+I believe this is a design-flaw in the module handler structure, lack a 
+server termination handler; however, as I've just learned new skills for
+this project (how to write an Apache module and use of shared memory) it
+may be a covered by some Apache API and/or a fault in my understanding.
+
+>How-To-Repeat:
+I can make available my new mod_throttle.c source.
+>Fix:
+Add another handler entry to the module structure that is called when the
+parent server process terminates.
+
+OR
+
+Add some new pool management functions for shared memory that would allow 
+Apache to properly handle the resources.
+>Audit-Trail:
+
+From: "Ralf S. Engelschall" <rse@engelschall.com>
+To: apbugs@apache.org
+Cc:  Subject: Re: general/3937: Design issues concerning shared memory.
+Date: Wed, 10 Mar 1999 13:29:19 +0100
+
+ In article <19990222105735.18664.qmail@hyperreal.org> you wrote:
+ 
+ > I've just completed a rewrite of the mod_throttle.c code for Apache 1.3.x that
+ > allows throttling based on virtual servers.  This module requires the use of
+ > shared memory in order to properly keep track of the number of bytes_sent for
+ > a virtual server. 
+ > 
+ > Now there is no pool management for shared memory, that I can see.  Also there
+ > doesn't not appear to be any module handler called when parent server terminates,
+ > which would permit the proper release of shared memory.
+ > 
+ > As a result, shared memory resources appear to "leak" in that they are consumed
+ > and never released when ever the server is stopped and/or restarted.  User 
+ > intervention is then required to issue an "ipcrm" command.
+ > 
+ > I believe this is a design-flaw in the module handler structure, lack a 
+ > server termination handler; however, as I've just learned new skills for
+ > this project (how to write an Apache module and use of shared memory) it
+ > may be a covered by some Apache API and/or a fault in my understanding.
+ 
+ Two things:
+ 
+ 1. I've already started to integrate a shared memory pool facility
+    into Apache 1.3 by the help of a library I've recently written for this
+    purpose. A first cut for a patch was already posted to the new-httpd
+    mailing list. I hope that in the near future Apache 1.3 provides both heap
+    and shared memory based allocation through it's pool concept.
+ 
+ 2. In the meantime, when you use IPC Shared Memory you should
+    do it this way (extracted from my librarys code):
+ 
+     if ((fdmem = shmget(IPC_PRIVATE, size, (SHM_R|SHM_W|IPC_CREAT))) == -1)
+         FAIL;
+     if ((area = (void *)shmat(fdmem, NULL, 0)) == ((void *)-1))
+         FAIL;
+     if (shmctl(fdmem, IPC_STAT, &shmbuf) == -1)
+         FAIL;
+     shmbuf.shm_perm.uid = getuid();
+     shmbuf.shm_perm.gid = getgid();
+     if (shmctl(fdmem, IPC_SET, &shmbuf) == -1)
+         FAIL;
+     if (shmctl(fdmem, IPC_RMID, NULL) == -1)
+         FAIL;
+ 
+   The important point is the shmctl() with IPC_RMID _after_ the shmat() but
+   before a corresponding shmdt(). This at least makes sure no shared memory
+   segments are staying around after Apache exists. Perhaps this helps.
+ 
+                                        Ralf S. Engelschall
+                                        rse@engelschall.com
+                                        www.engelschall.com
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

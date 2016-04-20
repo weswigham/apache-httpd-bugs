@@ -1,0 +1,174 @@
+Received: (qmail 20684 invoked by uid 2012); 11 Aug 1998 15:26:27 -0000
+Message-Id: <19980811152627.20683.qmail@hyperreal.org>
+Date: 11 Aug 1998 15:26:27 -0000
+From: heddy Boubaker <boubaker@cena.dgac.fr>
+Reply-To: boubaker@cena.dgac.fr
+To: apbugs@hyperreal.org
+Subject: srv fail to read .htaccess on mounted home dirs
+X-Send-Pr-Version: 3.2
+
+>Number:         2827
+>Category:       general
+>Synopsis:       srv fail to read .htaccess on mounted home dirs
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          support
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Aug 11 08:30:01 PDT 1998
+>Last-Modified:  Wed Aug 12 12:20:02 PDT 1998
+>Originator:     boubaker@cena.dgac.fr
+>Organization:
+>Release:        1.3.0 (Unix)
+>Environment:
+Server Version: Apache/1.3.0 (Unix) PHP/3.0 mod_perl/1.12
+Uname: SunOS geant 5.6 Generic_105181-05 sun4u sparc SUNW,Ultra-4
+>Description:
+Users home dirs are mounted on /home/username from machine:/export/home/username
+when trying to access /~username and if <Directory /home> have no "AllowOverride None"
+directive the server try to get /home/.htaccess (which is the correct behavior)
+but fail for an unknown reason - in fact this is a known automounter pb/behavior -
+ (from error_log: "[crit] (13)Permission denied: /home/.htaccess pcfg_openfile: 
+unable to check htaccess file, ensure it is readable") so after that ALL user
+stuff became unreadable. We need to allow .htaccess on ~user , is there a way 
+to acheive that only w server configuration?  
+>How-To-Repeat:
+
+>Fix:
+Allow AccessFileName to be specified in <Directory> so that we could do things like
+<Directory /home>
+	AccessFileName /dev/null
+</Directory>
+<DirectoryMatch "^/home/[^/]+/public_html/">
+	AccessFileName	.htaccess
+</DirectoryMatch>
+And for security reason add a new AllowOverride directive to tell if AccessFileName
+could be overriden or not.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Tue Aug 11 10:27:07 PDT 1998
+State-Changed-Why:
+The normal solution for this is to simply set AllowOverride
+None for /home, then set it to whatever you want for
+the directories under home.  Since AllowOverride None
+makes it skip reading the htaccess file, it effectively
+accomplishes the same thing that using /dev/null would.
+
+From: Marc Slemko <marcs@znep.com>
+To: heddy Boubaker <boubaker@cenatls.cena.dgac.fr>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: general/2827: srv fail to read .htaccess on mounted home dirs
+Date: Wed, 12 Aug 1998 11:56:16 -0700 (PDT)
+
+ On 12 Aug 1998, heddy Boubaker wrote:
+ > 
+ >  <> "marc" == marc  <marc@hyperreal.org> writes:
+ > 
+ >  marc> The normal solution for this is to simply set AllowOverride
+ >  marc> None for /home, then set it to whatever you want for
+ >  marc> the directories under home.  Since AllowOverride None
+ >  marc> makes it skip reading the htaccess file, it effectively
+ >  marc> accomplishes the same thing that using /dev/null would.
+ > 
+ >  hi Marc, 
+ >  
+ >  Unfortunately this doesn't seems to work, I have in my access.conf:
+ >  
+ > <Directory /home>
+ > 	# allow SSI w/out exec
+ > 	Options 	+IncludesNoExec  -ExecCGI
+ > 	# do not allow .htaccess because the server fail
+ > 	# to get /home/.htaccess - automount pb - and 
+ > 	# then homepages became unreadable
+ > 	AllowOverride 	None
+ > 	#AccessFileName	/dev/null
+ > 	order 		deny,allow
+ > 	allow 		from all
+ > </Directory>
+ > 
+ > # All the following to not work because of the /home/.htaccess
+ > # problem above.
+ > 
+ > <DirectoryMatch "^/home/[^/]+/public_html/">
+ > 	# allow SSI w/out exec
+ > 	Options 	+IncludesNoExec  -ExecCGI
+ > 	# allow .htaccess
+ > 	AllowOverride 	Limit FileInfo AuthConfig
+ > </DirectoryMatch>
+ > 
+ > <LocationMatch "^/~[^/]+/">
+ > 	# allow SSI w/out exec
+ > 	Options 	+IncludesNoExec  -ExecCGI
+ > 	# allow .htaccess
+ > 	AllowOverride 	Limit FileInfo AuthConfig
+ > </LocationMatch>
+ 
+ You can't use AllowOverride within Location sections.  Well, you can but
+ it makes no sense.
+ 
+ > 
+ > 
+ > And it seems that .htaccess are not read at all in ~ directories, in fact it
+ > seems - if I understand well the philosophy of AllowOverride - that what I got
+ > now is the correct behavior, the AllowOverride None in /home disable all the
+ > others AllowOverride in directories below ... so that I couldn't change them
+ > that's why I suggested the inclusion of AccessFileName in <Dir...> directives
+ > so that I could do:
+ 
+ No, the whole point of AllowOverride is to say what can be overridden in
+ .htaccess files.
+ 
+ If the above doesn't work then the below wouldn't work.  Your
+ DirectoryMatch exprssion for public_html is probably incorrect.
+ Look closely to see if it is actually matching what you want it to
+ match, and consider if /home/*/public_html would work.
+ 
+ > 
+ > <Directory /home>
+ >         # could change AccessFileName in sub-dirs
+ >         AllowOverride AccessFileName Limit FileInfo AuthConfig
+ >         # do not read .htaccess in /home
+ >         AccessFileName /dev/null
+ > </Directory>
+ > 
+ > <DirectoryMatch "^/home/[^/]+/public_html/">
+ > 	# allow SSI w/out exec 
+ > 	Options 	+IncludesNoExec  -ExecCGI 
+ > 	# allow .htaccess
+ >         AccessFileName  .htaccess
+ >         # do not allow change of AccessFileName
+ > 	AllowOverride 	Limit FileInfo AuthConfig -AccessFileName
+ > </DirectoryMatch>
+ > 
+ > You see what I mean ? Does it seems reasonable or am I completely wrong ?
+ > 
+ > BTW is it possible to get values of already set variables w/out using <Perl>
+ > sections ? Kind of:
+ >         AccessFileName ${AccessFileName}
+ 
+ No.  
+ 
+ > 
+ >  
+ >  thanks a lot for your time
+ >  
+ > -- 
+ > 
+ >  - heddy -
+ > 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

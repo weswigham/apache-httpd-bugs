@@ -1,0 +1,82 @@
+Received: (qmail 27862 invoked by uid 2012); 19 Nov 1999 13:13:04 -0000
+Message-Id: <19991119131304.27858.qmail@hyperreal.org>
+Date: 19 Nov 1999 13:13:04 -0000
+From: Sergey Gershtein <sg@ur.ru>
+Reply-To: sg@ur.ru
+To: apbugs@hyperreal.org
+Subject: mod_rewrite mistakenly ignores RewriteRule directives with [P] option for subrequests
+X-Send-Pr-Version: 3.2
+
+>Number:         5338
+>Category:       mod_rewrite
+>Synopsis:       mod_rewrite mistakenly ignores RewriteRule directives with [P] option for subrequests
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Nov 19 05:20:04 PST 1999
+>Last-Modified:
+>Originator:     sg@ur.ru
+>Organization:
+apache
+>Release:        1.3.9
+>Environment:
+FreeBSD 3.1-STABLE FreeBSD 3.1-STABLE #2: Fri May 28 13:37:19 ESS 1999 i386                                    
+>Description:
+RewriteRule directives with either P, R, or NS flags are ignored for subrequests. 
+That's necessary for NS, ok for R, but quite strange for P. Such behaviour does
+not allow to use <!--#include virtual="/somepath" --> so that /somepath gets
+requested from another server via mod_proxy.
+>How-To-Repeat:
+Put the following into httpd.conf:
+
+RewriteEngine On
+RewriteRule ^/something http://other.host/something [P]
+
+Create a shtml document containing the following:
+
+<!--#include virtual="/somepath" -->
+
+Try to access your shtml document. Mod_include returns error. 
+>Fix:
+Apply the following patch.
+
+*** mod_rewrite.c.orig  Fri Nov 19 16:45:26 1999                            
+--- mod_rewrite.c       Fri Nov 19 16:46:41 1999                            
+***************                                                             
+*** 1621,1627 ****                                                          
+           */                                                               
+          if (r->main != NULL &&                                            
+              (p->flags & RULEFLAG_IGNOREONSUBREQ ||                        
+!              p->flags & RULEFLAG_PROXY          ||                        
+               p->flags & RULEFLAG_FORCEREDIRECT    )) {                    
+              continue;                                                     
+          }                                                                 
+--- 1621,1627 ----                                                          
+           */                                                               
+          if (r->main != NULL &&                                            
+              (p->flags & RULEFLAG_IGNOREONSUBREQ ||                        
+! /*             p->flags & RULEFLAG_PROXY          || ------ by sg&ap */   
+               p->flags & RULEFLAG_FORCEREDIRECT    )) {                    
+              continue;                                                     
+          }                                                                 
+                                                                            
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

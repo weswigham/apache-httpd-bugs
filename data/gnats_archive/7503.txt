@@ -1,0 +1,169 @@
+Received: (qmail 87525 invoked by uid 501); 3 Apr 2001 06:16:03 -0000
+Message-Id: <20010403061603.87524.qmail@apache.org>
+Date: 3 Apr 2001 06:16:03 -0000
+From: Dave Crooke <dave@convio.com>
+Reply-To: dave@convio.com
+To: submit@bugz.apache.org
+Subject: PATCH: RedirectMatch is inconsistent with Redirect
+X-Send-Pr-Version: 3.110
+
+>Number:         7503
+>Category:       mod_alias
+>Synopsis:       PATCH: RedirectMatch is inconsistent with Redirect
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Apr 02 23:20:00 PDT 2001
+>Closed-Date:    Fri May 11 08:21:10 PDT 2001
+>Last-Modified:  Fri May 11 08:21:10 PDT 2001
+>Originator:     dave@convio.com
+>Release:        1.3.x
+>Organization:
+>Environment:
+Not system specific - tested on Linux 2.2.12 (Red Hat 6.1) and FreeBSD
+4.0_RELEASE, both with gcc
+>Description:
+The result of a RedirectMatch directive is urlencoded before returning it
+to the browser. This behaviour is inconsistent with Redirect, and is contrary
+to the more common use case and most users expectations.
+
+A more complete fix would also add a flag to these directives which would dump
+the inbound querystring. I will colunteer to write this if you would like to
+include it.
+>How-To-Repeat:
+Use the following in httpd.conf
+
+RedirectMatch 301 /foo.html /cgi-bin/page.pl?page=foo
+Redirect 301 /bar.html /cgi-bin/page.pl?page=bar
+
+and then try the URLs
+
+http://<server>:<port>/foo.html
+http://<server>:<port>/bar.html
+
+The former redirects to
+
+http://<server>:<port>/cgi-bin/page.pl%3fpage=foo
+
+which is not the common use case.
+
+See also GNATS entries 3333, 4379, 5948 which this patch also fixes
+
+>Fix:
+The following diff works against (at least) 1.3.12 through 1.3.19...
+
+--- mod_alias-old.c	Tue Apr  3 01:18:14 2001
++++ mod_alias.c	Mon Apr  2 20:58:47 2001
+@@ -304,9 +304,15 @@
+ 		if (p->real) {
+ 		    found = ap_pregsub(r->pool, p->real, r->uri,
+ 				    p->regexp->re_nsub + 1, regm);
++		    /*
+
++		      Patch to allow use of querystrings in RedirectMatch
+
+ 		    if (found && doesc) {
+ 			found = ap_escape_uri(r->pool, found);
+ 		    }
++		    */
+
+ 		}
+ 		else {
+ 		    /* need something non-null */
+
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: abagchi
+State-Changed-When: Sun May  6 12:35:01 PDT 2001
+State-Changed-Why:
+We can't just remove the escaping, because it is possible
+to redirect to a file with a space in it.  If we don't
+escape the URI, then we will redirect to an invalid URL.
+The problem is that we are escaping too much.  Currently we escape the URI and the QUERY_STRING.
+
+I am attaching a patch that solves this problem, while maintaining the ability to redirect to a URL with spaces.  This patch is against 2.0, but it should also apply to 1.3.  Please test this and let me know if it works for you.
+
+Index: modules/mappers/mod_alias.c
+===================================================================
+RCS file: /home/cvs/httpd-2.0/modules/mappers/mod_alias.c,v
+retrieving revision 1.27
+diff -u -d -b -w -u -r1.27 mod_alias.c
+--- modules/mappers/mod_alias.c 2001/02/18 02:58:52     1.27
++++ modules/mappers/mod_alias.c 2001/05/06 19:16:26
+@@ -335,7 +335,10 @@
+                    found = ap_pregsub(r->pool, p->real, r->uri,
+                                    p->regexp->re_nsub + 1, regm);
+                    if (found && doesc) {
+-                       found = ap_escape_uri(r->pool, found);
++                        uri_components uri;
++                        ap_parse_uri_components(r->pool, found, &uri);
++                       found = ap_escape_uri(r->pool, uri.path);
++                        found = apr_pstrcat(r->pool, found, "?", uri.query, NULL);
+                    }
+                }
+                else {
+Comment-Added-By: rbb
+Comment-Added-When: Sun May  6 13:13:01 PDT 2001
+Comment-Added:
+In changing the rest of the PRs about this bug, I realized 
+that this patch doesn't solve all of the problem.  So, here
+is a new patch that solves the remaining problem with this 
+patch.
+
+Index: modules/mappers/mod_alias.c
+===================================================================
+RCS file: /home/cvs/httpd-2.0/modules/mappers/mod_alias.c,v
+retrieving revision 1.27
+diff -u -d -b -w -u -r1.27 mod_alias.c
+--- modules/mappers/mod_alias.c 2001/02/18 02:58:52     1.27
++++ modules/mappers/mod_alias.c 2001/05/06 20:08:00
+@@ -335,7 +335,16 @@
+                    found = ap_pregsub(r->pool, p->real, r->uri,
+                                    p->regexp->re_nsub + 1, regm);
+                    if (found && doesc) {
+-                       found = ap_escape_uri(r->pool, found);
++                        uri_components uri;
++                        ap_parse_uri_components(r->pool, found, &uri);
++                       found = ap_escape_uri(r->pool, uri.path);
++                        if (uri.query) {
++                            found = apr_pstrcat(r->pool, found, "?", uri.query, NULL);
++                        }
++                        else if (uri.fragment) {
++                            found = apr_pstrcat(r->pool, found, "#", uri.fragment, NULL);
++
++                        }
+                    }
+                }
+                else {
+State-Changed-From-To: feedback-closed
+State-Changed-By: rbb
+State-Changed-When: Fri May 11 08:21:08 PDT 2001
+State-Changed-Why:
+This patch has been committed, and will be available with
+Apache 2.0.
+
+Thank you for using Apache.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

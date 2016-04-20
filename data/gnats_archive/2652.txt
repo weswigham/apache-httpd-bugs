@@ -1,0 +1,147 @@
+Received: (qmail 1164 invoked by uid 2012); 21 Jul 1998 16:25:15 -0000
+Message-Id: <19980721162515.1162.qmail@hyperreal.org>
+Date: 21 Jul 1998 16:25:15 -0000
+From: Gray Watson <gray@letters.com>
+Reply-To: gray@letters.com
+To: apbugs@hyperreal.org
+Subject: added feature where mod_rewrite can match on query-string part of URL
+X-Send-Pr-Version: 3.2
+
+>Number:         2652
+>Category:       mod_rewrite
+>Synopsis:       added feature where mod_rewrite can match on query-string part of URL
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jul 21 09:30:01 PDT 1998
+>Last-Modified:
+>Originator:     gray@letters.com
+>Organization:
+apache
+>Release:        1.3b3
+>Environment:
+BSD/OS burger.letters.com 2.1 BSDI BSD/OS 2.1 Kernel #0: Sat Feb  8 22:33:05 EST
+ 1997     gray@burger.letters.com:/usr/src/sys/compile/LETTERS  i386
+gcc version 2.7.2
+>Description:
+First off, thanks much for Apache and the rewrite modules.
+
+I needed to have the rewrite module match on the query-string part of the URL.
+For instance to go from:  /chart?Sym=lcos -> http://.../chart.asp?comp=lcos
+
+I added a MatchArgs [MA] flag to the mod_rewrite.c module and the documentation.
+>How-To-Repeat:
+
+>Fix:
+Hope this makes it.  If not, it can be downloaded from:
+
+	http://www.letters.com/mod_rewrite.txt
+
+*** src/modules/standard/mod_rewrite.c.ORG	Wed Nov 12 06:21:52 1997
+--- src/modules/standard/mod_rewrite.c	Tue Jul 21 11:25:34 1998
+***************
+*** 818,823 ****
+--- 818,827 ----
+               || strcasecmp(key, "QSA") == 0   ) {
+          cfg->flags |= RULEFLAG_QSAPPEND;
+      }
++     else if (   strcasecmp(key, "matchargs") == 0
++              || strcasecmp(key, "MA") == 0   ) {
++         cfg->flags |= RULEFLAG_MATCHARGS;
++     }
+      else {
+          return pstrcat(p, "RewriteRule: unknown flag '", key, "'\n", NULL);
+      }
+***************
+*** 1616,1621 ****
+--- 1620,1635 ----
+          }
+      }
+  
++     /*
++      * Add in the arguments into the URL we are going to match if the
++      * MatchArgs (MA) flag is enabled.  Later, if we have a match, we
++      * set r->args to be NULL.
++      */
++     if (r->args != NULL && (p->flags & RULEFLAG_MATCHARGS)) {
++         rewritelog(r, 3, "add args postfix: %s -> %s?%s", uri, uri, r->args);
++         uri = pstrcat(r->pool, uri, "?", r->args, NULL);
++     }
++ 
+      /* 
+       *  Try to match the URI against the RewriteRule pattern
+       *  and exit immeddiately if it didn't apply.
+***************
+*** 1722,1727 ****
+--- 1736,1744 ----
+              expand_backref_inbuffer(r->pool, env, sizeof(env), briRC, '%');
+              add_env_variable(r, env);
+          }
++ 	/* if we used the args in the match then strip them out */
++ 	if (p->flags & RULEFLAG_MATCHARGS)
++ 	    r->args = NULL;
+          return 2;
+      }
+  
+***************
+*** 1762,1767 ****
+--- 1779,1788 ----
+          /*  and add the variable to Apache's structures  */
+          add_env_variable(r, env);
+      }
++ 
++     /* if we used the args in the match then strip them out */
++     if (p->flags & RULEFLAG_MATCHARGS)
++         r->args = NULL;
+  
+      /*
+       *  Now replace API's knowledge of the current URI:
+*** src/modules/standard/mod_rewrite.h.ORG	Tue Jul 21 09:58:11 1998
+--- src/modules/standard/mod_rewrite.h	Tue Jul 21 09:58:03 1998
+***************
+*** 180,185 ****
+--- 180,186 ----
+  #define RULEFLAG_FORBIDDEN          1<<9
+  #define RULEFLAG_GONE               1<<10
+  #define RULEFLAG_QSAPPEND           1<<11
++ #define RULEFLAG_MATCHARGS          1<<12
+  
+  #define MAPTYPE_TXT                 1<<0
+  #define MAPTYPE_DBM                 1<<1
+*** htdocs/manual/mod/mod_rewrite.html.ORG	Tue Jul 21 10:21:42 1998
+--- htdocs/manual/mod/mod_rewrite.html	Tue Jul 21 11:30:29 1998
+***************
+*** 1001,1006 ****
+--- 1001,1019 ----
+      replacing it.  Use this when you want to add more data to the query string
+      via a rewrite rule.
+  <p>
++ <li>'<strong><code>matchargs|MA</code></strong>' (<b>m</b>atch
++     <b>a</b>rgs)<br> 
++     This flag causes the query string (the part of the URL past the ?) to be
++     matched along with the filename part of the URL.  For instance, if you
++     wanted to rewrite <tt>/abc?foo=bar</tt> to be <tt>/def/bar</tt>:
++     <pre>
++     RewriteRule  ^/abc?foo=(.*)$  /def/$1  [MA]
++     </pre>
++     <p>
++     Notice: <b>If this flag is used, you must substitute the query string
++     into the destination URL by hand.  It will not be appended
++     automatically.</b>
++ <p>
+  <li>'<strong><code>passthrough|PT</code></strong>' (<b>p</b>ass <b>t</b>hrough to next handler)<br>
+      This flag forces the rewriting engine to set the <code>uri</code> field
+      of the internal <code>request_rec</code> structure to the value
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

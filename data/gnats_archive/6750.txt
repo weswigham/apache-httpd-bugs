@@ -1,0 +1,201 @@
+Received: (qmail 6745 invoked by uid 501); 26 Oct 2000 19:20:15 -0000
+Message-Id: <20001026192015.6736.qmail@locus.apache.org>
+Date: 26 Oct 2000 19:20:15 -0000
+From: erik quanstrom <quanstro@clark.net>
+Reply-To: quanstro@clark.net
+To: submit@bugz.apache.org
+Subject: ${lowercase:%{SERVER_NAME}} lowercases "%{SERVER_NAME}" not its value.
+X-Send-Pr-Version: 3.110
+
+>Number:         6750
+>Category:       mod_rewrite
+>Synopsis:       ${lowercase:%{SERVER_NAME}} lowercases "%{SERVER_NAME}" not its value.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          duplicate
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Oct 26 12:30:00 PDT 2000
+>Closed-Date:    Fri Oct 27 20:28:10 PDT 2000
+>Last-Modified:  Fri Oct 27 20:28:10 PDT 2000
+>Originator:     quanstro@clark.net
+>Release:        1.3.14
+>Organization:
+>Environment:
+linux 2.2.17 ; gcc 2.7.2.3 ; openssl-0.9.6 ; mod_ssl-2.7.1-1.3.14
+uname -a --> Linux deadhorse 2.2.17 #5 SMP Fri Oct 13 08:39:10 EDT 2000 i686 unknown
+
+$ cat config.status
+#!/bin/sh
+##
+##  config.status -- APACI auto-generated configuration restore script
+##
+##  Use this shell script to re-run the APACI configure script for
+##  restoring your configuration. Additional parameters can be supplied.
+##
+
+SSL_BASE="/usr/local/src/openssl-0.9.6" \
+./configure \
+"--with-layout=Apache" \
+"--prefix=/usr/local/apache1314ssl" \
+"--enable-module=ssl" \
+"--enable-module=env" \
+"--enable-module=rewrite" \
+"$@"
+>Description:
+with this line in the httpd.conf
+
+# process other requests
+RewriteRule     ^/(.*)$         /${lowercase:%{SERVER_NAME}}/$1
+
+accessing any server now results in the path
+<server_root>/%{server_name}/<path>
+
+and not 
+
+<server_root>/<value of %{SERVER_NAME}>/<path>
+
+changing the rewrite rule to
+
+RewriteRule    ^/(.*)$         /%{SERVER_NAME}/$1
+
+works correctly
+>How-To-Repeat:
+using RewriteRule given above to access fu.bar.com you will notice that
+with 1.3.14, apache will try to access
+
+/server/root/%{server_name}/
+
+and not
+
+/server/root/fu.bar.com/
+
+>Fix:
+the ${} and %{} need to be recursively evaluated from the inside not from
+the outside
+
+e.g. the current code seems to to the following transformations
+
+${lowercase:%{SERVER_NAME}} -> %{server_name} and %{server_name} can't be found
+so we're done
+
+this really should be evaluated as 
+
+${lowercase:%{SERVER_NAME}} -> ${lowercase:FU.bar.com} -> fu.bar.com
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: slive
+State-Changed-When: Thu Oct 26 15:05:00 PDT 2000
+State-Changed-Why:
+
+Please see PR6671.
+
+
+Class-Changed-From-To: sw-bug-duplicate
+Class-Changed-By: slive
+Class-Changed-When: Thu Oct 26 15:05:00 PDT 2000
+
+From: Tony Finch <dot@dotat.at>
+To: apbugs@apache.org
+Cc: quanstro@clark.net, slive@apache.org
+Subject: Re: mod_rewrite/6750: ${lowercase:%{SERVER_NAME}} lowercases "%{SERVER_NAME}" not its value.
+Date: Fri, 27 Oct 2000 02:00:01 +0000
+
+ slive@apache.org wrote:
+ >
+ >Please see PR6671.
+ 
+ In addition to that the patch is available from
+ http://httpd.apache.org/dist/apache_1.3.14-fix.diff
+ 
+ Tony.
+ -- 
+ en oeccget g mtcaa    f.a.n.finch
+ v spdlkishrhtewe y    dot@dotat.at
+ eatp o v eiti i d.    fanf@covalent.net
+
+From: erik quanstrom <quanstro@clark.net>
+To: apbugs@apache.org
+Cc: dot@dotat.at, slive@apache.org
+Subject: Re: mod_rewrite/6750: ${lowercase:%{SERVER_NAME}} lowercases "%{SERVER_NAME}" not its value.
+Date: Fri, 27 Oct 2000 18:26:10 -0400 (EDT)
+
+ also there is another small bug that is not covered by
+ this patch. when a key is not matched, the '\0' that was
+ inserted into the string to mark the end of the current {}
+ section is not removed.
+ 
+ to fix, this code
+ 
+                 key = strchr(inp, ':');
+                 if (key == NULL) {
+                     goto skip;
+ 		}
+ 
+ needs to have this line inserted
+ 
+                key = strchr(inp, ':');
+                 if (key == NULL) {
+ +		    *endp = '}'
+                     goto skip;
+                 }
+ 
+ 
+ erik
+State-Changed-From-To: closed-open
+State-Changed-By: slive
+State-Changed-When: Fri Oct 27 15:55:14 PDT 2000
+State-Changed-Why:
+
+Re-opening this report until the bug in the bugfix
+can be confirmed/fixed.
+
+
+
+From: Tony Finch <dot@dotat.at>
+To: erik quanstrom <quanstro@clark.net>
+Cc: apbugs@apache.org
+Subject: Re: mod_rewrite/6750: ${lowercase:%{SERVER_NAME}} lowercases "%{SERVER_NAME}" not its value.
+Date: Sat, 28 Oct 2000 03:11:40 +0000
+
+ erik quanstrom <quanstro@clark.net> wrote:
+ >also there is another small bug that is not covered by
+ >this patch. when a key is not matched, the '\0' that was
+ >inserted into the string to mark the end of the current {}
+ >section is not removed.
+ 
+ Good catch! Thanks. I will update the patch at
+ http://httpd.apache.org/dist/apache_1.3.14-fix.diff
+ 
+ Tony.
+ -- 
+ en oeccget g mtcaa    f.a.n.finch
+ v spdlkishrhtewe y    dot@dotat.at
+ eatp o v eiti i d.    fanf@covalent.net
+State-Changed-From-To: open-closed
+State-Changed-By: fanf
+State-Changed-When: Fri Oct 27 20:28:09 PDT 2000
+State-Changed-Why:
+Fix committed, thanks.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

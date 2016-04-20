@@ -1,0 +1,200 @@
+Received: (qmail 19345 invoked by uid 2012); 9 Jun 1998 19:30:29 -0000
+Message-Id: <19980609193029.19344.qmail@hyperreal.org>
+Date: 9 Jun 1998 19:30:29 -0000
+From: Shawn Stepper <stepper@stanford.edu>
+Reply-To: stepper@stanford.edu
+To: apbugs@hyperreal.org
+Subject: Content-Type header info converted to lowercase
+X-Send-Pr-Version: 3.2
+
+>Number:         2394
+>Category:       general
+>Synopsis:       Content-Type header info converted to lowercase
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jun  9 12:40:03 PDT 1998
+>Last-Modified:  Thu Feb 11 12:47:50 PST 1999
+>Originator:     stepper@stanford.edu
+>Organization:
+>Release:        1.3.0
+>Environment:
+Linux vip 2.0.34 #2 Thu Jun 4 12:52:25 PDT 1998 i686
+
+gcc version 2.7.2.1
+
+Server version: Apache/1.3.0 (Unix)
+Server built:   Jun  9 1998 10:16:46
+
+>Description:
+When delivering the Content-Type header from a script, Apache is converting the text after
+after the : to lowercase. This happened in my server push script, where the header
+was supposed to be:
+
+Content-Type: multipart/x-mixed-replace;boundary=ThisRandomString
+
+When I upgraded from 1.2.5 to 1.3.0, the script broke. By telneting to the http port on my machine, 
+I was able to see the headers returned by the script through apache. When run on the command line, the headers
+came out as expected. When run through the webserver, I got the folowing:
+
+Content-Type: multipart/x-mixed-replace;boundary=thisrandomstring
+
+This caused the server push to not be understood by Netscape, since the header said the
+boundary text was thisrandomstring, but the actual boundary text was ThisRandomString.
+
+Of course the simple solution was to change the string I used. But this seems to me like
+a bug. The case should be maintained.
+>How-To-Repeat:
+I can send you the program if you like.
+>Fix:
+Don't change case when outputting headers.
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Wed Jun 10 02:02:31 PDT 1998
+State-Changed-Why:
+patch sent
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Shawn Stepper <stepper@stanford.edu>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/2394: Content-Type header info converted to lowercase
+Date: Wed, 10 Jun 1998 02:09:31 -0700 (PDT)
+
+ Bleh.  Try this patch. 
+ 
+ Dean
+ 
+ Index: include/httpd.h
+ ===================================================================
+ RCS file: /export/home/cvs/apache-1.3/src/include/httpd.h,v
+ retrieving revision 1.222
+ diff -u -r1.222 httpd.h
+ --- httpd.h	1998/06/07 01:22:36	1.222
+ +++ httpd.h	1998/06/10 08:57:15
+ @@ -896,6 +896,7 @@
+  API_EXPORT(char *) ap_pregsub(pool *p, const char *input, const char *source,
+  			   size_t nmatch, regmatch_t pmatch[]);
+  
+ +API_EXPORT(void) ap_content_type_tolower(char *);
+  API_EXPORT(void) ap_str_tolower(char *);
+  API_EXPORT(int) ap_ind(const char *, char);	/* Sigh... */
+  API_EXPORT(int) ap_rind(const char *, char);
+ Index: main/util.c
+ ===================================================================
+ RCS file: /export/home/cvs/apache-1.3/src/main/util.c,v
+ retrieving revision 1.119
+ diff -u -r1.119 util.c
+ --- util.c	1998/06/06 19:30:48	1.119
+ +++ util.c	1998/06/10 08:57:16
+ @@ -1781,3 +1781,27 @@
+      return (time1 - time0);
+  }
+  #endif
+ +
+ +/* we want to downcase the type/subtype for comparison purposes
+ + * but nothing else because ;parameter=foo values are case sensitive.
+ + * XXX: in truth we want to downcase parameter names... but really,
+ + * apache has never handled parameters and such correctly.  You
+ + * also need to compress spaces and such to be able to compare
+ + * properly. -djg
+ + */
+ +API_EXPORT(void) ap_content_type_tolower(char *str)
+ +{
+ +    char *semi;
+ +
+ +    semi = strchr(str, ';');
+ +    if (semi) {
+ +	*semi = '\0';
+ +    }
+ +    while (*str) {
+ +	*str = tolower(*str);
+ +	++str;
+ +    }
+ +    if (semi) {
+ +	*semi = ';';
+ +    }
+ +}
+ Index: main/util_script.c
+ ===================================================================
+ RCS file: /export/home/cvs/apache-1.3/src/main/util_script.c,v
+ retrieving revision 1.115
+ diff -u -r1.115 util_script.c
+ --- util_script.c	1998/05/28 23:26:41	1.115
+ +++ util_script.c	1998/06/10 08:57:16
+ @@ -466,7 +466,7 @@
+  		*endp-- = '\0';
+  
+  	    r->content_type = ap_pstrdup(r->pool, l);
+ -	    ap_str_tolower(r->content_type);
+ +	    ap_content_type_tolower(r->content_type);
+  	}
+  	/*
+  	 * If the script returned a specific status, that's what
+ Index: modules/standard/mod_cern_meta.c
+ ===================================================================
+ RCS file: /export/home/cvs/apache-1.3/src/modules/standard/mod_cern_meta.c,v
+ retrieving revision 1.29
+ diff -u -r1.29 mod_cern_meta.c
+ --- mod_cern_meta.c	1998/06/09 05:22:11	1.29
+ +++ mod_cern_meta.c	1998/06/10 08:57:17
+ @@ -269,7 +269,7 @@
+  		*endp-- = '\0';
+  
+  	    r->content_type = ap_pstrdup(r->pool, l);
+ -	    ap_str_tolower(r->content_type);
+ +	    ap_content_type_tolower(r->content_type);
+  	}
+  	else if (!strcasecmp(w, "Status")) {
+  	    sscanf(l, "%d", &r->status);
+ Index: modules/standard/mod_mime_magic.c
+ ===================================================================
+ RCS file: /export/home/cvs/apache-1.3/src/modules/standard/mod_mime_magic.c,v
+ retrieving revision 1.33
+ diff -u -r1.33 mod_mime_magic.c
+ --- mod_mime_magic.c	1998/05/28 22:09:57	1.33
+ +++ mod_mime_magic.c	1998/06/10 08:57:17
+ @@ -816,7 +816,7 @@
+  	r->content_type = rsl_strdup(r, type_frag, type_pos, type_len);
+  	/* XXX: this could be done at config time I'm sure... but I'm
+  	 * confused by all this magic_rsl stuff. -djg */
+ -	ap_str_tolower(r->content_type);
+ +	ap_content_type_tolower(r->content_type);
+      }
+      if (state == rsl_encoding) {
+  	r->content_encoding = rsl_strdup(r, encoding_frag,
+ 
+ 
+Comment-Added-By: lars
+Comment-Added-When: Sat Nov 14 08:51:20 PST 1998
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: lars
+State-Changed-When: Thu Feb 11 12:47:50 PST 1999
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

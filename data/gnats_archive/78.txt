@@ -1,0 +1,121 @@
+From nobody@hyperreal.com  Fri Jan  3 07:11:28 1997
+Received: by taz.hyperreal.com (8.8.3/V2.0) id HAA15335; Fri, 3 Jan 1997 07:11:28 -0800 (PST)
+Message-Id: <199701031511.HAA15335@taz.hyperreal.com>
+Date: Fri, 3 Jan 1997 07:11:28 -0800 (PST)
+From: Markus Gyger <mgyger@itr.ch>
+Reply-To: mgyger@itr.ch
+To: apbugs@hyperreal.com
+Subject: Additional status for XBitHack directive
+X-Send-Pr-Version: 3.2
+
+>Number:         78
+>Category:       mod_include
+>Synopsis:       Additional status for XBitHack directive
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    contrib@apache.org
+>State:          suspended
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jan  3 07:20:01 1997
+>Last-Modified:  Mon Feb 23 03:27:55 PST 1998
+>Originator:     mgyger@itr.ch
+>Organization:
+>Release:        1.2b4
+>Environment:
+HP-UX 10.20, HP ANSI-C compiler 10.32.07
+>Description:
+Users often want to use server-parsed HTML files but they only use commands
+which don't change independently from the file, e.g. "echo LAST_MODIFIED" or
+"config timefmt". That means it doesn't harm to send the Last-Modified: header
+to make the document cachable. This can be done if "XBitHack full" is specified
+and the the document's owner and group execution bits are set. However, it
+would be much more convenient if all documents are parsed by default and the
+meaning of the group execution bit is reversed. E.g.
+
+srm.conf: AddType    text/html .html
+          AddHandler server-parsed .html
+          XBitHack   FullNegated
+
+$ ls -l index.html
+-rw-r--r--   1 user   group        2853 Dec 22 02:39 index.html
+
+Now this document would be parsed and would be cachable because a
+Last-Modified: header is sent. If you have
+
+-rw-r-xr--   1 user   group        2853 Dec 22 02:39 index.html
+
+the document would not have a Last-Modified: header and could use
+directives like echo DATE_LOCAL. The x bit for owner has no effect
+because the document is parsed by default (AddHandler).
+
+My idea is just to make parsed documents cachable per default (if so
+configured).
+>How-To-Repeat:
+
+>Fix:
+--- o/apache_1.2b4/src/mod_include.c    Tue Dec 24 20:53:04 1996
++++ apache_1.2b4/src/mod_include.c      Wed Jan  1 20:00:33 1997
+@@ -1629,10 +1654,14 @@
+  */
+
+ module includes_module;
+-enum xbithack { xbithack_off, xbithack_on, xbithack_full };
++enum xbithack { xbithack_off, xbithack_on, xbithack_full, xbithack_full_negated };
+
+ #ifdef XBITHACK
++#if XBITHACK == 2
++#define DEFAULT_XBITHACK xbithack_full_negated
++#else
+ #define DEFAULT_XBITHACK xbithack_full
++#endif /* XBITHACK == 2 */
+ #else
+ #define DEFAULT_XBITHACK xbithack_off
+ #endif
+@@ -1651,7 +1680,8 @@
+    if (!strcasecmp (arg, "off")) *state = xbithack_off;
+    else if (!strcasecmp (arg, "on")) *state = xbithack_on;
+    else if (!strcasecmp (arg, "full")) *state = xbithack_full;
+-   else return "XBitHack must be set to Off, On, or Full";
++   else if (!strcasecmp (arg, "fullnegated")) *state = xbithack_full_negated;
++   else return "XBitHack must be set to Off, On, Full, or FullNegated";
+
+    return NULL;
+ }
+@@ -1667,12 +1697,17 @@
+     if (r->method_number != M_GET) return DECLINED;
+     if (r->finfo.st_mode == 0) return NOT_FOUND;
+
+-    if (*state == xbithack_full
++    if ((*state == xbithack_full
+ #ifndef __EMX__
+     /*  OS/2 dosen't support Groups. */
+        && (r->finfo.st_mode & S_IXGRP)
+ #endif
+-       && (errstatus = set_last_modified (r, r->finfo.st_mtime)))
++       || *state == xbithack_full_negated
++#ifndef __EMX__
++       && !(r->finfo.st_mode & S_IXGRP)
++#endif
++
++       ) && (errstatus = set_last_modified (r, r->finfo.st_mtime)))
+         return errstatus;
+
+     if(!(f=pfopen(r->pool, r->filename, "r"))) {%0
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: coar@decus.org
+State-Changed-When: Wed Apr 23 04:20:15 PDT 1997
+State-Changed-Why:
+It is too late to consider this for 1.2, so I am suspending
+this report so it can be considered for a future release.
+Thank you for the suggestion.
+Responsible-Changed-From-To: apache-contrib@apache.org
+Responsible-Changed-By: dgaudet
+Responsible-Changed-When: Mon Feb 23 03:27:55 PST 1998
+Responsible-Changed-Why:
+marked for contri
+>Unformatted:
+
+

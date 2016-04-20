@@ -1,0 +1,173 @@
+Received: (qmail 1618 invoked by uid 2012); 24 Mar 1998 16:10:48 -0000
+Message-Id: <19980324161048.1617.qmail@hyperreal.org>
+Date: 24 Mar 1998 16:10:48 -0000
+From: Aaron St.Pierre <stpiera@awl.com>
+Reply-To: stpiera@awl.com
+To: apbugs@hyperreal.org
+Subject: url parsing causing invalid URI
+X-Send-Pr-Version: 3.2
+
+>Number:         1983
+>Category:       general
+>Synopsis:       url parsing causing invalid URI
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Mar 24 08:20:01 PST 1998
+>Last-Modified:  Tue Mar 24 20:48:34 PST 1998
+>Originator:     stpiera@awl.com
+>Organization:
+>Release:        1.2.4/1.2.5/1.2.6
+>Environment:
+gcc version 2.7.2
+SunOS 5.5.1 Generic_103640-09 sun4u sparc SUNW,Ultra-2
+>Description:
+I first noticed this problem within a VirtualHost, and though it was limited
+to the VirtualHost. The problem arises when one uses numbers as directory names.
+(e.g. 1 2 3 4 5 ) Or any set of numbers in [0-9].* . This will generate a status 400
+or "Bad Request" from the client to the server, instead of the expected "Not Found"
+error. Examples : 
+		http://www2.awl.com/234234234234
+will generate a status 400 
+		http://www.mathsurf.com/234234234324
+will generate a status 400 :
+Tue Mar 24 11:00:19 1998] Invalid URI in request GET /234234234 HTTP/1.0
+
+		http:/www.mathsurf.com/234232324/index.html
+will generate a status 200 message serving the page even though the /234232324
+is totally invalid. Log file: 
+lepton.awl.com - - [24/Mar/1998:10:50:43 -0500] "GET /234234234/images/3_5books.gif HTTP/1.0" 200 6668 "http://www.mathsurf.com/234234234/index.html" "Mozilla/3.01Gold (X11; I; SunOS 5.6 sun4u)" 0 
+lepton.awl.com - - [24/Mar/1998:10:50:43 -0500] "GET /234234234/images/6_8books.gif HTTP/1.0" 200 6977 "http://www.mathsurf.com/234234234/index.html" "Mozilla/3.01Gold (X11; I; SunOS 5.6 sun4u)" 0 
+
+Notes. 
+	This only happens with strings that are a set of numbers of any length 
+I tested this rigourously (hopeing to find an overflow :) Needless to say I didnt find
+and overflow. 
+	A vanilla installation of apache_1.2.4 apache_1.2.5 apache_1.2.6 with no
+virtual hosts, no rewriteing on ... etc. shows the expected behaviour when the server
+is queried for "http://somehost.somedomain.com/234234234234" (a file not found).
+Though when my configuration is applied (using rewriting, virtual hosts..etc) the 
+wierd behaviour comes back. One may say that it is my configuration, but to argue that
+point I am not doing anything strange enough to elicit this type of problem. 
+>How-To-Repeat:
+http://www2.awl.com/234234234234234234234234/corp/ (note you dont have to type the numbers 
+exactly any set of [0-9].* will work. 
+http://www.mathsurf.com/234234234234324/index.html
+http://www.mathsurf.com/ --> click on any grade link (except 1 or 3) ... 
+>Fix:
+Not yet.
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: "Aaron St.Pierre" <stpiera@awl.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/1983: url parsing causing invalid URI
+Date: Tue, 24 Mar 1998 09:55:23 -0800 (PST)
+
+ If it only happens with your configuration then it is a configuration
+ problem.  And we won't be able to do a thing about it until you can find
+ what part of your config actually causes it to happen.  You'll need to try
+ bits and pieces of your config until you can cause it to happen.  I'm
+ guessing when you do that you'll find a config mistake.  I'd start with
+ the rewrite rules. 
+ 
+ Dean
+ 
+
+From: "Aaron St. Pierre" <stpiera@awl.com>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/1983: url parsing causing invalid URI
+Date: Tue, 24 Mar 1998 12:52:31 -0500 (EST)
+
+ On Tue, 24 Mar 1998, Dean Gaudet wrote:
+ 
+ > If it only happens with your configuration then it is a configuration
+ > problem.  And we won't be able to do a thing about it until you can find
+ > what part of your config actually causes it to happen.  You'll need to try
+ > bits and pieces of your config until you can cause it to happen.  I'm
+ > guessing when you do that you'll find a config mistake.  I'd start with
+ > the rewrite rules. 
+ > 
+ > Dean
+ > 
+ I have already verified that it is not the rewrite rules (I am sorry I
+ should have written that) I did this turning rewriting off, after doing
+ that the same problem exists. More importantly while rewriting was turned
+ on with debugging the URI that is passed to the rewrite engine is not what
+ was requested (the /23423423423/index.html , is being translated to
+ /index.html ) so the /23423423423 is being stripped away. I think this is
+ wrong. Though that could be related to my lack of understanding of the
+ underlying design. The main point here being the fact that it isnt the
+ rewrite rules since the example mentioned above isnt getting rewritten,
+ and since I have turned it off and the problem persisted. 
+ 	In anycase I think you are right about the configuration,though
+ it isnt the rewrite rules I am at a loss for what could be causing this
+ type of behaviour. I will get a config together that recreates the
+ problem, and post it .. 
+ 
+ thanks
+ aaron
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: general/1983: url parsing causing invalid URI (fwd)
+Date: Tue, 24 Mar 1998 17:01:14 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ Date: Tue, 24 Mar 1998 19:32:16 -0500 (EST)
+ From: "Aaron St. Pierre" <stpiera@awl.com>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: general/1983: url parsing causing invalid URI
+ 
+ On Tue, 24 Mar 1998, Dean Gaudet wrote:
+ 
+ > 
+ > 
+ > On Tue, 24 Mar 1998, Aaron St. Pierre wrote:
+ > 
+ > > type of behaviour. I will get a config together that recreates the
+ > > problem, and post it .. 
+ > 
+ > Thanks, this helps us immensely.
+ > 
+ > Dean
+ > 
+ 
+ mod_mhtml.c was the problem. This is a module for translation of metahtml
+ files. It was gobling up the digits passed within the URI. My quick
+ hack cheks to see what byte we are on when processing the req->uri if
+ it is < 5 (which would be 3 digits ) then it just returns the req->uri 
+ 'as is', otherwise it goes through the rest of the module. I dont know 
+ if I have the liberty to post this module, but I will find out. If you
+ close the report, I will just mail it to you dean. 
+ 
+ This is totally unsupported , I know, but if anyone else is using this
+ module this will hopefully save them some time. Since it will produce
+ unperdictable results on sites that use numbers as directories. 
+ 
+ Thanks again for all your help, and sorry if I wasted anyone's time,
+ namely yours Dean :) 
+ 
+ later,
+ aaron
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Tue Mar 24 20:48:34 PST 1998
+State-Changed-Why:
+Was extra module doing bad things.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

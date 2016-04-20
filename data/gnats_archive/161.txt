@@ -1,0 +1,148 @@
+From nobody@hyperreal.com  Wed Feb  5 14:24:47 1997
+Received: by taz.hyperreal.com (8.8.4/V2.0) id OAA08541; Wed, 5 Feb 1997 14:24:47 -0800 (PST)
+Message-Id: <199702052224.OAA08541@taz.hyperreal.com>
+Date: Wed, 5 Feb 1997 14:24:47 -0800 (PST)
+From: Petr Lampa <lampa@fee.vutbr.cz>
+Reply-To: lampa@fee.vutbr.cz
+To: apbugs@hyperreal.com
+Subject: Questionable performace of  mod_dir() with negotiation
+X-Send-Pr-Version: 3.2
+
+>Number:         161
+>Category:       mod_dir
+>Synopsis:       Questionable performace of  mod_dir() with negotiation
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Feb  5 14:30:01 1997
+>Closed-Date:    Tue Aug 07 06:35:22 PDT 2001
+>Last-Modified:  Tue Aug 07 06:35:22 PDT 2001
+>Originator:     lampa@fee.vutbr.cz
+>Release:        1.2b6
+>Organization:
+>Environment:
+FreeBSD-2.2BETA
+>Description:
+Problem reported for 1.2b2, still unresolved.
+
+handle_multi() style shortcut redirect (fixed) would be
+nice for other modules. For instance mod_dir()
+would be much faster using such redirection.
+Iff you trace calls for http://www.xxx/, you'll see, 
+that mod_negotiation() is called twice for the same URI
+due to standard redirect:
+/ -> mod_dir() -> /Welcome.html -> handle_multi() -> select /Welcome.html.en ->
+mod_dir() -> redirect -> /Welcome.html -> handle_multi() again!
+This could be a serious performance hit.
+
+>How-To-Repeat:
+
+>Fix:
+Use redirection shortcut similar to the handle_multi():
+
+*** mod_dir.c.old   Sun Dec  1 21:28:59 1996
+--- mod_dir.c    Mon Dec 30 19:20:49 1996
+***************
+*** 803,811 ****
+                 new_uri = pstrcat(r->pool, new_uri, "?", rr->args, NULL);
+             else if (r->args != NULL)
+                 new_uri = pstrcat(r->pool, new_uri, "?", r->args, NULL);
+!
+!            destroy_sub_req (rr);
+!            internal_redirect (new_uri, r);
+             return OK;
+        }
+
+--- 790,815 ----
+              new_uri = pstrcat(r->pool, new_uri, "?", rr->args, NULL);
+           else if (r->args != NULL)
+              new_uri = pstrcat(r->pool, new_uri, "?", r->args, NULL);
+!
+!         if (r->path_info && *r->path_info == '/') ++r->path_info; /* eat o
+ne slash for directory "/d'/'/ -> /d/index.html/" */
+!         r->filename = rr->filename;
+!         r->handler = rr->handler;
+!         r->content_type = rr->content_type;
+!         r->content_encoding = rr->content_encoding;
+!         r->content_languages = rr->content_languages;
+!         r->content_language = rr->content_language;
+!         r->finfo = rr->finfo;
+!     /* We don't want TRACE to run through the normal handler set,
+!      * we handle it specially.
+!      */
+!         if (r->method_number == M_TRACE) send_http_trace (r);
+!         else if ((error_notfound = invoke_handler (r)) != 0) {
+!             die (error_notfound, r);
+!             return;
+!         }
+!
+!    /* Take care of little things that need to happen when we're done */
+!         finalize_request_protocol (r);
+          return OK;
+      }
+%0
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: coar@decus.org
+State-Changed-When: Thu Apr 24 08:07:57 PDT 1997
+State-Changed-Why:
+Thank you for the report.  If this hasn't been fixed for
+1.2 (I remember seeing some of your suggestions implemented,
+but I don't know if this was one of them), it will have
+to wait for a future release.  Report suspended for
+future consideration.
+Category-Changed-From-To: general-mod_dir
+Category-Changed-By: coar@decus.org
+Category-Changed-When: Thu Apr 24 08:07:57 PDT 1997
+
+Comment-Added-By: coar
+Comment-Added-When: Mon Aug 18 09:35:08 PDT 1997
+Comment-Added:
+[Some mis-directed mail from Dean that should have been
+attached here.]
+
+This could be suspended pending the implementation of a promte_request()
+function.  We did a lot of cleanup around 1.2b8 with the request
+promotion that handle_multi() uses (Petr Lampa pointed out most of the
+bugs actually).
+
+He also pointed out the inefficiency of mod_dir+negotiation in that both of
+them do readdir()s on the same directory.  Caching would be really nice.
+
+Dean
+Release-Changed-From-To: 1.2b2, b3, b4, b6-1.2b6
+Release-Changed-By: coar
+Release-Changed-When: Thu Jan 22 08:40:45 PST 1998
+State-Changed-From-To: suspended-closed
+State-Changed-By: wrowe
+State-Changed-When: Tue Aug  7 06:35:22 PDT 2001
+State-Changed-Why:
+
+"We did a lot of cleanup around 1.2b8 with the request
+promotion that handle_multi()"
+
+And with that the bugs (vulnerabilities?) remained.  This
+function has moved into the http_protocol.c core as an
+internal_fast_redirect, but it's just as likely to be
+deprecated if it is not maintained.  That code wasn't
+resetting the uri, causing problems with query arguments.
+
+Caching, throughout the server, is more likely to benefit
+Apache 2.0.  Time will tell.  You are correct, that this
+is a faster transition than an internal redirect, but it
+bypasses some of the checkers to take advantage of some
+assumptions that may not be safe.
+
+
+Bill
+>Unformatted:
+
+

@@ -1,0 +1,179 @@
+Received: (qmail 91570 invoked by uid 501); 25 Nov 2000 15:44:07 -0000
+Message-Id: <20001125154407.91566.qmail@locus.apache.org>
+Date: 25 Nov 2000 15:44:07 -0000
+From: JP Donnio <tag-apache@tbs-internet.com>
+Reply-To: tag-apache@tbs-internet.com
+To: submit@bugz.apache.org
+Subject: add unresolved to mod_access
+X-Send-Pr-Version: 3.110
+
+>Number:         6888
+>Category:       mod_access
+>Synopsis:       add unresolved to mod_access
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Nov 25 07:50:01 PST 2000
+>Closed-Date:
+>Last-Modified:  Mon Nov 27 08:29:32 PST 2000
+>Originator:     tag-apache@tbs-internet.com
+>Release:        1.3.12
+>Organization:
+>Environment:
+Linux x 2.0.35 #3 Fri Aug 28 19:10:56 EDT 1998 i586 unknown
+>Description:
+this is not a bug report, just a feature request. 
+I needed to be able to 'deny from' unresolved IP address so I quickly added a few 
+lines of code in mod_access to support 'deny from unresolved'
+
+I wonder if anyone (a real programmer I mean) would like to review to correctness
+of the code and add it to the official apache mod_access.
+
+best regards to the team
+>How-To-Repeat:
+
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: slive
+State-Changed-When: Sun Nov 26 22:35:22 PST 2000
+State-Changed-Why:
+
+If the patch is small, feel free to append it to
+this problem report by emailing it according to
+the instructions above. (Please use plain text.)
+
+However, I'm not sure that it will be incorporated
+in Apache for two reasons:
+1. The same thing can be accomplished with mod_rewrite.
+(Although the syntax would obviously be more complicated.)
+2. It seems like a relatively obscure requirement.
+It obviously provides no real security.  However,
+I can see where some people would find it useful.
+
+In any case, thanks for the contribution.
+
+
+From: JP Donnio <tag@tbs-internet.com>
+To: slive@apache.org
+Cc: apbugs@apache.org
+Subject: general/6888: add unresolved to mod_access
+Date: Mon, 27 Nov 2000 09:24:20 +0100
+
+ > If the patch is small, feel free to append it to
+ > this problem report by emailing it according to
+ > the instructions above. (Please use plain text.)
+ 
+ Please find it below.
+  
+ > However, I'm not sure that it will be incorporated
+ > in Apache for two reasons:
+ > 1. The same thing can be accomplished with mod_rewrite.
+ > (Although the syntax would obviously be more complicated.)
+ > 2. It seems like a relatively obscure requirement.
+ > It obviously provides no real security.  However,
+ > I can see where some people would find it useful.
+ 
+ I'd like to explain further why it can be useful. We are working out 
+ copyright problems and need to be able to exclude some countries from 
+ non-authenticated (understand username + password) access. We have used
+ 'deny from country' in addition to a list of prefixed that we obtained 
+ from a complex analysis of BGP announcements.
+ 
+ We found out that it may be easier and more effective to require all 
+ un-identified IP addresses to use a username and password. Therefore we 
+ use a 'deny from unresolved' in conjunction with a 'satisfy any' and 
+ a mysql password database. Denied users are asked for a password that 
+ they should ask for. That comes in addition of prefix list we still 
+ obtain from BGP analysis.
+ 
+ The patch only adds 19 lines to the mod_access source. If it is correct 
+ (I'm not a programmer) it is worth adding. I guess that with the ruling 
+ of Yahoo and Nazi containt, people are going to have increasing problems
+ identifying users. This patch might help.
+ 
+ http://www.zdnet.com/zdnn/stories/news/0,4586,2655972,00.html
+ 
+ 
+ 
+ --- mod_access.c.orig   Sat Nov 25 10:12:31 2000
+ +++ mod_access.c        Sat Nov 25 10:17:16 2000
+ @@ -73,7 +73,8 @@
+      T_ALL,
+      T_IP,
+      T_HOST,
+ -    T_FAIL
+ +    T_FAIL,
+ +    T_UNRESOLVED
+  };
+  
+  typedef struct {
+ @@ -165,6 +166,10 @@
+         a->type = T_ALL;
+  
+      }
+ +    else if (!strcasecmp(where, "unresolved")) {
+ +        a->type = T_UNRESOLVED;
+ +
+ +    }
+      else if ((s = strchr(where, '/'))) {
+         unsigned long mask;
+  
+ @@ -335,6 +340,21 @@
+             if ((gothost == 2) && in_domain(ap[i].x.from, remotehost))
+                 return 1;
+             break;
+ +
+ +        case T_UNRESOLVED:
+ +            if (!gothost) {
+ +                remotehost = ap_get_remote_host(r->connection, r->per_dir_config,
+ +                                            REMOTE_DOUBLE_REV);
+ +
+ +                if ((remotehost == NULL) || is_ip(remotehost))
+ +                    gothost = 1;
+ +                else
+ +                    gothost = 2;
+ +            }
+ +
+ +            if (gothost == 1)
+ +                return 1;
+ +            break;
+  
+         case T_FAIL:
+             /* do nothing? */
+State-Changed-From-To: feedback-suspended
+State-Changed-By: slive
+State-Changed-When: Mon Nov 27 08:29:30 PST 2000
+State-Changed-Why:
+
+I'll mark this as suspended for consideration in a 
+future version of Apache.
+Thanks again.
+Category-Changed-From-To: general-mod_access
+Category-Changed-By: slive
+Category-Changed-When: Mon Nov 27 08:29:30 PST 2000
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

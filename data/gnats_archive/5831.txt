@@ -1,0 +1,239 @@
+Received: (qmail 38290 invoked by uid 65534); 3 Mar 2000 19:49:45 -0000
+Message-Id: <20000303194945.38289.qmail@locus.apache.org>
+Date: 3 Mar 2000 19:49:45 -0000
+From: Nandakumar Shankar <mnandaku@netscape.net>
+Reply-To: mnandaku@netscape.net
+To: submit@bugz.apache.org
+Subject: Having '%2' instead of '%23' in URL query string throws StringIndexOutOfBoundsException
+X-Send-Pr-Version: 3.110
+
+>Number:         5831
+>Category:       mod_jserv
+>Synopsis:       Having '%2' instead of '%23' in URL query string throws StringIndexOutOfBoundsException
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Mar 03 11:50:00 PST 2000
+>Closed-Date:    Tue Dec 18 07:59:58 PST 2001
+>Last-Modified:  Tue Dec 18 07:59:58 PST 2001
+>Originator:     mnandaku@netscape.net
+>Release:        1.3.9
+>Organization:
+>Environment:
+Test platform: Solaris.  Problem is platform-independent.
+Problem in JServ java code.
+Related problem: PR 2922 reported by Alan Sparks.
+>Description:
+Problem Domain: Apache 1.3.9, Jserv 1.1, JSDK 2.0
+Getting a URL like
+  http://machine/servlet/Test?a=def&b=%2 OR 
+  http://machine/servlet/Test?a=def&b=%
+causes the JServ request processing thread to crash with the following trace:
+
+[Fri Mar  3 10:52:49 2000] [notice] Apache/1.3.9 (Unix) ApacheJServ/1.1 configur
+ed -- resuming normal operations
+java.lang.StringIndexOutOfBoundsException: String index out of range: 3
+    at java.lang.Throwable.fillInStackTrace(Native Method)
+    at java.lang.Throwable.fillInStackTrace(Compiled Code)
+    at java.lang.Throwable.<init>(Compiled Code)
+    at java.lang.Exception.<init>(Exception.java:42)
+    at java.lang.RuntimeException.<init>(RuntimeException.java:47)
+    at java.lang.IndexOutOfBoundsException.<init>(IndexOutOfBoundsException.java
+:44)
+    at java.lang.StringIndexOutOfBoundsException.<init>(StringIndexOutOfBoundsEx
+ception.java:57)
+    at java.lang.String.substring(Compiled Code)
+    at javax.servlet.http.HttpUtils.parseName(Compiled Code)
+    at javax.servlet.http.HttpUtils.parseQueryString(Compiled Code)
+    at org.apache.jserv.JServServletManager.getUrlSessionId(JServServletManager.
+java:748)
+    at org.apache.jserv.JServConnection.processRequest(JServConnection.java:234)
+    at org.apache.jserv.JServConnection.run(JServConnection.java:188)
+    at java.lang.Thread.run(Thread.java:484)
+
+The problem is that the HttpUtils.parseQueryString() method is only supposed
+to throw IllegalArgumentException.  It also throws StringIndexOutOfBoundsException.
+This has been fixed by JSDK 2.1.  JServ trips up when the 
+JServServletManager.getUrlSessionId() doesn't handle the String...Exception.
+The JServConnection.parseParams() method too faces the same problem while 
+calling HttpUtils.parseQueryString().
+>How-To-Repeat:
+The problem is similar to PR 2922.  I don't know why the request gets a
+'%' character in the URL query string without 2 HEX digits following it but 
+JServ shouldn't crash because of it.  
+How to reproduce: Call any URL with a query string containing the '%', like
+    http://machine/page?a=def&b=% (or %2)
+>Fix:
+The fix suggested in PR 2922 should apply.  The Servlet 2.1 function
+HttpUtils.parseQueryString() (which calls parseName()) fixes the problem in a
+different way by including the '%' character as is and not interpreting it as 
+an encoded character. The fix in PR 2922 rejects the URL query string as invalid.
+
+I fixed the problem by duplicating the JSDK 2.1 fix in the JServ. I added a
+class FixedHttpUtils extends javax.servlet.http.HttpUtils {
+   //copy the following functions from JSDK2.1 - parseQueryString(), parseName()
+    static public Hashtable parseQueryString(String s) {
+      String valArray[] = null;
+ 
+      if (s == null) {
+         throw new IllegalArgumentException();
+      }
+      Hashtable ht = new Hashtable();
+      StringBuffer sb = new StringBuffer();
+      StringTokenizer st = new StringTokenizer(s, "&");
+      while (st.hasMoreTokens()) {
+        String pair = (String)st.nextToken();
+        int pos = pair.indexOf('=');
+        if (pos == -1) {
+          // XXX
+          // should give more detail about the illegal argument
+          throw new IllegalArgumentException();
+       } 
+       String key = parseName(pair.substring(0, pos), sb);
+       String val = parseName(pair.substring(pos+1, pair.length()), sb);
+       if (ht.containsKey(key)) {
+         String oldVals[] = (String []) ht.get(key);
+         valArray = new String[oldVals.length + 1];
+         for (int i = 0; i < oldVals.length; i++) 
+           valArray[i] = oldVals[i];
+           valArray[oldVals.length] = val;
+         } else {
+           valArray = new String[1];
+           valArray[0] = val;
+         }
+         ht.put(key, valArray);
+         }
+        return ht;
+      }
+    /*
+     * Parse a name in the query string.
+     */
+
+    static private String parseName(String s, StringBuffer sb) {
+       sb.setLength(0);
+       for (int i = 0; i < s.length(); i++) {
+         char c = s.charAt(i); 
+         switch (c) {
+           case '+':
+               sb.append(' ');
+               break;
+           case '%':
+               try {
+                  sb.append((char) Integer.parseInt(s.substring(i+1, i+3), 
+                                     16));
+                  i += 2;
+                } catch (NumberFormatException e) {
+               // XXX
+               // need to be more specific about illegal arg
+                  throw new IllegalArgumentException();
+              } catch (StringIndexOutOfBoundsException e) {
+                 // This particular catch block is not present in 
+                 // the servlet API 2.0 causing this exception to 
+                 // be propagated upwards. - Nandu
+                 String rest  = s.substring(i);
+                 sb.append(rest);
+                 if (rest.length()==2)
+                      i++;
+                 }
+  
+                 break;
+               default:
+                 sb.append(c);
+                 break;
+              }
+           }
+           return sb.toString();
+         }
+       }
+    }
+
+In JServServletManager.getUrlSessionId():
+try {
+            Hashtable params = HttpUtils.parseQueryString(queryStr);
+            Object o = params.get(session_identifier);
+            if (o == null) {
+                return null;
+            } else if (o instanceof String) {
+                return (String) o;
+            } else {
+                return ((String[]) o)[0];
+            }
+        } catch (IllegalArgumentException badquerystr) {
+            return null;
+        } catch (StringIndexOutOfBoundsException e) {
+            // This exception is raised by the parseQueryString()
+            // function above due to a bug.  This bug has been fixed 
+            // in the Servlet 2.1 code (JServ1.1 uses Servlet 2.0). 
+            // The right place to fix this bug is in the JSDK but we
+            // have no control over that.  By trapping it here we ensure 
+            // that the servlet manager itself doesn't error out with 
+            // this exception. - Nandu
+            try { // Try again
+               Hashtable params = FixedHttpUtils.parseQueryString(queryStr);
+               Object o = params.get(session_identifier);
+               if (o == null) {
+                  return null;
+               } else if (o instanceof String) {
+                  return (String) o;
+               } else {
+                  return ((String[]) o)[0];
+               }
+             } catch (IllegalArgumentException badquerystr) {
+                return null;
+             }   
+          }
+
+Then in JServConnection.parseParams() I add an exception handler for
+Strin...Exception.
+        try {
+            queryParameters = HttpUtils.parseQueryString(getQueryString());
+        } catch (IllegalArgumentException e) {
+            queryParameters = null;
+        } catch (StringIndexOutOfBoundsException en) {
+            // Due to a bug int the parseQueryString() function in the
+            // Servlet 2.0 API we get this exception.  This bug is fixed in
+            // the 2.1 API.  For 2.0 we need to do this workaround by 
+            // duplicating the fix here. I could have used FixedHttpUtils in
+            // the try block above instead of duplicating it here but this 
+            // makes our testing easier.  Plus if a site switches to 2.1 we
+            // automatically use the fixed HttpUtils. - Nandu 
+            try {
+              queryParameters = FixedHttpUtils.parseQueryString(getQueryString());
+            } catch (IllegalArgumentException ex) {
+              queryParameters = null;
+            }
+         }
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Tue Dec 18 07:59:57 PST 2001
+State-Changed-Why:
+This is unrelated to mod_jserv - and entirely tied into
+Sun's classes, so this wasn't the appropriate forum.
+
+However, the report is logged, and although jserv is no
+longer maintained, other users searching for this issue
+will be pleased with your well documented incident report :)
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

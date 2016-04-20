@@ -1,0 +1,83 @@
+Received: (qmail 12797 invoked by uid 65534); 30 Jan 2000 18:12:14 -0000
+Message-Id: <20000130181214.12796.qmail@locus.apache.org>
+Date: 30 Jan 2000 18:12:14 -0000
+From: Theo Schlossnagle <jesus@cnds.jhu.edu>
+Reply-To: jesus@cnds.jhu.edu
+To: submit@bugz.apache.org
+Subject: KeepAlive enable/disable not flexible enough.
+X-Send-Pr-Version: 3.110
+
+>Number:         5672
+>Category:       config
+>Synopsis:       KeepAlive enable/disable not flexible enough.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Jan 30 10:20:00 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     jesus@cnds.jhu.edu
+>Release:        1.3.9
+>Organization:
+apache
+>Environment:
+I am using Solaris,BSDI,Linux, etc. gcc and ProC compilers
+>Description:
+I wrote and maintain mod_backhand.  Like any proxying module, it benefits
+TREMENDOUSLY from KeepAlives being turned on on the backend servers.  However,
+mod_backhand doesn't differentiate between front-end and backend.  Thus, one has
+to enable KeepAlive for everyone or disable them completely.
+
+I need an KeepAlives On/Off/Network (where Network could be of the form IP/mask)
+
+Or, code needs to be added to the apache source tree to change it.  I hate to
+distribute a patch to Apache with mod_backhand, because I like the fact that
+one can use it with apxs.  The patch I have is as follows, please consider it or
+more flexible alternatives (like KeepAlives that takes a network adresses as
+parameters).
+>How-To-Repeat:
+Sure, install mod_backhand, and try to turn on KeepAlives from fellow machines 
+in your cluster, but disable them from everwhere else.  It is a fundamental 
+configuration limitation.
+>Fix:
+*** apache_1.3.9/src/main/http_protocol-old.c   Sat Aug 14 05:21:19 1999
+--- apache_1.3.9/src/main/http_protocol.c       Sun Jan 30 13:10:21 2000
+***************
+*** 303,309 ****
+                           "chunked") ||
+           ((r->proto_num >= HTTP_VERSION(1,1)) &&
+          (r->chunked = 1))) && /* THIS CODE IS CORRECT, see comment above. */
+!         r->server->keep_alive &&
+          (r->server->keep_alive_timeout > 0) &&
+          ((r->server->keep_alive_max == 0) ||
+           (r->server->keep_alive_max > r->connection->keepalives)) &&
+--- 303,310 ----
+                           "chunked") ||
+           ((r->proto_num >= HTTP_VERSION(1,1)) &&
+          (r->chunked = 1))) && /* THIS CODE IS CORRECT, see comment above. */
+!         (r->server->keep_alive ||
+!               ap_table_get(r->headers_in, "BackhandProxied")) &&
+          (r->server->keep_alive_timeout > 0) &&
+          ((r->server->keep_alive_max == 0) ||
+           (r->server->keep_alive_max > r->connection->keepalives)) &&
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

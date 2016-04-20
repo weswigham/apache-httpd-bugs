@@ -1,0 +1,211 @@
+Received: (qmail 16269 invoked by uid 2012); 29 May 1998 20:16:31 -0000
+Message-Id: <19980529201631.16268.qmail@hyperreal.org>
+Date: 29 May 1998 20:16:31 -0000
+From: Dave Dykstra <dwd@bell-labs.com>
+Reply-To: dwd@bell-labs.com
+To: apbugs@hyperreal.org
+Subject: last awk script in configure breaks with braindead awks
+X-Send-Pr-Version: 3.2
+
+>Number:         2319
+>Category:       config
+>Synopsis:       last awk script in configure breaks with braindead awks
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri May 29 13:20:00 PDT 1998
+>Last-Modified:  Mon Jun  8 13:40:00 PDT 1998
+>Originator:     dwd@bell-labs.com
+>Organization:
+>Release:        1.3b7
+>Environment:
+At least UTS 2.1.2 and IRIX 5.3
+>Description:
+There's an awk script in the "configure" program that tries to break up
+sed scripts to get around braindead seds.  Unfortunately, it breaks on
+braindead awks!
+>How-To-Repeat:
+Extract the awk script out of configure and try it on some scratch files.
+>Fix:
+On IRIX 5.3, it is sufficient to change the input file from being sent to it
+via standard input to instead be a parameter at the end of the awk command line.
+UTS 2.1.2, however, has another problem in that the >$file overwrites the file
+on every line so each file only contains the last line.  The only solution I
+could think of was to use nawk if it is available.  This fixes the IRIX 5.3
+problem too.  A patch is below.  There are many other problems specific to
+UTS 2.1.2 only but I am going to submit those in a separate report.
+
+*** configure.O Wed May 27 15:19:29 1998
+--- configure   Wed May 27 15:59:35 1998
+***************
+*** 134,139 ****
+--- 134,155 ----
+  PERL="`echo $PERL | sed -e 's://:/:'`"
+  
+  ##
++ ##  look for a nawk because some awks are braindead
++ ##
++ 
++ AWK=awk
++ OIFS="$IFS" IFS=':'
++ for dir in $PATH; do
++     OIFS2="$IFS" IFS="$DIFS"
++     if test -x "$dir/nawk"; then
++       AWK="$dir/nawk"
++       break 2
++     fi
++     IFS="$OIFS2"
++ done
++ IFS="$OIFS"
++ 
++ ##
+  ##  determine default parameters
+  ##
+  
+***************
+*** 267,273 ****
+              ;;
+          --shadow)
+              #   determine GNU platform triple
+!             gnutriple=`$aux/GuessOS | awk '{ printf("%s",$1); }' | sed -e 's:/:-:g'`
+              #   create Makefile wrapper (the first time only)
+              if [ ".`ls $top/src.* 2>/dev/null`" = . ]; then
+                  if [ .$quiet = .no ]; then
+--- 283,289 ----
+              ;;
+          --shadow)
+              #   determine GNU platform triple
+!             gnutriple=`$aux/GuessOS | $AWK '{ printf("%s",$1); }' | sed -e 's:/:-:g'`
+              #   create Makefile wrapper (the first time only)
+              if [ ".`ls $top/src.* 2>/dev/null`" = . ]; then
+                  if [ .$quiet = .no ]; then
+***************
+*** 277,283 ****
+                  echo "##  Apache Makefile (shadow wrapper)" >> Makefile
+                  echo "##" >> Makefile
+                  echo "" >> Makefile
+!                 echo "GNUTRIPLE=\`$aux/GuessOS | awk '{ printf(\"%s\",\$\$1); }' | sed -e 's:/:-:g'\`" >> Makefile
+                  echo "" >> Makefile
+                  echo "all build install install-quiet clean distclean:" >> Makefile
+                  echo "        @\$(MAKE) -f Makefile.\$(GNUTRIPLE) \$(MFLAGS) \$@" >> Makefile
+--- 293,299 ----
+                  echo "##  Apache Makefile (shadow wrapper)" >> Makefile
+                  echo "##" >> Makefile
+                  echo "" >> Makefile
+!                 echo "GNUTRIPLE=\`$aux/GuessOS | $AWK '{ printf(\"%s\",\$\$1); }' | sed -e 's:/:-:g'\`" >> Makefile
+                  echo "" >> Makefile
+                  echo "all build install install-quiet clean distclean:" >> Makefile
+                  echo "        @\$(MAKE) -f Makefile.\$(GNUTRIPLE) \$(MFLAGS) \$@" >> Makefile
+***************
+*** 936,942 ****
+  
+  #   split sedsubst into chunks of 50 commands
+  #   to workaround limits in braindead seds
+! files=`awk <$sedsubst '
+      BEGIN { line=0; cnt=0; }
+      {
+          if (line % 50 == 0) {
+--- 952,958 ----
+  
+  #   split sedsubst into chunks of 50 commands
+  #   to workaround limits in braindead seds
+! files=`$AWK <$sedsubst '
+      BEGIN { line=0; cnt=0; }
+      {
+          if (line % 50 == 0) {
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rse
+State-Changed-When: Fri May 29 13:47:56 PDT 1998
+State-Changed-Why:
+Thanks for your report. Your patch was enhanced by
+me to also try GNU awk (gawk) and was comitted to
+the Apache source repository now. It occurs in
+Apache 1.3. Thanks.
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: dwd@bell-labs.com
+Cc: rse@apache.org, apbugs@apache.org
+Subject: Re: config/2319: last awk script in configure breaks with braindead awks
+Date: Mon, 8 Jun 1998 13:41:46 -0700 (PDT)
+
+ Committed, thanks.
+ 
+ Dean
+ 
+ On Mon, 8 Jun 1998 dwd@ihgp.ih.lucent.com wrote:
+ 
+ > On May 29,  8:47pm, rse@apache.org wrote:
+ > > Synopsis: last awk script in configure breaks with braindead awks
+ > > 
+ > > State-Changed-From-To: open-closed
+ > > State-Changed-By: rse
+ > > State-Changed-When: Fri May 29 13:47:56 PDT 1998
+ > > State-Changed-Why:
+ > > Thanks for your report. Your patch was enhanced by
+ > > me to also try GNU awk (gawk) and was comitted to
+ > > the Apache source repository now. It occurs in
+ > > Apache 1.3. Thanks.
+ > 
+ > (NOTE: I was going to submit a new bug report on this but my web browser
+ > says there's no DNS entry for bugs.apache.org this morning (or
+ > dev.apache.org for that matter)).
+ > 
+ > Oh oh, this has now been done incorrectly.  Sometime in the last three 3
+ > days a program "findprg.sh" has been introduced into the 1.3.1 snapshot.
+ > It doesn't behave as expected.  When findprg.sh looks for "nawk gawk awk"
+ > but it finds awk in the PATH before nawk, it uses awk.  Below is a possible
+ > fix (change the ordering of the loops).
+ > 
+ > - Dave Dykstra
+ > 
+ > 
+ > *** findprg.sh.O	Mon Jun  8 10:48:09 1998
+ > --- findprg.sh	Mon Jun  8 10:49:55 1998
+ > ***************
+ > *** 43,56 ****
+ >   fi
+ >   rm -f $testfile
+ >   
+ > ! #   iterate over paths
+ > ! for path in `echo $pathlist |\
+ > !              sed -e 's/^:/.:/' \
+ > !                  -e 's/::/:.:/g' \
+ > !                  -e 's/:$/:./' \
+ > !                  -e 's/:/ /g'`; do
+ > !     #   iterate over names
+ > !     for name in $namelist; do
+ >           if [ $minusx "$path/$name" ] && [ ! -d "$path/$name" ]; then
+ >               if [ "$silent" != "yes" ]; then
+ >                   echo "$path/$name"
+ > --- 43,57 ----
+ >   fi
+ >   rm -f $testfile
+ >   
+ > ! paths="`echo $pathlist |\
+ > ! 	 sed -e 's/^:/.:/' \
+ > ! 	     -e 's/::/:.:/g' \
+ > ! 	     -e 's/:$/:./' \
+ > ! 	     -e 's/:/ /g'`"
+ > ! #   iterate over names
+ > ! for name in $namelist; do
+ > !     #   iterate over paths
+ > !     for path in $paths; do
+ >           if [ $minusx "$path/$name" ] && [ ! -d "$path/$name" ]; then
+ >               if [ "$silent" != "yes" ]; then
+ >                   echo "$path/$name"
+ > 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,644 @@
+Received: (qmail 19872 invoked by uid 2012); 29 Jul 1999 08:09:54 -0000
+Message-Id: <19990729080954.19871.qmail@hyperreal.org>
+Date: 29 Jul 1999 08:09:54 -0000
+From: Ben Kelley <ben_kelley@wdr.com>
+Reply-To: ben_kelley@wdr.com
+To: apbugs@hyperreal.org
+Subject: ajp11: cannot scan servlet headers in mod_jserv.log
+X-Send-Pr-Version: 3.2
+
+>Number:         4790
+>Category:       mod_jserv
+>Synopsis:       ajp11: cannot scan servlet headers in mod_jserv.log
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jul 29 01:10:01 PDT 1999
+>Last-Modified:  Tue Aug 10 10:47:44 PDT 1999
+>Originator:     ben_kelley@wdr.com
+>Organization:
+>Release:        1.3.6 Jserv 1.0
+>Environment:
+Solaris 2.5.1, gcc 2.6.3
+>Description:
+On loading some servlets, this error message appears in mod_jserv.log. The
+browser is returned a page telling it an error has occurred. The statis is
+200, and the error is "OK".
+
+It seems to happen more often when reloading a servlet than when fetching it
+initially.
+
+Sometimes it happens, sometimes it doesn't. This is not a terribly useful
+error message - a response to a previous bug report suggested looking in
+the source code to find the reason.
+
+Scanning the source seems to point to the error being generated from the
+funtion compat_scan_script_header_err_buff in jserv_compat.c (in mod_jserv).
+
+The call to "log_reason (malformed, r->filename, r)" would seem to log the
+reason it thinks that headers are malformed, but the output of this does not
+seem to appear anywhere.
+
+Interestingly, the servlet that reports this error most often worked fine with
+the 0.9 release of mod_jserv. The headers it reports back (assuming you can
+fetch it) are below. It returns an Expires: header, and a Last-Modified: header.
+
+HTTP/1.1 200 OK
+Date: Thu, 29 Jul 1999 08:07:30 GMT
+Server: Apache/1.3.6 (Unix) ApacheJServ/1.0
+Expires: Fri, 30 Jul 1999 08:07:32 GMT
+Last-Modified: Wed, 28 Jul 1999 00:13:53 GMT
+Connection: close
+Content-Type: text/html
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+
+From: Ben Kelley <ben_kelley@wdr.com>
+To: apbugs@hyperreal.org, jserv-bugdb@apache.org
+Cc:  Subject: Re: mod_jserv/4790: ajp11: cannot scan servlet headers in mod_jserv.log
+Date: Fri, 30 Jul 1999 13:08:32 +1000
+
+ Not sure if replying to this mail will go anywayere, but I have more
+ information. I can reproduce the bug, and have a workaround.
+ 
+ The chain of functions is convoluted, but I can now easily reproduce the
+ problem.
+ 
+ First, you need a servlet that returns a "Last-Modified" header. The
+ idea here is to produce a 304 response code. Telnet to the web server on
+ the appropriate port, and type "GET /servlet/uri HTTP" (press enter
+ twice) where /servlet/uri is the URI of your servlet. Copy the date from
+ the Last-Modified line.
+ 
+ Now telnet again, and type:
+ GET /servlet/uri HTTP
+ If-Modified-Since: date
+ 
+ (press enter twice)
+ Here, "date" is the date you copied from the Last-Modified header on the
+ previous request. This should produce the error. (If the date you supply
+ here is less than the date returned previously, you get the correct
+ output from the servlet.)
+ 
+ Basically, the function ap_meets_conditions (in Apache 1.3.6 core code)
+ correctly decides that it should send a 304 response. This 304 gets
+ returned to ap_scan_script_header_err_core (in Apache 1.3.6 core code).
+ This gets returned to ajpv11_handler (in Jserv 1.0 code). Oddly,
+ ajpv11_handler barfs if it gets a non-zero response back.
+ 
+ The function ajpv11_handler is getting a 304 back, and so it is giving
+ this error message. This is weird. I suspect perhaps it shouldn't die if
+ it gets anything non-zero back. IMHO, 304 isn't an error condition.
+ 
+ As a workaround, if you stop your servlet sending a "Last-Modified"
+ header, the problem goes away.
+ 
+             - Ben Kelley.
+ 
+ apbugs@hyperreal.org wrote:
+ 
+ > Thank you very much for your problem report.
+ > It has the internal identification `mod_jserv/4790'.
+ > The individual assigned to look at your
+ > report is: jserv.
+ >
+ > >Category:       mod_jserv
+ > >Responsible:    jserv
+ > >Synopsis:       ajp11: cannot scan servlet headers in mod_jserv.log
+ > >Arrival-Date:   Thu Jul 29 01:10:01 PDT 1999
+ 
+ --
+ Ben Kelley - ben_kelley@wdr.com
+ Software Engineer - Equities IT - Warburg Dillon Read
+ 
+ Attempting a join
+ Too much from, not enough where
+ Cartesian product (Ron Pyke)
+ 
+ Warburg Dillon Read - Sydney - Australia - Earth etc etc
+ Ph +61 2 9324 2382  Fax +61 2 9324 2400
+ 
+ 
+ 
+ This message contains confidential information and is intended only 
+ for the individual named.  If you are not the named addressee you 
+ should not disseminate, distribute or copy this e-mail.  Please 
+ notify the sender immediately by e-mail if you have received this 
+ e-mail by mistake and delete this e-mail from your system.
+ 
+ E-mail transmission cannot be guaranteed to be secure or error-free 
+ as information could be intercepted, corrupted, lost, destroyed, 
+ arrive late or incomplete, or contain viruses.  The sender therefore 
+ does not accept liability for any errors or omissions in the contents 
+ of this message which arise as a result of e-mail transmission.  If 
+ verification is required please request a hard-copy version.  This 
+ message is provided for informational purposes and should not be 
+ construed as a solicitation or offer to buy or sell any securities or 
+ related financial instruments.
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: jon@clearink.com
+State-Changed-When: Mon Aug  2 17:28:00 PDT 1999
+State-Changed-Why:
+waiting for feedback from ben.
+
+From: "jon *" <jon@clearink.com>
+To: Ben Kelley <ben_kelley@wdr.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_jserv/4790: ajp11: cannot scan servlet headers in
+	 mod_jserv.log
+Date: Mon, 02 Aug 1999 17:26:15 -0700
+
+ ben,
+ 
+ Could you please try the latest cvs version of Apache JServ and let us know
+ if the problem has been fixed for you? We have switched to a new version of
+ the ajp protocol and this issue may have been resolved already. Note that
+ you need to edit your configuration files to reflect ajpv12 instead of
+ ajpv11.
+ 
+ thanks,
+ 
+ -jon
+
+From: Ben Kelley <ben_kelley@wdr.com>
+To: jon * <jon@clearink.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_jserv/4790: ajp11: cannot scan servlet headers inmod_jserv.log
+Date: Tue, 03 Aug 1999 10:28:28 +1000
+
+ This is a multi-part message in MIME format.
+ --------------FD38534872A5CF52C6695471
+ Content-Type: text/plain; charset=us-ascii
+ Content-Transfer-Encoding: 7bit
+ 
+ Hi.
+ 
+ How do I get this version?
+ 
+             - Ben Kelley.
+ 
+ jon * wrote:
+ 
+ > ben,
+ >
+ > Could you please try the latest cvs version of Apache JServ and let us know
+ > if the problem has been fixed for you? We have switched to a new version of
+ > the ajp protocol and this issue may have been resolved already. Note that
+ > you need to edit your configuration files to reflect ajpv12 instead of
+ > ajpv11.
+ >
+ > thanks,
+ >
+ > -jon
+ 
+ --
+ jbrsk (Ben Kelley) - ben_kelley@wdr.com  Ph +61 2 9324 2382
+ Java Architect - Equities IT - jwodr (Warburg Dillon Read)
+ 
+ What is your Java (tm) product name?
+ 
+ Warburg Dillon Read - Sydney - jauws (Australia)
+ 
+ 
+ --------------FD38534872A5CF52C6695471
+ Content-Type: text/x-vcard; charset=us-ascii;
+  name="ben_kelley.vcf"
+ Content-Transfer-Encoding: 7bit
+ Content-Description: Card for Ben Kelley
+ Content-Disposition: attachment;
+  filename="ben_kelley.vcf"
+ 
+ begin:vcard 
+ n:Kelley;Ben
+ tel;fax:+61 2 9324 2400
+ tel;work:+61 2 9324 2382
+ x-mozilla-html:TRUE
+ url:http://www.ozemail.com.au/~bkelley
+ org:Warburg Dillon Read;Information Technology
+ version:2.1
+ email;internet:ben_kelley@wdr.com
+ title:Technical Consultant
+ adr;quoted-printable:;;Level 24, Governor Phillip Tower=0D=0A1 Farrer Place;Sydney;NSW;2000;Australia
+ x-mozilla-cpt:;31680
+ fn:Ben Kelley
+ end:vcard
+ 
+ --------------FD38534872A5CF52C6695471
+ Content-Type: text/plain; charset=us-ascii; name="disclaim.txt"
+ Content-Transfer-Encoding: 7bit
+ Content-Disposition: inline
+ Content-Description: Legal Disclaimer
+ 
+ 
+ This message contains confidential information and is intended only 
+ for the individual named.  If you are not the named addressee you 
+ should not disseminate, distribute or copy this e-mail.  Please 
+ notify the sender immediately by e-mail if you have received this 
+ e-mail by mistake and delete this e-mail from your system.
+ 
+ E-mail transmission cannot be guaranteed to be secure or error-free 
+ as information could be intercepted, corrupted, lost, destroyed, 
+ arrive late or incomplete, or contain viruses.  The sender therefore 
+ does not accept liability for any errors or omissions in the contents 
+ of this message which arise as a result of e-mail transmission.  If 
+ verification is required please request a hard-copy version.  This 
+ message is provided for informational purposes and should not be 
+ construed as a solicitation or offer to buy or sell any securities or 
+ related financial instruments.
+ 
+ --------------FD38534872A5CF52C6695471--
+ 
+
+From: Ben Kelley <ben_kelley@wdr.com>
+To: jon * <jon@clearink.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_jserv/4790: ajp11: cannot scan servlet headers inmod_jserv.log
+Date: Wed, 04 Aug 1999 08:59:29 +1000
+
+ This is a multi-part message in MIME format.
+ --------------FD34BDC3D4762BEF40B53513
+ Content-Type: text/plain; charset=us-ascii
+ Content-Transfer-Encoding: 7bit
+ 
+ Hi.
+ 
+ I haven't had a chance to fully test the code, but the piece of code that I
+ believe to be incorrect is essentially unchanged in the new version.
+ 
+ The old version of jserv_ajpv11.c, lines 419-426 are:
+ 
+ >     /* Receive the response from JServ */
+ >     ap_hard_timeout("ajpv11-read", r);
+ >     if (ret=ap_scan_script_header_err_buff(r,buffsocket,NULL)) {
+ >         ap_kill_timeout(r);
+ >         jserv_error(JSERV_LOG_EMERG,cfg,"ajp11: %s",
+ >                     "cannot scan servlet headers");
+ >         return SERVER_ERROR;
+ >     }
+ >
+ 
+ In the new version, lines 462-469 of jserv_ajpv12.c read:
+ 
+ >     /* Receive the response from JServ */
+ >     ap_hard_timeout("ajpv12-read", r);
+ >     if (ret=ap_scan_script_header_err_buff(r,buffsocket,NULL)) {
+ >         ap_kill_timeout(r);
+ >         jserv_error(JSERV_LOG_EMERG,cfg,"ajp12: %s",
+ >                     "cannot scan servlet headers");
+ >         return SERVER_ERROR;
+ >     }
+ >
+ 
+ The problem is how the return code form ap_scan_script_header_err_buff is
+ handled. It seems that ap_scan_script_header_err_buff returns the HTTP status
+ of the request. In the case of something like a 304 response, both of these
+ pieces of code will signal an error. The if statement is checking for non-zero
+ responses. If it gets a 304, it thinks it is an error.
+ 
+ This is what was happening with my servlet that generated a Last-Modified
+ header. I found this by changing lines 466,467 (in the old version) to
+ something like:
+ 
+ 
+ >         jserv_error(JSERV_LOG_EMERG,cfg,"ajp12: %s %d",
+ >                     "cannot scan servlet headers", ret);
+ >
+ 
+ This showed that ret had a value of 304. Definitely not an error.
+ 
+ I will try to find some time to test the code, but unfortunately I am a bit
+ busy this week. :(
+ 
+             - Ben Kelley.
+ 
+ jon * wrote:
+ 
+ > ben,
+ >
+ > Could you please try the latest cvs version of Apache JServ and let us know
+ > if the problem has been fixed for you? We have switched to a new version of
+ > the ajp protocol and this issue may have been resolved already. Note that
+ > you need to edit your configuration files to reflect ajpv12 instead of
+ > ajpv11.
+ >
+ > thanks,
+ >
+ > -jon
+ 
+ --
+ Ben Kelley - ben_kelley@wdr.com         Ph +61 2 9324 2382
+ Java Architect - Equities IT - Warburg Dillon Read
+ 
+ throw new UserErrorException("User Error: " +
+     "Replace user and press <enter> to continue");
+ 
+ Warburg Dillon Read - Sydney - Australia - Earth etc etc
+ 
+ 
+ --------------FD34BDC3D4762BEF40B53513
+ Content-Type: text/x-vcard; charset=us-ascii;
+  name="ben_kelley.vcf"
+ Content-Transfer-Encoding: 7bit
+ Content-Description: Card for Ben Kelley
+ Content-Disposition: attachment;
+  filename="ben_kelley.vcf"
+ 
+ begin:vcard 
+ n:Kelley;Ben
+ tel;fax:+61 2 9324 2400
+ tel;work:+61 2 9324 2382
+ x-mozilla-html:TRUE
+ url:http://www.ozemail.com.au/~bkelley
+ org:Warburg Dillon Read;Information Technology
+ version:2.1
+ email;internet:ben_kelley@wdr.com
+ title:Technical Consultant
+ adr;quoted-printable:;;Level 24, Governor Phillip Tower=0D=0A1 Farrer Place;Sydney;NSW;2000;Australia
+ x-mozilla-cpt:;31680
+ fn:Ben Kelley
+ end:vcard
+ 
+ --------------FD34BDC3D4762BEF40B53513
+ Content-Type: text/plain; charset=us-ascii; name="disclaim.txt"
+ Content-Transfer-Encoding: 7bit
+ Content-Disposition: inline
+ Content-Description: Legal Disclaimer
+ 
+ 
+ This message contains confidential information and is intended only 
+ for the individual named.  If you are not the named addressee you 
+ should not disseminate, distribute or copy this e-mail.  Please 
+ notify the sender immediately by e-mail if you have received this 
+ e-mail by mistake and delete this e-mail from your system.
+ 
+ E-mail transmission cannot be guaranteed to be secure or error-free 
+ as information could be intercepted, corrupted, lost, destroyed, 
+ arrive late or incomplete, or contain viruses.  The sender therefore 
+ does not accept liability for any errors or omissions in the contents 
+ of this message which arise as a result of e-mail transmission.  If 
+ verification is required please request a hard-copy version.  This 
+ message is provided for informational purposes and should not be 
+ construed as a solicitation or offer to buy or sell any securities or 
+ related financial instruments.
+ 
+ --------------FD34BDC3D4762BEF40B53513--
+ 
+
+From: "jon *" <jon@clearink.com>
+To: Ben Kelley <ben_kelley@wdr.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_jserv/4790: ajp11: cannot scan servlet headers
+	 inmod_jserv.log
+Date: Tue, 03 Aug 1999 18:02:43 -0700
+
+ >    * line 429 of jserv_ajpv12.c has a C++ style comment. My C compiler (gcc
+ >      2.6.3) barfed on this, but easily fixed.
+ 
+ fixed in cvs now. thanks.
+ 
+ >    * the Makefile for src/c now requires gnu make where it didn't before - no
+ >      problem as I have gnu make
+ 
+ gnu make has always been required.
+ 
+ > Any clues as to what is happening here?
+ 
+ did you make sure to change all ajpv11 references in the .conf and
+ .properties files to ajpv12?
+ 
+ -jon
+
+From: Ben Kelley <ben_kelley@wdr.com>
+To: jon * <jon@clearink.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_jserv/4790: ajp11: cannot scan servlet headers inmod_jserv.log
+Date: Wed, 04 Aug 1999 10:54:17 +1000
+
+ This is a multi-part message in MIME format.
+ --------------09643F0D9C7F3600519E199D
+ Content-Type: text/plain; charset=us-ascii
+ Content-Transfer-Encoding: 7bit
+ 
+ Hi.
+ 
+ OK - I have had a play with the new version (Apache-JServ-19990802). I had a
+ few problems building it:
+ 
+    * line 429 of jserv_ajpv12.c has a C++ style comment. My C compiler (gcc
+      2.6.3) barfed on this, but easily fixed.
+    * the Makefile for src/c now requires gnu make where it didn't before - no
+      problem as I have gnu make
+ 
+ Basically, I couldn't get it to work correctly. Once running, when I try to
+ fetch the SnoopServlet, I just get continual (like, generated once every
+ second) messages in my jserv.log file like:
+ 
+ > [03/08/1999 20:50:05:299 EDT] Connection from localhost/127.0.0.1
+ > [03/08/1999 20:50:05:302 EDT] Initializing servlet request
+ > [03/08/1999 20:50:05:302 EDT] Reading request data
+ > [03/08/1999 20:50:08:309 EDT] Connection from localhost/127.0.0.1
+ > [03/08/1999 20:50:08:312 EDT] Initializing servlet request
+ > [03/08/1999 20:50:08:312 EDT] Reading request data
+ > [03/08/1999 20:50:12:002 EDT] Connection from localhost/127.0.0.1
+ > [03/08/1999 20:50:12:047 EDT] Initializing servlet request
+ > [03/08/1999 20:50:12:047 EDT] Reading request data
+ >
+ And the browser never gets the servlet output back.
+ 
+ The initialisation messages in jserv.log are as follows. Note that I have
+ disabled class reloading, and that I am using port 9007 rather than 8007. (I
+ have a web server already using 8007 running JServ 1.0 that I don't want to
+ kill.) I have set this new port in both jserv.conf and 9007.
+ 
+ > [03/08/1999 20:46:26:135 EDT] ApacheJServ/1.0.1-dev-1 is starting...
+ > [03/08/1999 20:46:26:142 EDT] WARNING: connection authentication is disabled
+ > [03/08/1999 20:46:26:244 EDT] Connection allowed from localhost/127.0.0.1
+ > [03/08/1999 20:46:26:246 EDT] Listening on port 9007 accepting 5 maximum connections
+ > [03/08/1999 20:46:26:565 EDT] Creating Servlet Zones
+ > [03/08/1999 20:46:26:571 EDT] Servlet Zone root initializing...
+ > [03/08/1999 20:46:26:576 EDT]  - Using configuration file: /home/ben/apache/conf/jserv/zone.properties
+ > [03/08/1999 20:46:26:693 EDT] Initialisation timeout: 10 seconds
+ > [03/08/1999 20:46:26:698 EDT] Destroy timeout: 10 seconds
+ > [03/08/1999 20:46:26:703 EDT] Session timeout: 1800 seconds
+ > [03/08/1999 20:46:26:703 EDT] New session timeout: 1800 seconds
+ > [03/08/1999 20:46:26:703 EDT] Session check frequency: 30 seconds
+ > [03/08/1999 20:46:26:705 EDT] Autoreload on zone file changes: false
+ > [03/08/1999 20:46:26:705 EDT] Autoreload on classfile changes: false
+ > [03/08/1999 20:46:26:716 EDT] Default initArgs: {}
+ > [03/08/1999 20:46:26:748 EDT] Servlet Zone root initialization complete
+ > [03/08/1999 20:46:33:725 EDT] Initializing servlet request
+ > [03/08/1999 20:46:33:725 EDT] Reading request data
+ > [03/08/1999 20:46:33:751 EDT] Connection from localhost/127.0.0.1
+ > [03/08/1999 20:46:36:749 EDT] Connection from localhost/127.0.0.1
+ > [03/08/1999 20:46:36:753 EDT] Initializing servlet request
+ > [03/08/1999 20:46:36:753 EDT] Reading request data
+ >
+ 
+ Any clues as to what is happening here?
+ 
+             - Ben Kelley.
+ 
+ >
+ 
+ --
+ Ben Kelley - ben_kelley@wdr.com         Ph +61 2 9324 2382
+ Java Architect - Equities IT - Warburg Dillon Read
+ 
+ throw new UserErrorException("User Error: " +
+     "Replace user and press <enter> to continue");
+ 
+ Warburg Dillon Read - Sydney - Australia - Earth etc etc
+ 
+ 
+ --------------09643F0D9C7F3600519E199D
+ Content-Type: text/x-vcard; charset=us-ascii;
+  name="ben_kelley.vcf"
+ Content-Transfer-Encoding: 7bit
+ Content-Description: Card for Ben Kelley
+ Content-Disposition: attachment;
+  filename="ben_kelley.vcf"
+ 
+ begin:vcard 
+ n:Kelley;Ben
+ tel;fax:+61 2 9324 2400
+ tel;work:+61 2 9324 2382
+ x-mozilla-html:TRUE
+ url:http://www.ozemail.com.au/~bkelley
+ org:Warburg Dillon Read;Information Technology
+ version:2.1
+ email;internet:ben_kelley@wdr.com
+ title:Technical Consultant
+ adr;quoted-printable:;;Level 24, Governor Phillip Tower=0D=0A1 Farrer Place;Sydney;NSW;2000;Australia
+ x-mozilla-cpt:;31680
+ fn:Ben Kelley
+ end:vcard
+ 
+ --------------09643F0D9C7F3600519E199D
+ Content-Type: text/plain; charset=us-ascii; name="disclaim.txt"
+ Content-Transfer-Encoding: 7bit
+ Content-Disposition: inline
+ Content-Description: Legal Disclaimer
+ 
+ 
+ This message contains confidential information and is intended only 
+ for the individual named.  If you are not the named addressee you 
+ should not disseminate, distribute or copy this e-mail.  Please 
+ notify the sender immediately by e-mail if you have received this 
+ e-mail by mistake and delete this e-mail from your system.
+ 
+ E-mail transmission cannot be guaranteed to be secure or error-free 
+ as information could be intercepted, corrupted, lost, destroyed, 
+ arrive late or incomplete, or contain viruses.  The sender therefore 
+ does not accept liability for any errors or omissions in the contents 
+ of this message which arise as a result of e-mail transmission.  If 
+ verification is required please request a hard-copy version.  This 
+ message is provided for informational purposes and should not be 
+ construed as a solicitation or offer to buy or sell any securities or 
+ related financial instruments.
+ 
+ --------------09643F0D9C7F3600519E199D--
+ 
+
+From: Ben Kelley <ben_kelley@wdr.com>
+To: apbugs@hyperreal.org
+Cc:  Subject: Re: mod_jserv/4790: ajp11: cannot scan servlet headers inmod_jserv.log
+Date: Thu, 05 Aug 1999 08:35:03 +1000
+
+ The following servlet code demonstrates the bug rather well. Compile up this
+ code (call it Tester.java), and place the Tester.class file somewhere JServ
+ will see it. For argument's sake, we'll assume the URL is
+ http://my.server/sevlet/Tester.
+ 
+ Fetch http://my.server/servlet/Tester using your favourite browser. (I suspect
+ all browsers will trigger this bug.) Once you get the page ("This servlet
+ reports that it was last modified on Thu, 11 Feb 1999 22:25:49 GMT"), click
+ reload/refresh. This should give you an error page, and generate the "cannot
+ scan servlet headers" message in your jserv.log file.
+ 
+ (Aplogies for the lengthy disclaimer attached to this & all previous e-mails!)
+ 
+             - Ben Kelley.
+ 
+ ================8<==================
+ import javax.servlet.*;
+ import javax.servlet.http.*;
+ import java.io.*;
+ 
+ public class Tester extends HttpServlet
+     {
+     public void doGet(
+         HttpServletRequest    request,
+         HttpServletResponse response) throws ServletException, IOException
+         {
+         response.setContentType("text/html");
+         response.setHeader("Last-Modified",
+             "Thu, 11 Feb 1999 22:25:49 GMT");
+ 
+         PrintWriter out = new PrintWriter (response.getOutputStream());
+ 
+         out.println("<html>");
+         out.println("<head>");
+         out.println("<title>Test Servlet</title>");
+         out.println("</head>");
+         out.println("<body>");
+         out.println("<p>This servlet reports that it was last modified " +
+             "on Thu, 11 Feb 1999 22:25:49 GMT</p>");
+         out.println("</body>");
+         out.println("</html>");
+         out.close();
+         }
+     }
+ ================8<==================
+ 
+ 
+ 
+ This message contains confidential information and is intended only 
+ for the individual named.  If you are not the named addressee you 
+ should not disseminate, distribute or copy this e-mail.  Please 
+ notify the sender immediately by e-mail if you have received this 
+ e-mail by mistake and delete this e-mail from your system.
+ 
+ E-mail transmission cannot be guaranteed to be secure or error-free 
+ as information could be intercepted, corrupted, lost, destroyed, 
+ arrive late or incomplete, or contain viruses.  The sender therefore 
+ does not accept liability for any errors or omissions in the contents 
+ of this message which arise as a result of e-mail transmission.  If 
+ verification is required please request a hard-copy version.  This 
+ message is provided for informational purposes and should not be 
+ construed as a solicitation or offer to buy or sell any securities or 
+ related financial instruments.
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: jon@clearink.com
+State-Changed-When: Tue Aug 10 10:47:43 PDT 1999
+State-Changed-Why:
+bug has been fixed by adding 
+
+r->status_line = NULL;
+
+fix has been confirmed by ben.
+
+thanks ben for all your help with this.
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

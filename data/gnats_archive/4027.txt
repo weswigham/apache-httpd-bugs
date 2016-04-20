@@ -1,0 +1,301 @@
+Received: (qmail 3155 invoked by uid 2012); 9 Mar 1999 21:21:47 -0000
+Message-Id: <19990309212147.3154.qmail@hyperreal.org>
+Date: 9 Mar 1999 21:21:47 -0000
+From: Matthew Bellew <matthew_bellew@hotmail.com>
+Reply-To: matthew_bellew@hotmail.com
+To: apbugs@hyperreal.org
+Subject: multithread.c uses WaitForSingleObject, shoud use EnterCriticalSection for unnamed mutexes
+X-Send-Pr-Version: 3.2
+
+>Number:         4027
+>Category:       os-windows
+>Synopsis:       multithread.c uses WaitForSingleObject, shoud use EnterCriticalSection for unnamed mutexes
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Mar  9 13:30:01 PST 1999
+>Last-Modified:  Thu Oct 28 08:02:07 PDT 1999
+>Originator:     matthew_bellew@hotmail.com
+>Organization:
+>Release:        1.3.4
+>Environment:
+Windows NT
+>Description:
+EnterCriticalSection() is very fast, especially when there the caller does not wait.  This clearly a better choice than the current implementation using WaitForSignleObject().
+
+In addition, you can optionally spin on a CriticalSection.
+>How-To-Repeat:
+
+>Fix:
+Unfortunately named and unnamed mutexes use the same routines.  The best thing to do would probably be to break out the operations for named mutexes e.g.
+
+    ap_create_mutex() and ap_create_named_mutex()
+
+where the named mutexes use NT Mutexes and unnamed use CriticalSections.
+
+Alternatly you could define mutex to be a tagged union so the mutex routines could operate on both CriticalSections and Mutexes.
+
+I'll probably work on this, so send me mail.
+>Audit-Trail:
+
+From: "Matthew Bellew" <matthew_bellew@hotmail.com>
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: os-windows/4027: multithread.c uses WaitForSingleObject, shoud use EnterCriticalSection for unnamed mutexes
+Date: Tue, 09 Mar 1999 15:42:50 PST
+
+ ------=_NextPart_000_36a2f12b_15326657$6fb968cc
+ Content-type: text/plain
+ 
+ I attached diffs to use Enter/LeaveCriticalSection() instead of 
+ WaitForSingleObject().  These changes seem to work fine, though I don't 
+ have any sort of hard-core test environment.  My experience on other 
+ projects is that this makes a huge difference.  This is apache 1.3.4.
+ 
+ Matthew Bellew
+ 
+ >From: apbugs@hyperreal.org
+ >Reply-To: apbugs@hyperreal.org, apache-bugdb@apache.org
+ >To: matthew_bellew@hotmail.com
+ >Subject: Re: os-windows/4027: multithread.c uses WaitForSingleObject, 
+ shoud use EnterCriticalSection for unnamed mutexes
+ >Date: 9 Mar 1999 21:30:01 -0000
+ >
+ >Thank you very much for your problem report.
+ >It has the internal identification `os-windows/4027'.
+ >The individual assigned to look at your
+ >report is: apache. 
+ >
+ >>Category:       os-windows
+ >>Responsible:    apache
+ >>Synopsis:       multithread.c uses WaitForSingleObject, shoud use 
+ EnterCriticalSection for unnamed mutexes
+ >>Arrival-Date:   Tue Mar  9 13:30:01 PST 1999
+ >
+ 
+ Get Your Private, Free Email at http://www.hotmail.com
+ ------=_NextPart_000_36a2f12b_15326657$6fb968cc
+ Content-Type: text/plain; name="alloc.c.diff"
+ Content-Transfer-Encoding: 8bit
+ Content-Disposition: attachment; filename="alloc.c.diff"
+ 
+ 
+ D:\diffs>d:\bin\slm\diff -b d:\download\apache\apache_1.3.4\src\main\alloc.c d:\apache\src\main\alloc.c 
+ 166,167c166,167
+ < static mutex *alloc_mutex = NULL;
+ < static mutex *spawn_mutex = NULL;
+ ---
+ > static critsec alloc_critsec;
+ > static critsec spawn_critsec;
+ 274c274
+ <     (void) ap_acquire_mutex(alloc_mutex);
+ ---
+ >     (void) ap_enter_critsec(&alloc_critsec);
+ 304c304
+ <     (void) ap_release_mutex(alloc_mutex);
+ ---
+ >     (void) ap_leave_critsec(&alloc_critsec);
+ 410c410
+ <     (void) ap_acquire_mutex(alloc_mutex);
+ ---
+ >     (void) ap_enter_critsec(&alloc_critsec);
+ 431c431
+ <     (void) ap_release_mutex(alloc_mutex);
+ ---
+ >     (void) ap_leave_critsec(&alloc_critsec);
+ 459,460c459,460
+ <     alloc_mutex = ap_create_mutex(NULL);
+ <     spawn_mutex = ap_create_mutex(NULL);
+ ---
+ > 	ap_init_critsec(&alloc_critsec);
+ > 	ap_init_critsec(&spawn_critsec);
+ 470c470
+ <     (void) ap_acquire_mutex(alloc_mutex);
+ ---
+ >     (void) ap_enter_critsec(&alloc_critsec);
+ 473c473
+ <     (void) ap_release_mutex(alloc_mutex);
+ ---
+ >     (void) ap_leave_critsec(&alloc_critsec);
+ 507c507
+ <     (void) ap_acquire_mutex(alloc_mutex);
+ ---
+ >     (void) ap_enter_critsec(&alloc_critsec);
+ 516c516
+ <     (void) ap_release_mutex(alloc_mutex);
+ ---
+ >     (void) ap_leave_critsec(&alloc_critsec);
+ 696c696
+ <     (void) ap_acquire_mutex(alloc_mutex);
+ ---
+ >     (void) ap_enter_critsec(&alloc_critsec);
+ 705c705
+ <     (void) ap_release_mutex(alloc_mutex);
+ ---
+ >     (void) ap_leave_critsec(&alloc_critsec);
+ 837c837
+ <     (void) ap_acquire_mutex(alloc_mutex);
+ ---
+ >     (void) ap_enter_critsec(&alloc_critsec);
+ 839c839
+ <     (void) ap_release_mutex(alloc_mutex);
+ ---
+ >     (void) ap_leave_critsec(&alloc_critsec);
+ 848c848
+ < 	(void) ap_acquire_mutex(alloc_mutex);
+ ---
+ > 	(void) ap_enter_critsec(&alloc_critsec);
+ 851c851
+ < 	(void) ap_release_mutex(alloc_mutex);
+ ---
+ > 	(void) ap_leave_critsec(&alloc_critsec);
+ 2071c2071
+ < 	(void) ap_acquire_mutex(spawn_mutex);
+ ---
+ > 	(void) ap_enter_critsec(&spawn_critsec);
+ 2137c2137
+ < 	(void) ap_release_mutex(spawn_mutex);
+ ---
+ > 	(void) ap_leave_critsec(&spawn_critsec);
+ 
+ ------=_NextPart_000_36a2f12b_15326657$6fb968cc
+ Content-Type: text/plain; name="http_main.c.diff"
+ Content-Transfer-Encoding: 8bit
+ Content-Disposition: attachment; filename="http_main.c.diff"
+ 
+ 
+ D:\diffs>d:\bin\slm\diff d:\download\apache\apache_1.3.4\src\main\http_main.c d:\apache\src\main\http_main.c 
+ 4791d4790
+ <     mutex *jobmutex;
+ 4792a4792
+ >     critsec job_critsec;
+ 4796c4796
+ < {0, NULL, NULL, NULL, NULL, 0};
+ ---
+ > {0, NULL, NULL, NULL, 0};
+ 4800c4800
+ <  * list of sockets connected to clients. allowed_globals.jobmutex protects
+ ---
+ >  * list of sockets connected to clients. allowed_globals.job_critsec protects
+ 4808,4810c4808,4809
+ <     ap_assert(allowed_globals.jobmutex);
+ <     /* TODO: If too many jobs in queue, sleep, check for problems */
+ <     ap_acquire_mutex(allowed_globals.jobmutex);
+ ---
+ >     /* TODO: If too many jobs in queue, sleep, check for problems */
+ >     ap_enter_critsec(&allowed_globals.job_critsec);
+ 4821c4820
+ <     ap_release_mutex(allowed_globals.jobmutex);
+ ---
+ >     ap_leave_critsec(&allowed_globals.job_critsec);
+ 4847d4845
+ <     ap_assert(allowed_globals.jobmutex);
+ 4852c4850
+ <     ap_acquire_mutex(allowed_globals.jobmutex);
+ ---
+ >     ap_enter_critsec(&allowed_globals.job_critsec);    
+ 4854,4855c4852,4853
+ < #endif
+ < 	ap_release_mutex(allowed_globals.jobmutex);
+ ---
+ > #endif
+ > 	ap_leave_critsec(&allowed_globals.job_critsec);
+ 4863c4861
+ <     ap_release_mutex(allowed_globals.jobmutex);
+ ---
+ >     ap_leave_critsec(&allowed_globals.job_critsec);
+ 5243c5241
+ <     allowed_globals.jobmutex = ap_create_mutex(NULL);
+ ---
+ >     ap_init_critsec(&allowed_globals.job_critsec);
+ 5406d5403
+ <     ap_destroy_mutex(allowed_globals.jobmutex);
+ 
+ ------=_NextPart_000_36a2f12b_15326657$6fb968cc
+ Content-Type: text/plain; name="multithread.h.diff"
+ Content-Transfer-Encoding: 8bit
+ Content-Disposition: attachment; filename="multithread.h.diff"
+ 
+ 
+ D:\diffs>d:\bin\slm\diff -b d:\download\apache\apache_1.3.4\src\include\multithread.h d:\apache\src\include\multithread.h 
+ 15a16
+ > typedef RTL_CRITICAL_SECTION critsec;
+ 29a31,35
+ > #define ap_init_critsec(pcs)			InitializeCriticalSection(pcs)
+ > #define ap_enter_critsec(pcs)			EnterCriticalSection(pcs)
+ > #define ap_try_critsec(pcs)			TryEnterCriticalSection(pcs)
+ > #define ap_leave_critsec(pcs)			LeaveCriticalSection(pcs)
+ > 
+ 52a59,63
+ > 
+ > #define ap_init_critsec()
+ > #define ap_enter_critsec(pcs)
+ > #define ap_leave_critsec(pcs)
+ > #define ap_try_critsec(pcs)
+ 
+ ------=_NextPart_000_36a2f12b_15326657$6fb968cc
+ Content-Type: text/plain; name="proxy_cache.c.diff"
+ Content-Transfer-Encoding: 8bit
+ Content-Disposition: attachment; filename="proxy_cache.c.diff"
+ 
+ 
+ D:\diffs>d:\bin\slm\diff -b d:\download\apache\apache_1.3.4\src\modules\proxy\proxy_cache.c d:\apache\src\modules\proxy\proxy_cache.c 
+ 58a59,61
+ > #ifdef WIN32
+ > #define _WIN32_WINNT 0x0400
+ > #endif
+ 107c110
+ < static mutex *garbage_mutex = NULL;
+ ---
+ > static critsec garbage_critsec;
+ 112,113c115,118
+ <     if (!garbage_mutex)
+ < 	garbage_mutex = ap_create_mutex(NULL);
+ ---
+ > 	static init = 0;
+ >     if (!init)
+ > 		ap_init_critsec(&garbage_critsec);
+ > 	init = 1;	
+ 131,139c136,137
+ <     (void) ap_acquire_mutex(garbage_mutex);
+ <     if (inside == 1) {
+ < 	(void) ap_release_mutex(garbage_mutex);
+ < 	return;
+ <     }
+ <     else
+ < 	inside = 1;
+ <     (void) ap_release_mutex(garbage_mutex);
+ < 
+ ---
+ > 	if (ap_try_critsec(&garbage_critsec))
+ > 	{
+ 148,150c146,147
+ <     (void) ap_acquire_mutex(garbage_mutex);
+ <     inside = 0;
+ <     (void) ap_release_mutex(garbage_mutex);
+ ---
+ >     (void) ap_leave_critsec(&garbage_critsec);
+ > 	}
+ 
+ ------=_NextPart_000_36a2f12b_15326657$6fb968cc--
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: stoddard
+State-Changed-When: Thu Oct 28 08:02:07 PDT 1999
+State-Changed-Why:
+This has been implemented in Apache 2.0. No plans to implement in 1.3. Thanks for the suggestion!
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

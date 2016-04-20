@@ -1,0 +1,91 @@
+Received: (qmail 6430 invoked by uid 501); 16 Sep 2000 18:09:49 -0000
+Message-Id: <20000916180949.6429.qmail@locus.apache.org>
+Date: 16 Sep 2000 18:09:49 -0000
+From: Josef Micka <j.micka@sh.cvut.cz>
+Reply-To: j.micka@sh.cvut.cz
+To: submit@bugz.apache.org
+Subject: file type with action or handler set are not handled for 404 error (not found)
+X-Send-Pr-Version: 3.110
+
+>Number:         6543
+>Category:       mod_actions
+>Synopsis:       file type with action or handler set are not handled for 404 error (not found)
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          mistaken
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Sep 16 11:10:00 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     j.micka@sh.cvut.cz
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Debian 2.2/Potato R0, build on glibc2.1, kernel version 2.2.17 with ide patch
+>Description:
+Hi,
+when i have upgraded from apache 1.3.9 to apache 1.3.12 i was surprised.
+If i request non-existent php3 script, i not receive server response 404 Not Found,
+but error message from php. First my think was, that is fault of php, but was used php 3.0.16
+with apache 1.3.9. Next i have same problem with perl scripts. So i assume, that is some mistake
+in apache source or undocumented "feature" not mentioned i CHANGES.
+>How-To-Repeat:
+Any compiled apache 1.3.12 (not my, because is patched)
+then use CGI version of php3
+in http.conf put
+AddType application/x-httpd-php3 .php3 .phtml
+Action application/x-httpd-php3 /cgi-bin/php3
+restart the apache
+php3 module must be disabled, this error gets only when action is set to external program or script.
+not with internal handlers.
+
+now request non-existent php3 script 
+exam
+http://tested.server.dom/non-existent.php3
+
+same effect you may get with perl scripts handled not by mod_perl, but perl directly
+or some other external program parsed scripts.
+
+>Fix:
+I have compared source of mod_mime (that handles AddHandler directive) and mod_actions
+(that handles Action directive). And i found the problem. It's 4 rows of code, which i miss in apache 1.3.12
+and which tests existence of processed file.
+here is output from diff
+--- apache_1.3.12/src/modules/standard/mod_actions.c.org        Wed Feb  2 21:44:00 2000
++++ apache_1.3.12/src/modules/standard/mod_actions.c    Sat Sep 16 17:29:00 2000
+@@ -246,6 +246,11 @@
+     if ((t = ap_table_get(conf->action_types,
+                          action ? action : ap_default_type(r)))) {
+        script = t;
++        if (r->finfo.st_mode == 0) {
++           ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r,
++                       "File does not exist: %s", r->filename);
++           return NOT_FOUND;
++       }
+     }
+ 
+     if (script == NULL) {
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

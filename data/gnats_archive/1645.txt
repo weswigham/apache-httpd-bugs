@@ -1,0 +1,228 @@
+Received: (qmail 22818 invoked by uid 2012); 9 Jan 1998 18:54:14 -0000
+Message-Id: <19980109185414.22817.qmail@hyperreal.org>
+Date: 9 Jan 1998 18:54:14 -0000
+From: Renaud Waldura <renaud@ligos.com>
+Reply-To: renaud@ligos.com
+To: apbugs@hyperreal.org
+Subject: Tabs in CustomLog format converted to spaces in log file
+X-Send-Pr-Version: 3.2
+
+>Number:         1645
+>Category:       apache-api
+>Synopsis:       Tabs in CustomLog format converted to spaces in log file
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jan  9 12:10:00 PST 1998
+>Last-Modified:  Wed Aug  5 00:07:25 PDT 1998
+>Originator:     renaud@ligos.com
+>Organization:
+>Release:        1.2.4
+>Environment:
+BSDI 3.1
+>Description:
+bugs@Apache.Org>
+>How-To-Repeat:
+Define a CustomLog directive like this:
+CustomLog logs/test_log "%h<tab>%U"
+
+In the file test_log you'll get:
+%h<space>%U
+>Fix:
+No. I read mod_log_config.c, and couldn't find anywhere a specific
+case relating to tabs. To me it seems like the log format string is just
+copied as is (mod_log_config.c, line 399).
+Maybe the string is touched before being passed to mod_log_config%3
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: coar
+State-Changed-When: Fri Jan  9 12:19:19 PST 1998
+State-Changed-Why:
+This was reported recently, and I'm currently
+investigating.  Stay tuned..
+
+From: Rodent of Unusual Size <Ken.Coar@Golux.Com>
+To: Renaud Waldura <rwaldura@LIGOS.COM>
+Cc: "'coar@hyperreal.org'" <coar@hyperreal.org>, apache-bugdb@apache.org,
+        coar@apache.org, renaud@LIGOS.COM
+Subject: Re: mod_log-any/1645: Tabs in CustomLog format converted to space s in
+	 log file
+Date: Fri, 09 Jan 1998 17:32:29 -0500
+
+ This is not an area that should be patched.  Whitespace in the
+ config file is whitespace, and gets collapsed to single spaces.
+ What's broken is that "\t" (among others) doesn't work in
+ CustomLog and LogFormat directives.
+ 
+ Renaud Waldura wrote:
+ > 
+ > Pinned it down!
+ > 
+ > util.c, line 551:
+ > 
+ > int
+ > cfg_getline(char *s, int n, FILE *f) {
+ >     register int i=0, c;
+ > 
+ >     s[0] = '\0';
+ >     /* skip leading whitespace */
+ >     do {
+ >         c = getc(f);
+ >     } while (c == '\t' || c == ' ');
+ > 
+ >     if(c == EOF)
+ >         return 1;
+ > 
+ >     while(1) {
+ >         if((c == '\t') || (c == ' ')) {
+ >             s[i++] = ' ';                               <== (*)
+ >             while((c == '\t') || (c == ' '))
+ >                 c = getc(f);
+ >         }
+ >         if(c == CR) {
+ >             c = getc(f);
+ >         }
+ >         if(c == EOF || c == 0x4 || c == LF || i == (n-1)) {
+ >             /* blast trailing whitespace */
+ >             while(i && (s[i-1] == ' ')) --i;
+ >             s[i] = '\0';
+ >             return 0;
+ >         }
+ >         s[i] = c;
+ >         ++i;
+ >         c = getc(f);
+ >     }
+ > }
+ > 
+ > This code doesn't know about the quoted string used by mod_log_config:
+ > (*) above replaces tabs & multiple spaces with one space.
+ > 
+ > I'm thinking about a patch...
+ > 
+ > --Renaud
+
+From: Renaud Waldura <rwaldura@LIGOS.COM>
+To: Renaud Waldura <rwaldura@LIGOS.COM>, 'Paul Sutton' <paul@eu.c2.net>, 
+	'Rodent of Unusual Size' <Ken.Coar@Golux.Com>
+Cc: 'Renaud Waldura' <rwaldura@LIGOS.COM>, "'coar@hyperreal.org'"
+	 <coar@hyperreal.org>, "'apache-bugdb@apache.org'"
+	 <apache-bugdb@apache.org>, "'coar@apache.org'" <coar@apache.org>, 
+	"'renaud@LIGOS.COM'" <renaud@LIGOS.COM>, "'apbugs@Apache.Org'"
+	 <apbugs@Apache.Org>
+Subject: Re: mod_log-any/1645: Tabs in CustomLog format converted to space
+	 s in  log file
+Date: Wed, 14 Jan 1998 09:57:47 -0800
+
+ > FYI, I just commented out the faulty part and it seems to be working
+ fine.
+ 
+ Not! (of course not...) I've found at least one problem, with the
+ "require" directive. 
+ 
+ In the config file:
+ 
+ 1)	require <sp> group <ht> my-group
+ 2)	require <ht> group <sp> my-group
+ 
+ 1) is broken, I don't know what the code for the require directive
+ understands, but obvisouly not the Right Thing. The group authentication
+ doesn't work at all. No error message though.
+ 
+ 2) works fine.
+ 
+ I'm afraid this particular problem might happen here and there over and
+ over again. So my patch is wrong, and we're back to step 1: a real patch
+ is needed.
+ 
+ --Renaud
+ 
+ 
+ > -----Original Message-----
+ > From:	Renaud Waldura 
+ > Sent:	Tuesday, January 13, 1998 9:48 AM
+ > To:	'Paul Sutton'; Rodent of Unusual Size
+ > Cc:	Renaud Waldura; 'coar@hyperreal.org'; apache-bugdb@apache.org;
+ > coar@apache.org; renaud@LIGOS.COM
+ > Subject:	Re: mod_log-any/1645: Tabs in CustomLog format converted
+ > to space s in  log file
+ > 
+ > 
+ > FYI, I just commented out the faulty part and it seems to be working
+ > fine. AFAIK of course.
+ > 
+ > 
+ > [util.c lines 565-571]
+ > 
+ > int
+ > cfg_getline(char *s, int n, FILE *f) {
+ >     register int i=0, c;
+ > 
+ >     s[0] = '\0';
+ >     /* skip leading whitespace */
+ >     do {
+ >         c = getc(f);
+ >     } while (c == '\t' || c == ' ');
+ > 
+ >     if(c == EOF)
+ > 	return 1;
+ > 
+ >     while(1) {
+ > /***
+ >         if((c == '\t') || (c == ' ')) {
+ >             s[i++] = ' ';
+ >             while((c == '\t') || (c == ' ')) 
+ >                 c = getc(f);
+ >         }
+ >  ***/
+ >         if(c == CR) {
+ >             c = getc(f);
+ >         }
+ >         if(c == EOF || c == 0x4 || c == LF || i == (n-1)) {
+ >             /* blast trailing whitespace */
+ >             while(i && (s[i-1] == ' ')) --i;
+ >             s[i] = '\0';
+ > 	    return 0;
+ >         }
+ >         s[i] = c;
+ >         ++i;
+ >         c = getc(f);
+ >     }
+ > }
+ > 
+ > 
+ > I also believe that skipping the leading and trailing whitespace in
+ > this routine is useless, since, from what I've read, all code after
+ > the initial cfg_getline() in srm_command_loop() calls getword_conf(),
+ > which skips whitespace while respecting quotes.
+ > 
+ > IMHO, cfg_getline() should be rewritten to something just reading the
+ > stream f and copying the resulting line to s.
+ > 
+ > --Renaud
+ > 
+Comment-Added-By: coar
+Comment-Added-When: Tue Aug  4 18:37:53 PDT 1998
+Comment-Added:
+This behaviour has been corrected and the fix should appear
+in the next release after 1.3.1.  Thanks..
+Category-Changed-From-To: mod_log-any-apache-api
+Category-Changed-By: coar
+Category-Changed-When: Tue Aug  4 18:37:53 PDT 1998
+
+State-Changed-From-To: analyzed-closed
+State-Changed-By: marc
+State-Changed-When: Wed Aug  5 00:07:24 PDT 1998
+State-Changed-Why:
+I think Ken meant to close this with his edit...
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

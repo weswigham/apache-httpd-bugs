@@ -1,0 +1,159 @@
+Received: (qmail 78166 invoked by uid 501); 4 Jan 2002 10:53:32 -0000
+Message-Id: <20020104105332.78165.qmail@apache.org>
+Date: 4 Jan 2002 10:53:32 -0000
+From: Thomas Castelle <tcastelle@generali.fr>
+Reply-To: tcastelle@generali.fr
+To: submit@bugz.apache.org
+Subject: HTTP Header Fragmentation when a 'Pragma: no-cache' directive is encountered (HTTP 1.0 only)
+X-Send-Pr-Version: 3.110
+
+>Number:         9363
+>Category:       mod_proxy
+>Synopsis:       HTTP Header Fragmentation when a 'Pragma: no-cache' directive is encountered (HTTP 1.0 only)
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   unknown
+>Arrival-Date:   Fri Jan 04 03:00:00 PST 2002
+>Closed-Date:
+>Last-Modified:
+>Originator:     tcastelle@generali.fr
+>Release:        1.3.22
+>Organization:
+apache
+>Environment:
+SunOS 5.6 on a Sparc Ultra 80 and Linux RedHat 6.2 on an Intel PC
+>Description:
+The 'Pragma: no-cache' fix (see PR #5668) doesn't take in consideration dynamic pages (such as JSPs or Servlets) which should not be cached by proxies but don't need to be delivered instantly. 
+Apache 1.3.22 actual behaviour leads to an important overhead, for the HTTP Header is sent by mod_proxy in very small pieces (according to long running cgi-scripts and streaming servers needs).
+As an exemple, our Apache 1.3.22 proxy sends, when 'Pragma: no-cache' is encountered, 36 small IP packets for the response instead of 1, which leads (with the 18 packets of TCP Acknowledgement) to an overhead of 2160 octets !
+>How-To-Repeat:
+Just put a 'Pragma: no-cache' directive in the HTTP Header of a response (using mod_headers for instance) and use a network sniffer to see the problem after this packet goes through an Apache 1.3.22 proxy.
+>Fix:
+A directive should be added to mod_proxy to determine if it should send HTTP response headers buffered or unbuffered. For instance 'ProxyResponseUnbuffered On/Off', with default set to Off.
+The following patch for apache 1.3.22 adds this feature (the directive context is server config, virtual host, directory) :
+
+*** apache_1.3.22/src/modules/proxy/mod_proxy.c	Mon Sep 24 22:14:27 2001
+--- apache_1.3.22-patched/src/modules/proxy/mod_proxy.c	Wed Jan  2 16:35:13 2002
+***************
+*** 443,448 ****
+--- 443,451 ----
+      ps->cache.cache_completion = DEFAULT_CACHE_COMPLETION;
+      ps->cache.cache_completion_set = 0;
+  
++     ps->unbuffered = 0;         /* Default set to buffered responses */
++     ps->unbuffered_set = 0;
++ 
+      return ps;
+  }
+  
+***************
+*** 478,483 ****
+--- 481,488 ----
+      ps->cache.dirlength = (overrides->cache.dirlength_set == 0) ? base->cache.dirlength : overrides->cache.dirlength;
+      ps->cache.cache_completion = (overrides->cache.cache_completion_set == 0) ? base->cache.cache_completion : overrides->cache.cache_completion;
+  
++     ps->unbuffered = (overrides->unbuffered_set == 0) ? base->unbuffered : overrides->unbuffered;
++ 
+      return ps;
+  }
+  
+***************
+*** 883,888 ****
+--- 888,904 ----
+      return NULL;    
+  }
+  
++ static const char*
++     set_response_unbuffered(cmd_parms *parms, void *dummy, int flag)
++ {
++     proxy_server_conf *psf =
++     ap_get_module_config(parms->server->module_config, &proxy_module);
++ 
++     psf->unbuffered = flag;
++     psf->unbuffered_set = 1;
++     return NULL;
++ }
++ 
+  static const handler_rec proxy_handlers[] =
+  {
+      {"proxy-server", proxy_handler},
+***************
+*** 931,936 ****
+--- 947,954 ----
+       "Force a http cache completion after this percentage is loaded"},
+      {"ProxyVia", set_via_opt, NULL, RSRC_CONF, TAKE1,
+       "Configure Via: proxy header header to one of: on | off | block | full"},
++     {"ProxyResponseUnbuffered", set_response_unbuffered, NULL, OR_FILEINFO, FLAG,
++      "on if you want Apache to send HTTP headers unbuffered when the 'Pragma: no-cache' directive is present"},
+      {NULL}
+  };
+  
+*** apache_1.3.22/src/modules/proxy/mod_proxy.h	Fri Oct  5 10:19:15 2001
+--- apache_1.3.22-patched/src/modules/proxy/mod_proxy.h	Wed Jan  2 16:35:13 2002
+***************
+*** 224,229 ****
+--- 224,231 ----
+      char viaopt_set;
+      size_t recv_buffer_size;
+      char recv_buffer_size_set;
++     int unbuffered;             /* true if response unbuffering is enabled */
++     char unbuffered_set;
+  } proxy_server_conf;
+  
+  struct hdr_entry {
+*** apache_1.3.22/src/modules/proxy/proxy_http.c	Fri Oct  5 19:46:39 2001
+--- apache_1.3.22-patched/src/modules/proxy/proxy_http.c	Wed Jan  2 16:35:13 2002
+***************
+*** 474,486 ****
+  	ap_table_set(resp_hdrs, "URI", proxy_location_reverse_map(r, datestr));
+  
+   /*
+!   * If "Pragma: no-cache" set nocache and make reply un-buffered to
+    * ensure timely delivery
+    */
+      if (((pragma = ap_table_get(resp_hdrs, "Pragma")) != NULL &&
+          ap_proxy_liststr(pragma, "no-cache"))) {
+          nocache = 1;
+!         r->connection->client->flags &= ~B_WR;
+      }
+  
+  /* check if NoCache directive on this host */
+--- 474,487 ----
+  	ap_table_set(resp_hdrs, "URI", proxy_location_reverse_map(r, datestr));
+  
+   /*
+!   * If "Pragma: no-cache" set nocache and eventually make reply un-buffered to
+    * ensure timely delivery
+    */
+      if (((pragma = ap_table_get(resp_hdrs, "Pragma")) != NULL &&
+          ap_proxy_liststr(pragma, "no-cache"))) {
+          nocache = 1;
+!         if (conf->unbuffered)
+!            r->connection->client->flags &= ~B_WR;
+      }
+  
+  /* check if NoCache directive on this host */
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

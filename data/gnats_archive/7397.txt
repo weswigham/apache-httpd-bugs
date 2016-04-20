@@ -1,0 +1,77 @@
+Received: (qmail 76371 invoked by uid 501); 13 Mar 2001 02:47:27 -0000
+Message-Id: <20010313024726.76370.qmail@apache.org>
+Date: 13 Mar 2001 02:47:26 -0000
+From: Theron Tock <theron@best.com>
+Reply-To: theron@best.com
+To: submit@bugz.apache.org
+Subject: Apache dies in accept_mutex_on if httpd is setuid root
+X-Send-Pr-Version: 3.110
+
+>Number:         7397
+>Category:       general
+>Synopsis:       Apache dies in accept_mutex_on if httpd is setuid root
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Mar 12 18:50:01 PST 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     theron@best.com
+>Release:        1.3.19
+>Organization:
+apache
+>Environment:
+Redhat 6.1 -- but applies to all unix versions
+>Description:
+If httpd is made setuid root (which makes things easier to test) with
+apache 1.3.19 it fails to start with the message:
+  accept_mutex_on: permission denied
+showing up over and over in the logs.
+
+The problem is at line 766 of http_main.c:
+  if (!getuid()) {
+    .. set ownership on semaphore to ap_user_id
+  }
+
+Since httpd is running with euid == 0 and uid != 0
+the block of code which sets the ownership on the
+semaphore is skipped.  The if code should be checking
+for geteuid() != 0, or perhaps even better it should
+be checking for getuid() != ap_user_id.
+
+This problem only cropped up in 1.3.19 since semaphores
+are now the default on linux 2.2.x, whereas in early
+versions of apache that used fcntl there was no issue.
+
+-Theron, 12 Mar 2001
+>How-To-Repeat:
+1) Build apache
+2) chown root ${install-dir}/bin/httpd
+3) chmod u+s ${install-dir}/bin/httpd
+4) ${install-dir}/bin/apachectl start
+>Fix:
+Yes, see full description.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

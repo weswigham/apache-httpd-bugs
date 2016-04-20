@@ -1,0 +1,187 @@
+Received: (qmail 11873 invoked by uid 2012); 6 Nov 1997 01:57:00 -0000
+Message-Id: <19971106015700.11872.qmail@hyperreal.org>
+Date: 6 Nov 1997 01:57:00 -0000
+From: Geoff Hutchison <ghutchis@wso.williams.edu>
+Reply-To: ghutchis@wso.williams.edu
+To: apbugs@hyperreal.org
+Subject: When using USE_PTHREAD_SERIALIZED_ACCEPT, after 1 min. server fails to respond to requests
+X-Send-Pr-Version: 3.2
+
+>Number:         1367
+>Category:       os-solaris
+>Synopsis:       When using USE_PTHREAD_SERIALIZED_ACCEPT, after 1 min. server fails to respond to requests
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Nov  5 19:10:01 PST 1997
+>Last-Modified:  Thu Nov 13 14:00:16 PST 1997
+>Originator:     ghutchis@wso.williams.edu
+>Organization:
+>Release:        1.3b2
+>Environment:
+SunOS wso 5.5.1 Generic_103641-09 i86pc i386
+using gcc 2.7.2.1 and egcs-2.90.15 971031 (gcc2-970802 experimental)
+>Description:
+When compiled with USE_PTHREAD_SERIALIZED_ACCEPT, after starting the httpd
+binary, one minute or so passes of responses to requests. At this point the server
+continues to accept requests but does not seem to respond to them (normally
+the client timeouts). Compilation with USE_FNCTL_SERIALIZED_ACCEPT produces a binary
+that responds normally. This has been tested with both the standard gcc-2.7.2 release
+and the latest egcs snapshot. No error message is produced.
+This server has been using Apache 1.2x for about 1 year with no prior problems.
+>How-To-Repeat:
+Try compiling on another ix86-Solaris-2.5.1 box?
+>Fix:
+At the moment I cannot determine if the problem is in Solaris-x86-2.5.1 or the apache code. Suggestions for
+further testing would be appreciated
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Thu Nov  6 01:59:27 PST 1997
+State-Changed-Why:
+Sent patch.
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Geoff Hutchison <ghutchis@wso.williams.edu>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-solaris/1367: When using USE_PTHREAD_SERIALIZED_ACCEPT, after 1 min. server fails to respond to requests
+Date: Thu, 6 Nov 1997 01:59:09 -0800 (PST)
+
+ We just discovered this one.  You can workaround it with
+ USE_FCNTL_SERIALIZED_ACCEPT, as you did... or you can try this patch, hot
+ off the presses. 
+ 
+ Dean
+ 
+ Index: http_main.c
+ ===================================================================
+ RCS file: /export/home/cvs/apachen/src/main/http_main.c,v
+ retrieving revision 1.243
+ diff -u -r1.243 http_main.c
+ --- http_main.c	1997/11/03 10:11:42	1.243
+ +++ http_main.c	1997/11/06 06:57:22
+ @@ -333,18 +333,33 @@
+  #elif defined (USE_PTHREAD_SERIALIZED_ACCEPT)
+  
+  /* This code probably only works on Solaris ... but it works really fast
+ - * on Solaris
+ + * on Solaris.  Note that pthread mutexes are *NOT* released when a task
+ + * dies ... the task has to free it itself.  So we block signals and
+ + * try to be nice about releasing the mutex.
+   */
+  
+  #include <pthread.h>
+  
+ -static pthread_mutex_t *accept_mutex;
+ +static pthread_mutex_t *accept_mutex = (void *)(caddr_t) -1;
+ +static int have_accept_mutex;
+ +static sigset_t accept_block_mask;
+ +static sigset_t accept_previous_mask;
+ +
+ +static void accept_mutex_child_cleanup(void *data)
+ +{
+ +    if (accept_mutex != (void *)(caddr_t)-1
+ +	&& have_accept_mutex) {
+ +	pthread_mutex_unlock(accept_mutex);
+ +    }
+ +}
+  
+  static void accept_mutex_cleanup(void)
+  {
+ -    if (munmap((caddr_t) accept_mutex, sizeof(*accept_mutex))) {
+ +    if (accept_mutex != (void *)(caddr_t)-1
+ +	&& munmap((caddr_t) accept_mutex, sizeof(*accept_mutex))) {
+  	perror("munmap");
+      }
+ +    accept_mutex = (void *)(caddr_t)-1;
+  }
+  
+  static void accept_mutex_init(pool *p)
+ @@ -376,14 +391,25 @@
+  	perror("pthread_mutex_init");
+  	exit(1);
+      }
+ +    sigfillset(&accept_block_mask);
+ +    sigdelset(&accept_block_mask, SIGHUP);
+ +    sigdelset(&accept_block_mask, SIGTERM);
+ +    sigdelset(&accept_block_mask, SIGUSR1);
+ +    register_cleanup(pconf, NULL, accept_mutex_child_cleanup,
+ +	accept_mutex_child_cleanup);
+  }
+  
+  static void accept_mutex_on()
+  {
+ +    if (sigprocmask(SIG_BLOCK, &accept_block_mask, &accept_previous_mask)) {
+ +	perror("sigprocmask(SIG_BLOCK)");
+ +	exit (1);
+ +    }
+      if (pthread_mutex_lock(accept_mutex)) {
+  	perror("pthread_mutex_lock");
+  	exit(1);
+      }
+ +    have_accept_mutex = 1;
+  }
+  
+  static void accept_mutex_off()
+ @@ -391,6 +417,24 @@
+      if (pthread_mutex_unlock(accept_mutex)) {
+  	perror("pthread_mutex_unlock");
+  	exit(1);
+ +    }
+ +    /* There is a slight race condition right here... if we were to die right
+ +     * now, we'd do another pthread_mutex_unlock.  Now, doing that would let
+ +     * another process into the mutex.  pthread mutexes are designed to be
+ +     * fast, as such they don't have protection for things like testing if the
+ +     * thread owning a mutex is actually unlocking it (or even any way of
+ +     * testing who owns the mutex).
+ +     *
+ +     * If we were to unset have_accept_mutex prior to releasing the mutex
+ +     * then the race could result in the server unable to serve hits.  Doing
+ +     * it this way means that the server can continue, but an additional
+ +     * child might be in the critical section ... at least it's still serving
+ +     * hits.
+ +     */
+ +    have_accept_mutex = 0;
+ +    if (sigprocmask(SIG_SETMASK, &accept_previous_mask, NULL)) {
+ +	perror("sigprocmask(SIG_SETMASK)");
+ +	exit (1);
+      }
+  }
+  
+ 
+ 
+
+From: Geoff Hutchison <Geoffrey.R.Hutchison@williams.edu>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-solaris/1367: When using USE_PTHREAD_SERIALIZED_ACCEPT,
+ after 1 min. server fails to respond to requests
+Date: Thu, 06 Nov 1997 18:28:02 -0500
+
+ At 4:59 AM -0500 11/6/97, Dean Gaudet wrote:
+ >We just discovered this one.  You can workaround it with
+ >USE_FCNTL_SERIALIZED_ACCEPT, as you did... or you can try this patch, hot
+ >off the presses.
+ 
+ The patch seems to be working, the server (compiled with
+ USE_PTHREAD_SERIALIZED_ACCEPT) has been up for 6 hours so far with no
+ problems.
+ 
+ -Geoff
+ 
+ 
+Comment-Added-By: coar
+Comment-Added-When: Thu Nov 13 09:04:55 PST 1997
+Comment-Added:
+Is it still working happily?  Can we close this report?
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Thu Nov 13 14:00:15 PST 1997
+State-Changed-Why:
+Submitter reports problem appears to be fixed.
+>Unformatted:
+

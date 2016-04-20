@@ -1,0 +1,88 @@
+Received: (qmail 83668 invoked by uid 501); 16 Nov 2001 20:16:43 -0000
+Message-Id: <20011116201643.83667.qmail@apache.org>
+Date: 16 Nov 2001 20:16:43 -0000
+From: Steffen Meschkat <mesch@datango.de>
+Reply-To: mesch@datango.de
+To: submit@bugz.apache.org
+Subject: QUERY_STRING is empty in CGI requests subject to negotiation
+X-Send-Pr-Version: 3.110
+
+>Number:         8781
+>Category:       mod_negotiation
+>Synopsis:       QUERY_STRING is empty in CGI requests subject to negotiation
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          duplicate
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Nov 16 12:20:00 PST 2001
+>Closed-Date:    Fri Nov 16 12:44:35 PST 2001
+>Last-Modified:  Fri Nov 16 12:44:35 PST 2001
+>Originator:     mesch@datango.de
+>Release:        1.3.22
+>Organization:
+>Environment:
+SuSE Linux 7.2, Kernel 2.4.0, gcc 2.95.2. mod_ssl 2.8.5.
+>Description:
+When a CGI script is requested, and the request URI has a query part, and the filename in the request is subject to content type negotiation, then the query part of the request URI does not appear in the QUERY_STRING variable in the CGI environment variable. This occurs in requests that are negotiated by option MultiViews. 
+
+Thus:
+
+  GET /getenv.cgi?hello -> QUERY_STRING=hello
+  GET /getenv?hello     -> QUERY_STRING=
+
+This behavior is different from apache 1.3.14, which is the previous release that I used.
+>How-To-Repeat:
+This problem occurs with a minimal server configuration such as this: 
+
+  Options MultiViews ExecCGI
+  AddHandler cgi-script .cgi
+
+and can easiliy be ssen in a trivial CGI shell script that just returns the envrionment.
+>Fix:
+The following line in mod_negotiation.c seems to be responsible for erasing args in request_rec that later ends up in QUERY_STRING. It was no present in apache 1.3.14. 
+
+@@ -2632,6 +2710,8 @@
+      */
+     ap_pool_join(r->pool, sub_req->pool);
+     r->mtime = 0; /* reset etag info for subrequest */
++    r->uri = sub_req->uri;
++    r->args = sub_req->args;
+     r->filename = sub_req->filename;
+     r->handler = sub_req->handler;
+     r->content_type = sub_req->content_type;
+
+Possibly sub_req was not set up to contain the original query.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: slive
+State-Changed-When: Fri Nov 16 12:44:35 PST 2001
+State-Changed-Why:
+[This is a standard response.]
+This issue has been reported before;
+please search the FAQ and the bug database.
+Thanks for using Apache!
+Class-Changed-From-To: sw-bug-duplicate
+Class-Changed-By: slive
+Class-Changed-When: Fri Nov 16 12:44:35 PST 2001
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

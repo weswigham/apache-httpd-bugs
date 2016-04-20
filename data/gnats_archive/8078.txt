@@ -1,0 +1,172 @@
+Received: (qmail 90577 invoked by uid 501); 25 Jul 2001 01:29:29 -0000
+Message-Id: <20010725012929.90576.qmail@apache.org>
+Date: 25 Jul 2001 01:29:29 -0000
+From: kevin wang <kwang@ventro.com>
+Reply-To: kwang@ventro.com
+To: submit@bugz.apache.org
+Subject: Multiviews & type-maps are insufficient in breadth of coverage, Default Language Failover to override 406 error!
+X-Send-Pr-Version: 3.110
+
+>Number:         8078
+>Category:       mod_negotiation
+>Synopsis:       Multiviews & type-maps are insufficient in breadth of coverage, Default Language Failover to override 406 error!
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jul 24 18:30:00 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     kwang@ventro.com
+>Release:        1.3.20
+>Organization:
+apache
+>Environment:
+solaris 7
+>Description:
+Imagine a grid, with one axis reading local controls and reading 
+global controls, and the second axis reading multiviews and type-map.
+
+Now the permutations would read something like this: 
+
+multiviews allow local control of language negotiation (at the directory level)
+multiviews allow global control of language negotiation (at the whole directory tree level)
+type-maps allow local control of language negotiation (one type map per directory applies to each file one at a time)
+type-maps allow global control of language negotiation.
+
+Except that the last one does not exist; is not possible.  
+
+For an existing web tree with hundreds of thousands of files, it is not
+acceptable to create a type map entry for every single file in the tree.
+
+It would be nice if some wildcard support was added to type-maps, something like this:
+
+URI: *.fr
+Content-Language: fr
+
+URI: *.en
+Content-Language: en
+
+URI: *.js.en
+Content-Language: en, *
+
+
+There are two things being demonstrated here:
+
+1- wildcard by filename/urlname.  This way I only need to create one template 
+type-map per directory, and don't have to worry that it needs updating every 
+time a new file is created/translated/makde multi-lingual.
+
+2- there's a * in the Content-Language which hopefully could be used to prevent
+the 406 error page.  This is highly desirable for embedded/included content like 
+javascript.  The main place that the "406 Not Acceptable... no variants 
+found..." error page falls over is with included content.  In netscape, if I
+load index.html (main page for all languages) which contains
+<script language="JavaScript" SRC="/foo/menuRollover.js">
+then I get an error page saying that I should choose one of 
+menuRollover.js.en, fr, etc, which definitely is NOT acceptable.  
+
+The effect is to short-circuit the 406 error and redirect the user to an
+expected default language.  For internal/intranet sites, the expected or
+"common" language is well known, and is perfectly reasonable to set a default.
+
+Alternatively to this latter is to globally for the server set a 406 override,
+though it's less flexible and is much more brute force.  I'm doing this
+today because it's easier:
+
+(see the suggested way to fix it uuencode'd unified diff)
+
+I think that expanding the type-map capabilities rounds out apache and makes 
+it more flexible.
+>How-To-Repeat:
+
+>Fix:
+begin 644 diff
+M+2TM(&UO9%]N96=O=&EA=&EO;BYC+F]R:6<)5V5D($IU;B R," Q-CHP,SHS
+M,B R,# Q"BLK*R N+B\N+B\N+B\N+B]M;V1?;F5G;W1I871I;VXN8PE4=64@
+M2G5L(#(T(#$X.C(T.C S(#(P,#$*0$ @+3<Q+#8@*S<Q+#@@0$ *("-I;F-L
+M=61E(")H='1P7VQO9RYH(@H@(VEN8VQU9&4@(G5T:6Q?<V-R:7!T+F@B"B *
+M*R-D969I;F4@3D584%))4T4**PH@+RH@0V]M;6%N9',@+2TM(&-O;F9I9W5R
+M:6YG(&1O8W5M96YT(&-A8VAI;F<@;VX@82!P97(@*'9I<G1U86P_*0H@("H@
+M<V5R=F5R(&)A<VES+BXN( H@("HO"D! ("TQ,3<P+#8@*S$Q-S(L,3$@0$ *
+M(" @(" @(" @:68@*"%S=')N8VUP*&QA;F<L(&%C8W-;:5TN;F%M92P@<W1R
+M;&5N*&%C8W-;:5TN;F%M92DI*2!["B @(" @(" @(" @("!R971U<FX@:3L*
+M(" @(" @(" @?0HK(VEF9&5F($Y%6%!225-%"BL@(" @(" @(&5L<V4@:68@
+M*"%S=')N8VUP*&QA;F<L(&%C8W-;:5TN;F%M92P@,BD@)B8@86-C<UMI72YN
+M86UE6S)=(#T]("<M)RD@>PHK(" @(" @(" @(" @<F5T=7)N(&D["BL)?0HK
+M(V5N9&EF("\J($Y%6%!225-%("HO"B @(" @?0H@"B @(" @<F5T=7)N("TQ
+M.PI 0" M,3,Q,2PQ,B K,3,Q."PQ."! 0 H@(" @(" @(" @(" @9FQO870@
+M9FED9&QE7W$@/2 P+C!F.PH@(" @(" @(" @(" @:6YT(&%N>5]M871C:%]O
+M;E]S=&%R(#T@,#L*(" @(" @(" @(" @(&EN="!I+"!J+"!A;&5N+"!L;VYG
+M97-T7VQA;F=?<F%N9V5?;&5N.PHK(VEF9&5F($Y%6%!225-%"BL@(" @(" @
+M(" @("!I;G0@;6%T8VAE9#L**R-E;F1I9B O*B!.15A04DE312 J+PH@(" @
+M(" @(" @(" @"B @(" @(" @(" @("!F;W(@*&H@/2 P.R!J(#P@=F%R:6%N
+M="T^8V]N=&5N=%]L86YG=6%G97,M/FYE;'1S.R K*VHI('L*(" @(" @(" @
+M(" @(" @("!P(#T@3E5,3#L*(" @(" @(" @(" @(" @("!B97-T=&AI<W1A
+M9R ]($Y53$P["B @(" @(" @(" @(" @(" @;&]N9V5S=%]L86YG7W)A;F=E
+M7VQE;B ](# ["B @(" @(" @(" @(" @(" @86QE;B ](# ["BLC:69D968@
+M3D584%))4T4**R @(" @(" @(" @(" @("!M871C:&5D(#T@,#L**R-E;F1I
+M9B O*B!.15A04DE312 J+PH@(" @(" @(" @(" @(" @( H@(" @(" @(" @
+M(" @(" @("\J(&QA;F<@:7,@=&AE('9A<FEA;G0G<R!L86YG=6%G92UT86<L
+M('=H:6-H(&ES('1H92!O;F4*(" @(" @(" @(" @(" @(" @*B!W92!A<F4@
+M86QL;W=E9"!T;R!U<V4@=&AE('!R969I>"!O9B!I;B!(5%10+S$N,0I 0" M
+M,3,V,2PX("LQ,S<T+#(V($! "B @(" @(" @(" @(" @(" @(" @(" @("!I
+M9B H86QE;B ^(&QO;F=E<W1?;&%N9U]R86YG95]L96XI('L*(" @(" @(" @
+M(" @(" @(" @(" @(" @(" @("!L;VYG97-T7VQA;F=?<F%N9V5?;&5N(#T@
+M86QE;CL*(" @(" @(" @(" @(" @(" @(" @(" @(" @("!B97-T=&AI<W1A
+M9R ]("9A8V-S6VE=.PHK(VEF9&5F($Y%6%!225-%"BL@(" @(" @(" @(" @
+M(" @(" @(" @(" @(" @;6%T8VAE9" ](#$["BLC96YD:68@+RH@3D584%))
+M4T4@*B\*(" @(" @(" @(" @(" @(" @(" @(" @('T*(" @(" @(" @(" @
+M(" @(" @(" @?0HK(VEF9&5F($Y%6%!225-%"BL@(" @(" @(" @(" @(" @
+M(" @(&5L<V4@:68@*'-T<FQE;BAL86YG*2 ]/2 R("8F( HK(" @(" @(" @
+M(" @(" @(" @(" @(" @(" @(" A<W1R;F-M<"AL86YG+"!A8V-S6VE=+FYA
+M;64L(#(I("8F( HK(" @(" @(" @(" @(" @(" @(" @(" @(" @("!A8V-S
+M6VE=+FYA;65;,ET@/3T@)RTG*2!["BL@(" @(" @(" @(" @(" @(" @(" @
+M(" @(" @8F5S='1H:7-T86<@/2 F86-C<UMI73L**R @(" @(" @(" @(" @
+M(" @(" @(" @(" @("!L;VYG97-T7VQA;F=?<F%N9V5?;&5N(#T@86QE;CL*
+M*R @(" @(" @(" @(" @(" @(" @(" @(" @("!M871C:&5D(#T@,3L**R @
+M(" @(" @(" @(" @(" @(" @?0HK(" @(" @(" @(" @(" @(" @("!E;'-E
+M(&EF("@A<W1R8VUP*&QA;F<L(")E;B(I*2![( HK(" @(" @(" @(" @(" @
+M(" @(" @("\J(&%S<VEG;B!A('9E<GD@;&]W('%U86QI='D@=&\@96X@87,@
+M;&%S="!R97-O<G0@*B\**R @(" @(" @(" @(" @(" @(" @("!B97-T=&AI
+M<W1A9R ]("9A8V-S6VE=.PHK(" @(" @(" @(" @(" @(" @(" @(&QO;F=E
+M<W1?;&%N9U]R86YG95]L96X@/2!A;&5N.PHK(" @(" @(" @(" @(" @(" @
+M(" @(&9I9&1L95]Q(#T@,"XP,#%F.PHK(" @(" @(" @(" @(" @(" @("!]
+M"BLC96YD:68@+RH@3D584%))4T4@*B\*(" @(" @(" @(" @(" @(" @(" @
+M"B @(" @(" @(" @(" @(" @(" @(&EF("@A8F5S='1H:7-T86<@)B8@(6YE
+M9RT^9&]N=%]F:61D;&5?:&5A9&5R<RD@>PH@(" @(" @(" @(" @(" @(" @
+M(" @(" @+RH@5&AE(&YE>'0@8FET(&ES(&$@9FED9&QE+B!3;VUE(&)R;W=S
+M97)S(&UI9VAT"D! ("TQ,S@Y+#8@*S$T,C L,3 @0$ *(" @(" @(" @(" @
+M(" @(" @(" @(" @(" @("!]"B @(" @(" @(" @(" @(" @(" @(" @("!]
+M"B @(" @(" @(" @(" @(" @(" @('T**R-I9F1E9B!.15A04DE310HK(" @
+M(" @(" @(" @(" @(&EF("AM871C:&5D*0HK(" @(" @(" @(" @(" @(" @
+M(&)R96%K.PHK(V5N9&EF("\J($Y%6%!225-%("HO"B @(" @(" @(" @(" @
+M(" @?0H@(" @(" @(" @(" @(" @("\J($9I;FES:&5D(&QO;VMI;F<@870@
+M06-C97!T+4QA;F=U86=E(&AE861E<G,L('1H92!B97-T"B @(" @(" @(" @
+M(" @(" @("H@*&QO;F=E<W0I(&UA=&-H(&ES(&EN(&)E<W1T:&ES=&%G+"!O
+3<B!.54Q,(&EF(&YO(&UA=&-H"FUA
+ 
+end
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

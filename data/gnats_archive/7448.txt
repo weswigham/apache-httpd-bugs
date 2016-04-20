@@ -1,0 +1,104 @@
+Received: (qmail 84169 invoked by uid 501); 21 Mar 2001 23:08:02 -0000
+Message-Id: <20010321230802.84168.qmail@apache.org>
+Date: 21 Mar 2001 23:08:02 -0000
+From: Anton Vysotskiy <anton.vysotskiy@starmedia.net>
+Reply-To: anton.vysotskiy@starmedia.net
+To: submit@bugz.apache.org
+Subject: When using pipe output in CustomLog directive Apache dumps core
+X-Send-Pr-Version: 3.110
+
+>Number:         7448
+>Category:       general
+>Synopsis:       When using pipe output in CustomLog directive Apache dumps core
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Mar 21 15:10:03 PST 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     anton.vysotskiy@starmedia.net
+>Release:        1.3.19
+>Organization:
+apache
+>Environment:
+uname -rms:FreeBSD 4.2-RELEASE i386
+gcc --version:2.95.2
+Apache: 1.3.19
+>Description:
+Backtrace:
+#0  0x0 in ?? ()
+#1  0x8067d69 in run_child_cleanups (c=0x0) at alloc.c:1722
+#2  0x8067d95 in cleanup_pool_for_exec (p=0x0) at alloc.c:1729
+#3  0x8067dc0 in cleanup_pool_for_exec (p=0x0) at alloc.c:1733
+#4  0x8067ded in ap_cleanup_for_exec () at alloc.c:1749
+#5  0x807325d in piped_log_spawn (pl=0x0) at http_log.c:621
+#6  0x80733b8 in piped_log_maintenance (reason=0, data=0x0, status=0) at http_log.c:658
+#7  0x8074f22 in reclaim_child_processes (terminate=0) at http_main.c:2495
+#8  0x80773de in standalone_main (argc=0, argv=0x0) at http_main.c:4778
+#9  0x80779b4 in main (argc=0, argv=0x0) at http_main.c:5009
+
+Apache does calls function pointer like this: (*c->child_cleanup) (c->data);
+In some instances c->child_cleanup==NULL
+>How-To-Repeat:
+I used multiple CustomLog directives with pipes. Apache 1.3.14 on Linux 2.4.2 with exactly same config seems fine
+>Fix:
+Quick fix - couple of sanity checks for NULL pointers. Diff bellow:
+diff -ru apache_1.3.19.orig/src/main/alloc.c apache_1.3.19.alloc-fix/src/main/alloc.c
+--- apache_1.3.19.orig/src/main/alloc.c Mon Jan 15 12:04:55 2001
++++ apache_1.3.19.alloc-fix/src/main/alloc.c    Wed Mar 21 12:32:30 2001
+@@ -1702,7 +1702,8 @@
+@@ -1702,7 +1702,8 @@
+ API_EXPORT(void) ap_run_cleanup(pool *p, void *data, void (*cleanup) (void *))
+ {
+     ap_block_alarms();         /* Run cleanup only once! */
+-    (*cleanup) (data);
++    if(cleanup)
++      (*cleanup) (data);
+     ap_kill_cleanup(p, data, cleanup);
+     ap_unblock_alarms();
+ }
+@@ -1710,16 +1711,18 @@
+ static void run_cleanups(struct cleanup *c)
+ {
+     while (c) {
++      if(c->plain_cleanup)
+        (*c->plain_cleanup) (c->data);
+-       c = c->next;
++      c = c->next;
+     }
+ }
+ 
+ static void run_child_cleanups(struct cleanup *c)
+ {
+     while (c) {
++      if(c->child_cleanup)
+        (*c->child_cleanup) (c->data);
+-       c = c->next;
++      c = c->next;
+     }
+ }
+ 
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

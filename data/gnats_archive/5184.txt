@@ -1,0 +1,97 @@
+Received: (qmail 15522 invoked by uid 2012); 22 Oct 1999 14:08:18 -0000
+Message-Id: <19991022140818.15520.qmail@hyperreal.org>
+Date: 22 Oct 1999 14:08:18 -0000
+From: Patrick Feisthammel <pfeisthammel@citrin.ch>
+Reply-To: pfeisthammel@citrin.ch
+To: apbugs@hyperreal.org
+Subject: Environment Variables are not correctly set if using content negotiation
+X-Send-Pr-Version: 3.2
+
+>Number:         5184
+>Category:       mod_negotiation
+>Synopsis:       Environment Variables are not correctly set if using content negotiation
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Oct 22 07:10:00 PDT 1999
+>Last-Modified:
+>Originator:     pfeisthammel@citrin.ch
+>Organization:
+apache
+>Release:        1.3.9 and earlier
+>Environment:
+Linux xxx 2.2.12 #8 SMP i686 unknown
+It does not matter realy...
+>Description:
+The environment variable SCRIPT_FILENAME does not include the negotiated 
+ending (for example .en.php3) if used together with ScriptAlias to call
+a CGI parsing that file and if the ScriptAlias is not pointing to a real file
+in the filesystem.
+
+Ok, surely confusing... Here some details:
+
+I use a cgiwrapper (from http://ftp.umr.edu/pub/cgi/cgiwrap/) to wrap CGI scripts.
+This wrapper works without problems.
+
+If I put CGI scripts for different languages, it does call the cgi script (e.g.
+it does find the correct script), put does not provide the correct 
+SCRIPT_FILENAME.
+
+But this SCRIPT_FILENAME is important if I wan't to use PHP in CGI mode...
+Without that, PHP works not in CGI mode with MultiViews.
+>How-To-Repeat:
+Create a simple CGI-Skript, for example:
+
+------------------
+#!/usr/bin/perl
+print "Content-type: text/html\n\n";
+
+while (($key, $val) = each %ENV) {
+        print "$key = $val<BR>\n";
+}
+---------------------------
+
+Store that Skript as 'printenv.en.wrap' and 'printenv.de.wrap' on a apache
+server.
+
+Get cgiwrap from http://ftp.umr.edu/pub/cgi/cgiwrap/ and compile it:
+./configure --with-perl=/usr/bin/perl --with-httpd-user=wwwrun --with-cgi-dir=cgi-bin
+cp cgiwrap /somewhere/wrapper/ ; chown 0.0 /somewhere/wrapper/cgiwrap ; chmod 4111 /somewhere/wrapper/cgiwrap
+
+Configure apache:
+Options ... MultiViews
+AddHandler cgi-script-w .wrap
+Action cgi-script-w /cgi-bin/
+ScriptAlias /cgi-bin/ /somewhere/wrapper/cgiwrap/user/
+
+Call the printenv cgi: http://server/path/printenv
+
+You will see the output of printenv, put no environment variable includes
+the complete file name (e.g. printenv.en.wrap or printenv.de.wrap)
+
+This file name in the Environment is needed for PHP to read the file....
+>Fix:
+Setting the SCRIPT_FILENAME to the real file name in all cases.
+
+Remember, it is set if the internal cgi mechanism is used or if the php 
+executable is used directly in the above Action statement.
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

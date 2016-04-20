@@ -1,0 +1,104 @@
+Received: (qmail 7722 invoked by uid 2012); 22 Apr 1998 16:12:19 -0000
+Message-Id: <19980422161219.7721.qmail@hyperreal.org>
+Date: 22 Apr 1998 16:12:19 -0000
+From: Ben Laurie <ben@algroup.co.uk>
+Reply-To: ben@algroup.co.uk
+To: apbugs@hyperreal.org
+Subject: Wrong flags for native compiler on Solaris
+X-Send-Pr-Version: 3.2
+
+>Number:         2116
+>Category:       config
+>Synopsis:       Wrong flags for native compiler on Solaris
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          analyzed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Apr 22 09:20:01 PDT 1998
+>Last-Modified:  Wed Apr 22 11:55:51 PDT 1998
+>Originator:     ben@algroup.co.uk
+>Organization:
+>Release:        1.2.6
+>Environment:
+uname -a 
+SunOS xxxxx 5.6 Generic_105181-04 sun4u sparc SUNW,Ultra-2
+cc -V
+cc: WorkShop Compilers 4.2 30 Oct 1996 C 4.2
+>Description:
+Configure sets optimisation to -O2, but the native compiler doesn't understand it.
+Although this only causes irritating warnings in .../src, it stops .../support
+from compiling.
+>How-To-Repeat:
+Obvious
+>Fix:
+*** Configure.old       Wed Apr 22 16:56:23 1998
+--- Configure   Wed Apr 22 16:56:57 1998
+***************
+*** 388,393 ****
+--- 388,396 ----
+        LIBS="$LIBS -lsocket -lnsl"
+        DBM_LIB=""
+        DEF_WANTHSREGEX=yes
++       if [ "$COMPILER" = "cc" ]; then
++           OPTIM=-O
++       fi
+        ;;
+      *-sunos4*)
+        OS='SunOS 4'
+%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: rse
+State-Changed-When: Wed Apr 22 11:52:20 PDT 1998
+State-Changed-Why:
+I think this is the wrong place to fix it. Why do
+you get -O2? src/Configure do not set it. It is
+just in Configuration.tmpl, BUT OUT-COMMENTED.
+It is a configuration error when this one is not
+out-commented and "cc" is used. Just overwriting
+the OPTIM in src/Configuration is not the way
+we should fix this. You just have to set OPTIM
+correctly because src/Configure shouldn't make 
+dependecies between CC and OPTIM himself. It
+is too non-trivial in general. 
+
+Perhaps it would be better when we have "#OPTIM=" in
+src/Configuration.tmpl or at least only
+"#OPTIM=-O" and not "#OPTIM=-O2".
+
+Or did I totally misinterpreted your problem, Ben?
+ 
+Comment-Added-By: rse
+Comment-Added-When: Wed Apr 22 11:55:50 PDT 1998
+Comment-Added:
+Oh wait, I'm wrong. I showed in 1.3b7's Configure.
+You are right, the 1.2 src/Configure does nasty
+thinks with OPTIM. Hmmm... bet again I think
+the partif  egrep "^OPTIM[  ]*=" Makefile > /dev/null; then
+    OPTIM=""    # ditto
+else
+    if [ "x$OPTIM" = "x" ]; then
+    OPTIM="-O2"
+    fi
+    echo " + setting C compiler optimization-level to $OPTIM"
+fi
+
+is wrong and this one should be fixed.
+It should do at least a case over $CC and only
+when it ends in "gcc" it should use -O2 and
+else -O. Or even better. Do nothing with OPTIM
+as 1.3b7's Configure does. I would prefer the
+latter one.
+
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,330 @@
+Received: (qmail 63811 invoked by uid 501); 27 Oct 2001 16:44:26 -0000
+Message-Id: <20011027164426.63810.qmail@apache.org>
+Date: 27 Oct 2001 16:44:26 -0000
+From: Dave Silon <daveys@holycamel.com>
+Reply-To: daveys@holycamel.com
+To: submit@bugz.apache.org
+Subject: Redirect Command In .htaccess Drops Concurrent Requests From The Same Client
+X-Send-Pr-Version: 3.110
+
+>Number:         8625
+>Category:       general
+>Synopsis:       Redirect Command In .htaccess Drops Concurrent Requests From The Same Client
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Oct 29 00:00:01 PST 2001
+>Closed-Date:    Mon Oct 29 07:09:27 PST 2001
+>Last-Modified:  Mon Oct 29 09:10:00 PST 2001
+>Originator:     daveys@holycamel.com
+>Release:        1.3.22
+>Organization:
+>Environment:
+uname result: Linux 2.4.2-2 #7 i686
+Distribution: RedHat 7.1
+gcc version 2.96 20000731 (RedHat Linux 7.1 2.96-85)
+Processor: Athlon 1.4GHz, 266FSB
+RAM:768Mb
+(Motherboard Epox 8KTA3+)
+>Description:
+When simultaneous accesses occur that are supposed to be processed by the Redirect command, the first one will be processed, and others with the same timestamp will get through.  I would expect that this problem also occurs with RedirectMatch,although I have not tried it.
+
+Redirect commands I am using in .htaccess:
+Redirect /scripts http://www.WindowsIdiots.invalid
+Redirect /winnt http://www.WindowsIdiots.invalid
+Redirect /nt http://www.WindowsIdiots.invalid
+Redirect /win_nt http://www.WindowsIdiots.invalid
+Redirect /system32 http://www.WindowsIdiots.invalid
+Redirect /MSADC http://www.WindowsIdiots.invalid
+Redirect /msadc http://www.WindowsIdiots.invalid
+Redirect /c http://www.WindowsIdiots.invalid
+Redirect /d http://www.WindowsIdiots.invalid
+Redirect /_mem_bin http://www.WindowsIdiots.invalid
+Redirect /_vti_bin http://www.WindowsIdiots.invalid
+
+Results from the log:
+66.17.32.198 - - [27/Oct/2001:08:53:30 -0700] "GET /scripts/..%c1%1c../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 302 321
+66.17.32.198 - - [27/Oct/2001:08:53:30 -0700] "GET /scripts/..%c0%2f../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 404 300
+66.17.32.198 - - [27/Oct/2001:08:53:30 -0700] "GET /scripts/..%c0%af../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 302 321
+66.17.32.198 - - [27/Oct/2001:08:53:31 -0700] "GET /scripts/..%c1%9c../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 302 321
+66.17.32.198 - - [27/Oct/2001:08:53:31 -0700] "GET /scripts/..%%35%63../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 400 284
+66.17.32.198 - - [27/Oct/2001:08:53:31 -0700] "GET /scripts/..%%35c../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 400 284
+66.17.32.198 - - [27/Oct/2001:08:53:31 -0700] "GET /scripts/..%25%35%63../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 302 320
+66.17.32.198 - - [27/Oct/2001:08:53:32 -0700] "GET /scripts/..%252f../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 302 320
+66.17.32.198 - - [27/Oct/2001:09:08:22 -0700] "GET /scripts/root.exe?/c+dir HTTP/1.0" 302 296
+66.17.32.198 - - [27/Oct/2001:09:08:22 -0700] "GET /MSADC/root.exe?/c+dir HTTP/1.0" 302 294
+66.17.32.198 - - [27/Oct/2001:09:08:22 -0700] "GET /c/winnt/system32/cmd.exe?/c+dir HTTP/1.0" 302 304
+66.17.32.198 - - [27/Oct/2001:09:08:23 -0700] "GET /d/winnt/system32/cmd.exe?/c+dir HTTP/1.0" 302 304
+66.17.32.198 - - [27/Oct/2001:09:08:23 -0700] "GET /scripts/..%255c../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 302 320
+66.17.32.198 - - [27/Oct/2001:09:08:23 -0700] "GET /_vti_bin/..%255c../..%255c../..%255c../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 302 341
+66.17.32.198 - - [27/Oct/2001:09:08:24 -0700] "GET /_mem_bin/..%255c../..%255c../..%255c../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 302 341
+66.17.32.198 - - [27/Oct/2001:09:08:24 -0700] "GET /msadc/..%255c../..%255c../..%255c/..%c1%1c../..%c1%1c../..%c1%1c../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 302 369
+66.17.32.198 - - [27/Oct/2001:09:08:24 -0700] "GET /scripts/..%c1%1c../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 302 321
+66.17.32.198 - - [27/Oct/2001:09:08:24 -0700] "GET /scripts/..%c0%2f../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 404 300
+66.17.32.198 - - [27/Oct/2001:09:08:24 -0700] "GET /scripts/..%c0%af../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 302 321
+66.17.32.198 - - [27/Oct/2001:09:08:25 -0700] "GET /scripts/..%c1%9c../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 302 321
+66.17.32.198 - - [27/Oct/2001:09:08:25 -0700] "GET /scripts/..%%35%63../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 400 284
+66.17.32.198 - - [27/Oct/2001:09:08:25 -0700] "GET /scripts/..%%35c../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 400 284
+66.17.32.198 - - [27/Oct/2001:09:08:25 -0700] "GET /scripts/..%25%35%63../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 302 320
+66.17.32.198 - - [27/Oct/2001:09:08:25 -0700] "GET /scripts/..%252f../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 302 320
+
+As you can see, the initial request of group of simultaneous requests, gets 302'd, but a following one will either get a 400 or 404.  They should ALL be redirected (302).  I have classified this as a serious problem since the server fails to perform an important function.  Although I am using it for trying to help cut down the stupid virus bandwidth usage, other uses on directories for high traffic servers could cause the redirect to fail.
+>How-To-Repeat:
+1. Set up a server and give it a public DNS entry
+2. Set up an .htaccess file with redirect for the windows virus as above
+3. Wait for the accesses to come in (about a millisecond ;-) )
+
+Suggestion for Generalized Testing:
+This problem may be related to simultaneous requests from a single client.  Redirect may work OK when the simultaneous accesses are from unique clients, but I have no way of testing that.
+>Fix:
+Look for a hole in the request processing queue for multiple calls matching the redirect criteria from a single client, and check to make sure that it is not a problem with unique clients.  It seems like there is something with the Redirect where handling is ending up being modal which allows some requests to get through.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: slive
+State-Changed-When: Mon Oct 29 07:09:27 PST 2001
+State-Changed-Why:
+This is not a good way to test Redirect.  The worm is throwing requests that are deliberately designed to foul up request parsing.  Some of them are getting 400 (Bad request) responses, which is perfectly legitimate.  The ones that are getting 404 responses are probably correct also, although I'm not going to take the time to decompose that absurd URL according the the RFC rules.
+
+If you can generate this problem with any real client sending real requests, please let us know.  Otherwise, you are really just wasting your time by sending redirects to a worm.  There is no way they will be followed.
+
+Thanks for using Apache!
+
+From: "Davey Silon" <daveys@holycamel.com>
+To: <submit@bugz.apache.org>, <apache-bugdb@apache.org>
+Cc:  
+Subject: RE: general/8625: Redirect Command In .htaccess Drops Concurrent Requests From The Same Client
+Date: Mon, 29 Oct 2001 08:25:39 -0800
+
+ I did some more testing by extracting the log entries one at a time and
+ passing them in a URL.  It doesn't seem to be related to multiple execution
+ as I first suspected.  It seems that the presence of varying character codes
+ in the URL in the /..%[char code]../ section is what is causing the request
+ not to be caught by the redirect.  So, it seems like the solution would be
+ to do a more careful expression match during redirect parsing...
+ 
+ Dave Silon
+ 
+ -----Original Message-----
+ From: submit@bugz.apache.org [mailto:submit@bugz.apache.org]
+ Sent: Monday, October 29, 2001 12:00 AM
+ To: daveys@holycamel.com
+ Subject: Re: general/8625: Redirect Command In .htaccess Drops
+ Concurrent Requests From The Same Client
+ 
+ 
+ Thank you very much for your problem report.
+ It has the internal identification `general/8625'.
+ The individual assigned to look at your
+ report is: apache.
+ 
+ >Category:       general
+ >Responsible:    apache
+ >Synopsis:       Redirect Command In .htaccess Drops Concurrent Requests
+ From The Same Client
+ >Arrival-Date:   Mon Oct 29 00:00:01 PST 2001
+ 
+
+From: "Davey Silon" <daveys@holycamel.com>
+To: <apbugs@Apache.Org>
+Cc: <apbugs@Apache.Org>
+Subject: Re: general/8625: Redirect Command In .htaccess Drops Concurrent Requests From The Same Client
+Date: Mon, 29 Oct 2001 08:28:03 -0800
+
+ sorry...want to make sure it gets to the correct address...
+ 
+ -----Original Message-----
+ From: Davey Silon [mailto:daveys@holycamel.com]
+ Sent: Monday, October 29, 2001 8:26 AM
+ To: submit@bugz.apache.org; apache-bugdb@apache.org
+ Subject: RE: general/8625: Redirect Command In .htaccess Drops
+ Concurrent Requests From The Same Client
+ 
+ 
+ I did some more testing by extracting the log entries one at a time and
+ passing them in a URL.  It doesn't seem to be related to multiple execution
+ as I first suspected.  It seems that the presence of varying character codes
+ in the URL in the /..%[char code]../ section is what is causing the request
+ not to be caught by the redirect.  So, it seems like the solution would be
+ to do a more careful expression match during redirect parsing...
+ 
+ Dave Silon
+ 
+ -----Original Message-----
+ From: submit@bugz.apache.org [mailto:submit@bugz.apache.org]
+ Sent: Monday, October 29, 2001 12:00 AM
+ To: daveys@holycamel.com
+ Subject: Re: general/8625: Redirect Command In .htaccess Drops
+ Concurrent Requests From The Same Client
+ 
+ 
+ Thank you very much for your problem report.
+ It has the internal identification `general/8625'.
+ The individual assigned to look at your
+ report is: apache.
+ 
+ >Category:       general
+ >Responsible:    apache
+ >Synopsis:       Redirect Command In .htaccess Drops Concurrent Requests
+ From The Same Client
+ >Arrival-Date:   Mon Oct 29 00:00:01 PST 2001
+ 
+
+From: "Davey Silon" <daveys@holycamel.com>
+To: <slive@apache.org>
+Cc: <apbugs@apache.org>
+Subject: RE: general/8625: Redirect Command In .htaccess Drops Concurrent Requests From The Same Client
+Date: Mon, 29 Oct 2001 08:45:04 -0800
+
+ hi,
+ 
+ Thanks for the reply. I understand the inherent nature of the worm URLs I
+ was sending.  However, the point of using redirect is to reduce bandwidth
+ served by our servers, which have gotten literally thousands of badly-formed
+ worm requests.  Not serving pages like a 404 or 400 page for those requests
+ will save bandwidth.
+ 
+ I have been able to reproduce the problem with a single request from a URL
+ line using the log entries I sent (for the 400 or 404's).  Apache's string
+ matching shouldn't fail, no matter what the circumstance, as long as the
+ match string is present.  That is currently not the case.  Whatever
+ expression matching Apache is using is obviously not sufficiently robust,
+ since the Redirect is not working.  The source of the request shouldn't
+ matter - worm or not.  The redirect expression matching is failing, and that
+ should be cause enough for action.  String matching problems are some of the
+ easiest ones to fix and if it improves overall robustness, it's a good
+ cause.
+ 
+ Also, by the way, it would be nice to be able to selectively omit those
+ requests from the log.  My server logs are a mess.  I want to leave them set
+ to the warn level, but Apache really needs an "OmitLog" directive that does
+ the same thing that Redirect does to prevent specific accesses from clogging
+ the logs with unwanted garbage, impairing their effectiveness.
+ 
+ I really love Apache and think it is a great product.  Fixing redirect and
+ adding an OmitLog command would really help make it impervious to stupid
+ MS-based worms.  If there is some way to accomplish the OmitLog function in
+ the current version, I'd love to know.
+ 
+ Thanks for taking the time to reply.  I apreciate your help.  I know you
+ guys must be busy, but I think in the current climate with MS Worms, these
+ are very worthy bugs to address to improve server performance.
+ 
+ Sincerely,
+ 
+ Davey Silon
+ 
+ -----Original Message-----
+ From: slive@apache.org [mailto:slive@apache.org]
+ Sent: Monday, October 29, 2001 7:09 AM
+ To: apache-bugdb@apache.org; daveys@holycamel.com; slive@apache.org
+ Subject: Re: general/8625: Redirect Command In .htaccess Drops
+ Concurrent Requests From The Same Client
+ 
+ 
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+ Synopsis: Redirect Command In .htaccess Drops Concurrent Requests From The
+ Same Client
+ 
+ State-Changed-From-To: open-closed
+ State-Changed-By: slive
+ State-Changed-When: Mon Oct 29 07:09:27 PST 2001
+ State-Changed-Why:
+ This is not a good way to test Redirect.  The worm is throwing requests that
+ are deliberately designed to foul up request parsing.  Some of them are
+ getting 400 (Bad request) responses, which is perfectly legitimate.  The
+ ones that are getting 404 responses are probably correct also, although I'm
+ not going to take the time to decompose that absurd URL according the the
+ RFC rules.
+ 
+ If you can generate this problem with any real client sending real requests,
+ please let us know.  Otherwise, you are really just wasting your time by
+ sending redirects to a worm.  There is no way they will be followed.
+ 
+ Thanks for using Apache!
+ 
+
+From: "Joshua Slive" <slive@apache.org>
+To: <daveys@holycamel.com>
+Cc: <apbugs@apache.org>
+Subject: RE: general/8625: Redirect Command In .htaccess Drops Concurrent Requests From The Same Client
+Date: Mon, 29 Oct 2001 12:10:05 -0500
+
+ > -----Original Message-----
+ > From: Davey Silon [mailto:daveys@holycamel.com]
+ >
+ > Thanks for the reply. I understand the inherent nature of the worm URLs I
+ > was sending.  However, the point of using redirect is to reduce bandwidth
+ > served by our servers, which have gotten literally thousands of
+ > badly-formed
+ > worm requests.  Not serving pages like a 404 or 400 page for
+ > those requests
+ > will save bandwidth.
+ 
+ No it won't.  Serving a simple error page uses exactly the same bandwidth as
+ serving a redirect.
+ 
+ >
+ > I have been able to reproduce the problem with a single request from a URL
+ > line using the log entries I sent (for the 400 or 404's).  Apache's string
+ > matching shouldn't fail, no matter what the circumstance, as long as the
+ > match string is present.
+ 
+ This is not simple string matching.  Apache must apply the RFC to
+ canonicalize the URL before it deals with it.  If it cannot do this because
+ the URL is malformed, then 400 is the only correct response.  Even if it can
+ do it, the resulting URL may look different than what you image from looking
+ at the uncanoncialized form, and therefore may not match your redirect.
+ 
+ >
+ > Also, by the way, it would be nice to be able to selectively omit those
+ > requests from the log.  My server logs are a mess.  I want to
+ > leave them set
+ > to the warn level, but Apache really needs an "OmitLog" directive
+ > that does
+ > the same thing that Redirect does to prevent specific accesses
+ > from clogging
+ > the logs with unwanted garbage, impairing their effectiveness.
+ 
+ Please check the docs.  There is now extensive documentation on how to do
+ selective logging.
+ 
+ Further discussion on this would be welcome in a user support forum, but not
+ in the bug database.
+ 
+ Thanks!
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

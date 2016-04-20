@@ -1,0 +1,212 @@
+Received: (qmail 6260 invoked by uid 2012); 26 Aug 1998 08:22:39 -0000
+Message-Id: <19980826082239.6258.qmail@hyperreal.org>
+Date: 26 Aug 1998 08:22:39 -0000
+From: Andrew Bromage <bromage@queens.unimelb.edu.au>
+Reply-To: bromage@queens.unimelb.edu.au
+To: apbugs@hyperreal.org
+Subject: Another solution to PR#2431 (customisation of filenames in rotatelogs)
+X-Send-Pr-Version: 3.2
+
+>Number:         2904
+>Category:       general
+>Synopsis:       Another solution to PR#2431 (customisation of filenames in rotatelogs)
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Aug 26 01:30:00 PDT 1998
+>Last-Modified:
+>Originator:     bromage@queens.unimelb.edu.au
+>Organization:
+apache
+>Release:        1.3.0
+>Environment:
+FreeBSD 2.2.6-release, GCC 2.8.1
+Should work in any ANSI C, though.
+>Description:
+I found the attached patch useful for one particular webmaster who
+suffered from dyscalcula.  This simple modification gives full date(1)
+formatting for the produced log file names.
+>How-To-Repeat:
+
+>Fix:
+Command line handling is not particularly beautiful, but it works for now.
+
+*** rotatelogs.c        1998/08/26 05:58:04     1.1
+--- rotatelogs.c        1998/08/26 07:40:51
+***************
+*** 23,48 ****
+      int nLogFD = -1;
+      int nRead;
+      char *szLogRoot;
+  
+      if (argc != 3) {
+        fprintf(stderr,
+!               "%s <logfile> <rotation time in seconds>\n\n",
+!               argv[0]);
+  #ifdef __EMX__
+        fprintf(stderr,
+                "Add this:\n\nTransferLog \"|%s.exe /some/where 86400\"\n\n",
+!               argv[0]);
+  #else
+        fprintf(stderr,
+                "Add this:\n\nTransferLog \"|%s /some/where 86400\"\n\n",
+!               argv[0]);
+  #endif
+        fprintf(stderr,
+                "to httpd.conf. The generated name will be /some/where.nnnn "
+                "where nnnn is the\nsystem time at which the log nominally "
+                "starts (N.B. this time will always be a\nmultiple of the "
+                "rotation time, so you can synchronize cron scripts with it).\n"
+!               "At the end of each rotation time a new log is started.\n");
+        exit(1);
+      }
+  
+--- 23,61 ----
+      int nLogFD = -1;
+      int nRead;
+      char *szLogRoot;
++     char *szProgName = argv[0];
++     char *szFormat = NULL;
++ 
++     if (argc > 1 && *argv[1] == '+') {
++       szFormat = argv[1] + 1;
++       argv++;
++       argc--;
++     }
+  
+      if (argc != 3) {
+        fprintf(stderr,
+!               "%s [+format] <logfile> <rotation time in seconds>\n\n",
+!               szProgName);
+  #ifdef __EMX__
+        fprintf(stderr,
+                "Add this:\n\nTransferLog \"|%s.exe /some/where 86400\"\n\n",
+!               szProgName);
+  #else
+        fprintf(stderr,
+                "Add this:\n\nTransferLog \"|%s /some/where 86400\"\n\n",
+!               szProgName);
+  #endif
+        fprintf(stderr,
+                "to httpd.conf. The generated name will be /some/where.nnnn "
+                "where nnnn is the\nsystem time at which the log nominally "
+                "starts (N.B. this time will always be a\nmultiple of the "
+                "rotation time, so you can synchronize cron scripts with it).\n"
+!               "At the end of each rotation time a new log is started.\n\n"
+!               "If you wish to customise the filename, you can specify a "
+!               "strftime-style date\nby specifying a format with the + "
+!               "switch. For example, the format \"+%%Y%%b%%d\"\nwill result "
+!               "in logs with a filename of the form:\n"
+!               "  /some/where/file.1998Jan03\n");
+        exit(1);
+      }
+  
+***************
+*** 66,72 ****
+        }
+        if (nLogFD < 0) {
+            time_t tLogStart = (time(NULL) / tRotation) * tRotation;
+!           sprintf(buf2, "%s.%010d", szLogRoot, (int) tLogStart);
+            tLogEnd = tLogStart + tRotation;
+            nLogFD = open(buf2, O_WRONLY | O_CREAT | O_APPEND, 0666);
+            if (nLogFD < 0) {
+--- 79,92 ----
+        }
+        if (nLogFD < 0) {
+            time_t tLogStart = (time(NULL) / tRotation) * tRotation;
+!           if (szFormat) {
+!               int len = sprintf(buf2, "%s.", szLogRoot);
+!               strftime(buf2 + len, sizeof(buf2) - len, szFormat,
+!                               localtime(&tLogStart));
+!           }
+!           else {
+!               sprintf(buf2, "%s.%010d", szLogRoot, (int) tLogStart);
+!           }
+            tLogEnd = tLogStart + tRotation;
+            nLogFD = open(buf2, O_WRONLY | O_CREAT | O_APPEND, 0666);
+            if (nLogFD < 0) {
+*** rotatelogs.8        1998/08/26 07:40:58     1.1
+--- rotatelogs.8        1998/08/26 08:03:58
+***************
+*** 1,4 ****
+! .TH rotatelogs 8 "March 1998"
+  .\" Copyright (c) 1998 The Apache Group. All rights reserved.
+  .\"
+  .\" Redistribution and use in source and binary forms, with or without
+--- 1,4 ----
+! .TH rotatelogs 8 "August 1998"
+  .\" Copyright (c) 1998 The Apache Group. All rights reserved.
+  .\"
+  .\" Redistribution and use in source and binary forms, with or without
+***************
+*** 55,60 ****
+--- 55,61 ----
+  rotatelogs \- rotate Apache logs without having to kill the server
+  .SH SYNOPSIS
+  .B rotatelogs
++ .I [+format]
+  .I logfile
+  .I rotationtime
+  .PP
+***************
+*** 64,70 ****
+  feature which can be used like this:
+  
+  .fi
+!    TansferLog "|rotatelogs /path/to/logs/access_log 86400"
+  .mf
+  
+  This creates the files /path/to/logs/access_log.nnnn where nnnn is the system
+--- 65,71 ----
+  feature which can be used like this:
+  
+  .fi
+!    TransferLog "|rotatelogs /path/to/logs/access_log 86400"
+  .mf
+  
+  This creates the files /path/to/logs/access_log.nnnn where nnnn is the system
+***************
+*** 77,83 ****
+  added.
+  .IP \fB\fIrotationtime\fP
+  The rotation time in seconds.
+! .PD
+  .SH SEE ALSO
+! .BR httpd(8)
+  .
+--- 78,95 ----
+  added.
+  .IP \fB\fIrotationtime\fP
+  The rotation time in seconds.
+! .IP \fB\fI+format\fP
+! You can customise the file names using date(1)-style format strings.  For
+! example, the invocation:
+! 
+! .fi
+!    TransferLog "|rotatelogs \\"+%Y%b%d\\" /path/to/logs/access_log 86400"
+! .mf
+! 
+! will produce logs with filenames of the form
+! /path/to/logs/access_log.YYYYMonDD.
+! 
+  .SH SEE ALSO
+! .BR httpd(8),
+! .BR date(1)
+  .
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

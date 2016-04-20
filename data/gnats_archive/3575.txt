@@ -1,0 +1,89 @@
+Received: (qmail 14334 invoked by uid 2012); 22 Dec 1998 10:32:03 -0000
+Message-Id: <19981222103203.14333.qmail@hyperreal.org>
+Date: 22 Dec 1998 10:32:03 -0000
+From: Jose KAHAN <kahan@w3.org>
+Reply-To: kahan@w3.org
+To: apbugs@hyperreal.org
+Subject: 100-Continue isn't being sent anymore
+X-Send-Pr-Version: 3.2
+
+>Number:         3575
+>Category:       protocol
+>Synopsis:       100-Continue isn't being sent anymore
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Dec 22 02:40:00 PST 1998
+>Last-Modified:  Tue Apr 20 18:26:34 PDT 1999
+>Originator:     kahan@w3.org
+>Organization:
+>Release:        1.3.3
+>Environment:
+SunOS tuvalu 5.5 Generic_103093-11 sun4m
+>Description:
+When making an HTTP/1.1 PUT, if the client sends
+an Expect: 100 header, the server should answer
+with a HTTP/1.1 100 Continue. However, Apache/1.3.3
+doesn't do so.
+>How-To-Repeat:
+If your server is configured for a PUT,
+telnet to it and try something like:
+
+PUT /doc.html HTTP/1.1
+Host: your_host_name
+Content-type: text/html
+Content-length: 10
+Expect: 100-Continue
+
+
+In theory, you should get the 100-Continue there.
+But in fact, the server doesn't send it and expects
+you to send the resource itself there.
+
+
+>Fix:
+In http_protocol.c:917, the Expect: 100-Continue
+header is well identified and a flag
+(r->expecting_100)is setup.
+However, this flag is reset by the time the 
+thread reaches  http_protocol.c:1531, where it is used
+to know if the 100 Continue should be sent.
+The pointer r to the request_rec is not the same one
+in 917 and 1531, so my guess is that the 
+expecting_100 flag isn't being duplicated.
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Tue Dec 22 05:59:50 PST 1998
+State-Changed-Why:
+
+This is by design.  From the src/CHANGES file:
+
+  *) Added a complete implementation of the Expect header field as
+     specified in rev-05 of HTTP/1.1.  Disabled the 100 Continue
+     response when we already know the final status, which is mighty
+     useful for PUT responses that result in 302 or 401. [Roy Fielding]
+
+Thanks for the report, and for using Apache.
+
+Comment-Added-By: dgaudet
+Comment-Added-When: Tue Apr 20 18:26:33 PDT 1999
+Comment-Added:
+see also PR#s 3806, 3910 ... a fix appears in 1.3.7
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

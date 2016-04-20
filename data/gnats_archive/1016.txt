@@ -1,0 +1,192 @@
+From apwww@hyperreal.org  Tue Aug 19 07:54:04 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id HAA12753;
+	Tue, 19 Aug 1997 07:54:04 -0700 (PDT)
+Message-Id: <199708191454.HAA12753@hyperreal.org>
+Date: Tue, 19 Aug 1997 07:54:04 -0700 (PDT)
+From: Paul Andrews <paul.andrews@nomura.co.uk>
+Reply-To: paul.andrews@nomura.co.uk
+To: apbugs@hyperreal.org
+Subject: httpd becomes unkillable
+X-Send-Pr-Version: 3.2
+
+>Number:         1016
+>Category:       os-solaris
+>Synopsis:       httpd becomes unkillable
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Aug 19 08:00:02 1997
+>Last-Modified:  Thu Aug 21 10:04:12 PDT 1997
+>Originator:     paul.andrews@nomura.co.uk
+>Organization:
+>Release:        1.2.1
+>Environment:
+SunOS uw0838 5.5.1 Generic_103640-05 sun4u sparc SUNW,Ultra-2, SparcWorks 4.2 C,
+mod_fastcgi 1.4.3, 
+>Description:
+The server spawns 7 copies, quite often if the parent server is killed several
+of the children persist and can not even be killed with SIGKILL.
+>How-To-Repeat:
+The config file is:
+
+Port 8080
+AccessConfig /dev/null
+ResourceConfig /dev/null
+User shipleym
+Group infosys
+ServerName localhost
+DocumentRoot /home/shipleym/www/uw0838/htdocs
+ScriptAlias /cgi-bin /home/shipleym/www/uw0838/cgi-bin
+ 
+# Turn on erro logging
+ErrorLog       logs/error.log
+TransferLog    logs/access.log
+ScoreBoardFile logs/httpd.scoreboard
+ 
+# Java FastCGI
+# Start the demon!
+ExternalAppClass /data/infraweb/NGBWebRoot/cgi-bin/mpa_demo3/TestApp -host uw0838:5556
+ 
+# Tell web server which module handles requests for which files
+<Location /mpa_demo3/TestApp>
+SetHandler fastcgi-script
+</Location>
+
+>Fix:
+Short of rebooting the machine, no
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Tue Aug 19 08:25:11 PDT 1997
+State-Changed-Why:
+Please try without the fastcgi module if possible.
+
+What state does ps show the children to be in?  (ps -al
+is probably best)
+
+Does the system mount anything over NFS?
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Paul Andrews <paul.andrews@nomura.co.uk>
+Subject: Re: os-solaris/1016: httpd becomes unkillable
+Date: Tue, 19 Aug 1997 09:46:56 -0700 (PDT)
+
+ 
+ 
+ 
+ On Tue, 19 Aug 1997, Paul Andrews wrote:
+ 
+ > The server spawns 7 copies, quite often if the parent server is killed several
+ > of the children persist and can not even be killed with SIGKILL.
+ 
+ Just in case you're not familiar with Apache's spawning model please read
+ the htdocs/manual/stopping.html file that comes with it.  Spawning 7
+ copies is normal.
+ 
+ Dean
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Subject: Re: os-solaris/1016: httpd becomes unkillable (fwd)
+Date: Wed, 20 Aug 1997 13:46:31 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Wed, 20 Aug 97 10:25:24 +0100
+ From: paul.andrews@nomura.co.uk
+ To: marc@HYPERREAL.ORG
+ Subject: Re[2]: os-solaris/1016: httpd becomes unkillable
+ 
+ > Synopsis: httpd becomes unkillable
+ > 
+ > State-Changed-From-To: open-analyzed
+ > State-Changed-By: marc
+ > State-Changed-When: Tue Aug 19 08:25:11 PDT 1997
+ > State-Changed-Why:
+ > Please try without the fastcgi module if possible.
+ > 
+ > What state does ps show the children to be in?  (ps -al
+ > is probably best)
+ > 
+ 
+ Below is an example
+ 
+  F S   UID   PID  PPID  C PRI NI     ADDR     SZ    WCHAN TTY      TIME CMD
+  8 S   800  2681     1  0  51 20 50f72cc8    236 50ed483a ?        0:00 httpd
+ 
+ > Does the system mount anything over NFS?
+ > 
+ 
+ Loads of stuff.
+ 
+ In case it's of use, below is the output from pstack:
+ 
+ 2681:   httpd -d /home/shipleym/www/uw0838
+  ef5b6f94 _libc_fcntl (0, 0, 0, 0, 0, 0) + 8
+ 
+ I have also applied the solaris_dup patch since I reported the problem but the
+  problem still exists.
+ 
+ 
+ 
+  __________________________________________________________
+ |
+ | Paul Andrews                   paul.andrews@nomura.co.uk
+ |
+ |              +44-171-521-2909
+ |__________________________________________________________
+ 
+ The views expressed herein are purely personal and should
+ not be construed to be otherwise.
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: paul.andrews@nomura.co.uk
+Subject: Re: os-solaris/1016: httpd becomes unkillable (fwd)
+Date: Wed, 20 Aug 1997 23:03:22 -0700 (PDT)
+
+ 
+ 
+ 
+ >  > Does the system mount anything over NFS?
+ >  > 
+ >  
+ >  Loads of stuff.
+ >  
+ >  In case it's of use, below is the output from pstack:
+ >  
+ >  2681:   httpd -d /home/shipleym/www/uw0838
+ >   ef5b6f94 _libc_fcntl (0, 0, 0, 0, 0, 0) + 8
+ >  
+ >  I have also applied the solaris_dup patch since I reported the problem but the
+ >   problem still exists.
+ >  
+ 
+ Add "LockFile /var/tmp/htlock" to your httpd.conf file. 
+ 
+ pstack, cool I haven't seen that command before. 
+ 
+ Dean
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Aug 21 10:04:12 PDT 1997
+State-Changed-Why:
+Another lockfile on NFS problem.  It's unfortunate we can't
+easily detect this.
+
+Dean
+>Unformatted:
+
+
+
+
+

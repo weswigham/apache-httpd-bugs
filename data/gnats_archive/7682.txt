@@ -1,0 +1,143 @@
+Received: (qmail 44695 invoked by uid 501); 8 May 2001 14:16:48 -0000
+Message-Id: <20010508141648.44691.qmail@apache.org>
+Date: 8 May 2001 14:16:48 -0000
+From: Nils Thomas Vars <ntv@email.com>
+Reply-To: ntv@email.com
+To: submit@bugz.apache.org
+Subject: mod_unique_id requires the hostname of the server
+X-Send-Pr-Version: 3.110
+
+>Number:         7682
+>Category:       config
+>Synopsis:       mod_unique_id requires the hostname of the server
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          feedback
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          support
+>Submitter-Id:   apache
+>Arrival-Date:   Tue May 08 07:20:04 PDT 2001
+>Closed-Date:    
+>Last-Modified:  Sun May 20 23:40:01 PDT 2001
+>Originator:     ntv@email.com
+>Release:        1.3.14
+>Organization:
+>Environment:
+output from uname -a: BeOS ntv 5.0 1000009 BePC unknown
+>Description:
+when i try to start apache, is won't start, and the error_log reads: [alert] gethostname: mod_unique_id requires the hostname of the server.
+I guess i have to "tell" apache what my hostname is, but i couldn't figure out how. I have set the hostname in BeOS's network properties.
+>How-To-Repeat:
+
+>Fix:
+I guess i have to "tell" apache what my hostname is.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: trawick
+State-Changed-When: Fri May 18 07:21:25 PDT 2001
+State-Changed-Why:
+I would guess that the problem is that BEOS logic is needed
+in mod_unique_id.c to handle the return code from 
+gethostname().  Unfortunately, certain (all?) levels of 
+BeOS trigger a gethostname() failure differently than 
+all other platforms on which Apache is supported.
+
+Please try this patch to mod_unique_id:
+
+Index: src/modules/standard/mod_unique_id.c
+===================================================================
+RCS file: /home/cvs/apache-1.3/src/modules/standard/mod_unique_id.c,v
+retrieving revision 1.23
+diff -u -r1.23 mod_unique_id.c
+--- src/modules/standard/mod_unique_id.c	2001/01/15 17:05:51	1.23
++++ src/modules/standard/mod_unique_id.c	2001/05/18 14:19:15
+@@ -193,7 +193,11 @@
+      * of the addresses from the main_server, since those aren't as likely to
+      * be unique as the physical address of the machine
+      */
++#ifdef BEOS /* BeOS returns zero as an error for gethostname */
++    if (gethostname(str, sizeof(str) - 1) == 0) {
++#else
+     if (gethostname(str, sizeof(str) - 1) != 0) {
++#endif
+         ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ALERT, s,
+ 		     "gethostname: mod_unique_id requires the "
+ 		     "hostname of the server");
+
+Please let me know if you are unable to test the patch.
+Maybe I can find somebody to do that.
+
+
+From: <ntv@cocacoliker.com> <ntv@cocacoliker.com>
+To: apache-bugdb@apache.org,trawick@apache.org
+Cc: apbugs@Apache.Org
+Subject: =?iso-8859-1?Q?Re: config/7682: mod=5Funique=5Fid requires the hostname of the server?=
+Date: Mon, 21 May 2001 08:33:12 +0200
+
+ Hi
+ 
+ I haven't got the /src/ directory (i dont have the source i guess). 
+ And frankly i dont know how to apply this patch.
+ I'm sure i can do this if i get further directions and/or files.
+ 
+ 
+ -- Original message --
+ 
+ Synopsis: mod_unique_id requires the hostname of the server
+ 
+ State-Changed-From-To: open-feedback
+ State-Changed-By: trawick
+ State-Changed-When: Fri May 18 07:21:25 PDT 2001
+ State-Changed-Why:
+ I would guess that the problem is that BEOS logic is needed
+ in mod_unique_id.c to handle the return code from 
+ gethostname().  Unfortunately, certain (all?) levels of 
+ BeOS trigger a gethostname() failure differently than 
+ all other platforms on which Apache is supported.
+ 
+ Please try this patch to mod_unique_id:
+ 
+ Index: src/modules/standard/mod_unique_id.c
+ ===================================================================
+ RCS file: /home/cvs/apache-1.3/src/modules/standard/mod_unique_id.c,v
+ retrieving revision 1.23
+ diff -u -r1.23 mod_unique_id.c
+ --- src/modules/standard/mod_unique_id.c	2001/01/15 17:05:51	1.23
+ +++ src/modules/standard/mod_unique_id.c	2001/05/18 14:19:15
+ @@ -193,7 +193,11 @@
+       * of the addresses from the main_server, since those aren't as likely 
+ to
+       * be unique as the physical address of the machine
+       */
+ +#ifdef BEOS /* BeOS returns zero as an error for gethostname */
+ +    if (gethostname(str, sizeof(str) - 1) == 0) {
+ +#else
+      if (gethostname(str, sizeof(str) - 1) != 0) {
+ +#endif
+          ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ALERT, s,
+  		     "gethostname: mod_unique_id requires the "
+  		     "hostname of the server");
+ 
+ Please let me know if you are unable to test the patch.
+ Maybe I can find somebody to do that.
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

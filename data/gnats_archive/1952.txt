@@ -1,0 +1,163 @@
+Received: (qmail 9368 invoked by uid 2012); 16 Mar 1998 01:01:17 -0000
+Message-Id: <19980316010117.9367.qmail@hyperreal.org>
+Date: 16 Mar 1998 01:01:17 -0000
+From: Seth Chaiklin <seth@psy.au.dk>
+Reply-To: seth@psy.au.dk
+To: apbugs@hyperreal.org
+Subject: interaction between "allow/deny" and "require" is not clearly documented
+X-Send-Pr-Version: 3.2
+
+>Number:         1952
+>Category:       documentation
+>Synopsis:       interaction between "allow/deny" and "require" is not clearly documented
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          doc-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Mar 15 17:10:00 PST 1998
+>Last-Modified:  Tue Jul 21 16:11:54 PDT 1998
+>Originator:     seth@psy.au.dk
+>Organization:
+>Release:        1.2.5
+>Environment:
+Linux pc126.psy.aau.dk 2.0.33 #2 Fri Jan 16 16:57:55 CET 1998 i586
+ 
+>Description:
+The description of the "require" directive gives the impression (to me at least)
+that it should be possible to specify a "require" and then have a request
+for name and password.  But I have encountered a situation in which is
+appears that it can be "overridden" by an allow/deny combination.
+
+I have looked in the PR database, re-read the satisfy,require, allow
+directives, and looked in the Apache Week discussions, and could not
+get any clarification of how these two access modes (require and allow/deny)
+interact.
+
+So now I will describe an attempt to use both of these that gave surprising
+behavior (to me at least).  Perhaps it should be pointed out somewhere
+in the documentation?
+
+(N.B.  I am not having problems using any of these directives.  The problem
+I am trying to describe here is what I believe to be an interaction between
+them that is not transparent from the documentation.  At the same time,
+I am trying to confirm that my analysis of what happened is correct. Thanks).
+
+It is hard to describe the problem in general.  I will give an example
+in the next section.
+
+
+>How-To-Repeat:
+First, some background information on how the system is configured:
+
+DocumentRoot: /home/httpd/html
+
+<Directory /home/httpd/html>
+    order allow,deny
+    allow from all
+
+    AuthDBMGroupFile /etc/httpd/userbase
+    AuthDBMUserFile /etc/httpd/userbase
+    AuthType Basic  
+</Directory>
+---------------------------
+
+Ok, so the preceding should show a vanilla installation, with userdatabases
+specified from the root, so that they are acessible to all the underlying
+subdirectories.
+--------------------------------------------
+
+Now here is an example where the 'require' directive is used:
+
+<Directory /home/httpd/html/stats/test>
+AuthName test stats 
+    <Limit GET>
+        require user joe seth
+     </Limit>
+</Directory> 
+
+As I understand, if I try to access /stats/test, then I will be prompted for
+a username/password, and will be given access if I can supply seth or joe password.
+
+Now....here comes the rub....one directory level higher there is an
+allow/deny pair.
+
+<Directory /home/httpd/html/stats>
+    <Limit GET>
+        order deny,allow
+        deny from all
+        allow from seth.psy.aau.dk
+     </Limit>
+</Directory> 
+
+Now here is the problematic behavior that I would like to clarify.
+
+1.  If I try to access  /stats/test from the seth.psy.aau.dk machine
+then I get a request for name/password, as would be expected.
+
+2.  If  I try to access /stats/test from another machine than seth.psy.aau.dk
+then I get a "Client denied by server configuration" error.
+
+3.  If I add a "Satisfy any" to the /stats/test directory configuration, then
+it is possible to request from a non-seth.psy.aau.dk machine and get a name/password
+request.
+
+Now....it seems to me that:  (a) the /stats directory is "blocking" access to
+the /stats/test directory, despite the "require" and (b) the satisfy is making
+it possible to get access.
+
+Is that the right analysis?
+>Fix:
+Is this a bug or a feature? (-:
+
+Either: (a) It would be helpful to add a little warning as part of the description 
+of the 'require' directive that one has to be sure that the allow/deny of  higher
+directories allows access to the directory, or (b) maybe 'require' should be allowed
+to override the 'allow/deny' of higher directories.
+
+It doesn't matter to me.  I just would like to be sure that I have a proper
+understanding of how it works.
+
+By the way, this problem seems to have some relation to PR #1287, which is suspended
+for further consideration (namely some warning when "impossible" configurations
+are made).  In my example, it is not impossible, but I could imagine someone
+thinking that they could "disallow" from the higher directory, and then "require"
+to give access to some subdirectories.  I believe that would be impossible in 1.2.5,
+if my analysis here is correct.
+
+Thanks for your consideration.
+
+Cheers,
+  Seth Chaiklin
+  seth@psy.au.d
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: lars
+State-Changed-When: Tue Jul 21 16:11:53 PDT 1998
+State-Changed-Why:
+
+The behaviour you describe is correct (it's a feature :-).
+
+If you use Require and Satisfy Any in a subdirectory
+you tell Apache that everyone can access the resource
+with the correct id/password. If you want to limit
+the access to one or more domains you have to use
+the deny directive for the directory or parent directory.
+
+If you've limited access in one directory and want
+to make a sub-directory accessible to everyone it is
+always possible to use "order allow,deny" and "allow from
+all".
+
+But all this *is* explained in the documentation.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

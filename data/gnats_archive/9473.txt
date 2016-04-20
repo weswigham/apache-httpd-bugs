@@ -1,0 +1,107 @@
+Received: (qmail 13810 invoked by uid 501); 14 Jan 2002 11:51:19 -0000
+Message-Id: <20020114115119.13809.qmail@apache.org>
+Date: 14 Jan 2002 11:51:19 -0000
+From: Glenn Strauss <gs-apache@gluelogic.com>
+Reply-To: gs-apache@gluelogic.com
+To: submit@bugz.apache.org
+Subject: data corruption and long (multi-second) response time w/ include virtual calls /cgi-bin which uses proxypass and the resulting server uses Pragma: no-cache
+X-Send-Pr-Version: 3.110
+
+>Number:         9473
+>Category:       mod_include
+>Synopsis:       data corruption and long (multi-second) response time w/ include virtual calls /cgi-bin which uses proxypass and the resulting server uses Pragma: no-cache
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jan 14 04:00:00 PST 2002
+>Closed-Date:    
+>Last-Modified:  Mon Jan 14 05:10:00 PST 2002
+>Originator:     gs-apache@gluelogic.com
+>Release:        1.3.22
+>Organization:
+apache
+>Environment:
+netspace ~ -> uname -a
+Linux netspace.org 2.4.14 #2 SMP Sun Nov 25 19:42:33 EST 2001 i686 unknown
+>Description:
+Two Apache instances.
+a) http://www.netspace.org runs with mod_include and mod_proxy
+   ProxyPass /cgi-bin/utils http://perl.netspace.org/utils/
+b) http://perl.netspace.org is a mod_perl server
+
+On www.netspace.org, an .shtml file includes something like
+   <!--#include virtual="/cgi-bin/utils/random_line?file=/foo/bar/baz.txt"-->
+
+Random_file is a simple script which returns a random line from the file.
+It's nice and fast.  However, when random_file sets
+  $r->header_out('Pragma','no-cache');
+in the Perl script, the .shtml file ends up with spurious data surrounding
+the returned line from the file.  It also takes multiple seconds before
+completing.  This does NOT happen when the perl server is accessed directly
+as http://perl.netspace.org/utils/random_line?file=/foo/bar/baz.txt (even with
+Pragma: no-cache set).  Nor does this happen when accessed as
+http://www.netspace.org/utils/random_line?file=/foo/bar/baz.txt.  The problem
+only occurs when called from the .shtml file part of the <!--#include virtual=
+>How-To-Repeat:
+please see Full Description above.
+
+The perl script for random_line is temporarily at
+  http://www.netspace.org/~gs/code/RandomLine.pm
+It is pre-alpha code since it's still in testing, but it's short (160 lines
+including comments)
+
+>Fix:
+My workaround is to use other non-caching header indicators.
+>Release-Note:
+>Audit-Trail:
+
+From: Glenn <gs@netspace.org>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc:  
+Subject: Re: mod_include/9473: data corruption and long (multi-second) response time w/ include virtual calls /cgi-bin which uses proxypass and the resulting server uses Pragma: no-cache
+Date: Mon, 14 Jan 2002 08:04:29 -0500
+
+ On Mon, Jan 14, 2002 at 12:00:00PM -0000, submit@bugz.apache.org wrote:
+ > Thank you very much for your problem report.
+ > It has the internal identification `mod_include/9473'.
+ > The individual assigned to look at your
+ > report is: apache. 
+ > 
+ > >Category:       mod_include
+ > >Responsible:    apache
+ > >Synopsis:       data corruption and long (multi-second) response time w/ include virtual calls /cgi-bin which uses proxypass and the resulting server uses Pragma: no-cache
+ > >Arrival-Date:   Mon Jan 14 04:00:00 PST 2002
+ 
+ As an addendum, it the problem seems to be limited to the combination of
+ proxypass and server-side include.  Either without the other appears to
+ work.
+ 
+ My proxy setup is as follows
+   ProxyRequests Off
+   NoCache *
+   ProxyPass /cgi-bin/utils/ http://perl.netspace.org/utils/
+ and all of the above is in the global server config
+ 
+ -Glenn
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

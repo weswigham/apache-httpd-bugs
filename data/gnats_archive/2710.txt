@@ -1,0 +1,287 @@
+Received: (qmail 27345 invoked by uid 2012); 25 Jul 1998 09:15:01 -0000
+Message-Id: <19980725091501.27344.qmail@hyperreal.org>
+Date: 25 Jul 1998 09:15:01 -0000
+From: John Caldwell <jcald@lake.ml.org>
+Reply-To: jcald@lake.ml.org
+To: apbugs@hyperreal.org
+Subject: configure breaks if you have more than one 'search' entry in the resolv.conf.
+X-Send-Pr-Version: 3.2
+
+>Number:         2710
+>Category:       config
+>Synopsis:       configure breaks if you have more than one 'search' entry in the resolv.conf.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Jul 25 02:20:00 PDT 1998
+>Last-Modified:  Wed Jul 29 23:50:01 PDT 1998
+>Originator:     jcald@lake.ml.org
+>Organization:
+>Release:        1.3.1
+>Environment:
+not relevant.
+>Description:
+configure breaks if you have more than one domain name listed in your 
+/etc/resolv.conf in a 'search' directive.  IMHO, this isnt the right
+way to do this at all- what guarantee is there that they have a resolv.conf
+and that they have only a single domain name listed in the 'search' statement?
+>How-To-Repeat:
+in /etc/resolv.conf:
+search foo.domain.com
+search bar.otherdomain.com
+
+then ./configure normally in the apache source directory
+>Fix:
+figure out a smarter way of getting the domain name (duh.) perhaps check to see if
+there is more than one domain listed in the /etc/resolv.conf, and if so prompt the
+user for the correct domain name, using the first one found as the default value.
+
+
+The configure script looks incredibly broken. example:
+            domainname="`egrep '^[      ]*search' /etc/resolv.conf |\
+                         sed -e 's/.*search//' -e 's/^[         ]*//' \
+                             -e 's/^ *//' -e 's/^       *//' \
+                             -e 's/ .*//' -e 's/^\.//' -e 's/^/./'`"
+
+ugly!!!! thats the most heinous sed script i've ever seen! it can be reduced to 
+this:
+
+domainname="`awk  '/search/ { print "."$2 }' /etc/resolv.conf`
+
+someone needs to rewrite this configure. its terrible.
+>Audit-Trail:
+
+From: John Caldwell <jcald@lake.ml.org>
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: config/2710: configure breaks if you have more than one 'search' entry in the resolv.conf.
+Date: Sat, 25 Jul 1998 02:52:16 -0700 (PDT)
+
+ On 25 Jul 1998 apbugs@hyperreal.org wrote:
+ 
+ > Thank you very much for your problem report.
+ > It has the internal identification `config/2710'.
+ > The individual assigned to look at your
+ > report is: apache. 
+ > 
+ > >Category:       config
+ > >Responsible:    apache
+ > >Synopsis:       configure breaks if you have more than one 'search' entry in the resolv.conf.
+ > >Arrival-Date:   Sat Jul 25 02:20:00 PDT 1998
+ > 
+ > 
+ 
+ slight correction to the awk script:
+ 
+ 
+  awk  '/search/ { print /^./ ? $2 : "."$2 }' /etc/resolv.conf
+ 
+ 
+ 
+ 
+ --
+  -------------------------
+ | John Caldwell
+ | jcald@lake.ml.org
+ | http://www.lake.ml.org/
+  -------------------------
+ 
+ 
+ 
+
+From: "Ralf S. Engelschall" <rse@engelschall.com>
+To: jcald@lake.ml.org
+Cc: apbugs@apache.org
+Subject: Re: config/2710: configure breaks if you have more than one 'search' entry in the resolv.conf.
+Date: Sat, 25 Jul 1998 12:48:30 +0200
+
+ In article <19980725091501.27344.qmail@hyperreal.org> you wrote:
+ 
+ >[...]
+ > configure breaks if you have more than one domain name listed in your 
+ > /etc/resolv.conf in a 'search' directive.  IMHO, this isnt the right
+ > way to do this at all- what guarantee is there that they have a resolv.conf
+ > and that they have only a single domain name listed in the 'search' statement?
+ >>How-To-Repeat:
+ > in /etc/resolv.conf:
+ > search foo.domain.com
+ > search bar.otherdomain.com
+ 
+ > then ./configure normally in the apache source directory
+ >>Fix:
+ > figure out a smarter way of getting the domain name (duh.) perhaps check to see if
+ > there is more than one domain listed in the /etc/resolv.conf, and if so prompt the
+ > user for the correct domain name, using the first one found as the default value.
+ 
+ > The configure script looks incredibly broken. example:
+ >             domainname="`egrep '^[      ]*search' /etc/resolv.conf |\
+ >                          sed -e 's/.*search//' -e 's/^[         ]*//' \
+ >                              -e 's/^ *//' -e 's/^       *//' \
+ >                              -e 's/ .*//' -e 's/^\.//' -e 's/^/./'`"
+ 
+ > ugly!!!! thats the most heinous sed script i've ever seen! it can be reduced to 
+ > this:
+ 
+ > domainname="`awk  '/search/ { print "."$2 }' /etc/resolv.conf`
+ 
+ > someone needs to rewrite this configure. its terrible.
+ 
+ >[...]
+ > slight correction to the awk script:
+ >  awk  '/search/ { print /^./ ? $2 : "."$2 }' /etc/resolv.conf
+ >[...]
+ 
+ A few statements:
+ 
+ 1. The configure is not such terrible because we like it this way.
+    Its mostly such terrible to be portable. If the goal would be less
+    complicated constructs we would write it in Icon or Perl or whatever
+    powerful language. But we only have Bourne-Shell and a few
+    semi-standardized tools we can use in a portable way. So just saying "some
+    needs to rewrite this configure. its terrible" is not very realistic.  At
+    least not when you are confronted with such a lot of platforms which such a
+    lot of broken tools.
+ 
+ 2. Yes, the sed used construct is horrible. But its maximum portable 
+    this way (even if there is a bug with the two search entries). Replacing it
+    with your suggested Awk-based solution is perhaps possible. But you will
+    not doubt me when I say that the chance is high that this one fails under
+    some platforms. Awks are even more broken out there in the world then some
+    Sed's, really.
+ 
+ 3. When you think about the problematic of determining the domainname
+    of a machine _IN A PORTABLE WAY_ you recognize that trying to guess it from
+    some information inside /etc/resolv.conf is the only acceptable way. Sure,
+    its not the correct way on some platforms, but all other ways like
+    nslookup-based approaches, uname-based approaches or even checking
+    /etc/hosts is either non-portable or results in even more incorrect values.
+ 
+ But you're right, we missed at least the fact that perhaps there are more than
+ one "search" entry in /etc/resolv.conf. This is a bug. Thanks discovering
+ this. But IMHO the best and most portable way is to just add a "head -1" after
+ the egrep. 
+ 
+ BTW, even you suggested 
+    
+    domainname="`awk '/search/ { print /^./ ? $2 : "."$2 }'`"
+ 
+ as a better solution you also forgot the "multiple-search" problem: It fails
+ also when more "search" entries exist! It just prints all of them. And
+ additionally it is non-portable because it uses nested double quotes which
+ some braindead Bourne Shell variants dislike most.
+ 
+ So, please understand that we only add "head -1" for Apache 1.3.2 and have to
+ ignore your suggestion because of portability. Nevertheless thanks for the
+ report.
+ 
+ Greetings,
+                                        Ralf S. Engelschall
+                                        rse@engelschall.com
+                                        www.engelschall.com
+State-Changed-From-To: open-closed
+State-Changed-By: rse
+State-Changed-When: Sat Jul 25 05:19:35 PDT 1998
+State-Changed-Why:
+Close this report. We fixed it now for Apache 1.3.2
+by adding two "head -1" to the configure script.
+
+From: John Caldwell <jcald@lake.ml.org>
+To: "Ralf S. Engelschall" <rse@engelschall.com>
+Cc: apbugs@apache.org
+Subject: Re: config/2710: configure breaks if you have more than one 'search' entry in the resolv.conf.
+Date: Wed, 29 Jul 1998 23:48:50 -0700 (PDT)
+
+ On Sat, 25 Jul 1998, Ralf S. Engelschall wrote:
+ 
+ > 
+ > A few statements:
+ > 
+ > 1. The configure is not such terrible because we like it this way.
+ >    Its mostly such terrible to be portable. If the goal would be less
+ >    complicated constructs we would write it in Icon or Perl or whatever
+ >    powerful language. But we only have Bourne-Shell and a few
+ >    semi-standardized tools we can use in a portable way. So just saying "some
+ >    needs to rewrite this configure. its terrible" is not very realistic.  At
+ >    least not when you are confronted with such a lot of platforms which such a
+ >    lot of broken tools.
+ > 
+ > 2. Yes, the sed used construct is horrible. But its maximum portable 
+ >    this way (even if there is a bug with the two search entries). Replacing it
+ >    with your suggested Awk-based solution is perhaps possible. But you will
+ >    not doubt me when I say that the chance is high that this one fails under
+ >    some platforms. Awks are even more broken out there in the world then some
+ >    Sed's, really.
+ > 
+ > 3. When you think about the problematic of determining the domainname
+ >    of a machine _IN A PORTABLE WAY_ you recognize that trying to guess it from
+ >    some information inside /etc/resolv.conf is the only acceptable way. Sure,
+ >    its not the correct way on some platforms, but all other ways like
+ >    nslookup-based approaches, uname-based approaches or even checking
+ >    /etc/hosts is either non-portable or results in even more incorrect values.
+ > 
+ 
+ all good points, and i understand now why the configure is how it is.
+ 
+ 
+ 
+ > But you're right, we missed at least the fact that perhaps there are more than
+ > one "search" entry in /etc/resolv.conf. This is a bug. Thanks discovering
+ > this. But IMHO the best and most portable way is to just add a "head -1" after
+ > the egrep. 
+ > 
+ > BTW, even you suggested 
+ >    
+ >    domainname="`awk '/search/ { print /^./ ? $2 : "."$2 }'`"
+ > 
+ > as a better solution you also forgot the "multiple-search" problem: It fails
+ > also when more "search" entries exist! It just prints all of them. And
+ > additionally it is non-portable because it uses nested double quotes which
+ > some braindead Bourne Shell variants dislike most.
+ > 
+  
+ I realized that it would do exactly the same thing; i wasnt trying to get
+ it to return just the first one.
+ 
+ 
+ > So, please understand that we only add "head -1" for Apache 1.3.2 and have to
+ > ignore your suggestion because of portability. Nevertheless thanks for the
+ > report.
+ > 
+ 
+ IMHO in the future, it would be better to ask the user for a default
+ domain name if more than one is found in /etc/resolv.conf.  There isnt any
+ fast and true policy that says people will put their real domain as the
+ first entry (or at all!)  
+ 
+ In this respect, configure needs to be smarter, and if it gets more than
+ one entry, to grab the first one and say "is your domain name foo.com? if
+ not, enter it here:"  Although i know this is quite different from what
+ the configure does now, blindly assuming that the 'head -1' will assure
+ you get the real domain name doesnt sound like a good solution to me. 
+ 
+ 
+ Ironically- since by default configure is silent, I would have never known
+ until apache was compiled that it picked the wrong domain name, if that
+ bug hadnt been there. 
+ 
+ 
+ 
+ --
+  -------------------------
+ | John Caldwell
+ | jcald@lake.ml.org
+ | http://www.lake.ml.org/
+  -------------------------
+ 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

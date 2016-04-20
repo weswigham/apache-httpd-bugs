@@ -1,0 +1,299 @@
+From apwww@hyperreal.org  Thu Sep 18 10:38:31 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id KAA23746;
+	Thu, 18 Sep 1997 10:38:31 -0700 (PDT)
+Message-Id: <199709181738.KAA23746@hyperreal.org>
+Date: Thu, 18 Sep 1997 10:38:31 -0700 (PDT)
+From: Stefan Bethke <stefan@promo.de>
+Reply-To: stefan@promo.de
+To: apbugs@hyperreal.org
+Subject: Allow for Last-Modified: without resorting to XBitHack
+X-Send-Pr-Version: 3.2
+
+>Number:         1145
+>Category:       mod_include
+>Synopsis:       Allow for Last-Modified: without resorting to XBitHack
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    contrib@apache.org
+>State:          suspended
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Sep 18 10:40:02 1997
+>Last-Modified:  Mon Feb 23 04:02:52 PST 1998
+>Originator:     stefan@promo.de
+>Organization:
+>Release:        1.2.4
+>Environment:
+FreeBSD 2.2-STABLE
+>Description:
+Because I don't like XBitHack for aestetical reasons, this patch adds a
+new directive CacheSsiDocs, which gives the same result as setting XBitHack Full
+and chmod g+w for every file.
+
+Patches also availible at ftp://ftp.promo.de/people/stefan/cachessidocs-diffs.tar.gz
+
+Please bear with me, this is my first try to patch apache :-)
+>How-To-Repeat:
+
+>Fix:
+*** mod_include.c.orig	Thu Sep 18 18:38:28 1997
+--- mod_include.c	Thu Sep 18 18:45:46 1997
+***************
+*** 1763,1768 ****
+--- 1763,1774 ----
+  
+  module includes_module;
+  enum xbithack { xbithack_off, xbithack_on, xbithack_full };
++ enum cache_ssi_docs { cache_ssi_docs_off, cache_ssi_docs_on };
++ 
++ struct include_config {
++ 	enum xbithack xbithack;
++ 	enum cache_ssi_docs cache_ssi_docs;
++ };
+  
+  #ifdef XBITHACK	
+  #define DEFAULT_XBITHACK xbithack_full
+***************
+*** 1772,1799 ****
+  
+  void *create_includes_dir_config (pool *p, char *dummy)
+  {
+!     enum xbithack *result = (enum xbithack*)palloc(p, sizeof (enum xbithack));
+!     *result = DEFAULT_XBITHACK;
+      return result;
+  }
+  
+  const char *set_xbithack (cmd_parms *cmd, void *xbp, char *arg)
+  {
+!    enum xbithack *state = (enum xbithack *)xbp;
+  
+!    if (!strcasecmp (arg, "off")) *state = xbithack_off;
+!    else if (!strcasecmp (arg, "on")) *state = xbithack_on;
+!    else if (!strcasecmp (arg, "full")) *state = xbithack_full;
+     else return "XBitHack must be set to Off, On, or Full";
+  
+     return NULL;
+  }
+  
+  int send_parsed_file(request_rec *r)
+  {
+      FILE *f;
+!     enum xbithack *state =
+! 	(enum xbithack *)get_module_config(r->per_dir_config,&includes_module);
+      int errstatus;
+  
+      if (!(allow_options (r) & OPT_INCLUDES)) return DECLINED;
+--- 1778,1817 ----
+  
+  void *create_includes_dir_config (pool *p, char *dummy)
+  {
+!     struct include_config *result = (struct include_config*)palloc(p, sizeof (struct include_config));
+!     result->xbithack = DEFAULT_XBITHACK;
+!     result->cache_ssi_docs = cache_ssi_docs_off;
+      return result;
+  }
+  
+  const char *set_xbithack (cmd_parms *cmd, void *xbp, char *arg)
+  {
+!    struct include_config *state = (struct include_config *)xbp;
+  
+!    if (!strcasecmp (arg, "off")) state->xbithack = xbithack_off;
+!    else if (!strcasecmp (arg, "on")) state->xbithack = xbithack_on;
+!    else if (!strcasecmp (arg, "full")) state->xbithack = xbithack_full;
+     else return "XBitHack must be set to Off, On, or Full";
+  
+     return NULL;
+  }
+  
++ const char *set_cache_ssi_docs (cmd_parms *cmd, void *xbp, char *arg)
++ {
++    struct include_config *state = (struct include_config *)xbp;
++ 
++    if (!strcasecmp (arg, "off")) state->cache_ssi_docs = cache_ssi_docs_off;
++    else if (!strcasecmp (arg, "on")) state->cache_ssi_docs = cache_ssi_docs_on;
++    else return "CacheSsiDocs must be set to Off, or On";
++ 
++    return NULL;
++ }
++ 
+  int send_parsed_file(request_rec *r)
+  {
+      FILE *f;
+!     struct include_config *state =
+! 	(struct include_config *)get_module_config(r->per_dir_config,&includes_module);
+      int errstatus;
+  
+      if (!(allow_options (r) & OPT_INCLUDES)) return DECLINED;
+***************
+*** 1810,1820 ****
+  	return FORBIDDEN;
+      }
+  
+!     if (*state == xbithack_full
+  #ifndef __EMX__    
+      /*  OS/2 dosen't support Groups. */
+  	&& (r->finfo.st_mode & S_IXGRP)
+  #endif
+  	&& (errstatus = set_last_modified (r, r->finfo.st_mtime)))
+          return errstatus;
+  
+--- 1828,1839 ----
+  	return FORBIDDEN;
+      }
+  
+!     if (((state->xbithack == xbithack_full
+  #ifndef __EMX__    
+      /*  OS/2 dosen't support Groups. */
+  	&& (r->finfo.st_mode & S_IXGRP)
+  #endif
++ 	) || state->cache_ssi_docs == cache_ssi_docs_on)
+  	&& (errstatus = set_last_modified (r, r->finfo.st_mtime)))
+          return errstatus;
+  
+***************
+*** 1855,1861 ****
+  
+  int xbithack_handler (request_rec *r)
+  {
+!     enum xbithack *state;
+  	
+  #ifdef __EMX__
+      /* OS/2 dosen't currently support the xbithack. This is being worked on. */
+--- 1874,1880 ----
+  
+  int xbithack_handler (request_rec *r)
+  {
+!     struct include_config *state;
+  	
+  #ifdef __EMX__
+      /* OS/2 dosen't currently support the xbithack. This is being worked on. */
+***************
+*** 1863,1878 ****
+  #else
+      if (!(r->finfo.st_mode & S_IXUSR)) return DECLINED;
+  
+!     state = (enum xbithack *)get_module_config(r->per_dir_config,
+  					       &includes_module);
+      
+!     if (*state == xbithack_off) return DECLINED;
+      return send_parsed_file (r);
+  #endif
+  }
+  
+  command_rec includes_cmds[] = {
+  { "XBitHack", set_xbithack, NULL, OR_OPTIONS, TAKE1, "Off, On, or Full" },
+  { NULL }    
+  };
+  
+--- 1882,1898 ----
+  #else
+      if (!(r->finfo.st_mode & S_IXUSR)) return DECLINED;
+  
+!     state = (struct include_config *)get_module_config(r->per_dir_config,
+  					       &includes_module);
+      
+!     if (state->xbithack == xbithack_off) return DECLINED;
+      return send_parsed_file (r);
+  #endif
+  }
+  
+  command_rec includes_cmds[] = {
+  { "XBitHack", set_xbithack, NULL, OR_OPTIONS, TAKE1, "Off, On, or Full" },
++ { "CacheSsiDocs", set_cache_ssi_docs, NULL, OR_OPTIONS, TAKE1, "Off or On" },
+  { NULL }    
+  };
+  
+
+
+
+
+
+
+*** mod_include.html.orig	Thu Sep 18 19:24:09 1997
+--- mod_include.html	Thu Sep 18 19:21:10 1997
+***************
+*** 347,356 ****
+--- 347,390 ----
+  <hr>
+  <h2>Directives</h2>
+  <ul>
++ <li><A HREF="#xbithack">CacheSsiDocs</A>
+  <li><A HREF="#xbithack">XBitHack</A>
+  </ul>
+  <hr>
+  
++ 
++ <h2><A name="cachessidocs">CacheSsiDocs</A></h2>
++ <!--%plaintext &lt;?INDEX {\tt CacheSsiDocs} directive&gt; -->
++ <strong>Syntax:</strong> CacheSsiDocs <em>status</em><br>
++ <strong>Default:</strong> <code>CacheSsiDocs off</code><br>
++ <Strong>Context:</strong> server config, virtual host, directory, .htaccess<br>
++ <Strong>Override:</strong> Options<br>
++ <strong>Status:</strong> Base<br>
++ <strong>Module:</strong> mod_include<p>
++ 
++ This directive makes any document served through <CODE>mod_include</CODE>
++ cachable. <em>Status</em> can have the following values:
++ <dl>
++ <dt>off
++ <dd>Documents remain non-cacheable; the XBitHack directive still works.
++ <dt>on
++ <dd>The Last-modified date for the document is set to the last modified time
++ of the file. This is the same as setting <CODE>XBitHack</CODE> to
++ <CODE>full</CODE> and setting the group-execute bit for every file.
++ </dl>
++ Normally, documents served through SSI are non-cacheable, because the
++ <CODE>mod_include</CODE> module does not check whether information included
++ through any of the statements would actually render the page non-cacheable
++ (because you call a script from within that document, and want that script
++ to be executed every time a client requests that document).<P>
++ 
++ To make all documents cacheable, you can set <CODE>CacheSsiDocs</CODE> to
++ on, for example, in a <CODE>.htaccess</CODE> for a specific directory.
++ Alternatively, you can set <CODE>XBitHack</CODE> to <CODE>full</CODE> and
++ set the owner- and group-execute bit for all documents you want to become
++ cachable.<P>
++ 
++ <HR>
+  
+  <h2><A name="xbithack">XBitHack</A></h2>
+  <!--%plaintext &lt;?INDEX {\tt XBitHack} directive&gt; -->
+%0
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: Lars.Eilebrecht@unix-ag.org
+State-Changed-When: Thu Sep 18 14:16:56 PDT 1997
+State-Changed-Why:
+
+Thanks for your patch.
+
+We are already working on this topic (generation
+of Last-Modified, ETag headers etc. for SSI documents),
+but it is to late to add such a 'feature' to the
+forthcoming 1.3 version, because it is difficult to add
+(returning the last modified date of the main file itself
+is not enough... included objects have to be checked etc.)
+
+See also PR#623 which is about the same topic.
+
+
+Responsible-Changed-From-To: apache (Apache HTTP Project)-dgaudet
+Responsible-Changed-By: Lars.Eilebrecht@unix-ag.org
+Responsible-Changed-When: Thu Sep 18 14:16:56 PDT 1997
+Responsible-Changed-Why:
+Dean, you are working on this topic aren't you? :)%0
+Responsible-Changed-From-To: dgaudet-apache
+Responsible-Changed-By: coar
+Responsible-Changed-When: Thu Jan 22 09:23:56 PST 1998
+Responsible-Changed-Why:
+Putting back into mainstream bugdb
+Responsible-Changed-From-To: apache-contrib@apache.org
+Responsible-Changed-By: dgaudet
+Responsible-Changed-When: Mon Feb 23 04:02:52 PST 1998
+Responsible-Changed-Why:
+mark for contrib%0
+>Unformatted:
+
+

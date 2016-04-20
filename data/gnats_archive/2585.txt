@@ -1,0 +1,512 @@
+Received: (qmail 8165 invoked by uid 2012); 10 Jul 1998 16:35:32 -0000
+Message-Id: <19980710163532.8164.qmail@hyperreal.org>
+Date: 10 Jul 1998 16:35:32 -0000
+From: Mark Stemm <stemm@cs.berkeley.edu>
+Reply-To: stemm@cs.berkeley.edu
+To: apbugs@hyperreal.org
+Subject: GET /track1.mp3 from localhost returns no HTTP headers.
+X-Send-Pr-Version: 3.2
+
+>Number:         2585
+>Category:       protocol
+>Synopsis:       GET /track1.mp3 from localhost returns no HTTP headers.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jul 10 09:40:00 PDT 1998
+>Last-Modified:  Thu Feb 11 13:09:45 PST 1999
+>Originator:     stemm@cs.berkeley.edu
+>Organization:
+>Release:        1.3.0
+>Environment:
+uname -a: Linux saber.CS.Berkeley.EDU 2.0.32 #11 Fri Mar 27 14:53:08 PST 1998 i686 unknown
+gcc --version: 2.7.2.3
+>Description:
+(The web server is running on saber.cs.berkeley.edu)
+stemm@saber(/usr/local/src/apache_1.3.0/src)=>telnet localhost 80
+telnet: -x ignored, no encryption support.
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+GET /track1.mp3 HTTP/1.0
+
+<unprintable content>
+
+stemm@polvo(~)=>telnet saber 80
+telnet: Warning: -x ignored, no ENCRYPT support.
+Trying 128.32.130.56...
+Connected to saber.cs.berkeley.edu.
+Escape character is '^]'.
+GET /track1.mp3 HTTP/1.0
+
+HTTP/1.1 200 OK
+Date: Fri, 10 Jul 1998 16:33:38 GMT
+Server: Apache/1.3.0 (Unix)
+Last-Modified: Fri, 10 Jul 1998 16:22:25 GMT
+ETag: "2072c-26fc00-35a63fc1"
+Accept-Ranges: bytes
+Content-Length: 2554880
+Connection: close
+Content-Type: audio/mpeg
+
+<unprintable content>
+
+>How-To-Repeat:
+I would be willing to add accounts to saber as necessary.
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Fri Jul 10 10:12:10 PDT 1998
+State-Changed-Why:
+What is recorded in the logfile for the localhost requests?
+If nothing, then are you sure you don't have another
+web server running bound to 127.0.0.1?  Check by stopping
+Apache and seeing if 127.0.0.1 still answers.
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: protocol/2585: GET /track1.mp3 from localhost returns no HTTP headers. (fwd)
+Date: Wed, 15 Jul 1998 21:08:10 -0700 (PDT)
+
+ ---------- Forwarded message ----------
+ Date: Fri, 10 Jul 1998 11:24:07 -0700
+ From: Mark Stemm <stemm@cs.berkeley.edu>
+ To: marc@hyperreal.org
+ Subject: Re: protocol/2585: GET /track1.mp3 from localhost returns no HTTP headers.
+ 
+ Here's what happens:
+ 
+ stemm@saber(/big/mp3/jawbox/jawbox)=>telnet localhost 80
+ telnet: -x ignored, no encryption support.
+ Trying 127.0.0.1...
+ Connected to localhost.
+ Escape character is '^]'.
+ GET /track1.mp3 HTTP/1.0
+ 
+ <unprintable content>
+ 
+ In /usr/local/apache/var/log/access_log:
+ 
+ 127.0.0.1 - - [10/Jul/1998:11:15:55 -0700] "GET /track1.mp3 HTTP/1.0"
+ 200 2554880
+ 
+ stemm@now(~)=>telnet saber 80
+ telnet: Warning: -x ignored, no ENCRYPT support.
+ Trying 128.32.130.56...
+ Connected to saber.CS.Berkeley.EDU.
+ Escape character is '^]'.
+ GET /track1.mp3 HTTP/1.0
+ 
+ HTTP/1.1 200 OK
+ Date: Fri, 10 Jul 1998 18:17:57 GMT
+ Server: Apache/1.3.0 (Unix)
+ Last-Modified: Fri, 10 Jul 1998 16:22:25 GMT
+ ETag: "2072c-26fc00-35a63fc1"
+ Accept-Ranges: bytes
+ Content-Length: 2554880
+ Connection: close
+ Content-Type: audio/mpeg
+ 
+ <unprintable content>
+ 
+ In /usr/local/apache/var/log/access_log:
+ 128.32.44.96 - - [10/Jul/1998:11:18:01 -0700] "GET /track1.mp3 HTTP/1.0"
+ 200 2554880
+ 
+ When I stop apache...
+ [stemm@saber jawbox]# /usr/local/apache/sbin/apachectl stop
+ /usr/local/apache/sbin/apachectl stop: httpd stopped
+ [stemm@saber jawbox]# telnet localhost 80
+ Trying 127.0.0.1...
+ telnet: Unable to connect to remote host: Connection refused
+ 
+ Anything else you would like me to try?
+ 
+ 
+ 		--Mark
+ 
+State-Changed-From-To: analyzed-feedback
+State-Changed-By: fielding
+State-Changed-When: Sun Sep 13 16:09:27 PDT 1998
+State-Changed-Why:
+
+I was not able to reproduce this problem using 1.3.2-dev
+and a small test file. I would have tested it with the
+original mp3 file, but the reported server is not up.
+Have you tested the problem with 1.3.1 or later?
+
+In any case, aside from the simple possibilities that
+Marc already mentioned, a difference between the localhost 
+and normal server address would likely be due to a difference
+in server configuration on a per-address basis or a buffer
+overflow in a reverse DNS lookup, neither of which can be
+tested easily.
+
+Does the server have multiple configurations for different
+IP addresses (address-based virtual hosts)?
+
+It looks like HostnameLookups is set to off, since otherwise
+the logfile would say "localhost" instead of 127.0.0.1. If
+it is in fact set to "on" or "double" and the lookup is
+failing, then that is the likely source of the problem.
+
+Severity has been reset to non-critical because nobody ever
+accesses a web server using "localhost" under normal
+circumstances.
+
+Severity-Changed-From-To: serious-non-critical
+Severity-Changed-By: fielding
+Severity-Changed-When: Sun Sep 13 16:09:27 PDT 1998
+
+From: Mark Richard Stemm <stemm@cs.berkeley.edu>
+To: fielding@apache.org
+Cc: apbugs@apache.org
+Subject: Re: protocol/2585: GET /track1.mp3 from localhost returns no HTTP headers.
+Date: Mon, 14 Sep 1998 15:31:45 -0700
+
+ The server is up running again if you wanted to check it out. I just
+ upgraded to 1.3.1, and still have the same problem.
+ 
+ The machine does have multiple DNS entries (spand.cs.berkeley.edu and
+ saber.cs.berkeley.edu both map to 128.32.130.56), but the server does
+ not have multiple configurations for the two names--http://spand returns
+ the same content as http://saber.
+ 
+ Here is my apache configuration file. The only change I made to any of
+ the configuration files is to change the port that the server runs on to
+ 80 instead of 8080.
+ 
+ I configured the distribution with a PREFIX of /usr/local/apache-1.3.1.
+ 
+ 	--Mark
+ 
+ ---
+ ##
+ ## httpd.conf -- Apache HTTP server configuration file
+ ##
+ 
+ # This is the main server configuration file. See URL
+ http://www.apache.org/
+ # for instructions.
+ 
+ # Do NOT simply read the instructions in here without understanding
+ # what they do, if you are unsure consult the online docs. You have been
+ # warned.  
+ 
+ # Originally by Rob McCool
+ 
+ # Dynamic Shared Object (DSO) Support
+ #
+ # To be able to use the functionality of a module which was built as a
+ DSO you
+ # have to place corresponding `LoadModule' lines at this location so the
+ # directives contained in it are actually available _before_ they are
+ used.
+ # Please read the file README.DSO in the Apache 1.3 distribution for
+ more
+ # details about the DSO mechanism and run `httpd -l' for the list of
+ already
+ # built-in (statically linked and thus always available) modules in your
+ httpd
+ # binary.
+ #
+ # Example:
+ # LoadModule foo_module libexec/mod_foo.so
+ 
+ # ServerType is either inetd, or standalone.
+ 
+ ServerType standalone
+ 
+ # If you are running from inetd, go to "ServerAdmin".
+ 
+ # Port: The port the standalone listens to. For ports < 1023, you will
+ # need httpd to be run as root initially.
+ 
+ Port 80
+ 
+ # HostnameLookups: Log the names of clients or just their IP numbers
+ #   e.g.   www.apache.org (on) or 204.62.129.132 (off)
+ # The default is off because it'd be overall better for the net if
+ people
+ # had to knowingly turn this feature on.
+ 
+ HostnameLookups off
+ 
+ # If you wish httpd to run as a different user or group, you must run
+ # httpd as root initially and it will switch.  
+ 
+ # User/Group: The name (or #number) of the user/group to run httpd as.
+ #  On SCO (ODT 3) use User nouser and Group nogroup
+ #  On HPUX you may not be able to use shared memory as nobody, and the
+ #  suggested workaround is to create a user www and use that user.
+ #  NOTE that some kernels refuse to setgid(Group) or semctl(IPC_SET)
+ #  when the value of (unsigned)Group is above 60000; 
+ #  don't use Group nobody on these systems!
+ 
+ User nobody
+ Group nobody
+ 
+ # ServerAdmin: Your address, where problems with the server should be
+ # e-mailed.
+ 
+ ServerAdmin stemm@saber.CS.Berkeley.EDU
+ 
+ # ServerRoot: The directory the server's config, error, and log files
+ # are kept in.
+ # NOTE!  If you intend to place this on a NFS (or otherwise network)
+ # mounted filesystem then please read the LockFile documentation,
+ # you will save yourself a lot of trouble.
+ 
+ ServerRoot /usr/local/apache-1.3.1
+ 
+ # BindAddress: You can support virtual hosts with this option. This
+ option
+ # is used to tell the server which IP address to listen to. It can
+ either
+ # contain "*", an IP address, or a fully qualified Internet domain name.
+ # See also the VirtualHost directive.
+ 
+ #BindAddress *
+ 
+ # ErrorLog: The location of the error log file. If this does not start
+ # with /, ServerRoot is prepended to it.
+ 
+ ErrorLog /usr/local/apache-1.3.1/var/log/error_log
+ 
+ # LogLevel: Control the number of messages logged to the error_log.
+ # Possible values include: debug, info, notice, warn, error, crit,
+ # alert, emerg.
+ 
+ LogLevel warn
+ 
+ # The following directives define some format nicknames for use with
+ # a CustomLog directive (see below).
+ 
+ LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\""
+ combined
+ LogFormat "%h %l %u %t \"%r\" %>s %b" common
+ LogFormat "%{Referer}i -> %U" referer
+ LogFormat "%{User-agent}i" agent
+ 
+ # The location of the access logfile (Common Logfile Format).
+ # If this does not start with /, ServerRoot is prepended to it.
+ 
+ CustomLog /usr/local/apache-1.3.1/var/log/access_log common
+ 
+ # If you would like to have an agent and referer logfile uncomment the
+ # following directives.
+ 
+ #CustomLog /usr/local/apache-1.3.1/var/log/referer_log referer
+ #CustomLog /usr/local/apache-1.3.1/var/log/agent_log agent
+ 
+ # If you prefer a single logfile with access, agent and referer
+ information
+ # (Combined Logfile Format) you can use the following directive.
+ 
+ #CustomLog /usr/local/apache-1.3.1/var/log/access_log combined
+ 
+ # PidFile: The file the server should log its pid to
+ PidFile /usr/local/apache-1.3.1/var/run/httpd.pid
+ 
+ # ScoreBoardFile: File used to store internal server process
+ information.
+ # Not all architectures require this.  But if yours does (you'll know
+ because
+ # this file is created when you run Apache) then you *must* ensure that
+ # no two invocations of Apache share the same scoreboard file.
+ ScoreBoardFile /usr/local/apache-1.3.1/var/run/httpd.scoreboard
+ 
+ # The LockFile directive sets the path to the lockfile used when Apache
+ # is compiled with either USE_FCNTL_SERIALIZED_ACCEPT or
+ # USE_FLOCK_SERIALIZED_ACCEPT. This directive should normally be left at
+ # its default value. The main reason for changing it is if the logs
+ # directory is NFS mounted, since the lockfile MUST BE STORED ON A LOCAL
+ # DISK. The PID of the main server process is automatically appended to
+ # the filename. 
+ #
+ #LockFile /usr/local/apache-1.3.1/var/run/httpd.lock
+ 
+ # ServerName allows you to set a host name which is sent back to clients
+ for
+ # your server if it's different than the one the program would get (i.e.
+ use
+ # "www" instead of the host's real name).
+ #
+ # Note: You cannot just invent host names and hope they work. The name
+ you 
+ # define here must be a valid DNS name for your host. If you don't
+ understand
+ # this, ask your network administrator.
+ 
+ #ServerName saber.CS.Berkeley.EDU
+ 
+ # UseCanonicalName:  (new for 1.3)  With this setting turned on,
+ whenever
+ # Apache needs to construct a self-referencing URL (a url that refers
+ back
+ # to the server the response is coming from) it will use ServerName and
+ # Port to form a "canonical" name.  With this setting off, Apache will
+ # use the hostname:port that the client supplied, when possible.  This
+ # also affects SERVER_NAME and SERVER_PORT in CGIs.
+ UseCanonicalName on
+ 
+ # CacheNegotiatedDocs: By default, Apache sends Pragma: no-cache with
+ each
+ # document that was negotiated on the basis of content. This asks proxy
+ # servers not to cache the document. Uncommenting the following line
+ disables
+ # this behavior, and proxies will be allowed to cache the documents.
+ 
+ #CacheNegotiatedDocs
+ 
+ # Timeout: The number of seconds before receives and sends time out
+ 
+ Timeout 300
+ 
+ # KeepAlive: Whether or not to allow persistent connections (more than
+ # one request per connection). Set to "Off" to deactivate.
+ 
+ KeepAlive On
+ 
+ # MaxKeepAliveRequests: The maximum number of requests to allow
+ # during a persistent connection. Set to 0 to allow an unlimited amount.
+ # We reccomend you leave this number high, for maximum performance.
+ 
+ MaxKeepAliveRequests 100
+ 
+ # KeepAliveTimeout: Number of seconds to wait for the next request
+ 
+ KeepAliveTimeout 15
+ 
+ # Server-pool size regulation.  Rather than making you guess how many
+ # server processes you need, Apache dynamically adapts to the load it
+ # sees --- that is, it tries to maintain enough server processes to
+ # handle the current load, plus a few spare servers to handle transient
+ # load spikes (e.g., multiple simultaneous requests from a single
+ # Netscape browser).
+ 
+ # It does this by periodically checking how many servers are waiting
+ # for a request.  If there are fewer than MinSpareServers, it creates
+ # a new spare.  If there are more than MaxSpareServers, some of the
+ # spares die off.  These values are probably OK for most sites ---
+ 
+ MinSpareServers 5
+ MaxSpareServers 10
+ 
+ # Number of servers to start --- should be a reasonable ballpark figure.
+ 
+ StartServers 5
+ 
+ # Limit on total number of servers running, i.e., limit on the number
+ # of clients who can simultaneously connect --- if this limit is ever
+ # reached, clients will be LOCKED OUT, so it should NOT BE SET TOO LOW.
+ # It is intended mainly as a brake to keep a runaway server from taking
+ # Unix with it as it spirals down...
+ 
+ MaxClients 150
+ 
+ # MaxRequestsPerChild: the number of requests each child process is
+ #  allowed to process before the child dies.
+ #  The child will exit so as to avoid problems after prolonged use when
+ #  Apache (and maybe the libraries it uses) leak.  On most systems, this
+ #  isn't really needed, but a few (such as Solaris) do have notable
+ leaks
+ #  in the libraries.
+ 
+ MaxRequestsPerChild 30
+ 
+ # Proxy Server directives. Uncomment the following line to
+ # enable the proxy server:
+ 
+ #ProxyRequests On
+ 
+ # To enable the cache as well, edit and uncomment the following lines:
+ 
+ #CacheRoot /usr/local/apache-1.3.1/var/proxy
+ #CacheSize 5
+ #CacheGcInterval 4
+ #CacheMaxExpire 24
+ #CacheLastModifiedFactor 0.1
+ #CacheDefaultExpire 1
+ #NoCache a_domain.com another_domain.edu joes.garage_sale.com
+ 
+ # Listen: Allows you to bind Apache to specific IP addresses and/or
+ # ports, in addition to the default. See also the VirtualHost command
+ 
+ #Listen 3000
+ #Listen 12.34.56.78:80
+ 
+ # VirtualHost: Allows the daemon to respond to requests for more than
+ one
+ # server address, if your server machine is configured to accept IP
+ packets
+ # for multiple addresses. This can be accomplished with the ifconfig 
+ # alias flag, or through kernel patches like VIF.
+ 
+ # Any httpd.conf or srm.conf directive may go into a VirtualHost
+ command.
+ # See also the BindAddress entry.
+  
+ #<VirtualHost host.some_domain.com>
+ #ServerAdmin webmaster@host.some_domain.com
+ #DocumentRoot /www/docs/host.some_domain.com
+ #ServerName host.some_domain.com
+ #ErrorLog logs/host.some_domain.com-error_log
+ #TransferLog logs/host.some_domain.com-access_log
+ #</VirtualHost>
+
+From: "Roy T. Fielding" <fielding@kiwi.ics.uci.edu>
+To: Mark Richard Stemm <stemm@cs.berkeley.edu>
+Cc: apbugs@apache.org
+Subject: Re: protocol/2585: GET /track1.mp3 from localhost returns no HTTP headers. 
+Date: Fri, 09 Oct 1998 16:49:05 -0700
+
+ >The server is up running again if you wanted to check it out. I just
+ >upgraded to 1.3.1, and still have the same problem.
+ 
+ Apache 1.3.3 is available now.
+ 
+ I've tried everything I can think of with the same file and still
+ can't reproduce it on a Solaris 2.5 machine port 8080 or a
+ FreeBSD machine port 80.
+ 
+ If you could step through the request with the gdb debugger, as
+ described in <http://dev.apache.org/debugging.html>, then you might
+ be able to determine what is going wrong.
+ 
+ ....Roy
+Comment-Added-By: lars
+Comment-Added-When: Sat Nov 14 09:08:16 PST 1998
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: lars
+State-Changed-When: Thu Feb 11 13:09:44 PST 1999
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

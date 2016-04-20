@@ -1,0 +1,184 @@
+Received: (qmail 18117 invoked by uid 2012); 5 Nov 1997 12:22:49 -0000
+Message-Id: <19971105122249.18116.qmail@hyperreal.org>
+Date: 5 Nov 1997 12:22:49 -0000
+From: Robert Hoffmann <bobx@bobx.com>
+Reply-To: bobx@bobx.com
+To: apbugs@hyperreal.org
+Subject: "include virtual  cannot include remote documents
+X-Send-Pr-Version: 3.2
+
+>Number:         1361
+>Category:       mod_include
+>Synopsis:       "include virtual  cannot include remote documents
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Nov  5 04:30:00 PST 1997
+>Last-Modified:  Wed Nov  5 16:40:00 PST 1997
+>Originator:     bobx@bobx.com
+>Organization:
+>Release:        all
+>Environment:
+gcc  and cc  
+Solaris (also X86), BSDI, OSF/1, Linux
+>Description:
+OK, if I have a parsed file as follows:
+<HTML>
+..
+<!--#include virtual="http://www.yourdomain.com/haha.html"-->
+...
+</HTML>
+Apache tries to translate the URL of the document to include into a path which belongs to the local machine.
+>How-To-Repeat:
+try my example
+>Fix:
+Well, kinda.
+I noticed that the "include virtual" tag calls the following functions in this order:
+handle_include()
+  sub_req_lookup_uri()  (that's where the messup happens I guess)
+  run_sub_req()   (that one returns 404, cause of the URL that gets previously built, has the url'd path directory of DocumentRoot 
+at the beginning of the actual URL that we entered (this can be logged easily))
+     invoke_handler()  (if you log inside this function, you will see the bad location already)
+
+Problem is, I don;t understand well how a remote include would be handled, since for the request, 
+there are certain items being copied (i.e. the server_rec, which, how in hell can you get it from the remote server ?)
+
+I am open to suggestions or a simple bop in the head if I am doing something wrong in the html.
+HHHAHAHAHAH
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Wed Nov  5 07:47:51 PST 1997
+State-Changed-Why:
+mod_include never has allowed for the inclusion of
+remote documents, and likely never will.  It is very
+difficult to implement well.
+
+What you can do is use the proxy and a ProxyPass directive, eg.:
+
+      ProxyPass /foobar http://www.remote-site/
+
+and then use "include virtual=/foobar/file.html".
+
+From: Marc Slemko <marcs@znep.com>
+To: BobX <bobx@bobx.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: mod_include/1361: "include virtual  cannot include remote documents
+Date: Wed, 5 Nov 1997 17:05:41 -0700 (MST)
+
+ On Wed, 5 Nov 1997, BobX wrote:
+ 
+ > Hey Marc;
+ > 
+ > no, it still does not work, cause the ProxyPass actually translates the
+ > URL before doind the "include"  and we end up in the same situation.
+ 
+ Erm... I'm not sure what you mean.  It works fine for me.  Perhaps you
+ don't have the proxy properly configured?
+ 
+ > 
+ > I am going to write my own REMOTE SSI module, what do you think ?
+ > 
+ > thanx a lot man.
+ > 
+ > BobX
+ > 
+ > marc@hyperreal.org wrote:
+ > > 
+ > > Synopsis: "include virtual  cannot include remote documents
+ > > 
+ > > State-Changed-From-To: open-closed
+ > > State-Changed-By: marc
+ > > State-Changed-When: Wed Nov  5 07:47:51 PST 1997
+ > > State-Changed-Why:
+ > > mod_include never has allowed for the inclusion of
+ > > remote documents, and likely never will.  It is very
+ > > difficult to implement well.
+ > > 
+ > > What you can do is use the proxy and a ProxyPass directive, eg.:
+ > > 
+ > >       ProxyPass /foobar http://www.remote-site/
+ > > 
+ > > and then use "include virtual=/foobar/file.html"..
+ > 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: mod_include/1361: "include virtual  cannot include remote documents (fwd)
+Date: Wed, 5 Nov 1997 17:39:39 -0700 (MST)
+
+ ---------- Forwarded message ----------
+ Date: Wed, 05 Nov 1997 16:23:02 -0800
+ From: BobX <bobx@bobx.com>
+ To: Marc Slemko <marcs@znep.com>
+ Subject: Re: mod_include/1361: "include virtual  cannot include remote documents
+ 
+ Hey Marc;
+ 
+ it works now, you were right.  It only works for straight directory, not
+ files though.  interesting !!!.
+ 
+ Anyway, I am building my own RSSI  HAHAHHAHA
+ 
+ if you want me to keep you posted, just tell me.
+ 
+ I am the WSF guy, and I have the "multi-IP   single-username"  module
+ (which protects clubs from people sharing passwords)  and if you are
+ interested, I could make this module available  (it involves one little
+ function call being added in the "auth" modules)
+ 
+ thanx for everything man
+ 
+ BobX
+ http://www.servermasters.com
+ http://www.holler.net
+ http://www.servint.com
+ http://www.he.net
+ http://www.bobx.com
+ 
+ 
+ Marc Slemko wrote:
+ > 
+ > On Wed, 5 Nov 1997, BobX wrote:
+ > 
+ > > Hey Marc;
+ > >
+ > > no, it still does not work, cause the ProxyPass actually translates the
+ > > URL before doind the "include"  and we end up in the same situation.
+ > 
+ > Erm... I'm not sure what you mean.  It works fine for me.  Perhaps you
+ > don't have the proxy properly configured?
+ > 
+ > >
+ > > I am going to write my own REMOTE SSI module, what do you think ?
+ > >
+ > > thanx a lot man.
+ > >
+ > > BobX
+ > >
+ > > marc@hyperreal.org wrote:
+ > > >
+ > > > Synopsis: "include virtual  cannot include remote documents
+ > > >
+ > > > State-Changed-From-To: open-closed
+ > > > State-Changed-By: marc
+ > > > State-Changed-When: Wed Nov  5 07:47:51 PST 1997
+ > > > State-Changed-Why:
+ > > > mod_include never has allowed for the inclusion of
+ > > > remote documents, and likely never will.  It is very
+ > > > difficult to implement well.
+ > > >
+ > > > What you can do is use the proxy and a ProxyPass directive, eg.:
+ > > >
+ > > >       ProxyPass /foobar http://www.remote-site/
+ > > >
+ > > > and then use "include virtual=/foobar/file.html"..
+ > >
+ 
+>Unformatted:
+

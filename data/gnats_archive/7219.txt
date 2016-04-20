@@ -1,0 +1,152 @@
+Received: (qmail 75681 invoked by uid 501); 8 Feb 2001 20:07:01 -0000
+Message-Id: <20010208200701.75680.qmail@apache.org>
+Date: 8 Feb 2001 20:07:01 -0000
+From: Ying Li <ying_li2@hp.com>
+Reply-To: ying_li2@hp.com
+To: submit@bugz.apache.org
+Subject: the init process for dynimacal shared module sometimes runs twice.
+X-Send-Pr-Version: 3.110
+
+>Number:         7219
+>Category:       other
+>Synopsis:       the init process for dynimacal shared module sometimes runs twice.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          mistaken
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Feb 08 12:10:04 PST 2001
+>Closed-Date:
+>Last-Modified:  Thu Feb 08 18:36:43 PST 2001
+>Originator:     ying_li2@hp.com
+>Release:        Apache_1.3.12
+>Organization:
+>Environment:
+HP_UX 11.0 workstation
+Apache_1.3.12
+
+ 
+>Description:
+When I developed the module foo_initialization for the mod_foo as a dso, I found it always is executed twice. One is in http_main, another is in standalone_main.
+And apache is work well. It seems no problem.
+But you may take look at the log file and find out the results from initialization process is not what I want to get.
+>How-To-Repeat:
+1)mod_foo.c source code
+/* ====================================================================
+ * Apache_1.3.12
+ * test the initialization of mod_foo module
+ */
+
+#include "httpd.h"
+#include "http_config.h"
+#include "http_conf_globals.h"
+#include <stdio.h>
+
+module MODULE_VAR_EXPORT foo_module;
+static const char* LOGLOG="/tmp/log";
+
+static void FooInit(server_rec *s, pool *p)
+{
+    pid_t pid;
+    FILE *flog;
+    
+    flog=fopen(LOGLOG,"a"); 
+    fprintf(flog,"%s\n","START INIT PROCESS!!!");
+
+    pid = getpgrp();
+    fprintf(flog,"PID=%d\n",pid);
+ 
+    ap_add_version_component("mod_foo loaded!!!");
+    fprintf(flog,"%s\n"," End of initialization fo mod_foo module!");
+    fclose(flog);
+}
+
+static int FooTranslate(request_rec *r)
+{
+     return DECLINED;    
+}
+
+module MODULE_VAR_EXPORT foo_module = 
+{
+    STANDARD_MODULE_STUFF,
+    FooInit,                   /* initializer */
+    NULL,                      /* per-directory config creater */
+    NULL,                      /* dir config merger - default is to override */
+    NULL,                      /* server config creator */
+    NULL,                      /* server config merger */
+    NULL,                      /* command table */
+    NULL,                      /* [6] list of handlers */
+    FooTranslate,              /* [1] filename-to-URI translation */
+    NULL,                      /* [4] check/validate HTTP user_id */
+    NULL,                      /* [5] check HTTP user_id is valid *here* */
+    NULL,                      /* [3] check access by host address, etc. */
+    NULL,                      /* [6] MIME type checker/setter */
+    NULL,                      /* [7] fixups */
+    NULL,                      /* [9] logger */
+    NULL,                      /* [2] header parser */
+};
+
+2)./apxs -i -a -c mod_foo.c
+
+3)log file:
+START INIT PROCESS!!!
+PID=23987
+ End of initialization fo mod_foo module!
+START INIT PROCESS!!!
+PID=23994
+ End of initialization fo mod_foo module!
+>Fix:
+I don't know why and what happened. I only hope the initialization routine of any modules as a DSO should really be executed only once, not more than one time. Any suggesstion will be appreciated. Thanks a lot.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: slive
+State-Changed-When: Thu Feb  8 18:33:18 PST 2001
+State-Changed-Why:
+[This is a standard response.]
+This problem report does not refer to a software bug or
+suggestion, or has been entered in the database erroneously
+(such as by a bogus or mis-formatted email message).  It is
+being closed.
+Class-Changed-From-To: sw-bug-mistaken
+Class-Changed-By: slive
+Class-Changed-When: Thu Feb  8 18:33:18 PST 2001
+Severity-Changed-From-To: critical-non-critical
+Severity-Changed-By: slive
+Severity-Changed-When: Thu Feb  8 18:33:18 PST 2001
+Category-Changed-From-To: os-unixware-other
+Category-Changed-By: slive
+Category-Changed-When: Thu Feb  8 18:33:18 PST 2001
+
+Comment-Added-By: slive
+Comment-Added-When: Thu Feb  8 18:36:43 PST 2001
+Comment-Added:
+
+My appologies... I didn't mean to mark this as a "bogus report".
+
+The double-invocation of the init function is expected
+behaviour, and is necessary to support certain module
+functions.
+
+Thanks for using Apache!
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

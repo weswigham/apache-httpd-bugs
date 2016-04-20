@@ -1,0 +1,150 @@
+Received: (qmail 274 invoked by uid 2012); 11 Feb 1998 17:03:00 -0000
+Message-Id: <19980211170300.273.qmail@hyperreal.org>
+Date: 11 Feb 1998 17:03:00 -0000
+From: John Theung <john.theung@smtp.nynex.com>
+Reply-To: john.theung@smtp.nynex.com
+To: apbugs@hyperreal.org
+Subject: Invalid method on POST
+X-Send-Pr-Version: 3.2
+
+>Number:         1789
+>Category:       protocol
+>Synopsis:       Invalid method on POST
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Feb 11 09:10:00 PST 1998
+>Last-Modified:  Thu Feb 12 14:00:00 PST 1998
+>Originator:     john.theung@smtp.nynex.com
+>Organization:
+>Release:        1.2.5
+>Environment:
+Solaris 2.5.1
+Browser: MSIE 4.71, Netscape is okay
+>Description:
+The server intermittently logs "Invalid method on request" during POST operations
+from a MSIE 4.71 browser. A "snoop" shows the data from the browser as appearing okay.
+
+Apparently, r->method falls out to M_INVALID in read_request in http_protocol.c,
+because strcmp to all methods fail. Consequently, the routine default_handler in
+http_core.c fails.
+
+I modified the line in default_handler to dump the r->method:
+log_printf(r->server, "Invalid method (%s)in request %s",r->method, r->the_request);
+
+It produced the following in the error_log file:
+[Wed Feb 11 10:37:16 1998] Invalid method (exempt=adm&n_1=on&button=Hold+OrderGET)in reque
+st exempt=adm&n_1=on&button=Hold+OrderGET /icons/bg/bg.gif HTTP/1.1
+
+Here is the output of the access_log file:
+146.13.148.37 - - [11/Feb/1998:10:37:15 -0500] "POST /cgi-bin/procorder.sh/rfr HTTP/1.1" 4
+01 362
+146.13.148.37 - amv1300 [11/Feb/1998:10:37:16 -0500] "POST /cgi-bin/procorder.sh/rfr HTTP/
+1.1" 200 2216
+146.13.148.37 - - [11/Feb/1998:10:37:16 -0500] "exempt=adm&n_1=on&button=Hold+OrderGET /ic
+ons/bg/bg.gif HTTP/1.1" 501 213
+
+From what I see, it appears that a image request is being merged with the previous
+request, but I'm not sure. It also seems that MSIE is not presenting its authorization
+(the user has already been authorized for this directory under previous page hits)
+and the server is not handling the request properly.
+
+Does anybody have a clue as to what's going on?
+>How-To-Repeat:
+URL is unavailable: Intranet application.
+Create a POST form with Basic authentication required.
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Wed Feb 11 10:05:36 PST 1998
+State-Changed-Why:
+Yes, this is a known bug in Apache.  See PR#1399.
+A fix has been found and will be available in 1.2.6 and
+1.3b4 when released.  I think there is a patch in the
+PR1399 log too.
+
+Thanks for the report.
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: John_Theung@SMTP.NYNEX.COM
+Cc: apbugs@apache.org
+Subject: Re: protocol/1789: Invalid method on POST
+Date: Wed, 11 Feb 1998 17:30:48 -0800 (PST)
+
+ The patch in 1399 isn't complete.  It's probably easiest if you just give
+ 1.2.6-dev a try... I'll place a copy of it at:
+ 
+ http://www.arctic.org/~dgaudet/apache/1.2.6-dev.tar.gz
+ 
+ Thanks
+ Dean
+ 
+
+From: John_Theung@SMTP.NYNEX.COM
+To: dgaudet@arctic.org
+Cc: apbugs@apache.org
+Subject: Re: protocol/1789: Invalid method on POST
+Date: Thu, 12 Feb 1998 10:19:26 -0500
+
+ Thanks very much, Dean. It works! My only concern if it's solid enough for my production. How comfortable
+ are you with this cut? I see there were quite a few mods compare to 1.2.5.
+ 
+ I see that the problem is associated with HTTP/1.1. As an alternative, could I somehow force 1.0 and stay with
+ the 1.2.5? Or, is this not worth considering?
+ 
+ 
+ 
+ The patch in 1399 isn't complete.  It's probably easiest if you just give
+ 1.2.6-dev a try... I'll place a copy of it at:
+ http://www.arctic.org/~dgaudet/apache/1.2.6-dev.tar.gz
+ Thanks
+ Dean
+ 
+ 
+ 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: John_Theung@SMTP.NYNEX.COM
+Cc: apbugs@apache.org
+Subject: Re: protocol/1789: Invalid method on POST
+Date: Thu, 12 Feb 1998 12:25:08 -0800 (PST)
+
+ Pretty much everything in 1.2.6-dev currently has been tested in one of
+ the 1.3 betas for a while.  I've been running the 1.2.6-dev code for a few
+ weeks on one of my servers without incident.  It should be stable -- the
+ goal with the 1.2.x series is stability.  1.2.5 had a small change list
+ because it was intended to fix security bugs and we wanted to get it out
+ quickly. 
+ 
+ But take a peek at www.apache.org/docs/misc/known_client_problems.html, it
+ mentions how to force apache to pretend to be responding with http/1.0. 
+ 
+ Dean
+ 
+ 
+
+From: John_Theung@SMTP.NYNEX.COM
+To: dgaudet@arctic.org
+Cc: apbugs@apache.org
+Subject: Re: protocol/1789: Invalid method on POST
+Date: Thu, 12 Feb 1998 16:13:16 -0500
+
+ Thanks, Dean. I think I'll stick with the 1.2.6 version. Our testers have been banging on it all day and haven't come across a single glitch, so it
+ looks solid. I greatly appreciate your help.
+ 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,91 @@
+Received: (qmail 5177 invoked by uid 2012); 9 Feb 1998 06:39:14 -0000
+Message-Id: <19980209063914.5176.qmail@hyperreal.org>
+Date: 9 Feb 1998 06:39:14 -0000
+From: Richard Goerwitz <Richard_Goerwitz@Brown.EDU>
+Reply-To: Richard_Goerwitz@Brown.EDU
+To: apbugs@hyperreal.org
+Subject: Proxy-Authenticate code in http_protocol fails with ProxyPass and Netscape
+X-Send-Pr-Version: 3.2
+
+>Number:         1785
+>Category:       mod_proxy
+>Synopsis:       Proxy-Authenticate code in http_protocol fails with ProxyPass and Netscape
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Feb  8 22:40:00 PST 1998
+>Last-Modified:  Tue May 19 19:29:01 PDT 1998
+>Originator:     Richard_Goerwitz@Brown.EDU
+>Organization:
+>Release:        1.2.5 (patched), 1.3.3b
+>Environment:
+Linux 2.0.31 + GCC 2.7.2.3 + Apache 1.2.5
+>Description:
+Netscape (v 4.04 and lower; higher?) does not do the right thing when it
+receives a 407 Proxy authentication required response from a pass-through
+proxy.  Presumably this is because a pass-through proxy looks like a reg-
+ular server.
+>How-To-Repeat:
+Turn on ProxyPass, and add a
+<proxy: *>
+</proxy>
+section to your config files to force proxy authentication.  Then try to use
+the proxy server with Netscape.
+>Fix:
+Sure.  Have yet another set of kludges.  Add r->proxypassreq to http.h.  Then
+in modules/proxy/mod_proxy.c: proxy_trans(), change r->proxyreq to r->proxy-
+req = r->proxypassreq = 1;
+
+To the config files, add:
+
+BrowserMatch Mozilla no-407-with-proxypass
+
+To http_protocol.c add the following code; use similar code as needed
+elsewhere:
+
+void note_basic_auth_failure(request_rec *r)
+{
+    char *auth_header_string = "WWW-Authenticate";
+
+    if (r->proxyreq
+          && ! (r->proxypassreq
+                /* workaround for Netscape, which won't take error
+                 * 407 responses from pass-through proxies */
+                && table_get(r->subprocess_env, "no-407-with-proxypass")))
+        auth_header_string = "Proxy-Authenticate";
+
+etc.  You get the idea
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: brian
+State-Changed-When: Tue May 19 19:29:01 PDT 1998
+State-Changed-Why:
+Our proxy is so ill-maintained right now that to add
+effort to work around browser bugs seems counterproductive.
+Particularly since this effort would require putting
+proxy-specific coding into the core of the server, regardless
+of whether someone compiled in mod_proxy or not.
+
+If Netscape doesn't implement it correctly I'm sure it'll
+be fixed in mozilla :)  If you see an area where Apache
+does not comply to (non-de-facto) standards, please let us
+know.
+
+If on the other hand you want to whip up a patch to this, 
+please do, and let http://modules.apache.org/ know about it.
+
+Thanks!
+
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

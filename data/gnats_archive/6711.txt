@@ -1,0 +1,384 @@
+Received: (qmail 81215 invoked by uid 501); 19 Oct 2000 11:32:30 -0000
+Message-Id: <20001019113230.81214.qmail@locus.apache.org>
+Date: 19 Oct 2000 11:32:30 -0000
+From: Simon Lindgren <simon@lindgren.no>
+Reply-To: simon@lindgren.no
+To: submit@bugz.apache.org
+Subject: Changes somewhere from 1.3.12 to 1.3.14 cause MSIE Acrobat plugin to crash when saving PDF's - VERY STRANGE!
+X-Send-Pr-Version: 3.110
+
+>Number:         6711
+>Category:       general
+>Synopsis:       Changes somewhere from 1.3.12 to 1.3.14 cause MSIE Acrobat plugin to crash when saving PDF's - VERY STRANGE!
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Oct 19 04:40:00 PDT 2000
+>Closed-Date:    Thu Nov 09 18:34:33 PST 2000
+>Last-Modified:  Wed Aug 22 13:50:00 PDT 2001
+>Originator:     simon@lindgren.no
+>Release:        1.3.12/1.3.14
+>Organization:
+>Environment:
+FreeBSD www.istudio.no 3.1-RELEASE FreeBSD 3.1-RELEASE #0: Tue Jul 25 19:43:57 CEST 2000     lindgren@www.istudio.no:/usr/src/sys/compile/ISTUDIO  i386
+>Description:
+On standard compilations of apache 1.3.12 and 1.3.14, both send the same PDF file data
+to the client, but with 1.3.14, when saving the file in Acrobat Reader plugin 
+(4.05c) in MSIE 5.0 (various incarnations) MSIE locks up, not even managing to save the file.
+
+This is with the exact same compile options, same configuration files etc.
+
+Diffing the headers sent show some differences in the multipart-headers (Range: headers)
+but I can't debug them.
+>How-To-Repeat:
+Using windows of some sort, MSIE 5.x and Acrobat Reader Plugin 4.05, try loading the
+following PDF files, and then saving them from the plugin iuterface:
+
+http://www.sef.no/vedlegg/166/strategi.pdf <- Apache 1.3.12 - works
+http://lottery.sef.no/strategi.pdf <- Apache 1.3.14 - fails
+
+This is the case on all my test-cases at least.
+
+The documents in question are not cofidential.
+>Fix:
+I'm flabbergasted... any pointers would be greatly appreciated - I'm availble 
+for questions etc. at simon@lindgren.no
+>Release-Note:
+>Audit-Trail:
+
+From: Simon Lindgren <lindgren@istudio.no>
+To: gnats-admin@bugz.apache.org, apache-bugdb@apache.org
+Cc: apbugs@apache.org
+Subject: Re: general/6711: Changes somewhere from 1.3.12 to 1.3.14 cause MSIE Acrobat plugin to crash when saving PDF's - VERY STRANGE!
+Date: Thu, 19 Oct 2000 14:13:40 +0200
+
+ Sorry, the second URL should be:
+ http://lottery.zting.no/strategi.pdf
+Comment-Added-By: fanf
+Comment-Added-When: Tue Oct 31 12:41:55 PST 2000
+Comment-Added:
+I have closed PRs 6715, 6761, 6766, 6769, 6770 because they
+refer to the same problem as this one. There's some additional
+information in them that may be useful to solve the problem.
+
+From: Tony Finch <dot@dotat.at>
+To: apbugs@apache.org
+Cc: new-httpd@apache.org
+Subject: Re: general/6711: byterange problems in 1.3.14
+Date: Tue, 31 Oct 2000 22:30:40 +0000
+
+ "William A. Rowe, Jr." <wrowe@rowe-clan.net> wrote:
+ >
+ >There was a patch to the byterange handling in http_protocol.c
+ >that possibly corresponds to this issue.  I've attached the
+ >1.3.12->1.3.14 diff below the report.  It smells like a bug,
+ >although it could simply be a bug in Apache's .pdf handling.
+ >Whichever, we may have broken clients.
+ 
+ The patch is broken. It introduces a new return value for
+ internal_byterange but it doesn't change all the code that calls
+ internal_byterange (directly or indirectly) to accommodate the change.
+ e.g. default_handler calls ap_each_byterange assuming that the return
+ value is boolean; ap_each_byterange is a wrapper around
+ internal_byterange which does not return a boolean.
+ 
+ Tony.
+ -- 
+ en oeccget g mtcaa    f.a.n.finch
+ v spdlkishrhtewe y    dot@dotat.at
+ eatp o v eiti i d.    fanf@covalent.net
+
+From: Greg Stein <gstein@lyra.org>
+To: new-httpd@apache.org
+Cc: apbugs@apache.org
+Subject: Re: general/6711: byterange problems in 1.3.14
+Date: Tue, 31 Oct 2000 14:39:51 -0800
+
+ On Tue, Oct 31, 2000 at 10:30:40PM +0000, Tony Finch wrote:
+ > "William A. Rowe, Jr." <wrowe@rowe-clan.net> wrote:
+ > >
+ > >There was a patch to the byterange handling in http_protocol.c
+ > >that possibly corresponds to this issue.  I've attached the
+ > >1.3.12->1.3.14 diff below the report.  It smells like a bug,
+ > >although it could simply be a bug in Apache's .pdf handling.
+ > >Whichever, we may have broken clients.
+ > 
+ > The patch is broken. It introduces a new return value for
+ > internal_byterange but it doesn't change all the code that calls
+ > internal_byterange (directly or indirectly) to accommodate the change.
+ > e.g. default_handler calls ap_each_byterange assuming that the return
+ > value is boolean; ap_each_byterange is a wrapper around
+ > internal_byterange which does not return a boolean.
+ 
+ urk. my fault :-(
+ 
+ Tony: are you going to commit a patch, or shall I dig in?
+ 
+ thx,
+ -g
+ 
+ -- 
+ Greg Stein, http://www.lyra.org/
+
+From: Tony Finch <dot@dotat.at>
+To: apbugs@apache.org, Greg Stein <gstein@lyra.org>
+Cc:  
+Subject: Re: general/6711: byterange problems in 1.3.14
+Date: Tue, 31 Oct 2000 22:45:08 +0000
+
+ Greg Stein <gstein@lyra.org> wrote:
+ > Tony Finch wrote:
+ > > 
+ > > The patch is broken. It introduces a new return value for
+ > > internal_byterange but it doesn't change all the code that calls
+ > > internal_byterange (directly or indirectly) to accommodate the change.
+ > > e.g. default_handler calls ap_each_byterange assuming that the return
+ > > value is boolean; ap_each_byterange is a wrapper around
+ > > internal_byterange which does not return a boolean.
+ > 
+ > urk. my fault :-(
+ > 
+ > Tony: are you going to commit a patch, or shall I dig in?
+ 
+ I'm still looking. I'm not convinced that parse_byterange handles
+ whitespace right, and IE is fond of putting whitespace into its Range:
+ headers.
+ 
+ 20:01:11.246049 10.0.0.97.2480 > 63.211.145.10.80: P 1:235(234) ack 1 win 17520 (DF) (ttl 128, id 43620)
+ 0x0000   4500 0112 aa64 4000 8006 7443 0a00 0061        E....d@...tC...a
+ 0x0010   3fd3 910a 09b0 0050 9bf1 7bb0 d397 0e64        ?......P..{....d
+ 0x0020   5018 4470 15e9 0000 4745 5420 2f7e 6661        P.Dp....GET./~fa
+ 0x0030   6e66 2f66 6f6f 2e70 6466 2048 5454 502f        nf/foo.pdf.HTTP/
+ 0x0040   312e 310d 0a41 6363 6570 743a 202a 2f2a        1.1..Accept:.*/*
+ 0x0050   0d0a 5261 6e67 653a 2062 7974 6573 3d33        ..Range:.bytes=3
+ 0x0060   3232 3438 2d33 3332 3731 2c20 3235 3038        2248-33271,.2508
+ 0x0070   302d 3332 3234 372c 2032 3131 322d 3235        0-32247,.2112-25
+ 0x0080   3037 390d 0a41 6363 6570 742d 456e 636f        079..Accept-Enco
+ 0x0090   6469 6e67 3a20 677a 6970 2c20 6465 666c        ding:.gzip,.defl
+ 0x00a0   6174 650d 0a55 7365 722d 4167 656e 743a        ate..User-Agent:
+ 0x00b0   204d 6f7a 696c 6c61 2f34 2e30 2028 636f        .Mozilla/4.0.(co
+ 0x00c0   6d70 6174 6962 6c65 3b20 4d53 4945 2035        mpatible;.MSIE.5
+ 0x00d0   2e30 313b 2057 696e 646f 7773 204e 5420        .01;.Windows.NT.
+ 0x00e0   352e 3029 0d0a 486f 7374 3a20 6170 6163        5.0)..Host:.apac
+ 0x00f0   6865 2e6f 7267 0d0a 436f 6e6e 6563 7469        he.org..Connecti
+ 0x0100   6f6e 3a20 4b65 6570 2d41 6c69 7665 0d0a        on:.Keep-Alive..
+ 0x0110   0d0a                                           ..
+ 
+ Tony.
+ -- 
+ en oeccget g mtcaa    f.a.n.finch
+ v spdlkishrhtewe y    dot@dotat.at
+ eatp o v eiti i d.    fanf@covalent.net
+
+From: Tony Finch <dot@dotat.at>
+To: new-httpd@apache.org
+Cc: apbugs@apache.org
+Subject: Re: general/6711: byterange problems in 1.3.14
+Date: Tue, 31 Oct 2000 22:54:48 +0000
+
+ Joe Orton <joe@light.plus.com> wrote:
+ >On Tue, Oct 31, 2000 at 10:30:40PM +0000, Tony Finch wrote:
+ >> The patch is broken. It introduces a new return value for
+ >> internal_byterange but it doesn't change all the code that calls
+ >> internal_byterange (directly or indirectly) to accommodate the change.
+ >> e.g. default_handler calls ap_each_byterange assuming that the return
+ >> value is boolean; ap_each_byterange is a wrapper around
+ >> internal_byterange which does not return a boolean.
+ >
+ >I tried to cover this properly, as per the comment in
+ >internal_byternage: the new return code is only used when realreq=0 is
+ >passed in, i.e., only in the call from ap_set_byterange.
+ >ap_each_byterange passes realreq=1 in, so the -1 will never get
+ >returned... what am I missing?
+ 
+ You are right -- I missed that. I'm looking at parse_byterange now
+ because I think that may be the culprit.
+ 
+ Tony.
+ -- 
+ en oeccget g mtcaa    f.a.n.finch
+ v spdlkishrhtewe y    dot@dotat.at
+ eatp o v eiti i d.    fanf@covalent.net
+
+From: Tony Finch <dot@dotat.at>
+To: apbugs@apache.org
+Cc: new-httpd@apache.org
+Subject: Re: general/6711: byterange problems in 1.3.14
+Date: Wed, 1 Nov 2000 00:17:06 +0000
+
+ Tony Finch <dot@dotat.at> wrote:
+ > 
+ > You are right -- I missed that. I'm looking at parse_byterange now
+ > because I think that may be the culprit.
+ 
+ Or maybe not. I think I am seeing the problem now but although IE
+ sometimes pauses for seconds when reloading the PDF file, the
+ transaction looks no different from my end of the connection *except*
+ that it seems to be associated with new connections -- keep-alive
+ connections are fast.
+ 
+ (Bah, why can't Windows close a TCP connection properly?)
+ 
+ There's another bit of Joe's patch that I don't understand -- it seems
+ to break calculation of the content-length. Fixing this doesn't seem
+ to fix the problem, however.
+ 
+ Tony.
+ -- 
+ en oeccget g mtcaa    f.a.n.finch
+ v spdlkishrhtewe y    dot@dotat.at
+ eatp o v eiti i d.    fanf@covalent.net
+ 
+ 
+ Index: http_protocol.c
+ ===================================================================
+ RCS file: /home/cvs/apache-1.3/src/main/http_protocol.c,v
+ retrieving revision 1.291
+ diff -u -r1.291 http_protocol.c
+ --- http_protocol.c	2000/10/10 03:29:08	1.291
+ +++ http_protocol.c	2000/11/01 00:15:02
+ @@ -237,6 +269,7 @@
+          long tlength = 0;
+  	int ret;
+  	
+ +        r->byterange = 2;
+          r->boundary = ap_psprintf(r->pool, "%lx%lx",
+  				r->request_time, (long) getpid());
+          do {
+ @@ -245,11 +278,12 @@
+  	} while (ret == 1);
+  	/* If an error occured processing one of the range specs, we
+  	 * must fail */
+ -	if (ret < 0)
+ +	if (ret < 0) {
+ +	    r->byterange = 0;
+  	    return 0;
+ +	}
+          ap_table_setn(r->headers_out, "Content-Length",
+  	    ap_psprintf(r->pool, "%ld", tlength));
+ -        r->byterange = 2;
+      }
+  
+      r->status = PARTIAL_CONTENT;
+
+From: "Tobias Strasser" <tobias.strasser@daynetwork.com>
+To: <apbugs@apache.org>
+Cc: <new-httpd@apache.org>
+Subject: Re: general/6711: byterange problems in 1.3.14
+Date: Sat, 4 Nov 2000 15:08:19 +0100
+
+ hi everybody.
+ 
+ i encountered another possible hint to that pdf-problem.
+ 
+ 1. when i disable KeepAlive, everything just works fine.
+ 
+ 2.1. if i enable KeepAlive, and i have just a request to a pdf,
+      and the make a new request to an ordinary html file,
+      a bunch of 'weird' characters appread before the correct content
+      of the html. somehow data from the old request merge into
+      the new, independant request.
+ 
+ 2.2. if i wait KeepAliveTimeout seconds, before i make that second
+      request, then this second request is just fine.
+ 
+ our quick-fix is now to disable keepalive, in order to get the
+ pdf-viewer problems work.
+ 
+ cheers, tobi
+ 
+ 
+Comment-Added-By: fanf
+Comment-Added-When: Sat Nov  4 16:27:16 PST 2000
+Comment-Added:
+PR#6783 containes another report of this problem, with some
+more information.
+State-Changed-From-To: open-closed
+State-Changed-By: fanf
+State-Changed-When: Thu Nov  9 18:34:32 PST 2000
+State-Changed-Why:
+The patch previously posted in this PR fixes the problem.
+
+
+From: "Mikkel Johansen" <mj@if.dk>
+To: <apbugs@apache.org>
+Cc: <apbugs@apache.org>
+Subject: Re: general/6711: byterange problems in 1.3.14
+Date: Mon, 8 Jan 2001 15:40:46 +0100
+
+ Hi everybody,
+ 
+ I have the same problem, so I am runing 1.3.12 on the server.
+ 
+ It sounds like that there is a patch that solves the problem, but where do I
+ find it? I do not have any C-compilers so I am not able to re-compile the
+ source code.
+ 
+ Regards from Mikkel
+ 
+
+From: Tony Finch <dot@dotat.at>
+To: apbugs@apache.org, Mikkel Johansen <mj@if.dk>
+Cc:  
+Subject: Re: general/6711: byterange problems in 1.3.14
+Date: Mon, 8 Jan 2001 22:49:00 +0000
+
+ Mikkel Johansen <mj@if.dk> wrote:
+ > 
+ > It sounds like that there is a patch that solves the problem, but where do I
+ > find it? I do not have any C-compilers so I am not able to re-compile the
+ > source code.
+ 
+ Yes, but if you don't have a compiler it won't be any use to you.
+ There's a candidate patch for 1.3.15 at
+ http://apache.org/~fanf/http_protocol.patch.fanf
+ 
+ Tony.
+ -- 
+ f.a.n.finch    fanf@covalent.net    dot@dotat.at
+ "Then they attacked a town. A small town, I'll admit.
+ But nevertheless a town of people. People who died."
+
+From: "Zeisler, Rodger" <rzeisler@everestgrp.com>
+To: 'Tony Finch' <dot@dotat.at>
+Cc: "'apbugs@apache.org'" <apbugs@apache.org>
+Subject: Re: general/6711: byterange problems in 1.3.14
+Date: Wed, 22 Aug 2001 15:40:29 -0500
+
+ So was this problem solved and is it incorporated in the current 1.3.20
+ release?  How do I tell?  I am currently running 1.3.12 and 1.3.14.  1.3.12
+ doesn't appear to have the problem and 1.3.14 appears to have it
+ intermittently.
+ 
+ Tony Finch <dot@dotat.at> wrote: 
+ > Yes, but if you don't have a compiler it won't be any 
+ > use to you.
+ > There's a candidate patch for 1.3.15 at
+ > http://apache.org/~fanf/http_protocol.patch.fanf
+ > 
+ > Tony.
+  
+ Rodger Zeisler
+ rzeisler@everestgrp.com
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,135 @@
+Received: (qmail 1569 invoked by uid 2012); 23 Sep 1999 14:14:19 -0000
+Message-Id: <19990923141419.1568.qmail@hyperreal.org>
+Date: 23 Sep 1999 14:14:19 -0000
+From: H.S.Teoh <hsteoh@cs.toronto.edu>
+Reply-To: hsteoh@cs.toronto.edu
+To: apbugs@hyperreal.org
+Subject: HttpUtils.parsePostData() does not handle multi-value parameters correctly.
+X-Send-Pr-Version: 3.2
+
+>Number:         5061
+>Category:       mod_jserv
+>Synopsis:       HttpUtils.parsePostData() does not handle multi-value parameters correctly.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    jserv
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Sep 23 07:20:01 PDT 1999
+>Last-Modified:  Thu Sep 23 12:24:00 PDT 1999
+>Originator:     hsteoh@cs.toronto.edu
+>Organization:
+>Release:        Apache 1.3.9 JServ 1.0
+>Environment:
+Linux kernel: 2.2.12
+Distribution: Debian
+glibc 2.1
+JDK 1.1.7v2
+>Description:
+I've not been able to obtain multi-valued POST parameters correctly from
+parsePostData(). All I get is the first value of the parameter; all others are
+omitted.
+
+For example, if my form has something like:
+<INPUT NAME="parm" VALUE="abc">
+<INPUT NAME="parm" VALUE="def">
+<INPUT NAME="parm" VALUE="ghi">
+
+when I submit the form, the Hashtable returned by parsePostData(), the key
+"parm" returns only an array of size ONE (rather than three) containing "abc".
+The other two values are missing.
+
+>How-To-Repeat:
+I don't have access to a public webserver so I can't place my code in an
+accessible location. But the problem can be reproduced using the following
+HTML form and Java servlet:
+
+<HTML><BODY>
+<FORM ACTION="http://host/path/to/servlet" METHOD="POST">
+<INPUT TYPE="hidden" NAME="parm" VALUE="abc">
+<INPUT TYPE="hidden" NAME="parm" VALUE="def">
+<INPUT TYPE="hidden" NAME="parm" VALUE="ghi">
+<INPUT TYPE="submit" NAME="submit" VALUE="Submit">
+</FORM>
+</BODY></HTML>
+
+Replace the "http://host/path/to/servlet" with the URL to the following servlet:
+
+public class PostDumper extends HttpServlet {
+  public void doPost(HttpServletRequest req, HttpServletResponse resp)
+	throws ServletException, IOException {
+
+    PrintWriter out=resp.getWriter();
+
+    out.println("<HTML><BODY><H1>Query:</H1>");
+    out.println("Content type is: " + req.getContentType() + "<BR>");
+
+    Hashtable args=HttpUtils.parsePostData(req.getContentLength(),
+                                           req.getInputStream());
+    Enumeration enum=args.keys();
+    while (enum.hasMoreElements()) {
+      String arg=(String)enum.nextElement();
+      out.print("<B>"+arg+"</B> = ");
+
+      Object value=args.get(arg);
+      if (value.getClass().isArray()) {
+        String[] vals=(String[]) value;
+        out.print("<EM>(array[" + vals.length + "])</EM> ");
+        for (int i=0; i<vals.length; i++) {
+          out.println(vals[i] + "<BR>");
+        }
+      } else {
+        out.println((String)value + "<BR>");
+      }
+      out.println("<BR>");
+    }
+
+    out.println("</BODY></HTML>");
+    out.close();
+  }
+}
+
+On my local machine, I get the following output when I submit the form:
+
+--------------------------------------------------------
+                        Query:
+
+Content type is: application/x-www-form-urlencoded
+submit = (array[1]) Submit
+parm = (array[1]) abc
+--------------------------------------------------------
+
+Notice that "parm" returns only a size 1 array, with only the first value
+submitted in the form. All the other values are missing.
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: jon@clearink.com
+State-Changed-When: Thu Sep 23 12:23:57 PDT 1999
+State-Changed-Why:
+This works fine for me. I put your exact example up on my server 
+and I have no problems.
+
+http://www.working-dogs.com/test.html
+
+This isn't a bug, things work just fine.
+
+-jon stevens
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

@@ -1,0 +1,142 @@
+Received: (qmail 10891 invoked by uid 2012); 7 Jan 1998 06:42:32 -0000
+Message-Id: <19980107064232.10890.qmail@hyperreal.org>
+Date: 7 Jan 1998 06:42:32 -0000
+From: Steve Fosdick <fosdicsj@aom.bt.co.uk>
+Reply-To: fosdicsj@aom.bt.co.uk
+To: apbugs@hyperreal.org
+Subject: Full status reports are not enabled even with rule STATUS=yes
+X-Send-Pr-Version: 3.2
+
+>Number:         1630
+>Category:       config
+>Synopsis:       Full status reports are not enabled even with rule STATUS=yes
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          analyzed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jan  6 22:50:00 PST 1998
+>Last-Modified:  Mon Jan 12 13:16:31 PST 1998
+>Originator:     fosdicsj@aom.bt.co.uk
+>Organization:
+>Release:        1.2.5
+>Environment:
+HP-UX rumpus B.10.20 A 9000/712
+gcc version 2.7.2.1
+>Description:
+If I edit the Configuration file to my requirements, run Configure and compile
+apache I get a version that does short status reports rather than full ones
+despite description text in the Configuration file that inicates that setting
+the line:
+Rule STATUS=yes
+should cause full status reports to be selected.
+>How-To-Repeat:
+
+>Fix:
+I tracked the problem down to the tr command in src/helpers/CutRule.  It
+actually appears to be a bug in HP-UX 10.20's version of 'tr' which, when
+given the translations you use, outputs some characters with the eighth bit
+set rather than the correct lower case letters.
+
+I have searched the HP-UX patch database and cannot find a patch for 'tr'.
+
+I was able to work around it by changing the tr command to use character
+classes, i.e. instead of:
+    tr "A-Z" "a-z"
+I changed it to use:
+    tr '[:upper:]' '[:lower:]'
+
+I don't know how portable that construct is but another workaround would be to
+supply s simple C program that does the case conversion.
+
+If the
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Steve Fosdick <fosdicsj@aom.bt.co.uk>
+Cc: apbugs@hyperreal.org
+Subject: Re: config/1630: Full status reports are not enabled even with rule STATUS=yes
+Date: Tue, 6 Jan 1998 23:57:29 -0700 (MST)
+
+ On 7 Jan 1998, Steve Fosdick wrote:
+ 
+ > I was able to work around it by changing the tr command to use character
+ > classes, i.e. instead of:
+ >     tr "A-Z" "a-z"
+ > I changed it to use:
+ >     tr '[:upper:]' '[:lower:]'
+ 
+ Can you reproduce it on its own, eg. echo "<some string...>" | tr "A-Z"
+ "a-z" ?
+ 
+ A sample case, as simple as possible, would be interesting to see...
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Steve Fosdick <fosdicsj@aom.bt.co.uk>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: config/1630: Full status reports are not enabled even with rule STATUS=yes
+Date: Wed, 7 Jan 1998 08:04:43 -0700 (MST)
+
+ Do you have the LANG environment variable set?
+ 
+ Setting LANG=3DC first does it work right?
+ 
+ On Wed, 7 Jan 1998, Steve Fosdick wrote:
+ 
+ > Yes, like this:
+ >=20
+ > rumpus:fosdicsj [254] % echo "yes" | tr "A-Z" "a-z"
+ > =DD=C9=DF
+ > rumpus:fosdicsj [255] % echo "yes" | tr "A-Z" "a-z" | hexdump
+ > 00000000 - DD C9 DF 0A ** ** ** ** ** ** ** ** ** ** ** ** ]I_.
+ > rumpus:fosdicsj [256] %=20
+ >=20
+ > --=20
+ > Steve Fosdick                  Internet: fosdicsj@aom.bt.co.uk
+ > Voice: +44 1473 642987         MSMAIL:   BTEA/BTLIP23/FOSDICSJ
+ > Fax:   +44 1473 644607         BOAT:     FOSDICSJ
+ > Snail: B29/G34, BT Labs, Martlesham Heath, Ipswich, IP5 7RE, England.
+ >=20
+ 
+
+From: Steve Fosdick <fosdicsj@aom.bt.co.uk>
+To: Marc Slemko <marcs@znep.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: config/1630: Full status reports are not enabled even with rule STATUS=yes
+Date: Wed, 07 Jan 1998 16:22:03 +0000
+
+ You're right - it is LAN variable sensitive as shown by the
+ following shell commands:
+ 
+ rumpus:fosdicsj [402] % echo $LANG
+ en_GB.iso88591
+ rumpus:fosdicsj [403] % echo "yes" | tr "[A-Z]" "[a-z]"
+ =DD=C9=DF
+ rumpus:fosdicsj [404] % echo "yes" | env LANG=3DC tr "[A-Z]" "[a-z]"
+ yes
+ rumpus:fosdicsj [405] % =
+ 
+ 
+ -- =
+ 
+ Steve Fosdick                  Internet: fosdicsj@aom.bt.co.uk
+ Voice: +44 1473 642987         MSMAIL:   BTEA/BTLIP23/FOSDICSJ
+ Fax:   +44 1473 644607         BOAT:     FOSDICSJ
+ Snail: B29/G34, BT Labs, Martlesham Heath, Ipswich, IP5 7RE, England.
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Mon Jan 12 13:16:31 PST 1998
+State-Changed-Why:
+Need to consider changing Configure to set LANG=C or at
+least warn the user if set differently...
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

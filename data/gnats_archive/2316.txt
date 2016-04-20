@@ -1,0 +1,304 @@
+Received: (qmail 16955 invoked by uid 2012); 29 May 1998 15:26:19 -0000
+Message-Id: <19980529152619.16954.qmail@hyperreal.org>
+Date: 29 May 1998 15:26:19 -0000
+From: Rex Dieter <rdieter@math.unl.edu>
+Reply-To: rdieter@math.unl.edu
+To: apbugs@hyperreal.org
+Subject: As per PR#2293, NeXT is missing many POSIX wait-associated functions, resulting in a failed compilation
+X-Send-Pr-Version: 3.2
+
+>Number:         2316
+>Category:       os-next
+>Synopsis:       As per PR#2293, NeXT is missing many POSIX wait-associated functions, resulting in a failed compilation
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri May 29 08:30:01 PDT 1998
+>Last-Modified:  Thu Jun  4 13:40:01 PDT 1998
+>Originator:     rdieter@math.unl.edu
+>Organization:
+>Release:        1.3b7
+>Environment:
+NEXTSTEP 3.3
+OpenStep for Mach 4.2
+>Description:
+As per PR#2293, apache-1.3b7 fails to compile on the NEXTSTEP and OpenStep for Mach platforms because of missing POSIX wait-associated functions.
+>How-To-Repeat:
+
+>Fix:
+Here's a quick and dirty patch (but you should get the general idea):
+
+diff -r -u -b apache_1.3b7/src/Configure apache_1.3b7_openstep4/src/Configure
+--- apache_1.3b7/src/Configure	Tue May 12 07:13:50 1998
++++ apache_1.3b7_openstep4/src/Configure	Fri May 29 10:22:59 1998
+@@ -484,10 +484,19 @@
+ 	;;
+     *-next-nextstep*)
+ 	OS='NeXT'
++	OPTIM='-O'
+ 	CFLAGS="$CFLAGS -DNEXT"
+ 	DEF_WANTHSREGEX=yes
+-	RANLIB="sleep 5; /bin/ranlib"
+-	# ranlib on most NeXTs sets the time wrong. 5 secs wait does much good
++	;;
++    *-next-openstep*)
++	OS='Openstep for Mach'
++	CC='cc'
++	OPTIM='-O'
++	CFLAGS="$CFLAGS -DNEXT"
++	CFLAGS_SHLIB='-dynamic -fno-common'
++	LD_SHLIB='cc'
++	LDFLAGS_SHLIB='-dynamiclib -undefined warning'
++	DEF_WANTHSREGEX=yes
+ 	;;
+     *-dec-osf*)
+ 	OS='DEC OSF/1'
+diff -r -u -b apache_1.3b7/src/ap/ap_snprintf.c apache_1.3b7_openstep4/src/ap/ap_snprintf.c
+--- apache_1.3b7/src/ap/ap_snprintf.c	Mon May 11 12:49:21 1998
++++ apache_1.3b7_openstep4/src/ap/ap_snprintf.c	Wed May 27 09:43:54 1998
+@@ -72,8 +72,12 @@
+     NO = 0, YES = 1
+ } boolean_e;
+ 
++#ifndef FALSE
+ #define FALSE			0
++#endif
++#ifndef TRUE
+ #define TRUE			1
++#endif
+ #define NUL			'\0'
+ #define INT_NULL		((int *)0)
+ #define WIDE_INT		long
+Only in apache_1.3b7_openstep4/src/ap: ap_snprintf.c.rej
+diff -r -u -b apache_1.3b7/src/helpers/GuessOS apache_1.3b7_openstep4/src/helpers/GuessOS
+--- apache_1.3b7/src/helpers/GuessOS	Sat Feb 21 09:00:41 1998
++++ apache_1.3b7_openstep4/src/helpers/GuessOS	Thu May 28 11:53:32 1998
+@@ -252,7 +252,21 @@
+ ISNEXT=`hostinfo 2>/dev/null`
+ case "$ISNEXT" in
+     *NeXT*)
+-	echo "whatever-next-nextstep"; exit 0
++#	echo "whatever-next-nextstep"; exit 0
++
++#	Swiped from a friendly uname clone for NEXT/OPEN Step.
++     	NEXTOSVER="`hostinfo | sed -n 's/.*NeXT Mach \([0-9\.]*\).*/\1/p'`"
++	if [ "$NEXTOSVER" -gt 3.3 ]
++     	then
++          NEXTOS="openstep"
++     	else
++          NEXTOS="nextstep"
++     	fi
++
++	NEXTREL="`hostinfo | sed -n 's/.*NeXT Mach \([0-9\.]*\).*/\1/p'`" 
++	NEXTARCH=`arch`
++	echo "${NEXTARCH}-next-${NEXTOS}${NEXTREL}" ; exit 0
++
+ 	;;
+ esac
+ 
+Only in apache_1.3b7_openstep4/src/helpers: GuessOS.rej
+diff -r -u -b apache_1.3b7/src/include/conf.h apache_1.3b7_openstep4/src/include/conf.h
+--- apache_1.3b7/src/include/conf.h	Mon May 11 14:59:01 1998
++++ apache_1.3b7_openstep4/src/include/conf.h	Fri May 29 10:17:32 1998
+@@ -356,7 +356,13 @@
+ #define STDIN_FILENO  0
+ #define STDOUT_FILENO 1
+ #define STDERR_FILENO 2
++
++/* PR#2293 fix */
++#define	wait_t	union wait
+ #define waitpid(a,b,c) wait4((a) == -1 ? 0 : (a),(union wait *)(b),c,NULL)
++#define WEXITSTATUS(status)     (int)( WIFEXITED(status) ? ( (status).w_retcode ) : -1)
++#define WTERMSIG(status)	(int)( (status).w_termsig )
++
+ typedef int pid_t;
+ #define USE_LONGJMP
+ #define NO_USE_SIGACTION
+@@ -1165,6 +1171,10 @@
+ 
+ #ifdef __cplusplus
+ }
++#endif
++
++#ifndef wait_t
++#define wait_t int
+ #endif
+ 
+ #endif	/* !APACHE_CONF_H */
+diff -r -u -b apache_1.3b7/src/include/http_main.h apache_1.3b7_openstep4/src/include/http_main.h
+--- apache_1.3b7/src/include/http_main.h	Sun May  3 12:31:09 1998
++++ apache_1.3b7_openstep4/src/include/http_main.h	Wed May 27 09:46:58 1998
+@@ -143,7 +143,7 @@
+  * disable this feature, use -1 for write_fd.
+  */
+ API_EXPORT(void) ap_register_other_child(int pid,
+-       void (*maintenance) (int reason, void *data, int status), void *data,
++       void (*maintenance) (int reason, void *data, wait_t status), void *data,
+ 				      int write_fd);
+ #define OC_REASON_DEATH		0	/* child has died, caller must call
+ 					 * unregister still */
+diff -r -u -b apache_1.3b7/src/main/http_log.c apache_1.3b7_openstep4/src/main/http_log.c
+--- apache_1.3b7/src/main/http_log.c	Mon May 18 15:41:32 1998
++++ apache_1.3b7_openstep4/src/main/http_log.c	Wed May 27 09:49:04 1998
+@@ -479,7 +479,7 @@
+ 
+ #ifndef NO_RELIABLE_PIPED_LOGS
+ /* forward declaration */
+-static void piped_log_maintenance (int reason, void *data, int status);
++static void piped_log_maintenance (int reason, void *data, wait_t status);
+ 
+ static int piped_log_spawn (piped_log *pl)
+ {
+@@ -519,7 +519,7 @@
+ }
+ 
+ 
+-static void piped_log_maintenance (int reason, void *data, int status)
++static void piped_log_maintenance (int reason, void *data, wait_t status)
+ {
+     piped_log *pl = data;
+ 
+diff -r -u -b apache_1.3b7/src/main/http_main.c apache_1.3b7_openstep4/src/main/http_main.c
+--- apache_1.3b7/src/main/http_main.c	Wed May 20 23:07:21 1998
++++ apache_1.3b7_openstep4/src/main/http_main.c	Thu May 28 11:57:57 1998
+@@ -317,7 +317,7 @@
+ struct other_child_rec {
+     other_child_rec *next;
+     int pid;
+-    void (*maintenance) (int, void *, int);
++    void (*maintenance) (int, void *, wait_t);
+     void *data;
+     int write_fd;
+ };
+@@ -1297,7 +1297,7 @@
+ 
+ #ifndef NO_OTHER_CHILD
+ API_EXPORT(void) ap_register_other_child(int pid,
+-		       void (*maintenance) (int reason, void *, int status),
++		       void (*maintenance) (int reason, void *, wait_t status),
+ 			  void *data, int write_fd)
+ {
+     other_child_rec *ocr;
+@@ -1383,7 +1383,7 @@
+ }
+ 
+ /* possibly reap an other_child, return 0 if yes, -1 if not */
+-static int reap_other_child(int pid, int status)
++static int reap_other_child(int pid, wait_t status)
+ {
+     other_child_rec *ocr, *nocr;
+ 
+@@ -2164,7 +2164,7 @@
+ #endif
+ static int wait_or_timeout_counter;
+ 
+-static int wait_or_timeout(int *status)
++static int wait_or_timeout(wait_t *status)
+ {
+ #ifdef WIN32
+ #define MAXWAITOBJ MAXIMUM_WAIT_OBJECTS
+@@ -3913,7 +3913,7 @@
+ }
+ 
+ 
+-static void process_child_status(int pid, int status)
++static void process_child_status(int pid, wait_t status)
+ {
+     /* Child died... if it died due to a fatal error,
+ 	* we should simply bail out.
+@@ -4062,7 +4062,7 @@
+ 
+ 	while (!restart_pending && !shutdown_pending) {
+ 	    int child_slot;
+-	    int status;
++	    wait_t status;
+ 	    int pid = wait_or_timeout(&status);
+ 
+ 	    /* XXX: if it takes longer than 1 second for all our children
+diff -r -u -b apache_1.3b7/src/modules/standard/mod_status.c apache_1.3b7_openstep4/src/modules/standard/mod_status.c
+--- apache_1.3b7/src/modules/standard/mod_status.c	Tue May  5 22:24:20 1998
++++ apache_1.3b7_openstep4/src/modules/standard/mod_status.c	Wed May 27 10:23:40 1998
+@@ -119,8 +119,8 @@
+ #include "http_log.h"
+ 
+ #ifdef NEXT
+-#if NX_CURRENT_COMPILER_RELEASE == 410
+-#if __ARCHITECTURE__ == m68k
++#if (NX_CURRENT_COMPILER_RELEASE == 410)
++#ifdef m68k
+ #define HZ 64
+ #else
+ #define HZ 100
+@@ -128,7 +128,7 @@
+ #else
+ #include <machine/param.h>
+ #endif
+-#endif
++#endif /* NEXT */
+ 
+ #define STATUS_MAXLINE		64
+ 
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Jun  4 13:14:20 PDT 1998
+State-Changed-Why:
+Hey that patch doesn't look too dirty to me... I applied it
+to 1.3.1-dev with only one change -- I used ap_wait_t
+instead of wait_t to avoid potential conflicts.
+
+Thanks
+Dean
+
+From: Rex Dieter <rdieter@mathstat.unl.edu>
+To: dgaudet@apache.org
+Cc: apbugs@apache.org
+Subject: os-next/2316: As per PR#2293, NeXT is missing many POSIX
+	wait-associated functions, resulting in a failed compilation
+Date: Thu,  4 Jun 98 15:34:12 -0500
+
+ dgaudet@apache.org wrote:
+ 
+ >  Synopsis: As per PR#2293, NeXT is missing many POSIX wait-associated
+ >  functions, resulting in a failed compilation
+ >
+ >  State-Changed-From-To: open-closed
+ >  State-Changed-By: dgaudet
+ >  State-Changed-When: Thu Jun  4 13:14:20 PDT 1998
+ >  State-Changed-Why:
+ >  Hey that patch doesn't look too dirty to me... I applied it
+ >  to 1.3.1-dev with only one change -- I used ap_wait_t
+ >  instead of wait_t to avoid potential conflicts.
+ 
+ Well, I didn't mean the patch was dirty, I meant that it's implementation  
+ might be dirty: it may or may not be the cleanest way go about it... PLUS  
+ the fact that the patch was the result of only a couple hours of work with  
+ very little testing.  (-;
+ 
+ If you look REAL close, you'll see that I snuck in a few other changes  
+ into the posted patch not associated with the POSIX/wait problem.  The  
+ changes are:
+ 1.  Modified GuessOS and Configure to distiguish between NEXTSTEP 3.x (ala  
+ nextstep3) and Openstep for Mach 4.x (ala openstep4).
+ 2.  Modified Configure to provide the proper flags for creating shared  
+ libraries under Openstep if/wheen apache can/will ever use them...
+ 3.  A few other tiny changes to squash compiler warnings (like TRUE/FALSE  
+ redefinitions).
+ 
+ ---
+ Rex A. Dieter			rdieter@math.unl.edu (NeXT/MIME OK)
+ Computer System Manager	 	http://www.math.unl.edu/~rdieter/
+ Mathematics and Statistics  		
+ University of Nebraska-Lincoln
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

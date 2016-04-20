@@ -1,0 +1,118 @@
+Received: (qmail 17510 invoked by uid 2012); 26 Nov 1998 18:04:32 -0000
+Message-Id: <19981126180432.17509.qmail@hyperreal.org>
+Date: 26 Nov 1998 18:04:32 -0000
+From: Richard Beton <richard.beton@roke.co.uk>
+Reply-To: richard.beton@roke.co.uk
+To: apbugs@hyperreal.org
+Subject: 500 Proxy Error raised too often
+X-Send-Pr-Version: 3.2
+
+>Number:         3455
+>Category:       mod_proxy
+>Synopsis:       500 Proxy Error raised too often
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Nov 26 10:10:01 PST 1998
+>Last-Modified:  Tue Feb 16 06:20:16 PST 1999
+>Originator:     richard.beton@roke.co.uk
+>Organization:
+>Release:        1.3.4
+>Environment:
+SunOS redrum 5.5.1 Generic_103640-06 sun4m sparc SUNW,SPARCstation-20
+>Description:
+Connecting via mod_proxy to an URL which is valid but for which the server is
+tempoaraily unavailable, the error report incorrectly indicates an internal
+error in the proxy server. However, it also reports the correct reason.
+
+Also, when a DNS lookup times out, the same error is raised even though the
+cause is a network bottleneck.
+>How-To-Repeat:
+Set up a server as a proxy. Connect to another server via a valid URL. Disable
+the target server. Repeat the test.
+>Fix:
+This is my naive suggestion.
+
+In mod_proxy, proxy_util.c 
+change line 843 ("return HTTP_INTERNAL_SERVER_ERROR")
+to "return HTTP_SERVICE_UNAVAILABLE"
+>Audit-Trail:
+
+From: Rick Beton <richard.beton.nospam@roke.co.uk>
+To: apbugs@apache.org
+Cc:  Subject: mod_proxy/3455: 500 Proxy Error raised too often
+Date: Tue, 01 Dec 1998 10:12:05 +0000
+
+ I have some additional information re #3455 which may be useful. I have
+ found the following work-around is effective. It may form the basis for
+ a full solution, I don't know.
+ 
+ In main/http_protocol.c change lines 2365 onwards from
+ 
+         case HTTP_SERVICE_UNAVAILABLE:
+         ap_bputs("The server is temporarily unable to service your\n"
+                      "request due to maintenance downtime or capacity\n"
+ 
+                      "problems. Please try again later.\n", fd);
+             break;
+ 
+ to
+ 
+         case HTTP_SERVICE_UNAVAILABLE:
+         ap_bvputs(fd, "The server is temporarily unable to service
+ your\n"
+                      "request due to maintenance downtime or capacity\n"
+ 
+                      "problems. Please try again later.\n<P>\n"
+                      "If the problem persists, "
+                  "please contact the server administrator,\n ",
+                      ap_escape_html(r->pool, r->server->server_admin),
+                      " for assistance.<P>\n", NULL);
+             if ((error_notes = ap_table_get(r->notes, "error-notes")) !=
+ NULL) {
+                 ap_bvputs(fd, error_notes, "<P>\n", NULL);
+             }
+             break;
+ 
+ 
+ This is in addition to the other change. In mod_proxy, proxy_util.c
+ change line 843 ("return HTTP_INTERNAL_SERVER_ERROR")
+ to "return HTTP_SERVICE_UNAVAILABLE"
+ 
+ --
+ Richard Beton B.Sc. C.Phys. M.Inst.P.
+ Roke Manor Research Limited (http://www.roke.co.uk/)
+ --------- Standard Disclaimer about my own views etc etc --------
+ ---------  My mail client accepts rich text (HTML) mail  --------
+ Welsh Highland Railway: http://www.whr.co.uk/WHR/WHR.html
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: martin
+State-Changed-When: Tue Feb 16 06:20:16 PST 1999
+State-Changed-Why:
+Based in part on your patch, two changes in http_protocol.c
+and proxy_util.c address this problem.
+First, the proxy doesn't always return HTTP_INTERNAL_SERVER_ERROR
+any longer, and second, the proxy sets an "expose" flag
+so that the error printing routine displays the error-notes
+text. Thanks for your patch/suggestion. 
+Release-Changed-From-To: 1.3.3-1.3.4
+Release-Changed-By: martin
+Release-Changed-When: Tue Feb 16 06:20:16 PST 1999
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

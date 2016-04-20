@@ -1,0 +1,171 @@
+Received: (qmail 10251 invoked by uid 2012); 22 Jul 1998 23:59:13 -0000
+Message-Id: <19980722235913.10250.qmail@hyperreal.org>
+Date: 22 Jul 1998 23:59:13 -0000
+From: Josh Beck <josh@zcompany.com>
+Reply-To: josh@zcompany.com
+To: apbugs@hyperreal.org
+Subject: Files being served are loaded into memory then served
+X-Send-Pr-Version: 3.2
+
+>Number:         2669
+>Category:       general
+>Synopsis:       Files being served are loaded into memory then served
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jul 22 17:00:01 PDT 1998
+>Last-Modified:  Wed Jul 22 19:10:01 PDT 1998
+>Originator:     josh@zcompany.com
+>Organization:
+>Release:        1.3.0
+>Environment:
+FreeBSD 3.0-980509-SNAP
+>Description:
+at MP3.COM we use Apache to serve MP3 downloads (legal :) via http as opposed
+to ftp. The problem is that a lot of people have slow connections, and Apache
+appears to load the entire file being served into memory, creating a lot of
+copies of Apache which are each very large... at one point I had over 100
+instances of Apache running, consuming about 400 MB of RAM, all to serve up
+about 4 Mb/s of data...
+>How-To-Repeat:
+
+>Fix:
+I understand that you want to load the file initially for speed and simplicity
+reasons, and it's the "correct" solution, but for us http is a much nicer
+download solution than ftp, and it would be nice to say something like:
+
+MaxFilePreloadSize 100K
+
+Or somesuch, so large files aren't loaded into memory to sit around for an hour
+while someone with a 28.8 modem downloads them.
+
+I searched around and maybe I missed something, but I couldn't find anything
+relevant to this.
+
+On a side note, I think mod_throttle or mod_bandwidth or a combination of both
+should be included in Apache by default... they are extremely useful for our
+situation!
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Wed Jul 22 17:03:35 PDT 1998
+State-Changed-Why:
+Apache does _NOT_ load the file into memory.
+
+If you see the process size grow with the file, then it
+is probably because your system is configured to use
+mmap() for sending files, and your system happens to
+show the size of a mapped file as part of the process size.
+
+That memory is _NOT_ actually used once per proxy and it
+is shared between processes and automatically allocated and
+freed by the OS as part of its buffer cache as necessary,
+just like normal file caching.
+
+From: Marc Slemko <marcs@znep.com>
+To: Josh Beck <josh@zcompany.com>
+Cc: apbugs@apache.org
+Subject: Re: general/2669: Files being served are loaded into memory then
+ served
+Date: Wed, 22 Jul 1998 17:38:14 -0700 (PDT)
+
+ On Wed, 22 Jul 1998, Josh Beck wrote:
+ 
+ > That makes sense... I didn't think of something like that since I assumed
+ > that an OS wouldn't fill all available real memory with buffer cache
+ > blocks.
+ > 
+ > I'm not enough of a kernel/libc person to know that much about mmap... it
+ > seems to me from what you say that it would be apache using mmap to send
+ > the files. Or would it be part of the open syscall? I'd like to stop it
+ > from doing that, if possible. 
+ 
+ Yes, Apache uses mmap().  If you want to disable it, remove the
+ USE_MMAP_FILES define from the appropriate section of the include/conf.h
+ file.
+ 
+ However, if you think you want to stop it from using mmap() then you are
+ probably wrong, especially on FreeBSD.  You will not magically gain the
+ amount of memory listed by ps or top by stopping using mmap().  
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Josh Beck <josh@zcompany.com>
+Cc: apbugs@apache.org
+Subject: Re: general/2669: Files being served are loaded into memory then
+ served
+Date: Wed, 22 Jul 1998 18:23:40 -0700 (PDT)
+
+ On Wed, 22 Jul 1998, Josh Beck wrote:
+ 
+ > > Yes, Apache uses mmap().  If you want to disable it, remove the
+ > > USE_MMAP_FILES define from the appropriate section of the include/conf.h
+ > > file.
+ > > 
+ > > However, if you think you want to stop it from using mmap() then you are
+ > > probably wrong, especially on FreeBSD.  You will not magically gain the
+ > > amount of memory listed by ps or top by stopping using mmap().
+ > 
+ > No, I don't plan on gaining that much back, and buying more memory isn't a
+ > problem. What I'd like to do is avoid the problem we may encounter when
+ > there are downloads of 200 simultaneous (different) songs going on, say,
+ > where we would need 1GB of ram to mmap all the files so they can be served
+ 
+ No, you do not need enough physical RAM to keep all the different files in
+ memory at once.
+ 
+
+From: Josh Beck <josh@zcompany.com>
+To: Marc Slemko <marcs@znep.com>
+Cc: apbugs@apache.org
+Subject: Re: general/2669: Files being served are loaded into memory then served
+Date: Wed, 22 Jul 1998 17:54:34 -0700 (PDT)
+
+ > Yes, Apache uses mmap().  If you want to disable it, remove the
+ > USE_MMAP_FILES define from the appropriate section of the include/conf.h
+ > file.
+ > 
+ > However, if you think you want to stop it from using mmap() then you are
+ > probably wrong, especially on FreeBSD.  You will not magically gain the
+ > amount of memory listed by ps or top by stopping using mmap().
+ 
+ No, I don't plan on gaining that much back, and buying more memory isn't a
+ problem. What I'd like to do is avoid the problem we may encounter when
+ there are downloads of 200 simultaneous (different) songs going on, say,
+ where we would need 1GB of ram to mmap all the files so they can be served
+ simultaneously. Yes, we can buy 1 GB or ram, but that stops becoming a
+ valid solution really quickly, as the price of machine and the ram for a
+ machine that can handle that much memory are very high. 
+ 
+ Something else I just thought of is that the problem isn't helped by
+ splitting downloads across multiple machines, as each machine would need
+ an equal amount of ram. :( I mean, we can buy 512 M or 1 G of ram for one
+ PC, or for several, but we can't just go out and buy a Sparc or something
+ with 10 G of ram simply to fit all files currently being downloaded into
+ memory. 
+ 
+ If I stop using mmap, I imagine that there would be performance issues
+ introduced in that more disk accesses would be required to keep the buffer
+ cache up to date (particularly with different instances of apache serving
+ different portions of any specific file), but if this is a lesser problem
+ than the issues caused by mmap(), are there any reasons not to do this? 
+ 
+ Josh Beck                                                 josh@zcompany.com
+ ===========================================================================
+ http://www.filez.com	- Web's largest software search site (75M files!)
+ http://www.mp3.com	- #1 music site on the web, ultimate MP3 resource!
+ http://www.websitez.com	- Find domain names easier & faster than whois!
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

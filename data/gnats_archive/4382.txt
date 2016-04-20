@@ -1,0 +1,193 @@
+Received: (qmail 19815 invoked from network); 10 May 1999 19:34:03 -0000
+Message-Id: <199905101934.PAA29467@hecuba.humgen.upenn.edu.>
+Date: Mon, 10 May 1999 15:34:00 -0400
+From: crabtree@omphale.pcbi.upenn.edu (Jonathan Crabtree)
+To: oh@culturall.com
+Cc: apbugs@apache.org
+Subject: Session in one Servlet-Zone get lost when creating a new Session in an other Servlet-Zone
+
+>Number:         4382
+>Category:       mod_jserv
+>Synopsis:       Session in one Servlet-Zone get lost when creating a new Session in an other Servlet-Zone
+>Confidential:   yes
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    jserv
+>State:          closed
+>Class:          mistaken
+>Submitter-Id:   unknown
+>Arrival-Date:   Mon May 10 12:40:01 PDT 1999
+>Last-Modified:  Wed May 12 08:23:44 PDT 1999
+>Originator:     crabtree@omphale.pcbi.upenn.edu (Jonathan Crabtree)
+>Organization:
+>Release:        
+>Environment:
+>Description:
+>How-To-Repeat:
+>Fix:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Wed May 12 08:23:44 PDT 1999
+State-Changed-Why:
+
+Text attached to correct PR.
+
+Originator-Changed-From-To: -crabtree@omphale.pcbi.upenn.edu (Jonathan Crabtree)
+Originator-Changed-By: coar
+Originator-Changed-When: Wed May 12 08:23:44 PDT 1999
+Class-Changed-From-To: sw-bug-mistaken
+Class-Changed-By: coar
+Class-Changed-When: Wed May 12 08:23:44 PDT 1999
+Severity-Changed-From-To: serious-non-critical
+Severity-Changed-By: coar
+Severity-Changed-When: Wed May 12 08:23:44 PDT 1999
+Responsible-Changed-From-To: gnats-admin-jserv
+Responsible-Changed-By: coar
+Responsible-Changed-When: Wed May 12 08:23:44 PDT 1999
+Responsible-Changed-Why:
+
+Text attached to correct PR.
+
+Category-Changed-From-To: pending-mod_jserv
+Category-Changed-By: coar
+Category-Changed-When: Wed May 12 08:23:44 PDT 1999
+
+>Unformatted:
+Oliver-
+
+Pardon the e-mail.  I'm just trying to add a follow-up to your Apache 
+bug report (#3941): I downloaded Apache JServ 1.0b4 and it appears to 
+have the same problem.
+
+PREFACE
+
+The following is a more detailed description of the Apache JServ
+problem reported in PR #3941.  It includes details of a fix/workaround
+that I have been using successfully under both Apache JServ 1.0b3 and
+Apache JServ 1.0b4.  The disclaimer, of course, is that I'm not
+sufficiently familiar with either Apache JServ or the Servlet API to
+know whether the fix creates more problems than it solves.
+
+PROBLEM DESCRIPTION
+
+Part of the problem is a static final variable in 
+org.apache.jserv.JServServletManager:
+
+>    /**
+>     * The name of the session parameter.
+>     */
+>    static final String SESSION_IDENTIFIER = "JServSessionId";
+
+This is used as the session identifier (in creating cookies and doing
+URL rewriting) for ALL servlet zones.  But since each zone has its own
+instance of JServServletManager and each JServServletManager has its
+own Hashtable mapping session IDs to Sessions, the zones aren't aware
+of each other's sessions (which is probably correct--I don't know the
+Servlet spec. well enough to say for sure).  But since each zone is
+using the same cookie ID, and since browsers don't seem to distinguish
+between cookies with the same name from the same host, one servlet
+zone can effectively "overwrite" the cookie set by another, erasing
+its stored session ID (it doesn't check to see if the cookie already
+exists, because, as far as it is concerned, there is no current
+session.)
+
+POSSIBLE FIX/WORKAROUND
+
+My fix/workaround (which hasn't broken anything else as far as I can
+tell) is to append the zone name to SESSION_IDENTIFIER.  So "ZONE1"
+would use the session identifier "JServSessionIdZONE1" and "ZONE2"
+would use the session ID "JServSessionIdZONE2".  This requires
+changing a couple of the methods in JServServletManager from
+static->non-static and making parallel changes in JServConnection,
+where these methods are called.
+
+What this fix doesn't address is this: what if the same servlet zones
+are being run on two different web servers (or JServ engines) on the
+same host?  My guess is that the browsers probably just use the host
+IP address as the namespace within which cookie names must be unique.
+If this is the case, then the SESSION_IDENTIFIER should be the JServ
+identifier PLUS the servlet zone name PLUS some unique identifier for
+the JServ instance in question.  There is also the question of whether
+changing the static methods to non-static will have any substantive
+impact on performance.
+
+I have tested this workaround under both 1.0b3 and 1.0b4.  The diffs
+given below are for the 1.0b4 release of Apache JServ and pertain to 
+only two files: JServServletManager and JServConnection.
+
+JSERVSERVLETMANAGER DIFF
+
+diff JServServletManager.java JServServletManager.original:
+
+Warning: missing newline at end of file JServServletManager.original
+91c91
+<     static final String SESSION_IDENTIFIER_BASE = "JServSessionId";
+---
+>     static final String SESSION_IDENTIFIER = "JServSessionId";
+183,188d182
+<      * A (slightly more) unique session identifier derived from 
+<      * SESSION_IDENTIFIER_BASE and <code>name</code>.
+<      */
+<     protected String session_identifier;
+< 
+<     /**
+212d205
+< 	this.session_identifier = SESSION_IDENTIFIER_BASE + name;
+660c653
+<      public final String getUrlSessionId(String queryStr) {
+---
+>      public static final String getUrlSessionId(String queryStr) {
+667c660
+<             Object o = params.get(session_identifier);
+---
+>             Object o = params.get(SESSION_IDENTIFIER);
+687c680
+<     public final String getCookieSessionId(Cookie[] cookies) {
+---
+>     public static final String getCookieSessionId(Cookie[] cookies) {
+693c686
+<             if (cookies[i].getName().equals(session_identifier)) {
+---
+>             if (cookies[i].getName().equals(SESSION_IDENTIFIER)) {
+707c700
+<     public String encodeUrl(String url, String id) {
+---
+>     public static String encodeUrl(String url, String id) {
+710c703
+<             return url + '?' + session_identifier + '=' + id;
+---
+>             return url + '?' + SESSION_IDENTIFIER + '=' + id;
+712c705
+<             return url + "&amp;" + session_identifier + '=' + id;
+---
+>             return url + "&amp;" + SESSION_IDENTIFIER + '=' + id;
+790c783
+<         Cookie c = new Cookie(session_identifier, s.id);
+---
+>         Cookie c = new Cookie(SESSION_IDENTIFIER, s.id);
+850c843
+< }
+---
+> }
+
+JSERVCONNECTION DIFF
+
+diff JServConnection.java JServConnection.original:
+250c250
+<         requestedSessionId = mgr.getUrlSessionId(getQueryString());
+---
+>         requestedSessionId = 
+JServServletManager.getUrlSessionId(getQueryString());
+253c253
+<         String cookieSession = mgr.getCookieSessionId(cookies_in);
+---
+>         String cookieSession = JServServletManager.getCookieSessionId(cookies_in);
+1609c1609
+<             return mgr.encodeUrl(url, session.id);
+---
+>             return JServServletManager.encodeUrl(url, session.id);
+1642c1642
+<             return mgr.encodeUrl(url, session.id);
+---
+>             return JServServletManager.encodeUrl(url, session.id);

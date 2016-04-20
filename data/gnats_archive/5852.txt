@@ -1,0 +1,136 @@
+Received: (qmail 44894 invoked by uid 65534); 10 Mar 2000 15:32:46 -0000
+Message-Id: <20000310153246.44893.qmail@locus.apache.org>
+Date: 10 Mar 2000 15:32:46 -0000
+From: Herko ter Horst <herko.ter.horst@aidministrator.nl>
+Reply-To: herko.ter.horst@aidministrator.nl
+To: submit@bugz.apache.org
+Subject: truncated binary files uploaded with a multipart/form-data encoded form
+X-Send-Pr-Version: 3.110
+
+>Number:         5852
+>Category:       mod_jserv
+>Synopsis:       truncated binary files uploaded with a multipart/form-data encoded form
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Mar 10 07:40:00 PST 2000
+>Closed-Date:    
+>Last-Modified:  Tue Mar 14 11:20:00 PST 2000
+>Originator:     herko.ter.horst@aidministrator.nl
+>Release:        1.3.11, 1.3.12
+>Organization:
+>Environment:
+Solaris 2.7, Apache 1.3.11 with JServ 1.1
+>Description:
+Small files are OK, but larger files get truncated. The methods we are using (in a JServ-powered servlet) were working in Apache 1.3.6, but now the files we try to upload are truncated. The Content-Length is reported correctly, however.
+This may be related to PR 3564 (which has been open for some time now).
+>How-To-Repeat:
+
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+Responsible-Changed-From-To: apache-jserv
+Responsible-Changed-By: marc
+Responsible-Changed-When: Mon Mar 13 13:17:33 PST 2000
+Responsible-Changed-Why:
+jserv, not apache.
+Category-Changed-From-To: general-mod_jserv
+Category-Changed-By: marc
+Category-Changed-When: Mon Mar 13 13:17:33 PST 2000
+
+
+From: Jos van der Meer <jmee@aidministrator.nl>
+To: apbugs@apache.org
+Cc: hhor@aidministrator.nl
+Subject: general/5852
+Date: Tue, 14 Mar 2000 13:56:14 +0100 (MET)
+
+ Problem 5852 is a bug in the core part of Apache (http_protocol.c).
+ The problem occurs in Solaris 2.7 and might be Solaris specific.
+ The problem occurs in Apache 1.3.11 and 1.3.12. Apache 1.3.6 did
+ not have the bug.
+ 
+ Cause of the Bug: In Solaris 2.7 read() on a pipe may may return 0 even
+ if there is more input to read. This is conform Solaris' "read(2)" manual page:
+ 
+ >
+ > When attempting to read from an empty pipe (or FIFO):
+ >
+ >  o If some process has the  pipe  open  for  writing  and
+ >    O_NDELAY is set, read() returns 0.
+ >
+ 
+ As a result, Apache will partially read input -- especially when it is large.
+ 
+ The fix is to apply the "UTS 2.1.2"-work-around in http_protocol.c
+ for Solaris too. The simplest way to achieve this is to add
+ NDELAY_PIPE_RETURNS_ZERO in ap_config.h for Solaris. For Apache 1.3.11 src:
+ 
+ $ diff ap_config.h ap_config.h.ORIG
+ 172d171
+ < #define NDELAY_PIPE_RETURNS_ZERO
+ 
+ The work-around has been tested at AIdministrator. The problem
+ was reproducable before the work-around, and not-reproducable afterwards.
+ I.e. the work-around fixes the bug.
+ 
+ It seems to us that the NDELAY_PIPE_RETURNS_ZERO-behaviour would not
+ cause a serious overhead in any platform: for conservative programming,
+ it might be considered to integrate the NDELAY_PIPE_RETURNS_ZERO-behaviour
+ in the generic Apache code.
+ 
+ 
+ 
+ Jos van der Meer
+ AIdministrator Nederland B.V.
+ Julianaplein 14B, 3817 CS Amersfoort, Tel: +31-33-4659987
+ mailto:Jos.van.der.Meer@AIdministrator.nl
+ 
+
+From: Jos van der Meer <jmee@aidministrator.nl>
+To: apbugs@Apache.Org
+Cc: hhor@aidministrator.nl
+Subject: general/5852
+Date: Tue, 14 Mar 2000 18:29:57 +0100 (MET)
+
+ Regarding my previous mail we have tested the following 
+ combinations of JServ and Apache on Solaris 2.7
+ 
+ 	Apache 1.3.6 + ApacheJServ 1.0	-> No problems
+ 	Apache 1.3.11 + ApacheJServ 1.0 -> Problems
+ 	Apache 1.3.11-patched-as-described + ApacheJServ 1.0 -> No Problems
+ 	Apache 1.3.12-patched-as-described + ApacheJServ 1.1 -> Problems
+ 	
+ To us, it seems as if in ApacheJServ 1.1 a similar problem exists
+ about the response on reading 0 bytes. However, we didn't find out
+ (yet) where it is.
+ 
+ 
+ Jos van der Meer
+ AIdministrator Nederland B.V.
+ Julianaplein 14B, 3817 CS Amersfoort, Tel: +31-33-4659987
+ mailto:Jos.van.der.Meer@AIdministrator.nl
+ 
+>Unformatted:
+ >Quarter:        
+ >Keywords:       
+ >Date-Required:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

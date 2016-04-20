@@ -1,0 +1,126 @@
+Received: (qmail 55763 invoked by uid 65534); 21 Jan 2000 21:17:14 -0000
+Message-Id: <20000121211714.55762.qmail@locus.apache.org>
+Date: 21 Jan 2000 21:17:14 -0000
+From: Francis Daly <francis@kerna.ie>
+Reply-To: francis@kerna.ie
+To: submit@bugz.apache.org
+Subject: MultiViews on, /partial should return /partial.* in preference to /partial/
+X-Send-Pr-Version: 3.110
+
+>Number:         5622
+>Category:       mod_negotiation
+>Synopsis:       MultiViews on, /partial should return /partial.* in preference to /partial/
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jan 21 13:20:01 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     francis@kerna.ie
+>Release:        1.3.9
+>Organization:
+apache
+>Environment:
+Linux 2.2
+>Description:
+Given the directory structure
+
+/dir/index.html
+/part/index.html
+/part.html
+
+With a default configuration, the uri's
+/dir/, /dir, /part/, /part, and /part.html are handled correctly.
+
+With MultiViews on, I think that the Right Thing is for /part to
+be equivalent to /part.html, not /part/ (/dir is still equivalent to
+/dir/, because there isn't a dir.*)
+
+[ mod_speling may be induced to do this in this specific case, but add an
+*.html.en and a *.html.de for each *.html there, and the point remains ]
+Is my idea of the Right Thing, the Wrong Thing?
+
+>How-To-Repeat:
+Create the directories dir and part, and the files dir/index.html,
+part/index.html and part.html
+Set DirectoryIndex to index.html (or index) and turn MultiViews on.
+Then issue the requests
+
+GET /dir
+GET /dir/
+GET /part.html
+GET /part/
+GET /part
+
+I think the last redirection shouldn't be the same as the first one.
+
+>Fix:
+What I suggest is to change the MultiViews documentation from:
+
+A MultiViews search is enabled by the MultiViews Option. If the server
+receives a request for /some/dir/foo and /some/dir/foo does not exist,
+then the server reads the directory looking for all files named foo.*,
+and effectively fakes up a type map which names all those files, assigning
+them the same media types and content-encodings it would have if the
+client had asked for one of them by name. It then chooses the best match
+to the client's requirements, and returns that document.
+
+to:
+
+A MultiViews search is enabled by the MultiViews Option. If the server
+receives a request for /some/dir/foo and /some/dir/foo does not exist
+or is a directory, then the server reads the directory /some/dir
+looking for all files named foo.* and effectively fakes up a type map
+which names all those files, assigning them the same media types and
+content-encodings it would have if the client had asked for one of them
+by name. It then chooses the best match to the client's requirements,
+and returns that document. If there isn't a best match, and foo is a
+directory, it redirects to /some/dir/foo/.
+
+and to change the code in mod_negotiation.c accordingly:
+
+diff -C3 mod_negotiation-old.c mod_negotiation.c
+
+*** mod_negotiation-old.c       Thu Jul 29 18:54:06 1999
+--- mod_negotiation.c   Fri Jan 21 19:38:01 2000
+***************
+*** 2574,2580 ****
+      int res;
+      int j;
+
+!     if (r->finfo.st_mode != 0 || !(ap_allow_options(r) & OPT_MULTI)) {
+          return DECLINED;
+      }
+
+--- 2574,2582 ----
+      int res;
+      int j;
+
+!     if ( r->uri[strlen(r->uri)-1] == '/'
+!         || !(ap_allow_options(r) & OPT_MULTI)
+!         || (r->finfo.st_mode != 0) && !S_ISDIR(r->finfo.st_mode)) {
+          return DECLINED;
+      }
+
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+ 
+

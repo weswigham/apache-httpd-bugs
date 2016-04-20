@@ -1,0 +1,190 @@
+Received: (qmail 23303 invoked by uid 501); 8 Feb 2002 17:26:12 -0000
+Message-Id: <20020208172612.23302.qmail@apache.org>
+Date: 8 Feb 2002 17:26:12 -0000
+From: Vladimir Goncharov <vg@ortv.ru>
+Reply-To: vg@ortv.ru
+To: submit@bugz.apache.org
+Subject: mod_proxy cannot delete old cache file under Win32. (Cache stores obsolete files)
+X-Send-Pr-Version: 3.110
+
+>Number:         9769
+>Category:       mod_proxy
+>Synopsis:       mod_proxy cannot delete old cache file under Win32. (Cache stores obsolete files)
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Feb 08 09:30:00 PST 2002
+>Closed-Date:
+>Last-Modified:
+>Originator:     vg@ortv.ru
+>Release:        1.3.23
+>Organization:
+apache
+>Environment:
+OS: Windows 2000 Professional Service Pack 2 + all critical updates from Windows Update.
+Platform: Intel Pentium III/1000Gz/256Mb RAM
+Compiler: MS Visual C++ 6.0 Service Pack 5
+compiled from source code with
+nmake /f makefile.win _apacher
+nmake /f makefile.win installr
+>Description:
+mod_proxy cannot delete old cache file under Win32 as a result cache stores obsolete files.
+
+The reason of using mod_proxy is to improve performance of my web server. I do it with ProxyPass directive that allows me to cache files that take long time to generate.
+
+Here is a fragment from httpd.conf
+ProxyRequests           off
+ProxyPass               /images/ http://www.ortv.ru/cache/img/
+ProxyVia                off
+CacheRoot               proxy
+CacheSize               300000
+CacheGcInterval         21
+CacheLastModifiedFactor 0.01
+
+Everything works perfectly when I send this request to httpd:
+GET /images/20020205163724.GIF HTTP/1.1
+Host: 127.0.0.1
+
+The requested file is retrieved from http://www.ortv.ru/cache/img/20020205163724.GIF, stored in cache (proxy/n/v/u/mrcterheykb0w5buhrrzg4h) and returned to the client.
+
+This is http header for www.ortv.ru/cache/img/20020205163724.GIF (I think this is important). This file I request through mod_proxy.
+HTTP/1.1 200 OK
+Date: Wed, 06 Feb 2002 13:39:07 GMT
+Server: Apache/1.3.23 (Win32) mod_plsql/3.0.9.8.3
+Content-Length: 13013
+Last-Modified: Tue, 05 Feb 2002 10:37:24 GMT
+Expires: Sun, 07 Apr 2002 13:25:29 GMT
+Cache-Control: max-age=5184000
+X-ORACLE-CACHE-STATUS: HIT,EXPIRES
+Connection: close
+Content-Type: image/pjpeg.
+
+Then I send another request:
+GET /images/20020205163724.GIF HTTP/1.1
+Cache-control: no-cache
+Host: 127.0.0.1
+
+Note: no-cache added.
+
+As a response, I get a file, and the error log contains line like:
+[error] (13)Permission denied: proxy: error deleting old cache file proxy/tmpa01796
+
+And temporary file "proxy/tmpa01796" is not deleted.
+
+I found this code starting at line 1696 of proxy_cache.c:
+    if (unlink(c->filename) == -1 && errno != ENOENT) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, s,
+                     "proxy: error deleting old cache file %s",
+                     c->tempfile);
+    } 
+This really means that we have problem with deleting file in the cache, not temporary file.
+
+When I change this code to
+    if (unlink(c->filename) == -1 && errno != ENOENT) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, s,
+                     "proxy: error deleting old cache file %s (%s)",
+                     c->tempfile, c->filename);
+    } 
+I get a new line in httpd error log:
+[error] (13)Permission denied: proxy: error deleting old cache file proxy/tmpa01688 (proxy/n/v/u/mrcterheykb0w5buhrrzg4h)
+
+The file proxy/n/v/u/mrcterheykb0w5buhrrzg4h (and all directories) has all necessary privileges for user who runs Apache (really it has full control for Everyone) and no read-only attributes. The file system is NTFS.
+
+As far as I understand from the source code, the result of this error is that cache always stores obsolete files.
+
+I check it under Linux and found that no temporary files appear in proxy cache after described requests.
+>How-To-Repeat:
+To repeat this problem use my httpd.conf, clean proxy cache, start httpd and follow steps in "Full Description" section.
+Do not change ProxyPass directive and use http://127.0.0.1/images/20020205163724.GIF to request.
+
+Please, be attentive, no records appear in error log while http header of caching file looks like:
+HTTP/1.1 200 OK
+Date: Wed, 06 Feb 2002 14:21:44 GMT
+Server: Apache/1.3.23 (Win32) mod_plsql/3.0.9.8.3
+Cache-Control: max-age=86400
+Expires: Thu, 07 Feb 2002 14:21:44 GMT
+Last-Modified: Thu, 14 Oct 1999 15:05:42 GMT
+ETag: "0-31e9-3805f146"
+Accept-Ranges: bytes
+Content-Length: 12777
+Connection: close
+Content-Type: image/gif
+
+Really, it is header of http://www.ortv.ru/images/abc.gif
+
+The httpd.conf:
+ServerType standalone
+ServerRoot "c:/Apache"
+PidFile logs/httpd.pid
+ScoreBoardFile logs/apache_runtime_status
+Timeout 90
+KeepAlive Off
+MaxKeepAliveRequests 100
+KeepAliveTimeout 15
+MaxRequestsPerChild 100000
+ThreadsPerChild 542
+LoadModule proxy_module modules/mod_proxy.so
+
+ClearModuleList
+AddModule mod_env.c
+AddModule mod_log_config.c
+AddModule mod_mime.c
+AddModule mod_dir.c
+AddModule mod_cgi.c
+AddModule mod_access.c
+AddModule mod_proxy.c
+AddModule mod_so.c
+
+
+Port 85
+ServerName 127.0.0.1
+<Directory />
+    Options FollowSymLinks
+    AllowOverride None
+</Directory>
+DirectoryIndex home.htm
+AccessFileName .htaccess
+<Files ~ "^\.ht">
+    Order allow,deny
+    Deny from all
+    Satisfy All
+</Files>
+TypesConfig conf/mime.types
+
+DefaultType text/plain
+ErrorLog logs\server_error.log
+
+ProxyRequests           off
+ProxyPass               /images/ http://www.ortv.ru/cache/img/
+CacheRoot               proxy
+CacheSize               300000
+CacheGcInterval         21
+CacheLastModifiedFactor 0.01
+>Fix:
+no.
+Requested file has .GIF extention and mime type image/pjpeg.
+The http header of http://www.ortv.ru/cache/img/20020205163724.GIF has Last-Modified field and has no Etag one.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

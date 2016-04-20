@@ -1,0 +1,96 @@
+Received: (qmail 11080 invoked by uid 2012); 15 Oct 1997 21:54:12 -0000
+Message-Id: <19971015215412.11079.qmail@hyperreal.org>
+Date: 15 Oct 1997 21:54:12 -0000
+From: Wei Hu <wei_hu@sgi.com>
+Reply-To: wei_hu@sgi.com
+To: apbugs@hyperreal.org
+Subject: Improper statck variable initialization in mod_rewrite
+X-Send-Pr-Version: 3.2
+
+>Number:         1234
+>Category:       mod_rewrite
+>Synopsis:       Improper statck variable initialization in mod_rewrite
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Oct 15 15:20:01 PDT 1997
+>Last-Modified:  Thu Feb 26 00:24:30 PST 1998
+>Originator:     wei_hu@sgi.com
+>Organization:
+>Release:        1.2.4
+>Environment:
+SGI IRIX 6.2 6.3 6.4
+
+I believe the problem is platform-independent
+>Description:
+> In file mod_rewrite.c
+> 
+> static int apply_rewrite_rule(request_rec *r, rewriterule_entry *p, char
+> *perdir)
+> {
+>     char *uri;
+>     char *output;
+>     int flags;
+>     char newuri[MAX_STRING_LEN];
+>     char port[32];
+>     regex_t *regexp;
+>     regmatch_t regmatch[10];		<====
+> 
+> should be changed to:
+> 
+>      regmatch_t regmatch[10] = {0,0};
+> 
+> Otherwise, you get random garbage off the stack.
+
+
+We find that the server would segv under some conditions, depending
+on what happened to be on the stack.
+>How-To-Repeat:
+
+>Fix:
+see above
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Wei Hu <wei_hu@sgi.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_rewrite/1234: Improper statck variable initialization in mod_rewrite
+Date: Thu, 23 Oct 1997 02:51:04 -0700 (PDT)
+
+ I looked through the code ... and I can't figure out where it'll core dump
+ without your patch.  Any chance you could provide a stack trace? 
+ 
+ Dean
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Thu Dec 18 08:19:36 PST 1997
+State-Changed-Why:
+[Dean asked for additional information on 23 October 1997]
+Release-Changed-From-To: 1.1 up to 1.2.4-1.2.4
+Release-Changed-By: coar
+Release-Changed-When: Thu Dec 18 08:19:36 PST 1997
+State-Changed-From-To: feedback-closed
+State-Changed-By: rse
+State-Changed-When: Thu Feb 26 00:24:30 PST 1998
+State-Changed-Why:
+We now close this report because...
+1. we never heard any more feedback from the user
+   - especially the stack trace Dean wanted.
+2. we never heard of such a problem except within
+   this report
+3. the regex(3) manpage states that while the
+   0th element of pmatch is a special one it is _filled_
+   by regexec and not read by it. The only requirement
+   is that the pmatch argument points to a pre-allocated
+   memory space. This is true for us. 
+4. The given patch from the submitter is non-portable
+   and we cannot expect that even if it is portable that
+   it would solve such a core-dump problem.
+
+>Unformatted:
+

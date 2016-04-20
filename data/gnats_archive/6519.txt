@@ -1,0 +1,175 @@
+Received: (qmail 71975 invoked by uid 501); 12 Sep 2000 00:28:04 -0000
+Message-Id: <20000912002804.71974.qmail@locus.apache.org>
+Date: 12 Sep 2000 00:28:04 -0000
+From: Mike Abbott <mja@sgi.com>
+Reply-To: mja@sgi.com
+To: submit@bugz.apache.org
+Subject: 2.0a6 mod_log_config doesn't compile with BUFFERED_LOGS
+X-Send-Pr-Version: 3.110
+
+>Number:         6519
+>Category:       mod_log-any
+>Synopsis:       2.0a6 mod_log_config doesn't compile with BUFFERED_LOGS
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Sep 11 17:30:00 PDT 2000
+>Closed-Date:    Sat Oct 07 21:37:08 PDT 2000
+>Last-Modified:  Sat Oct 07 21:37:08 PDT 2000
+>Originator:     mja@sgi.com
+>Release:        2.0a6
+>Organization:
+>Environment:
+Irix 6.5
+>Description:
+"mod_log_config.c", line 759: error(1164): argument of type "int" is
+          incompatible with parameter of type "apr_ssize_t *"
+          apr_write(cls->log_fd, cls->outbuf, cls->outcnt);
+                                              ^
+
+"mod_log_config.c", line 832: error(1164): argument of type "apr_ssize_t" is
+          incompatible with parameter of type "apr_ssize_t *"
+          apr_write(cls->log_fd, str, len);
+                                      ^
+
+"mod_log_config.c", line 1122: error(1020): identifier "flush_all_logs" is
+          undefined
+        apr_register_cleanup(p , s, flush_all_logs, flush_all_logs);
+                                    ^
+
+3 errors detected in the compilation of "mod_log_config.c".
+>How-To-Repeat:
+env CPPFLAGS="-DBUFFERED_LOGS" configure
+>Fix:
+The following patch fixes it but I wonder if BUFFERED_LOGS can be
+removed altogether in favor of opening the log file with APR_BUFFERED --
+but that won't buffer piped logs.
+
+--- mod_log_config.c-orig       Mon Sep 11 15:20:56 2000
++++ mod_log_config.c    Mon Sep 11 15:48:51 2000
+@@ -246,7 +246,7 @@
+     apr_file_t *log_fd;
+     char *condition_var;
+ #ifdef BUFFERED_LOGS
+-    int outcnt;
++    apr_ssize_t outcnt;
+     char outbuf[LOG_BUFSIZE];
+ #endif
+ } config_log_state;
+@@ -756,7 +756,7 @@
+ static void flush_log(config_log_state *cls)
+ {
+     if (cls->outcnt && cls->log_fd != NULL) {
+-        apr_write(cls->log_fd, cls->outbuf, cls->outcnt);
++        apr_write(cls->log_fd, cls->outbuf, &cls->outcnt);
+         cls->outcnt = 0;
+     }
+ }
+@@ -824,12 +824,15 @@
+         flush_log(cls);
+     }
+     if (len >= LOG_BUFSIZE) {
++       apr_ssize_t w;
++
+         str = apr_palloc(r->pool, len + 1);
+         for (i = 0, s = str; i < format->nelts; ++i) {
+             memcpy(s, strs[i], strl[i]);
+             s += strl[i];
+         }
+-        apr_write(cls->log_fd, str, len);
++       w = len;
++        apr_write(cls->log_fd, str, &w);
+     }
+     else {
+         for (i = 0, s = &cls->outbuf[cls->outcnt]; i < format->nelts; ++i) {
+@@ -1104,28 +1107,10 @@
+     return NULL;
+ }
+ 
+-static void init_config_log(apr_pool_t *pc, apr_pool_t *p, apr_pool_t *pt, server_rec *s)
+-{
+-    /* First, do "physical" server, which gets default log fd and format
+-     * for the virtual servers, if they don't override...
+-     */
+-
+-    open_multi_logs(s, p);
+-
+-    /* Then, virtual servers */
+-
+-    for (s = s->next; s; s = s->next) {
+-        open_multi_logs(s, p);
+-    }
+-#ifdef BUFFERED_LOGS
+-       /* Now register the last buffer flush with the cleanup engine */
+-       apr_register_cleanup(p , s, flush_all_logs, flush_all_logs);
+-#endif
+-}
+-
+ #ifdef BUFFERED_LOGS
+-static void flush_all_logs(server_rec *s)
++static apr_status_t flush_all_logs(void *data)
+ {
++    server_rec *s = data;
+     multi_log_state *mls;
+     apr_array_header_t *log_list;
+     config_log_state *clsarray;
+@@ -1147,8 +1132,29 @@
+             }
+         }
+     }
++
++    return APR_SUCCESS;
+ }
+ #endif
++
++static void init_config_log(apr_pool_t *pc, apr_pool_t *p, apr_pool_t *pt, server_rec *s)
++{
++    /* First, do "physical" server, which gets default log fd and format
++     * for the virtual servers, if they don't override...
++     */
++
++    open_multi_logs(s, p);
++
++    /* Then, virtual servers */
++
++    for (s = s->next; s; s = s->next) {
++        open_multi_logs(s, p);
++    }
++#ifdef BUFFERED_LOGS
++       /* Now register the last buffer flush with the cleanup engine */
++       apr_register_cleanup(p , s, flush_all_logs, flush_all_logs);
++#endif
++}
+ 
+ static void register_hooks(void)
+ {
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rbb
+State-Changed-When: Sat Oct  7 21:37:07 PDT 2000
+State-Changed-Why:
+This patch has been applied to the tree.  It will be available
+in the next alpha release
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

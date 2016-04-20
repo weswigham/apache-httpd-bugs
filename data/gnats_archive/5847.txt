@@ -1,0 +1,136 @@
+Received: (qmail 57002 invoked by uid 65534); 9 Mar 2000 07:12:09 -0000
+Message-Id: <20000309071209.57001.qmail@locus.apache.org>
+Date: 9 Mar 2000 07:12:09 -0000
+From: Axel Beckert <axel@dagstuhl.de>
+Reply-To: axel@dagstuhl.de
+To: submit@bugz.apache.org
+Subject: Redirect 410 (Gone)causes segfault when custom error document contains SSI include statement
+X-Send-Pr-Version: 3.110
+
+>Number:         5847
+>Category:       mod_alias
+>Synopsis:       Redirect 410 (Gone)causes segfault when custom error document contains SSI include statement
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Mar 08 23:20:01 PST 2000
+>Closed-Date:    
+>Last-Modified:  Thu May  4 14:10:01 PDT 2000
+>Originator:     axel@dagstuhl.de
+>Release:        1.3.9, 1.3.12
+>Organization:
+apache
+>Environment:
+uname -a: SunOS dagoffice 4.1.4 11 sun4m
+gcc -v: gcc version 2.95.2 19991024 (release)
+Apache/1.3.12 (Unix) mod_macro/1.1.1 and a patched mod_autoindex, but the bug 
+also occurs without the patch. There are also no macros involved in the 
+configuration parts mentioned below.
+>Description:
+I've got the following error documents configured:
+
+ErrorDocument 401 /error/Unauth
+ErrorDocument 403 /error/Forbidden
+ErrorDocument 404 /error/NotFound
+ErrorDocument 410 /error/Gone
+ErrorDocument 500 /error/ServerError
+
+Alias /error/ "/home/HTTP/WWW/ErrorTemplates/"
+
+<Directory "/home/HTTP/WWW/ErrorTemplates">
+	Options FollowSymLinks Includes Multiviews -Indexes
+	AddHandler server-parsed .html
+	AllowOverride None
+	Order allow,deny
+	Allow from all
+</Directory>
+
+The directory /home/HTTP/WWW/ErrorTemplates/ contains beneath other files:
+
+Forbidden.de.html Forbidden.en.html Gone.de.html Gone.en.html
+NotFound.de.html NotFound.en.html ServerError.de.html
+ServerError.en.html Unauth.de.html Unauth.en.html
+
+They *all* contain the following SSI include statements:
+
+<!--#include file="top.de.html" -->
+<!--#include file="contact.de.html" -->
+<!--#include file="bottom.de.html" -->
+
+respective
+
+<!--#include file="top.en.html" -->
+<!--#include file="contact.en.html" -->
+<!--#include file="bottom.en.html" -->
+
+and they all work fine except Gone.{de,en}.html, there I get always an
+empty document (also no headers no status line, etc) and a line
+containing "[notice] child pid <pid> exit signal Segmentation fault
+(11)" in the error log file. When commenting out the above mentioned
+lines (by replacing "<!--#" with "<!-- #"), everything works fine
+(except that the commented includes do not work :-).
+
+So I tried configuring
+
+ErrorDocument 410 /error/NotFound
+ErrorDocument 404 /error/Gone
+
+which resulted in 404s working and showing Gone.{de,en}.html and 410s
+still not working. So this error is *not* caused by the documents
+itself, but by something weird, which must have to do something with
+the 410 code in mod_alias and server-parsed documents.
+
+[BTW: There was no core dump.]
+>How-To-Repeat:
+Non-working 410: http://www.dagstuhl.de/prog.e.95
+Working 404: http://www.dagstuhl.de/foobar
+Working 403: http://www.dagstuhl.de/.htaccess
+>Fix:
+Sorry, no clue.
+>Release-Note:
+>Audit-Trail:
+
+From: Axel Beckert <abe@cs.uni-sb.de>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc:  
+Subject: Re: mod_alias/5847: Redirect 410 (Gone)causes segfault when custom error document contains SSI include statement
+Date: Thu, 4 May 2000 22:37:21 +0200
+
+ Hi;
+ 
+ On Thu, Mar 09, 2000 at 07:20:01AM -0000, submit@bugz.apache.org wrote:
+ > Synopsis: Redirect 410 (Gone)causes segfault when custom error
+ >           document contains SSI include statement
+ 
+ Further debugging revealed, that the bug appeared not only with 410,
+ but also with every other 4xx error triggered by a Redirect directive
+ in the server configuration.
+ 
+ The problem disappeared, after switching on the RewriteEngine for the
+ appropriate VHost, although it was no RewriteRule, which triggered
+ those failing 4xx error pages, but some RewriteRules may be indirectly
+ involved in those requests and then being discarded by some
+ RewriteCond.
+ 
+ 	Regards, Axel
+ -- 
+ Axel Beckert - axel@dagstuhl.de - http://abe.home.pages.de/
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

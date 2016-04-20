@@ -1,0 +1,130 @@
+From nobody@hyperreal.com  Wed Jun 11 12:25:04 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id MAA01533;
+	Wed, 11 Jun 1997 12:25:04 -0700 (PDT)
+Message-Id: <199706111925.MAA01533@hyperreal.com>
+Date: Wed, 11 Jun 1997 12:25:04 -0700 (PDT)
+From: jeff hayes <jhayes@aw.sgi.com>
+Reply-To: jhayes@aw.sgi.com
+To: apbugs@hyperreal.com
+Subject: compiling in irix 6.3 with n32 bit libraries
+X-Send-Pr-Version: 3.2
+
+>Number:         721
+>Category:       config
+>Synopsis:       compiling in irix 6.3 with n32 bit libraries
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jun 11 12:30:01 1997
+>Last-Modified:  Mon Jul 21 08:53:18 PDT 1997
+>Originator:     jhayes@aw.sgi.com
+>Organization:
+>Release:        1.2.0
+>Environment:
+IRIX namehere 6.3 12161207 IP32  -- this is an R5000 O2
+Apache 1.2 release with no patches
+>Description:
+Compiling Apache with the n32 bit libraries proved to be easy
+The new compiler is a bit .. well a LOT pickier than the o32 bit compiler.
+So there are some things to fix to get a clean compile.
+
+I could have taken the IRIX 6.2 binary that you have available but it is
+prob built with O32 libraries, right?   So I wanted the practice and built
+my own.   The fact that I built in irix 6.3 does not matter -- The binary
+will run on irix 6.2 and 6.4 -  The OS diffs are in at the hardware level
+and the OS guru's here assure me that it is okay.
+
+Assuming that people with newer machines would want the n32 bit option.
+It is possible that I went too far in  changes I made to GuessOS and Configure.
+If you wanted to check existance of /lib32/libc.so.* and/or 
+/usr/lib32/mips4/libm.so before outputting "${MACHINE}-sgi-irix32" that
+might be wise.   These are the files that our run scripts check for before
+running the n32 apps.
+
+There are some unreached statment warnings still in the regex pkg but I have
+left that alone.  doing a break after a return in a case is a style thing so
+i ignore it.
+
+If you can tell me where to drop it I could send you the n32 bit binary
+that I have built.
+>How-To-Repeat:
+build on an irix 6.* machine with the -n32 switch enabled.
+>Fix:
+diff ./Configuration /usr/local/etc/httpd/src12//Configuration
+50c50
+< #OPTIM=-O2
+---
+> OPTIM=-O2
+86c86
+< Rule IRIXNIS=no
+---
+> Rule IRIXNIS=yes
+diff ./Configure /usr/local/etc/httpd/src12//Configure
+258c258
+<   CFLAGS="$CFLAGS -n32"
+---
+>   CFLAGS="$CFLAGS -n32 -DIRIX"
+264,265c264,277
+<       CFLAGS="$CFLAGS -DIRIX"
+<       LIBS="$LIBS -lsun"
+---
+>       # not needed in IRIX 6.*  LIBS="$LIBS -lsun"
+>   else
+>       OS='SGI IRIX'
+>   fi
+>   ;;
+>     *-sgi-irix32)
+>   echo "You are running 32-bit Irix. We will compile 32-bit"
+>   CFLAGS="$CFLAGS -n32 -DIRIX"
+>   LFLAGS="$LFLAGS -n32"
+>   DEF_WANTHSREGEX=yes
+>   DBM_LIB=""
+>   if [ "$RULE_IRIXNIS" = "yes" ]; then
+>       OS='SGI IRIX w/NIS'
+>       # not needed in IRIX 6.*  LIBS="$LIBS -lsun"
+268d279
+<       CFLAGS="$CFLAGS -DIRIX"
+271a283
+>   CFLAGS="$CFLAGS -DIRIX"
+276d287
+<       CFLAGS="$CFLAGS -DIRIX"
+280d290
+<       CFLAGS="$CFLAGS -DIRIX"
+diff ./util_snprintf.c /usr/local/etc/httpd/src12//util_snprintf.c
+187c187
+<     register i;
+---
+>     register int i;
+
+
+
+
+--- in helpers/
+diff ./GuessOS /usr/local/etc/httpd/src12/helpers//GuessOS
+82a84,87
+>   ;;
+>
+>     IRIX:6*)
+>   echo "${MACHINE}-sgi-irix32"; exit 0
+
+
+and in support/  .. httpd_monitor.c
+non-void function "usage" (declared at line 232) should return a value
+ line 122 change  int usage();  to void usage();
+ line 240 change  int  to voi
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: jim
+State-Changed-When: Mon Jul 21 08:53:18 PDT 1997
+State-Changed-Why:
+Latest CVS update commits patches to allow for GuessOS
+
+and Configure to recognise and use IRIX 32bit libs
+>Unformatted:
+
+

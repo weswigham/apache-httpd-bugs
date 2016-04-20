@@ -1,0 +1,143 @@
+Received: (qmail 2243 invoked by uid 2012); 12 Aug 1998 00:43:48 -0000
+Message-Id: <19980812004348.2242.qmail@hyperreal.org>
+Date: 12 Aug 1998 00:43:48 -0000
+From: Renaud Waldura <rw@ligos.com>
+Reply-To: rw@ligos.com
+To: apbugs@hyperreal.org
+Subject: #set and #echo don't interpolate variable names
+X-Send-Pr-Version: 3.2
+
+>Number:         2832
+>Category:       mod_include
+>Synopsis:       #set and #echo don't interpolate variable names
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          mistaken
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Aug 11 17:50:00 PDT 1998
+>Last-Modified:  Wed May  5 14:26:42 PDT 1999
+>Originator:     rw@ligos.com
+>Organization:
+>Release:        1.2.6
+>Environment:
+BSD/OS orange.ligos.com 3.1 BSDI BSD/OS 3.1 Kernel #13: Wed Mar 25 14:58:34 PST 1998     root@orange.ligos.com:/usr/src/sys/compile/LOCAL  i386
+>Description:
+Hello Apache,
+
+#set doesn't interpolate/expand/parse variable names. Eg:
+
+   <!--#set var="var_name" value="x" -->
+   <!--#set var="$var_name" value="2" -->
+
+sets a variable named "$var_name", not "x". Same for #echo:
+
+   <!--#echo var="$var_name" -->
+
+works only if a variable named "$var_name" exists (unlikely). I'd like to
+be able to set/print variables by name.
+
+I'm using this instead instead of big and ugly if/elif/elif statements.
+>How-To-Repeat:
+Try this:
+
+   <!--#set var="var_name" value="x" -->
+   <!--#set var="$var_name" value="2" -->
+   <!--#echo var="x" -->
+
+You're gonna get "(none)" instead of "2".
+>Fix:
+Here's a patch against Apache 1.2.6:
+
+<patch>
+*** mod_include.c.orig  Tue Aug 11 15:26:27 1998
+--- mod_include.c       Tue Aug 11 16:17:08 1998
+***************
+*** 842,847 ****
+--- 842,848 ----
+  static int handle_echo(FILE *in, request_rec *r, const char *error)
+  {
+      char tag[MAX_STRING_LEN];
++     char parsed_string[MAX_STRING_LEN];
+      char *tag_val;
+  
+      while (1) {
+***************
+*** 849,855 ****
+              return 1;
+          }
+          if (!strcmp(tag, "var")) {
+!             char *val = table_get(r->subprocess_env, tag_val);
+  
+              if (val) {
+                  rputs(val, r);
+--- 850,858 ----
+              return 1;
+          }
+          if (!strcmp(tag, "var")) {
+!             char *val;
+!             parse_string(r, tag_val, parsed_string, sizeof parsed_string, 0);
+!             val = table_get(r->subprocess_env, parsed_string);
+  
+              if (val) {
+                  rputs(val, r);
+***************
+*** 1950,1955 ****
+--- 1953,1959 ----
+  {
+      char tag[MAX_STRING_LEN];
+      char parsed_string[MAX_STRING_LEN];
++     char parsed_string2[MAX_STRING_LEN];
+      char *tag_val;
+      char *var;
+  
+***************
+*** 1962,1968 ****
+              return 0;
+          }
+          else if (!strcmp(tag, "var")) {
+!             var = tag_val;
+          }
+          else if (!strcmp(tag, "value")) {
+              if (var == (char *) NULL) {
+--- 1966,1973 ----
+              return 0;
+          }
+          else if (!strcmp(tag, "var")) {
+!           parse_string(r, tag_val, parsed_string2, sizeof parsed_string2, 0);
+!           var = parsed_string2;
+          }
+          else if (!strcmp(tag, "value")) {
+              if (var == (char *) NULL) {
+</patch>
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Wed May  5 14:26:39 PDT 1999
+State-Changed-Why:
+
+Do you see anything in the documentation that indicates
+this should be happening?  These directives work directly
+with variable names, not their equivalence values.
+If you really want to see this functionality added to
+Apache, please reply; otherwise this issue will be
+considered closed.  Thanks for reporting it, though, and
+for using Apache!
+
+Class-Changed-From-To: sw-bug-mistaken
+Class-Changed-By: coar
+Class-Changed-When: Wed May  5 14:26:39 PDT 1999
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

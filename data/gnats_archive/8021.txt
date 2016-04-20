@@ -1,0 +1,112 @@
+Received: (qmail 87340 invoked by uid 501); 13 Jul 2001 10:31:25 -0000
+Message-Id: <20010713103125.87339.qmail@apache.org>
+Date: 13 Jul 2001 10:31:25 -0000
+From: Taketo Kabe <kabe@sra-tohoku.co.jp>
+Reply-To: kabe@sra-tohoku.co.jp
+To: submit@bugz.apache.org
+Subject: [PATCH] %b,%B in LogFormat not logged zero for HEAD request
+X-Send-Pr-Version: 3.110
+
+>Number:         8021
+>Category:       mod_log-any
+>Synopsis:       [PATCH] %b,%B in LogFormat not logged zero for HEAD request
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jul 13 03:40:05 PDT 2001
+>Closed-Date:    Sat Sep 01 20:25:41 PDT 2001
+>Last-Modified:  Sat Sep 01 20:25:41 PDT 2001
+>Originator:     kabe@sra-tohoku.co.jp
+>Release:        2.0.20
+>Organization:
+>Environment:
+
+SunOS 5.8 Generic_108528-05 sun4u sparc SUNW,Ultra-60
+gcc version 2.95.2 19991024 (release)
+./configure [--enable-log-config]
+
+>Description:
+
+The "%b" "%B" directives in LogFormat should indicate "-" or "0" for
+HEAD requests, because no response body is sent --
+but actually, the file size is logged.
+
+This was because r->sent_bodyct flag, which tells logger to 
+log r->bytes_sent, is set to 1 BEFORE checking & discarding the body in 
+modules/http/http_protocol.c:ap_http_header_filter() .
+
+Setting r->sent_bodyct AFTER checking for HEAD fixed it.
+
+>How-To-Repeat:
+
+* Setup a LogFormat with "%b" or "%B" within 
+  (the default combined log is enough)
+* Issue a HEAD request for a plain file.
+* Examine the access_log.
+  The 7th field (bytes transmitted) should be "-" or "0",
+  but actually is the size of the file.
+
+>Fix:
+
+#
+#****** modules/http/http_protocol.c HEAD logs full content bytes
+#
+# This patch fixes that "%b" "%B" (bytes sent, excluding response headers)
+# directives for mod_log_config, is logged as full file size (should be zero).
+#
+##find httpd-2_0_20 -name '*.dist7' -exec ./0diff {} \;
+/usr/local/gnu/bin/patch -p1 --backup --suffix=.dist7 << 'EOP'
+=============================== {
+diff -u httpd-2_0_20/modules/http/http_protocol.c.dist7 httpd-2_0_20/modules/http/http_protocol.c
+--- httpd-2_0_20/modules/http/http_protocol.c.dist7	Fri Jul 13 07:32:53 2001
++++ httpd-2_0_20/modules/http/http_protocol.c	Fri Jul 13 07:37:42 2001
+@@ -1206,14 +1206,14 @@
+ 
+     terminate_header(b2);
+ 
+-    r->sent_bodyct = 1;         /* Whatever follows is real body stuff... */
+-
+     ap_pass_brigade(f->next, b2);
+ 
+     if (r->header_only) {
+         apr_brigade_destroy(b);
+         return OK;
+     }
++
++    r->sent_bodyct = 1;         /* Whatever follows is real body stuff... */
+ 
+     if (r->chunked) {
+         /* We can't add this filter until we have already sent the headers.
+=============================== }}
+EOP
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rbb
+State-Changed-When: Sat Sep  1 20:25:41 PDT 2001
+State-Changed-Why:
+This patch has been applied.  Thank you very much for the
+bug report, and for using Apache 2.0.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

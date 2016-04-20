@@ -1,0 +1,61 @@
+Received: (qmail 17288 invoked by uid 2012); 4 Nov 1997 04:56:18 -0000
+Message-Id: <19971104045618.17287.qmail@hyperreal.org>
+Date: 4 Nov 1997 04:56:18 -0000
+From: Louis Erickson <loue@skylight.com>
+Reply-To: loue@skylight.com
+To: apbugs@hyperreal.org
+Subject: Running apache in inetd mode fails silently
+X-Send-Pr-Version: 3.2
+
+>Number:         1354
+>Category:       general
+>Synopsis:       Running apache in inetd mode fails silently
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Nov  3 22:10:00 PST 1997
+>Last-Modified:  Tue Dec 16 00:20:20 PST 1997
+>Originator:     loue@skylight.com
+>Organization:
+>Release:        1.3b2
+>Environment:
+uname -a says: Linux scuzzbopper 2.0.30 #3 Wed Sep 17 18:56:43 PDT 1997 i586 unknown
+
+I'm running gcc 2.7..2.2, on a standard Slackware 95 installation of Linux.
+>Description:
+When apache was configured for inetd mode, it would produce no output and no log files.  I found no core, and no signal.
+
+I added many syslog calls to find that in:src/main/http_main.c, in the function 
+
+unsigned int set_callback_and_alarm(void (*fn) (int), int x)
+
+the program would apparently cause a segmentaion violation, in this block:
+
+    old = scoreboard_image->servers[my_child_num].timeout_len;
+    scoreboard_image->servers[my_child_num].timeout_len = x;
+    ++scoreboard_image->servers[my_child_num].cur_vtime;
+
+Nothing is output, and the ports are closed.
+
+I assumed (and did not check!) that the problem is that standalone_main dosen't   initalize the my_chuld and/or scoreboard_image data correctly.
+
+For my usage, I just uncommented the OPTIMIZE_TIMEOUTS definition, and that worked fine, but that's not going to work for the main distribution, is it?
+>How-To-Repeat:
+Build so that the OPTIMIZE_TIMEOUTS constant is defined, and run in inetd mode, connecting to the server.
+>Fix:
+Either check the standalone flag and just use signals, or make sure the scoreboard table is initalized.  I didn't diagnose what was wrong with the scoreboard table, if it was not initalized, or my_child_num wasn't right or what
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Dec 16 00:20:20 PST 1997
+State-Changed-Why:
+This has been fixed in 1.3b4-dev.
+
+Thanks
+Dean
+>Unformatted:
+

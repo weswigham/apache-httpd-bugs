@@ -1,0 +1,197 @@
+Received: (qmail 23086 invoked by uid 2012); 6 May 1998 04:32:30 -0000
+Message-Id: <19980506043230.23085.qmail@hyperreal.org>
+Date: 6 May 1998 04:32:30 -0000
+From: Jonathan Roy <roy@idle.com>
+Reply-To: roy@idle.com
+To: apbugs@hyperreal.org
+Subject: web server running 1 hour ahead of the server itself
+X-Send-Pr-Version: 3.2
+
+>Number:         2187
+>Category:       mod_include
+>Synopsis:       web server running 1 hour ahead of the server itself
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          analyzed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue May  5 21:40:01 PDT 1998
+>Last-Modified:  Thu May 28 05:07:47 PDT 1998
+>Originator:     roy@idle.com
+>Organization:
+>Release:        1.3b5
+>Environment:
+roy@sinistar (25) % uname -a
+SunOS sinistar 5.5 Generic_103093-06 sun4m sparc SUNW,SPARCstation-20
+>Description:
+
+  DATE_LOCAL in an ssi echo command was printing May 6 when it was still May 5. Couldn't
+figure out what was wrong or how to change the effective time zone of the server,
+so we just restarted it. error_log has:
+
+[Wed May  6 00:21:15 1998] [notice] httpd: caught SIGTERM, shutting down
+[Tue May  5 23:21:31 1998] [notice] Apache/1.3b5 configured -- resuming normal operations
+
+now. We were in EST/EDT up until 4-5 months ago, so I thought maybe the server was set to
+the wrong time zone. However, it appears this was a one time problem and not
+a recurring one. No idea if it has happened in the past, I don't believe
+so. But it did tonight. We use DATE_LOCAL and ssi to set a filename to print the current 
+image for the day, and we had a broken link tonight after 11pm since the web server 
+was an hour ahead of the crontab that makes the files...
+>How-To-Repeat:
+I can't repeat it, it just happened out of the blue. Someone 
+suggested "they may call time twice and assume the first digit 
+doesn't change between them" but I have no idea myself. Our server isn't too fast
+and has a slow startup from lots of fastcgi static processes. I restarted the
+server with:
+kill pid; sleep 2; /web/bin/httpd -f /web/conf/httpd
+but that alone won't repeat it.
+>Fix:
+I restarted the server and the time (or timezone) was correct.
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Jonathan Roy <roy@idle.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/2187: web server running 1 hour ahead of the server itself
+Date: Wed, 6 May 1998 23:54:02 -0600 (MDT)
+
+ On 6 May 1998, Jonathan Roy wrote:
+ 
+ > roy@sinistar (25) % uname -a
+ > SunOS sinistar 5.5 Generic_103093-06 sun4m sparc SUNW,SPARCstation-20
+ > >Description:
+ > 
+ >   DATE_LOCAL in an ssi echo command was printing May 6 when it was still May 5. Couldn't
+ > figure out what was wrong or how to change the effective time zone of the server,
+ > so we just restarted it. error_log has:
+ > 
+ > [Wed May  6 00:21:15 1998] [notice] httpd: caught SIGTERM, shutting down
+ > [Tue May  5 23:21:31 1998] [notice] Apache/1.3b5 configured -- resuming normal operations
+ 
+ When did this start happening?  Was it when Apache was started or while it
+ was running?
+ 
+ Are you sure no one with their on TZ environment variable set started
+ Apache at any time?
+ 
+ I am really doubtful that Apache is doing anything wrong because it just
+ uses the OS's supplied routines...
+ 
+
+From: Jonathan Roy <roy@idle.com>
+To: Marc Slemko <marcs@znep.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/2187: web server running 1 hour ahead of the
+  server itself
+Date: Thu, 07 May 1998 10:05:36 -0400
+
+   I believe the time was wrong during the whole web server execution. TZ is
+ set to US/Central which is the right time zone. This problem may very well
+ never happen again, but I figured I'd report it in case someone else ever
+ experiances it as well, as an additional data point.
+ 
+ -Jonathan
+ 
+ At 11:54 PM 5/6/98 -0600, Marc Slemko wrote:
+ >On 6 May 1998, Jonathan Roy wrote:
+ >
+ >> roy@sinistar (25) % uname -a
+ >> SunOS sinistar 5.5 Generic_103093-06 sun4m sparc SUNW,SPARCstation-20
+ >> >Description:
+ >> 
+ >>   DATE_LOCAL in an ssi echo command was printing May 6 when it was still
+ May 5. Couldn't
+ >> figure out what was wrong or how to change the effective time zone of
+ the server,
+ >> so we just restarted it. error_log has:
+ >> 
+ >> [Wed May  6 00:21:15 1998] [notice] httpd: caught SIGTERM, shutting down
+ >> [Tue May  5 23:21:31 1998] [notice] Apache/1.3b5 configured -- resuming
+ normal operations
+ >
+ >When did this start happening?  Was it when Apache was started or while it
+ >was running?
+ >
+ >Are you sure no one with their on TZ environment variable set started
+ >Apache at any time?
+ >
+ >I am really doubtful that Apache is doing anything wrong because it just
+ >uses the OS's supplied routines...
+ >
+ >
+ >
+ 
+ --
+ Jonathan Roy - roy@idle.com - Idle Communications, Inc.
+ 
+
+From: Jonathan Roy <roy@idle.com>
+To: marcs@znep.com
+Cc: apbugs@hyperreal.org, bacon@twinight.org, mgfrank@idle.com
+Subject: Re: general/2187: web server running 1 hour ahead of the
+  server itself
+Date: Mon, 18 May 1998 01:02:31 -0400
+
+   This has happened again. A page using a xssi generated filename is broken
+ because the web server has jumped 1 hour into the future.
+ 
+ [Mon May 18 00:33:32 1998] [error] File does not exist:
+ /export/home0/wcb/mpog_html/pvp/archive/1998/pvp19980513.gif
+ [Mon May 18 00:35:27 1998] [error] File does not exist:
+ /export/home0/wcb/mpog_html/pvp/archive/1998/pvp19980518.gif
+ roy@sinistar (28) % date
+ Sun May 17 23:44:32 CDT 1998
+ 
+   From server-status
+ 
+    Current Time: Mon May 18 00:47:21 1998
+    Restart Time: Fri May 15 18:15:45 1998
+    Server uptime: 2 days 6 hours 31 minutes 36 seconds
+    Total accesses: 176320 - Total Traffic: 1.0 GB
+ 
+   I can't spot where it happened or for how long this has been going on
+ since the server started. It could be a OS or hardware clock problem, I
+ don't know. But what I do know is the current clock time is correct and
+ httpd is ahead by 1 hour, which happened when I first reported this. I
+ restarted it and now see this on server-status:
+ 
+    Current Time: Sun May 17 23:56:34 1998
+    Restart Time: Sun May 17 23:56:30 1998
+    Server uptime: 4 seconds
+    Total accesses: 0 - Total Traffic: 0 kB
+ 
+   Still running 1.3b5. Can move to b6 immediately if anyone thinks it might
+ impact this. :(
+ 
+ -Jonathan
+ 
+ 
+ --
+ Jonathan Roy - roy@idle.com - Idle Communications, Inc.
+ 
+State-Changed-From-To: open-analyzed
+State-Changed-By: brian
+State-Changed-When: Wed May 20 05:49:16 PDT 1998
+State-Changed-Why:
+(analyzed is the correct state for this report)
+
+Comment-Added-By: coar
+Comment-Added-When: Thu May 28 05:07:47 PDT 1998
+Comment-Added:
+[This appears to be specific to mod_include, so categorise
+appropriately]
+Category-Changed-From-To: general-mod_include
+Category-Changed-By: coar
+Category-Changed-When: Thu May 28 05:07:47 PDT 1998
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,86 @@
+Received: (qmail 18186 invoked by uid 2012); 6 May 1998 06:03:22 -0000
+Message-Id: <19980506060322.18185.qmail@hyperreal.org>
+Date: 6 May 1998 06:03:22 -0000
+From: Marty Bower <marty@mjhb.com>
+Reply-To: marty@mjhb.com
+To: apbugs@hyperreal.org
+Subject: Header and Readme not displayed when specified in .htaccess
+X-Send-Pr-Version: 3.2
+
+>Number:         2189
+>Category:       os-windows
+>Synopsis:       Header and Readme not displayed when specified in .htaccess
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue May  5 23:10:00 PDT 1998
+>Last-Modified:  Tue Oct 20 11:29:14 PDT 1998
+>Originator:     marty@mjhb.com
+>Organization:
+>Release:        1.3b6
+>Environment:
+NT/4.0 i386 (Server & Workstation, SP3); MSVC++/5.0
+>Description:
+Content from files specified in HeaderName and ReadmeName directives in 
+.htaccess file not displayed, and error log contains:
+[Tue May 05 21:49:10 1998] [crit] (22)Invalid argument: e:/apache/htdocs/e:/.htaccess pcfg_openfile: unable to check htaccess file, ensure it is readable
+
+ap_sub_req_lookup_file decides if rnew->filename is already 
+fully-qualified by checking to see if the first character is a '/', 
+which of course fails on Win32 (where a full path begins with a drive 
+letter, e.g. 'C:').
+>How-To-Repeat:
+srm.conf: 
+  Options All
+  AllowOverride All
+
+.htaccess:
+  HeaderName .foo
+  ReadmeName .bar
+
+Directory contains .foo.html & .bar.html
+
+Directory listing does not display contents of either .foo.html or .bar.html
+>Fix:
+Replace test for '/' with call to ap_os_is_path_absolute:
+
+*** http_request.c.dist	Mon Apr 13 11:05:11 1998
+--- http_request.c	Tue May 05 22:53:09 1998
+***************
+*** 812,818 ****
+           * file may not have a uri associated with it -djg
+           */
+          rnew->uri = "INTERNALLY GENERATED file-relative req";
+!         rnew->filename = ((new_file[0] == '/') ?
+                            ap_pstrdup(rnew->pool, new_file) :
+                            ap_make_full_path(rnew->pool, fdir, new_file));
+          rnew->per_dir_config = r->server->lookup_defaults;
+--- 812,818 ----
+           * file may not have a uri associated with it -djg
+           */
+          rnew->uri = "INTERNALLY GENERATED file-relative req";
+!         rnew->filename = ((ap_os_is_path_absolute(new_file)) ?
+                            ap_pstrdup(rnew->pool, new_file) :
+                            ap_make_full_path(rnew->pool, fdir, new_file));
+          rnew->per_dir_config = r->server->lookup_defaults;
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: kparz@raleigh.ibm.com
+State-Changed-When: Tue Oct 20 11:29:14 PDT 1998
+State-Changed-Why:
+Thanks for the bug report!!!!
+The change has been committed to CVS.
+
+Thanks for using apache.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

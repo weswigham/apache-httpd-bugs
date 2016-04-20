@@ -1,0 +1,167 @@
+Received: (qmail 17908 invoked by uid 2012); 25 Mar 1999 02:19:26 -0000
+Message-Id: <19990325021926.17907.qmail@hyperreal.org>
+Date: 25 Mar 1999 02:19:26 -0000
+From: Nick Kralevich <nickkral@cal.alumni.berkeley.edu>
+Reply-To: nickkral@cal.alumni.berkeley.edu
+To: apbugs@hyperreal.org
+Subject: Client bug: IE 4.0 breaks with "Vary" header
+X-Send-Pr-Version: 3.2
+
+>Number:         4118
+>Category:       protocol
+>Synopsis:       Client bug: IE 4.0 breaks with "Vary" header
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Mar 24 18:20:00 PST 1999
+>Last-Modified:  Wed Jul 28 10:37:06 PDT 1999
+>Originator:     nickkral@cal.alumni.berkeley.edu
+>Organization:
+>Release:        1.3.4
+>Environment:
+Windows 95, Windows NT, Internet Explorer 4.0 -- version 4.72.2106.8
+>Description:
+Client Bug!  Not an apache bug!  I couldn't find the appropriate 
+category for client bugs.
+
+This is also related to problem report 4117 that I filed a few minutes
+ago.  That problem is an apache bug, not a client bug.
+
+When Internet Explorer receives a "Vary: Host" header, or a "Vary: *"
+header, the system will improperly report "file not found".  The exact
+error message is:
+
+"Internet Explorer cannot download from the Internet site viewer.zip from 
+palm.dahm.com.  The downloaded file is not available.  This could be due 
+to your Security or Language settings or because the server was unable to 
+retrieve the requested file."
+
+Specifically, when IE received the following headers, it failed:
+
+  HTTP/1.1 200 OK
+  Date: Wed, 24 Mar 1999 21:36:09 GMT
+  Server: Apache/1.3.4 (Unix)
+  Vary: Host, Host
+  Last-Modified: Tue, 16 Mar 1999 21:34:37 GMT
+  ETag: "1a4923-684bd-36eece6d"
+  Accept-Ranges: bytes
+  Content-Length: 427197
+  Keep-Alive: timeout=15, max=100
+  Connection: Keep-Alive
+  Content-Type: application/zip
+
+  [contents of zip file]
+
+However, when the following headers were received, IE had no
+problem downloading the file:
+
+  HTTP/1.1 200 OK
+  Date: Wed, 24 Mar 1999 21:36:09 GMT
+  Server: Apache/1.3.4 (Unix)
+  Last-Modified: Tue, 16 Mar 1999 21:34:37 GMT
+  ETag: "1a4923-684bd-36eece6d"
+  Accept-Ranges: bytes
+  Content-Length: 427197
+  Keep-Alive: timeout=15, max=100
+  Connection: Keep-Alive
+  Content-Type: application/zip
+
+  [contents of zip file]
+
+the only difference being the "Vary:" line is missing.
+
+Mod_rewrite (and others) add the "vary" header, so this could be an 
+important client issue.
+>How-To-Repeat:
+This should work, although I haven't tried it.
+
+Add the following line to your apache config file:
+
+  Header append Vary: Host
+
+Then try to download a "zip" file from IE and Netscape.  On IE
+it will not work, Netscape it will work.
+>Fix:
+Server workaround:  Add the following option to the apache config file:
+
+  Header unset Vary:
+
+This may have adverse consequences for other proxy servers.
+>Audit-Trail:
+
+From: Nick Kralevich <nickkral@cal.Alumni.Berkeley.EDU>
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: protocol/4118: Client bug: IE 4.0 breaks with "Vary" header
+Date: Wed, 24 Mar 1999 18:22:14 -0800 (PST)
+
+ Oh, in addition, this bug is fixed in IE 5
+ 
+ Take care,
+ -- Nick
+ 
+ 
+
+From: Nick Kralevich <nickkral@cal.Alumni.Berkeley.EDU>
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: protocol/4118: Client bug: IE 4.0 breaks with "Vary" header
+Date: Wed, 24 Mar 1999 18:33:35 -0800 (PST)
+
+ And one more thing.  =)
+ 
+ The only reason I submitted this request is so you could update the "Known
+ Client Issues" page.
+ 
+ Anyone who is using mod_rewrite is potentially vulnerable to this bug,
+ since mod_rewrite inserts the "Vary" header.  
+ 
+ An ideal solution would be a "BrowserMatch" directive -- if it's IE 4.0,
+ don't send this header.
+ 
+ Take care,
+ -- Nick
+ 
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 13:04:28 PDT 1999
+State-Changed-Why:
+thanks... still deciding what to do
+State-Changed-From-To: analyzed-closed
+State-Changed-By: coar
+State-Changed-When: Thu Apr 29 12:32:46 PDT 1999
+State-Changed-Why:
+
+A new environment variable, "force-no-vary", has been
+added.  If set with BrowserMatch, the Vary field will not
+be sent as part of the response header.  This change should
+appear in the next release after 1.3.6.  Thanks for
+the report and for using Apache!
+
+Class-Changed-From-To: doc-bug-change-request
+Class-Changed-By: coar
+Class-Changed-When: Thu Apr 29 12:32:46 PDT 1999
+Comment-Added-By: coar
+Comment-Added-When: Wed Jul 28 10:37:05 PDT 1999
+Comment-Added:
+
+A somewhat better solution is being added for the next
+release after 1.3.6.  The handling of "Vary" in the
+mod_rewrite, mod_headers, and mod_negotiation modules
+has been changed to only add tokens if they aren't
+already present.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

@@ -1,0 +1,114 @@
+Received: (qmail 7147 invoked by uid 2012); 11 Sep 1999 19:57:18 -0000
+Message-Id: <19990911195718.7146.qmail@hyperreal.org>
+Date: 11 Sep 1999 19:57:18 -0000
+From: bob racko <bobr.apache@dprc.net>
+Reply-To: bobr.apache@dprc.net
+To: apbugs@hyperreal.org
+Subject: htpasswd write locks // megasite partial pages
+X-Send-Pr-Version: 3.2
+
+>Number:         5000
+>Category:       general
+>Synopsis:       htpasswd write locks // megasite partial pages
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Sep 11 15:10:01 PDT 1999
+>Last-Modified:
+>Originator:     bobr.apache@dprc.net
+>Organization:
+apache
+>Release:        1.3.9
+>Environment:
+unix/linux, apache 1.3.9, actually replicated on sun solaris
+megasites or ones with lots of virtual hosting (ISPs)
+where htpasswd files are being changed by users
+alternatively frequently-updated pages on same
+>Description:
+There are problems that stem from the lack of interlocks between the server
+and potentially multiple instances of htpasswd running at once.
+Additionally, updates to the document tree are not interlocked in a way that
+cooperates between the server and the updating program and thus
+the server presents a partial page to the user (or to the proxy server
+which is even tougher to erradicate).
+
+The system (daemon and support programs together) have event-windows
+in which httpd winds up reading a truncated htpasswd file or a
+partial html file.  In addition, there are situations where
+the password file could become permanantly truncated if multiple
+instances of htpasswd are running at once on the same output file.
+
+This was less common when there was no -b flag but now that there is one,
+and autoregistration via CGI is possible, it it also now possible to have
+clashes that wind up clobbering the password file.
+
+While I was observing the problem, I was also able to
+come up with a method for updating web pages that also
+corrected for 'partial-page' issues.  
+
+The write-locks I have tested are atomic, do not leave the server prone
+to denial of service attacks, do not leave lock or tmp
+files lying about and only come into play when the
+cannot-open/file-not-found exception is about to be triggered.
+No performance penalty on normal cases.
+
+While I was at it, I also implemented backups to the htpasswd file
+that do not require an extra switch to enable/disable.
+[if the backup file is there it is used]
+
+(of course if the passwd file isnt clobbered anymore why save a backup...)
+
+summary also posted to comp.infosystems.www.servers.unix
+last week but I guess you folks missed it in the noise.
+>How-To-Repeat:
+You probably have difficulty replicating this one
+on anything but a megasite, but since I have been involved
+in several now, I am quite familiar.
+
+1) have a heavily loaded server (so that CGI programs run slow enough)
+2) have 2 people run htpasswd[.c] at once on a passwd file
+that takes some time to copy-back 
+(insert sleep() calls if you need to)
+3) observe that some users later on in the password file fail to authenticate
+because httpd gets EOF before htpasswd is finished writing passwd file back
+
+alternatively:
+use a faster server and set up autoregistration (using a cgiscript that calls htpasswd)
+and then add a whole bunch of people (or change the password to a whole bunch of users)
+at once using multiple instances of htpasswd [as would be the case in a cgi
+on a website with 88 pageviews a second].
+>Fix:
+yes,
+I have implemented a series of fixes that corrects for these problems.
+I have fixed the problem in alloc.c (where the servers file-open is)
+and in htpasswd.c .
+
+The full solution is not a one-liner so a difflist would be unrealistic.
+
+I have constrained the fixes to 2 files. I have tested the fix
+to alloc.c on apache 1.3.6 and 1.3.9.  I have also applied the changes
+successfully to htpasswd.c (both versions).
+
+contact me for the source changes. I will work with the
+current maintainer or, if you like, become the current maintainer of
+ htpasswd.c as I have spent much time analyzing its foibles.
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

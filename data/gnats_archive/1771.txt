@@ -1,0 +1,147 @@
+Received: (qmail 8910 invoked by uid 2012); 4 Feb 1998 17:50:57 -0000
+Message-Id: <19980204175057.8909.qmail@hyperreal.org>
+Date: 4 Feb 1998 17:50:57 -0000
+From: Konstantin Morshnev <moko@design.ru>
+Reply-To: moko@design.ru
+To: apbugs@hyperreal.org
+Subject: invalid processing of poly borders
+X-Send-Pr-Version: 3.2
+
+>Number:         1771
+>Category:       mod_imap
+>Synopsis:       invalid processing of poly borders
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Feb  4 11:10:00 PST 1998
+>Last-Modified:  Sat Feb 28 16:32:05 PST 1998
+>Originator:     moko@design.ru
+>Organization:
+>Release:        any (1.2.5 is example)
+>Environment:
+Any
+>Description:
+When point belongs to polygon border, apache answer is unpredictable
+- sometimes it answers "inside", sometime "outside". It is contrary to
+Rect and Circle, where borders sertanly belong to the figure.
+
+Conside the following imagemaps:
+
+---poly.map----
+base referer
+poly poly.html 1,1 1,10 10,10 10,1
+
+---rect.map----
+base referer
+rect rect.html 1,1 10,10
+
+They describe the same figure, but the result is different:
+
+poly.map?1,1 - _outside_
+
+Contrary to:
+
+rect.map?1,1 - _inside_
+
+the funny thing is:
+
+poly.map?10,10 - inside,
+poly.map?1,5 - outside
+poly.map?10,5 - inside, and so on.
+
+Sometimes it's not critical, but sometimes it is.
+
+So pointinpoly functions should be fixed.
+>How-To-Repeat:
+http://moko.design.ru/apache/poly.map?1,1
+http://moko.design.ru/apache/rect.map?1,1
+>Fix:
+Yes, I have already changed it for local use.
+I can send a patch. It should work, but it should pass a lot of testing,
+which I unable to perform myself
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Feb  7 03:40:07 PST 1998
+State-Changed-Why:
+Yes please send your patch when you're happy with it, just
+reply to this email and include it.  Thanks!
+
+Dean
+
+From: Konstantin Morshnev <moko@design.ru>
+To: dgaudet@hyperreal.org, apbugs@Apache.Org
+Cc:  Subject: Re: mod_imap/1771: invalid processing of poly borders
+Date: Sat, 07 Feb 1998 18:23:42 +0300
+
+ dgaudet@hyperreal.org wrote:
+ > 
+ > Synopsis: invalid processing of poly borders
+ > 
+ > State-Changed-From-To: open-analyzed
+ > State-Changed-By: dgaudet
+ > State-Changed-When: Sat Feb  7 03:40:07 PST 1998
+ > State-Changed-Why:
+ 
+ > Yes please send your patch when you're happy with it, just
+ > reply to this email and include it.  Thanks!
+ 
+ Here it goes:
+ 
+ I've made another (simple, sometimes bit faster, sometimes bit slower)
+ realization of the algorithm,
+ and add line (second "if" statement), which tests that point belongs to border,
+ returning "true" in that case.
+ 
+ This realization:
+ 1. More simple.
+ 2. Does not uses "/".
+ 3. Fixes "border bug".
+ 4. It's not so optimized for big and convex polygon processing (what about
+ non-convex?), but it's the same linear algorithm.
+ 
+ -------------
+ #define min(a,b) (((a)>(b))?(b):(a))
+ #define max(a,b) (((a)>(b))?(a):(b))
+ 
+ static int pointinpoly(const double point[2], const double pgon[MAXVERTS][2])
+ {
+     int i, numverts, crossings = 0;
+     double x = point[X], y = point[Y];
+     for (numverts = 0; pgon[numverts][X] != -1 && numverts < MAXVERTS;
+ numverts++);
+ 
+     for (i = 0; i < numverts; i++){
+         double x1=pgon[i][X],
+                y1=pgon[i][Y],
+                x2=pgon[(i + 1) % numverts][X],
+                y2=pgon[(i + 1) % numverts][Y],
+                d=(y - y1) * (x2 - x1) - (x - x1) * (y2 - y1);
+         if ((y1 >= y) != (y2 >= y)) crossings+=y2 - y1 >= 0 ? d >= 0 : d <= 0;
+         if (!d && min(x1,x2) <= x && x <= max(x1,x2) && min(y1,y2) <= y && y <=
+ max(y1,y2)) return 1;
+     }
+     return crossings & 0x01;
+ }
+ -------------
+ 
+ WBR, MoKo
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Feb 28 16:32:05 PST 1998
+State-Changed-Why:
+Patch applied, thanks!
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,89 @@
+Received: (qmail 66756 invoked by uid 501); 1 Feb 2002 00:47:37 -0000
+Message-Id: <20020201004737.66755.qmail@apache.org>
+Date: 1 Feb 2002 00:47:37 -0000
+From: David MacKenzie <djm@pix.net>
+Reply-To: djm@pix.net
+To: submit@bugz.apache.org
+Subject: questionable logic for closing file descriptors after fork
+X-Send-Pr-Version: 3.110
+
+>Number:         9672
+>Category:       mod_cgi
+>Synopsis:       questionable logic for closing file descriptors after fork
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jan 31 16:50:00 PST 2002
+>Closed-Date:
+>Last-Modified:  Sun Feb 17 22:43:33 PST 2002
+>Originator:     djm@pix.net
+>Release:        2.0.28 and CVS
+>Organization:
+>Environment:
+Unix
+>Description:
+Shouldn't the parent ends of the file descriptors be closed unconditionally in the child between fork and exec?  Or is there an invariant that if attr->child_in is not set, then attr->parent_in is also not set, or is not a pipe?  If that's the case, a comment should mention that invariant.  Right now, the code looks like it might be wrong if the child descriptors aren't set, but it doesn't mention under what circumstances that might be the case.  (Or maybe the parent_in etc. can be 0-2?)
+
+>How-To-Repeat:
+No problem observed, just theoretical.
+>Fix:
+--- srclib/apr/threadproc/unix/proc.c      2002/02/01 00:26:02     1.1
++++ srclib/apr/threadproc/unix/proc.c      2002/02/01 00:40:54
+@@ -301,18 +301,18 @@
+          * descriptors 0-2.
+          */
+
++       apr_file_close(attr->parent_in);
+         if (attr->child_in) {
+-            apr_file_close(attr->parent_in);
+             dup2(attr->child_in->filedes, STDIN_FILENO);
+             apr_file_close(attr->child_in);
+         }
++       apr_file_close(attr->parent_out);
+         if (attr->child_out) {
+-            apr_file_close(attr->parent_out);
+             dup2(attr->child_out->filedes, STDOUT_FILENO);
+             apr_file_close(attr->child_out);
+         }
++       apr_file_close(attr->parent_err);
+         if (attr->child_err) {
+-            apr_file_close(attr->parent_err);
+             dup2(attr->child_err->filedes, STDERR_FILENO);
+             apr_file_close(attr->child_err);
+         }
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: jerenkrantz
+State-Changed-When: Sun Feb 17 22:43:33 PST 2002
+State-Changed-Why:
+I think for now that this is a fair assumption to
+make - that is, that the parent pipe is only accessible
+when the child pipe is valid.
+
+If you can come up with a case where this assumption
+is invalid, please post to the appropriate mailing lists.
+For now, I will suspend this PR.
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

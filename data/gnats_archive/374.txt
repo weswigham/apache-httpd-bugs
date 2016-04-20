@@ -1,0 +1,81 @@
+From nobody@hyperreal.com  Sun Apr 13 11:53:43 1997
+Received: (from nobody@localhost)
+          by hyperreal.com (8.8.4/8.8.4)
+	  id LAA28354; Sun, 13 Apr 1997 11:53:43 -0700 (PDT)
+Message-Id: <199704131853.LAA28354@hyperreal.com>
+Date: Sun, 13 Apr 1997 11:53:43 -0700 (PDT)
+From: Brian Moore <bem@cmc.net>
+Reply-To: bem@cmc.net
+To: apbugs@hyperreal.com
+Subject: mod_proxy(?) seems to alarm(0) somewhere
+X-Send-Pr-Version: 3.2
+
+>Number:         374
+>Category:       mod_proxy
+>Synopsis:       mod_proxy(?) seems to alarm(0) somewhere
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Apr 13 12:00:01 1997
+>Last-Modified:  Sat Jul 19 03:40:41 PDT 1997
+>Originator:     bem@cmc.net
+>Organization:
+>Release:        1.2b8
+>Environment:
+Solaris 2.5, all recommended patches, gcc 2.7.2
+>Description:
+Looks like there's one other problem in mod_proxy with alarms being turned off
+(not blocked via the block_alarms() call, but alarm(0)'d for some reason).  I'm
+guessing on the module involved, since the three dead children this morning
+were all doing proxy stuff.
+
+The backtrace of a child that's been waiting for 110k seconds:
+#0  0xef67792c in _read ()
+#1  0x29364 in saferead ()
+#2  0x29480 in bread ()
+#3  0x488b0 in proxy_send_fb ()
+#4  0x47e78 in proxy_http_handler ()
+#5  0x432c0 in proxy_handler ()
+#6  0x1f040 in invoke_handler ()
+#7  0x21dc0 in process_request_internal ()
+#8  0x21df4 in process_request ()
+#9  0x1bf30 in child_main ()
+#10 0x1c0cc in make_child ()
+#11 0x1c8c8 in standalone_main ()
+#12 0x1cb88 in main ()
+(gdb) up
+#1  0x29364 in saferead ()
+(gdb) print alarms_blocked
+$1 = 0
+
+So this seems to be something calling alarm(0) somewhere instead of a 'logical'
+alarms-off via the official mechanism.
+
+>How-To-Repeat:
+Not sure: virtually all of our proxy users are on a 10Mbps ethernet but behind
+a firewall.  This usage may or may not be relevant.  The children I found dead
+this morning were fetching files from cdrom.com via http, so it should be normal
+the only odd thing is that these were quake files so they were no doubt huge.
+>Fix:
+Will be looking at the code myself this week
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: chuck
+State-Changed-When: Sun Apr 27 21:01:07 PDT 1997
+State-Changed-Why:
+Try 1.2b10 (due out tonight). I believe the problem is
+fixed there.
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Jul 19 03:40:40 PDT 1997
+State-Changed-Why:
+I'm pretty sure you and Chuck worked this one out.
+
+Dean
+>Unformatted:
+
+

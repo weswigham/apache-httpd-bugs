@@ -1,0 +1,140 @@
+Received: (qmail 10530 invoked by uid 2012); 10 Sep 1998 20:53:36 -0000
+Message-Id: <19980910205336.10529.qmail@hyperreal.org>
+Date: 10 Sep 1998 20:53:36 -0000
+From: Albert Sunseri <sunseri@abpi.net>
+Reply-To: sunseri@abpi.net
+To: apbugs@hyperreal.org
+Subject: after log rotation restart, all children die in hours. Parent is catatonic.
+X-Send-Pr-Version: 3.2
+
+>Number:         2986
+>Category:       os-linux
+>Synopsis:       after log rotation restart, all children die in hours. Parent is catatonic.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Sep 10 14:00:00 PDT 1998
+>Last-Modified:  Mon May  3 12:41:59 PDT 1999
+>Originator:     sunseri@abpi.net
+>Organization:
+>Release:        1.3.0
+>Environment:
+uname -a 
+Linux ABPI.NET 2.0.30 #3 Fri Nov 7 15:35:13 EST 1997 alpha unknown
+
+RedHat 4.2 on Alphaserver  1000A 5/333  ( single processor )
+server runs standalone, although NFS is running, local disks 
+are mounted by other machines, but the directory tree of this server is all
+on local disks. 
+
+
+>Description:
+After a shell script run by a cron job stops apache and moves the log files,
+then starts apache,  the server only runs for a few hours. Then the children die
+ and the parent becomes unresponsive. 
+HTTP Requests  hang untill timeout.
+If I then kill the parent, then restart by hand, everything is fine.
+This happened  consistently with  1.3.0 and 2 previous versions
+( 1.2.4 and 1.2.5 )
+
+No unusual messages appear in the error logs.
+i.e. 
+The end of the old log:::::::::::::::::::::::::::::
+
+[Thu Sep  3 13:44:11 1998] [notice] Apache/1.3.0 (Unix) mod_perl/1.12 configured -- resuming normal operations
+[Mon Sep  7 00:00:00 1998] [notice] httpd: caught SIGTERM, shutting down
+
+The new log::::::::::::::::::::
+
+[Mon Sep  7 00:01:16 1998] [notice] Apache/1.3.0 (Unix) mod_perl/1.12 configured
+ -- resuming normal operations
+[Mon Sep  7 10:28:23 1998] [notice] httpd: caught SIGTERM, shutting down
+[Mon Sep  7 10:28:48 1998] [notice] Apache/1.3.0 (Unix) mod_perl/1.12 configured
+ -- resuming normal operations
+------------------------------------------------------------------------------
+
+
+I have looked high and low for any other desription of this bug, so I apologize 
+if I missed mention of it. This is the shell script :
+
+#!/bin/sh
+
+dat=`date +%Y%m%d`
+
+cd /home/logs
+/usr/local/apache_1.3.0/sbin/apachectl stop
+# kill `cat httpd.pid`
+sleep 60 
+# rm -f httpd.pid
+
+set -- `ls`
+mkdir $dat
+for u
+do
+#       echo "$u -> $dat.$u"
+        cp $u $dat/$dat.$u
+        > $u
+done
+
+/usr/local/apache_1.3.0/sbin/apachectl start
+ 
+
+Thanks for your attention.
+- 
+Albert 
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Tue Mar 16 08:31:05 PST 1999
+State-Changed-Why:
+My wild guess is that there's something missing in your cron
+environment which is present in your interactive environment.
+If this is still happenning, can you use "strace" to find
+out what the parent is doing:
+
+strace -p pid_of_parent
+
+Send us the trace, thanks.
+
+Dean
+State-Changed-From-To: feedback-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sat May  1 10:41:20 PDT 1999
+State-Changed-Why:
+This sounds like the same kernel bug described in 3312:
+http://bugs.apache.org/index/full/3312
+
+no solution known
+
+Dean
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon May  3 12:41:58 PDT 1999
+State-Changed-Why:
+Another user has reported upgrading to linux 2.0.36 and
+apache 1.3.6 fixed a very similar problem.  If you continue
+to experience this problem after upgrading, please open a
+new report.
+
+Thanks
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

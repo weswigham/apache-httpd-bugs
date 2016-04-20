@@ -1,0 +1,71 @@
+Received: (qmail 28509 invoked by uid 2012); 19 Jan 1998 21:28:10 -0000
+Message-Id: <19980119212810.28508.qmail@hyperreal.org>
+Date: 19 Jan 1998 21:28:10 -0000
+From: Rich Bowen <rbowen@databeam.com>
+Reply-To: rbowen@databeam.com
+To: apbugs@hyperreal.org
+Subject: too many open files error on repeated CGI access
+X-Send-Pr-Version: 3.2
+
+>Number:         1697
+>Category:       os-windows
+>Synopsis:       too many open files error on repeated CGI access
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jan 19 13:30:00 PST 1998
+>Last-Modified:  Mon Jan 19 14:16:35 PST 1998
+>Originator:     rbowen@databeam.com
+>Organization:
+>Release:        3.3b3
+>Environment:
+Windows NT SP3, Apache 1.3b3
+>Description:
+I found that every once in a while, my Apache server would give server errors on all CGIs - ones that previously worked.  The error message in the log was:
+[Mon Jan 19 16:12:24 1998] [error] (24)Too many open files: couldn't spawn child process: c:/apache/cgi-pts/foo.pl
+
+I found that I could reproduce this error using the "torture" Perl program found in the latest version of The Perl Journal, and hitting a Perl cgi program a few hundred times in quick succession.
+The "torture" program hits a give URL and appends random data into the QUERY_STRING to test the server's tolerance.  I am aware of the bug that causes server errors if the QUERY_STRING does not contain an = sign, so I made sure that there was always one in there so that I was not causing that bug to show up.
+The torture program was called with the following syntax:
+
+torture -l 50 -t 1000 http://pts.databeam.com/cgi-bin/foo.pl\?foo=bar
+
+-l 50 means append up to 50 characters of random data.
+-t 1000 means do it 1000 times.
+
+After a few hundres iterations, the CGI program starts returning 500 errors, and the log shows the "too many open files" message.
+
+The program that I am using is simplitity itself - 
+
+#!/perl/bin/perl
+print "Content-type: text/html\n\n";
+print "<h1>Foo</h1>";
+>How-To-Repeat:
+Aquire "torture.pl" from http://orwant.www.media.mit.edu/tpj/programs/Issue_8_CGI/
+Write a CGI program as shown in my description.
+sic torture on it a few thousand times.  I found that it does OK for a little while, and then rolls over and dies after a few hundred accesses, indicating that this is a gradual process, and we have to work up to whatever limit we are hitting.
+>Fix:
+Blame it on MicroSoft?
+It seems that perhaps the CGI process is not releasing either the script file or the Perl interpreter. (?%2
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Mon Jan 19 14:16:34 PST 1998
+State-Changed-Why:
+There is a file desciptor leak in 1.3b3 when executing
+CGIs.  There are numerous PRs in the database about this already.
+
+It has been fixed and the fix will be available in 1.3b4 when
+released.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

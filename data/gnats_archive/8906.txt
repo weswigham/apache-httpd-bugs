@@ -1,0 +1,149 @@
+Received: (qmail 72343 invoked by uid 501); 30 Nov 2001 05:26:36 -0000
+Message-Id: <20011130052636.72339.qmail@apache.org>
+Date: 30 Nov 2001 05:26:36 -0000
+From: Manni Wood <manniwood@yahoo.com>
+Reply-To: manniwood@yahoo.com
+To: submit@bugz.apache.org
+Subject: cookie names mis-identified by mod_usertrack (more detailed exploration of bug 5811; update to bug 8048)
+X-Send-Pr-Version: 3.110
+
+>Number:         8906
+>Category:       mod_usertrack
+>Synopsis:       cookie names mis-identified by mod_usertrack (more detailed exploration of bug 5811; update to bug 8048)
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Nov 29 21:30:01 PST 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     manniwood@yahoo.com
+>Release:        1.3.22
+>Organization:
+apache
+>Environment:
+all operating systems, all compilers
+>Description:
+More detailed analysis of bug 5811 and update of bug 8048:
+
+Because of the use of strstr() on line 264 mod_usertrack.c, 
+(line 234 of mod_usertrack.c prior to Apache version 1.3.22), 
+a cookie named "MyID" could
+mistakenly get recognised and used by mod_usertrack as a cookie whose
+name is a substring of "MyID", such as "ID".
+>How-To-Repeat:
+1. With mod_usertrack compiled in, set httpd.conf:
+<IfModule mod_usertrack.c>
+CookieTracking on
+CookieName ID
+CookieExpires 2147483647
+LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\" \"%{cookie}n\"" cookiecombined
+</IfModule>
+# CustomLog /usr/local/apache_1.3.20/logs/access_log common
+<IfModule !mod_usertrack.c>
+CustomLog /usr/local/apache_1.3.20/logs/access_log common
+</IfModule>
+<IfModule mod_usertrack.c>
+CustomLog /usr/local/apache_1.3.20/logs/access_log cookiecombined
+</IfModule>
+
+2. Hit your site with Netscape Navigator (or any browser that allows cookie
+manipulation) to allow the cookie to be set. tail -f logs/access if you'd like
+to watch the cookie get set (it'll be the last entry of each log line)
+
+3. Quit Netscape Navigator.
+
+4. Edit $HOME/.netscape/cookies and change the cookie named "ID" to "BID"
+
+5. Restart Netscape Navigator and hit your site, watching a "tail -f logs/access"
+You will see that the cookie named "MyID" is getting logged, because it is
+being recognised as the cookie "ID". What *should* happen is a new cookie
+named "ID" should get set on your browser, as MyID should not be recognised.
+>Fix:
+Correctly parse the cookies into an Apache table, favouring ap_getword()
+over strstr() and retrieve the cookie you are interested in from the table.
+
+Here is a patch for mod_usertrack.c in Apache 1.3.22:
+
+*** mod_usertrack.c	Thu Nov 29 23:50:56 2001
+--- src/modules/standard/mod_usertrack.c	Wed Aug 29 08:08:33 2001
+***************
+*** 260,290 ****
+      if ((cookie = ap_table_get(r->headers_in,
+                                 (dcfg->style == CT_COOKIE2
+                                  ? "Cookie2"
+!                                 : "Cookie")))) {
+! 	const char *pair;
+!         table *cookie_table;
+!         const char *cookiebuf;
+  
+! 	/* parse cookie string into an Apache table */
+!         cookie_table = ap_make_table(r->pool, 4);
+!         while (*cookie && (pair = ap_getword(r->pool, &cookie, ';'))) {
+!             const char *name, *value;
+!             if (*cookie == ' ') ++cookie;
+!             name = ap_getword(r->pool, &pair, '=');
+!             while (*pair && (value = ap_getword(r->pool, &pair, '&'))) {
+!                 ap_unescape_url((char *)value);
+!                 ap_table_add(cookie_table, name, value);
+!             }
+!         }
+  
+-         if (cookiebuf = ap_table_get(cookie_table, dcfg->cookie_name)) {
+              /* Set the cookie in a note, for logging */
+              ap_table_setn(r->notes, "cookie", cookiebuf);
+  
+              return DECLINED;    /* There's already a cookie, no new one */
+          }
+- 
+-     }
+      make_cookie(r);
+      return OK;                  /* We set our cookie */
+  }
+--- 260,280 ----
+      if ((cookie = ap_table_get(r->headers_in,
+                                 (dcfg->style == CT_COOKIE2
+                                  ? "Cookie2"
+!                                 : "Cookie"))))
+!         if ((value = strstr(cookie, dcfg->cookie_name))) {
+!             char *cookiebuf, *cookieend;
+  
+!             value += strlen(dcfg->cookie_name) + 1;  /* Skip over the '=' */
+!             cookiebuf = ap_pstrdup(r->pool, value);
+!             cookieend = strchr(cookiebuf, ';');
+!             if (cookieend)
+!                 *cookieend = '\0';      /* Ignore anything after a ; */
+  
+              /* Set the cookie in a note, for logging */
+              ap_table_setn(r->notes, "cookie", cookiebuf);
+  
+              return DECLINED;    /* There's already a cookie, no new one */
+          }
+      make_cookie(r);
+      return OK;                  /* We set our cookie */
+  }
+
+The patch for mod_usertrack.c in Apache 1.3.20 and below was already submitted by me in bug 8048.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

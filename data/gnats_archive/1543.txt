@@ -1,0 +1,155 @@
+Received: (qmail 16088 invoked by uid 2012); 10 Dec 1997 18:21:11 -0000
+Message-Id: <19971210182111.16087.qmail@hyperreal.org>
+Date: 10 Dec 1997 18:21:11 -0000
+From: M.D.Parker <mdpc@netcom.com>
+Reply-To: mdpc@netcom.com
+To: apbugs@hyperreal.org
+Subject: suexec.c -- Does not report exec failure reasons
+X-Send-Pr-Version: 3.2
+
+>Number:         1543
+>Category:       suexec
+>Synopsis:       suexec.c -- Does not report exec failure reasons
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Dec 10 10:30:01 PST 1997
+>Last-Modified:  Wed Jan 21 14:26:03 PST 1998
+>Originator:     mdpc@netcom.com
+>Organization:
+>Release:        1.3b3
+>Environment:
+UNIX based -- various vendors
+>Description:
+This is an issue that I discovered in analysis of the "unable to exec" message
+from suexec for a file did not have permission bits set appropriately.  User
+error, but hard to easily spot from the simple catchall error message.  The
+specific scenario follows:
+
+If you are running apache 1.3 without using the suexec wrapper, there is a 
+check in mod_cgi.c to verify if the requested file is executable.  If not, an
+entry is made in the error log with an appropriate statement.  This test is 
+explicitly bypassed in mod_cgi.c and with GOOD reason.
+
+However, in suexec.c a problem in the executable bits setting can only be
+determined after an exec error.  Also, I understand why this is.  However, only
+the exec failure is reported without any reason.  I suggest changing this so that
+the error code (errno) is at least output with the exec error message so that
+server administrator has some hope of attempting to correct the problem
+easily.
+>How-To-Repeat:
+easily....
+>Fix:
+the suggested fix is in the description but no code.  Sorry :-%2
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: "M.D.Parker" <mdpc@netcom.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: suexec/1543: suexec.c -- Does not report exec failure reasons
+Date: Wed, 10 Dec 1997 20:29:44 -0700 (MST)
+
+ On 10 Dec 1997, M.D.Parker wrote:
+ > However, in suexec.c a problem in the executable bits setting can only be
+ > determined after an exec error.  Also, I understand why this is.  However, only
+ > the exec failure is reported without any reason.  I suggest changing this so that
+ > the error code (errno) is at least output with the exec error message so that
+ > server administrator has some hope of attempting to correct the problem
+ > easily.
+ 
+ Like this?
+ 
+ Index: suexec.c
+ ===================================================================
+ RCS file: /export/home/cvs/apachen/src/support/suexec.c,v
+ retrieving revision 1.29
+ diff -u -r1.29 suexec.c
+ --- suexec.c	1997/10/22 20:30:46	1.29
+ +++ suexec.c	1997/12/11 03:26:34
+ @@ -68,19 +68,21 @@
+   */
+  
+  
+ -#include "suexec.h"
+ -
+  #include <sys/param.h>
+ -#include <stdlib.h>
+ -#include <unistd.h>
+ +#include <sys/stat.h>
+  #include <sys/types.h>
+ -#include <stdio.h>
+ +
+ +#include <errno.h>
+ +#include <grp.h>
+ +#include <pwd.h>
+  #include <stdarg.h>
+ +#include <stdio.h>
+ +#include <stdlib.h>
+  #include <string.h>
+ -#include <pwd.h>
+ -#include <grp.h>
+  #include <time.h>
+ -#include <sys/stat.h>
+ +#include <unistd.h>
+ +
+ +#include "suexec.h"
+  
+  /*
+   ***********************************************************************
+ @@ -498,6 +500,6 @@
+       *
+       * Oh well, log the failure and error out.
+       */
+ -    log_err("exec failed (%s)\n", cmd);
+ +    log_err("(%d)%s: exec failed (%s)\n", errno, strerror(errno), cmd);
+      exit(255);
+  }
+ 
+
+From: "M. D. Parker" <mdpc@netcom.com>
+To: Marc Slemko <marcs@znep.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: suexec/1543: suexec.c -- Does not report exec failure reasons
+Date: Fri, 12 Dec 97 11:41:44 PST
+
+ Problem with the patch seems to be in the evaluation of the parameters
+ pushed onto the stack before the call.  It seems that at least in my gcc
+ implementation, the value of errno gets changed before being printed out,
+ but the strerror() call reports the right textual error.
+ 
+ Suggest that you change the patch as follows:
+ 
+ .
+ .
+ .
+ int errx;	/* error numb holder */
+ .
+ .
+ .
+         errx=errno;
+     log_err("(%d)%s: exec failed (%s)\n", errx, strerror(errx), cmd);
+ 
+ Mike
+Release-Changed-From-To: 1.3-1.3b3
+Release-Changed-By: Lars.Eilebrecht@unix-ag.org
+Release-Changed-When: Sat Jan 10 05:33:45 PST 1998
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Wed Jan 21 14:26:03 PST 1998
+State-Changed-Why:
+A fix has been applied to 1.3b4-dev.
+
+Thanks
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

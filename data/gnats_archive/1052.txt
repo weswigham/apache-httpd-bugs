@@ -1,0 +1,295 @@
+From apwww@hyperreal.org  Mon Aug 25 09:09:20 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id JAA17804;
+	Mon, 25 Aug 1997 09:09:20 -0700 (PDT)
+Message-Id: <199708251609.JAA17804@hyperreal.org>
+Date: Mon, 25 Aug 1997 09:09:20 -0700 (PDT)
+From: Ralph Bolton <Ralph.Bolton@pre-emptive.net>
+Reply-To: Ralph.Bolton@pre-emptive.net
+To: apbugs@hyperreal.org
+Subject: Server unable to obtain correct hostname when running NIS
+X-Send-Pr-Version: 3.2
+
+>Number:         1052
+>Category:       os-solaris
+>Synopsis:       Server unable to obtain correct hostname when running NIS
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Aug 25 09:10:01 1997
+>Last-Modified:  Tue Aug  4 18:47:21 PDT 1998
+>Originator:     Ralph.Bolton@pre-emptive.net
+>Organization:
+>Release:        1.2.4
+>Environment:
+SunOS aldi 5.5.1 Generic sun4c sparc SUNW,Sun_4_50
+gcc version 2.7.2
+
+Sun (Sol. 2) Running NIS with table entries in NIS hosts like "192.168.100.3 aldi"
+>Description:
+On a machine Sun (Sol. 2, but SunOS probably the same) name lookups are
+often "nis, dns, files". Since most NIS tables don't have the full domain
+name, and are something of the form:
+
+192.168.100.3	aldi	loghost
+192.168.100.4	diskserv
+
+then the gethostbyname() lookups only return the hostname, not "hostname.domainname"
+Consequently, when the server starts, it barfs saying it couldn't get the
+hostname - and advises the use fo the ServerName directive.
+
+I have reasons why I don't want to use the directive (many machines using the
+same config file). As such, I'd like the server to get the hostname right
+by itself.
+
+A check of the source shows it checks to see how many dots there are in the
+gethostbyname() output. If none, it quits. If there are some, it does some
+clever stuff, and presumably works.
+
+I have hacked about to get this work under Solaris 2 (should be okay under
+SunOS too). I admit to this being a shamelsss hack which I haven't tested
+exhastively. However, it does now get the hostname fully qualified on startup.
+
+If anyone likes my hack, they're free to use it. "Your mileage may vary".
+It won't of course work if you don't have an /etc/resolv.conf file.
+>How-To-Repeat:
+If running NIS, then check your NIS hosts table. If it has FQDNs in the
+first column of hostnames, then change the one for your host to just "hostname".
+This should also work if you're just using files.
+
+It all hangs on the way your OS does gethostbyname(). On a Sun, it follows
+/etc/nsswitch.conf (under S2). In our setup that's "NIS files". However,
+SunOS it is implicit NIS only (NIS would often do the DNS on behalf of a
+client though).
+
+However, if NIS responds with just a hostname, then Apache finds no dots,
+so barfs.
+
+I guess the bottom line is make you gethostbyname() return a non-fqdn.
+>Fix:
+Modify util.c so that the get_local_host() function is completely replaced
+by:
+
+
+char *get_local_host(pool *a)
+{
+#ifndef MAXHOSTNAMELEN
+#define MAXHOSTNAMELEN 256
+#endif
+    char str[MAXHOSTNAMELEN+1];
+    char *server_hostname;
+    struct hostent *p;
+
+#define RALPH_MAX_LINE 200
+#define RALPH_RESOLVE_FILE "/etc/resolv.conf"
+
+	FILE *ralph_resolve;
+	int ralph_exhausted=0;
+	int ralph_i;
+	char ralph_line[RALPH_MAX_LINE+1];
+	char ralph_temp[RALPH_MAX_LINE+MAXHOSTNAMELEN];
+	char *ralph_domain="domain";
+	char *ralph_c;
+	char ralph_orig_str[MAXHOSTNAMELEN+1];
+	int ralph_go=0;
+
+
+
+    if( gethostname( str, sizeof( str ) - 1 ) != 0 ) {
+	perror( "Unable to gethostname" );
+	exit(1);
+    }
+    str[MAXHOSTNAMELEN] = '\0';
+
+	strncpy(ralph_orig_str,str,MAXHOSTNAMELEN);
+
+    if((!(p=gethostbyname(str))) || (!(server_hostname = find_fqdn(a, p)))) {
+
+	/* Ralph's additional hack... /*
+	/* At this point, Apache has looked up our hostname and got */
+	/* a single word, with no dots in it. Consequently, it decides */
+	/* that is has not got an FQDN, so barfs. Since this is to do with */
+	/* NIS, it's reasonably easy to do another check which may fix it. */
+	/* All we do is to open /etc/resolv.conf and look for any */
+	/* "domain" lines. All we do is try out each one with the hostname */
+	/* pre-pended. If any work, then great, or, if there are no */
+	/* domain lines, or if none work, then we barf as before */
+	if( (ralph_resolve=fopen(RALPH_RESOLVE_FILE,"r"))!=NULL)
+	{
+		while(ralph_go==0)
+		{
+			for(ralph_i=0; ralph_i<RALPH_MAX_LINE; ralph_i++)
+			{
+				if((ralph_line[ralph_i]=
+					getc(ralph_resolve))==EOF)
+				{
+					ralph_go=1;
+					ralph_line[ralph_i]=0;
+					ralph_i=RALPH_MAX_LINE;
+				}
+				if(ralph_line[ralph_i]=='\n')
+				{
+					ralph_line[ralph_i]=0;
+					ralph_i=RALPH_MAX_LINE;
+				}
+
+				ralph_line[ralph_i]=
+					tolower(ralph_line[ralph_i]);
+			}
+			ralph_line[ralph_i]=0;
+
+			/* At this point, we've got a NULL terminated */
+			/* string which may or may not have "domain" at */
+			/* the front of it. */
+
+			/* See if it's got "domain" at the front... */
+
+			if(strncmp(ralph_line,ralph_domain,
+				strlen(ralph_domain))==0)
+			{
+				/* Domain line */
+				ralph_i=strlen(ralph_domain);
+				ralph_c=ralph_line+ralph_i;
+
+				/* Move pointer to start of actual domain */
+				while(isspace(*(ralph_c))!=0)
+				{
+					ralph_c++;
+				}
+
+				sprintf(ralph_temp, "%s.%s",ralph_orig_str,
+					ralph_c);
+				printf("Okay, tried and got %s\n",ralph_temp);
+
+				/* Now retest the "hostname" */
+
+				if((!(p=gethostbyname(ralph_temp))) ||
+				  (!(server_hostname = find_fqdn(a, p))))
+				{
+					/* Didn't work */
+					;
+				}
+				else
+				{
+					/* Success! */
+					fclose(ralph_resolve);
+					return server_hostname;
+				}
+
+			}
+		} /* of while */
+
+		fclose(ralph_resolve);
+
+	} /* of open file */
+
+
+        fprintf(stderr,"httpd: cannot determine local host name.(%s)\n",str);
+	fprintf(stderr,"Use ServerName to set it manually.\n");
+	exit(1);
+	}
+
+    return server_hostname;
+}
+
+
+...which is obviosuly a huge hack, which relies on /etc/resolv.conf. However,
+any DNS capable machine should have at least something there.
+
+As a summary, the above code does all that Apache does normally (so it shouldn't
+screw anyone already working). However, before barfing for real, it
+does an additional check on /etc/resolv.conf. If it can find the file, and
+it has some "domain" lines, it tests each domain until one works. It assumes
+that the first one it finds which works is good (as does DNS, actually).
+
+I never did work out how you were *supposed* to do this..
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Sep 18 12:43:48 PDT 1997
+State-Changed-Why:
+I think this is the same reason that sendmail suggests you build /etc/hosts
+files and NIS tables like this:
+
+1.1.1.1    hostname.domain hostname
+
+What happens when you do that?
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Subject: Re: os-solaris/1052: Server unable to obtain correct hostname when running NIS (fwd)
+Date: Mon, 22 Sep 1997 02:05:11 -0700 (PDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Fri, 19 Sep 1997 08:28:35 +0100
+ From: Ralph Bolton <Ralph.Bolton@gpsemi.com>
+ To: dgaudet@hyperreal.org
+ Subject: Re: os-solaris/1052: Server unable to obtain correct hostname when running NIS
+ 
+ 
+ > Synopsis: Server unable to obtain correct hostname when running NIS
+ > 
+ > State-Changed-From-To: open-analyzed
+ > State-Changed-By: dgaudet
+ > State-Changed-When: Thu Sep 18 12:43:48 PDT 1997
+ > State-Changed-Why:
+ > I think this is the same reason that sendmail suggests you build /etc/hosts
+ > files and NIS tables like this:
+ > 
+ > 1.1.1.1    hostname.domain hostname
+ > 
+ > What happens when you do that?
+ 
+ No problem - works fine. However, I suspect that most people using a "hosts"
+ based name lookup (eg files/NIS) probably don't have the domain appended to
+ all their hostnames in the first column. However, it does work like that.
+ 
+ AFAI can see, I think the best solution is to do the equivalent of
+ "nslookup `hostname`". Ie. Query the default host database for the name,
+ using gethostbyxxx(). Then, see if it has any dots in it, if so, fine, if
+ not, then do a DNS lookup or something for the FQDN.
+ 
+ FYI: Sun's new webserver (SWS) does it exactly right - they've obviously
+ got workarounds to their own short comings!!
+ 
+ Thanks very much, by the way, for getting back to me!
+ 
+ Good luck!
+ 
+ 							...Ralph Bolton
+ 
+ ===============================================================================
+     Ralph Bolton, Unix Developer, GEC Plessey Semiconductors, Oldham, UK.
+    Phone: 0161 684 4156 Fax: 0161 688 7898 E-Mail: Ralph.Bolton@gpsemi.com
+ ===============================================================================
+        "The Quicker you get Behind, the Longer you have to Catch up."
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sun Nov  9 01:35:13 PST 1997
+State-Changed-Why:
+As of version apache 1.3 the semantic changes to vhosts make
+reverse DNS lookup on the server IP unnecessary ... and so this
+isn't an issue any longer.
+
+Dean
+Release-Changed-From-To: Server version Apache/1.2.4.-1.2.4.
+Release-Changed-By: coar
+Release-Changed-When: Tue Aug  4 18:46:47 PDT 1998
+Release-Changed-From-To: 1.2.4.-1.2.4
+Release-Changed-By: coar
+Release-Changed-When: Tue Aug  4 18:47:20 PDT 1998
+>Unformatted:
+
+
+
+

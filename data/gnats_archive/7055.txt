@@ -1,0 +1,297 @@
+Received: (qmail 18951 invoked by uid 501); 10 Jan 2001 21:40:13 -0000
+Message-Id: <20010110214013.18950.qmail@apache.org>
+Date: 10 Jan 2001 21:40:13 -0000
+From: Scott Powell <spowell@hertz.com>
+Reply-To: spowell@hertz.com
+To: submit@bugz.apache.org
+Subject: CERR 14 Cannot open STDIN
+X-Send-Pr-Version: 3.110
+
+>Number:         7055
+>Category:       apache-api
+>Synopsis:       CERR 14 Cannot open STDIN
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan 10 13:50:00 PST 2001
+>Closed-Date:    Thu Jan 18 12:50:29 PST 2001
+>Last-Modified:  Thu Jan 18 12:50:29 PST 2001
+>Originator:     spowell@hertz.com
+>Release:        1.2.5
+>Organization:
+>Environment:
+HP3000 Operating System: 5.5 Patch level is current for this system
+>Description:
+My webpage uses METHOD= POST to send a value to a CGI client program. The
+client program uses the value to determine a program/report to run on a remote
+HP system via an SQL database. The derived information from the database is
+passed via a socket call to a predetermined remote HP. The program is executed
+and the results sent from the server back to the client. The buffer is formatted
+with html and sent back to the webpage. The client program works when executed
+from the POSIX(Unix) shell. When the CGI(Client) program is invoked from the 
+webpage, the CERR 14 results.
+>How-To-Repeat:
+I can send the program, webpage, etc. via attachments if necessary.
+>Fix:
+I have called Hewlett Packard and I am working with a technician. The suspicion
+is that the problem may be a combination of running Apache on a 5.5 O.S in
+an aatempt to use sockets. I have written other CGI programs(thatdo not use
+SQL and sockets) that work OK.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: fanf
+State-Changed-When: Thu Jan 11 16:11:06 PST 2001
+State-Changed-Why:
+You haven't provided nearly enough information to convince
+us that it is a bug in Apache. I would guess it's a bug in
+your CGI. Where does the error message appear? What is the
+exact text of the message? Does the bug still occur if you
+upgrade to a recent version of Apache? We aren't doing *any*
+development on 1.2 any more.
+
+
+From: "Scott L Powell" <spowell@hertz.com>
+To: fanf@apache.org
+Cc: apbugs@apache.org
+Subject: Re: apache-api/7055: CERR 14 Cannot open STDIN
+Date: Fri, 12 Jan 2001 10:41:04 -0600
+
+ It may not be an Apache problem. I did mention however, I was able to execute
+ the code from
+ the Posix shell without a problem. It's only when I execute from my webpage is
+ where the problem occurs.
+ I thought maybe you may have come across the problem before and may have some
+ suggestions.
+ 
+ Scott
+ 
+ 
+ 
+
+From: Tony Finch <dot@dotat.at>
+To: apbugs@apache.org, Scott L Powell <spowell@hertz.com>
+Cc:  
+Subject: Re: apache-api/7055: CERR 14 Cannot open STDIN
+Date: Mon, 15 Jan 2001 07:15:36 +0000
+
+ You still haven't provided enough information. Don't be vague! Be specific!
+ 
+ Tony.
+ -- 
+ f.a.n.finch    fanf@covalent.net    dot@dotat.at
+ "You realize there's a government directive stating
+ that there is no such thing as a flying saucer?"
+
+From: "Scott L Powell" <spowell@hertz.com>
+To: Tony Finch <dot@dotat.at>
+Cc: apbugs@Apache.Org
+Subject: Re: apache-api/7055: CERR 14 Cannot open STDIN
+Date: Tue, 16 Jan 2001 17:29:49 -0600
+
+ Here's some detail:
+ 
+ 
+ The webage program uses a METHOD=POST to send a field to a HP3000 client
+ program.
+ The data field passed id H20SI:H20SI. The client program is a POSIX compiled C
+ program.
+ I can see in the /APACHE/PUB/cgiscript.log that the data is being passed:
+ 
+ %% [Mon Jan 15 16:54:35 2001] POST /scottpowell/cgi/webcnw.cgi HTTP/1.1
+ %% 500 /APACHE/PUB/website//scottpowell/cgi/webcnw.cgi
+ %request
+ Accept: image/gif, image/x-xbitmap, image/jpeg, image/pjpeg, application/vnd.ms-
+ excel, application/msword, application/vnd.ms-powerpoint, */*
+ Referer: http://hp13/scottpowell/webpage.htm
+ Accept-Language: en-us
+ Content-Type: application/x-www-form-urlencoded
+ Accept-Encoding: gzip, deflate
+ User-Agent: Mozilla/4.0 (compatible; MSIE 5.01; Windows NT)
+ Host: hp13
+ Content-Length: 11
+ Connection: Keep-Alive
+ 
+ H20SI=H20SI
+ %response
+ **** OPEN OF STDIN FAILED (CERR 14) ABORT: WEBCNET.TEST.SYSPROG9 NM SYS   a.00a9
+ c288 dbg_abort_trace+$24NM USER  7cd.00630e98 _csu_error+$e4NM PROG  16b0.0000fc
+ f0 _start+$20
+ **** OPEN OF STDIN FAILED (CERR 14) ABORT
+ 
+ In C, stdin is a bytestream file that is opened automatically. The following
+ code shows you how I'm
+ referencing stdin once the data has been passed the the client program on the
+ HP3000:
+ 
+ void main(int argc, char *argv[], char *envp, int parm, char *info)
+ {
+ 
+    /* Client Variables */
+ 
+    int  clientsock;
+    int  msgnbr = 0;
+    int  optval;
+    int  serversock;
+    int  sockaddrlen;
+    int  sockdesc;
+ 
+    char hertznet[2];
+    char hostname[20];
+    char recvsend[2];
+    char service[20];
+    char socktype[2];
+ 
+    /* Based on the passed Program ID value, key to  */
+    /* the Program ID in the WEBDBE.ALLBASE.SYSPROG9 */
+    /* database to obtain the Socket name and the    */
+    /* remote executable program.                    */
+ 
+    content_length = 11;
+ 
+    if(!(cgiinput = (char *) malloc(content_length + 1)))
+      {
+       printf("Could not MALLOC for CGIINPUT.\n");
+       abort();
+       }
+ 
+    if(!fread(cgiinput,content_length,1,stdin))   <== This should work.
+      {
+       printf("Could not read CGI input from STDIN.\n");
+       abort();
+       }
+ 
+    cgiinput[content_length] = '\0';
+ 
+ 
+ Here is the WEB Page that initiates the transfer of data:
+ 
+  <html>
+          <head>
+          <title> SYSTEM INFORMATION PAGE </title>
+          </head>
+          <body bgcolor="WHITE">
+              <center>
+                <h5>
+                <img src = "pc22.gif">
+                <img src = "welcome4.gif">
+                <img src = "pc22.gif">
+                <br><br><br>
+                [<A href="../main_body.htm">      HOME        </A>
+                [<A href="../search_engine.htm">  SEARCH      </A>
+                [<A href="./cgi/info3.cgi">      SYSTEM INFO      </A>
+                [<A href="./cgi/wh20si.cgi"> SOCKET TEST      </A>
+                <br>
+                <!-- Socket Application -->
+                <form NAME = "WEBCLNT" METHOD=POST ACTION="./cgi/webcnw.cgi">
+ <==== webcnw is a link back to the HP3000 client program
+                  <P>Please check a report preference: </P>
+               <!-- <input type="hidden" name="H20SI" value="H20SI"> HP20 SYSINFO
+  -->
+                  <P><INPUT TYPE="SUBMIT" NAME ="H20SI" VALUE = "H20SI"> HP20
+ SYSINFO
+                </form>
+                </h5>
+              </center>
+          </body>
+       </html>
+ 
+ 
+ 
+ If I execute the client program from within the POSIX shell and key in the
+ H20SI:H20SI data
+ the client program does the database lookup for the executable to run on a
+ remote HP3000;
+ sends the information via a socket call to the server program on the remote
+ HP3000; the server
+ program executes the program and sends the results back in a buffer to the
+ client program; the
+ client program then formats the buffer with HTML then via printf statements the
+ HTML and the
+ buffer gets sent back to the webpage. The client program works with the
+ exception of posting
+ the results back to the webpage because the webpage did not initiate the
+ transfer.
+ 
+ From what I can tell, the client/server programs are doing what they are
+ supposed to. I'm wondering
+ whether our the HP3000 Series 995-400 on a 5.5 Operating System and APACHE are
+ not suited
+ for this type of application.
+ 
+ I hope I've provided enough information for you to, at least, get an idea of
+ what is going on.
+ 
+ Scott Powell
+ 
+ 
+ 
+ 
+ 
+ 
+
+From: "Scott L Powell" <spowell@hertz.com>
+To: Tony Finch <dot@dotat.at>
+Cc: apbugs@apache.org
+Subject: Re: apache-api/7055: CERR 14 Cannot open STDIN
+Date: Thu, 18 Jan 2001 07:12:48 -0600
+
+ Tony,
+ 
+ I was able to find the problem. HP3000's have two operating system environments,
+ MPE and POSIX. Posix
+ makes the HP more like a UNIX system. The problem turned out to be in the
+ compile. When you reference
+ libraries as part of your LINK, the libraries must correspond to the operating
+ system you're working from.
+ SOCKETRL is a necessary library to link in when working with sockets. SOCKETRL
+ is however, the MPE
+ library version. Although, I was able to compile and link using SOCKETRL what I
+ needed to reference was
+ 'socket' when compiling with the c89 (C) compiler in Posix. After linking in the
+ correct library reference, the
+ webpage/client/server programs worked as intended. There isn't a whole lot of
+ documentation on
+ equivalent library members between MPE and Posix. I was able to pin down the
+ problem as being the
+ referenced library and HP was able to then tell me which was the correct Posix
+ library member to reference.
+ 
+ I hope you did not spend too much time on this. Hopefully, the solution will be
+ written in your problem/
+ solution log.
+ 
+ Thanks,
+ 
+ Scott
+ 
+ 
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: fanf
+State-Changed-When: Thu Jan 18 12:50:28 PST 2001
+State-Changed-Why:
+Problem solved. Thanks for using Apache!
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

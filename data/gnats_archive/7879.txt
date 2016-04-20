@@ -1,0 +1,143 @@
+Received: (qmail 10254 invoked by uid 501); 18 Jun 2001 15:43:17 -0000
+Message-Id: <20010618154316.10253.qmail@apache.org>
+Date: 18 Jun 2001 15:43:16 -0000
+From: Jaz Brown <jazbrown@mail.com>
+Reply-To: jazbrown@mail.com
+To: submit@bugz.apache.org
+Subject: RewriteRule can erroneously append filename (r->path_info) to URI when it's already there
+X-Send-Pr-Version: 3.110
+
+>Number:         7879
+>Category:       mod_rewrite
+>Synopsis:       RewriteRule can erroneously append filename (r->path_info) to URI when it's already there
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun 18 08:50:02 PDT 2001
+>Closed-Date:    Thu Dec 20 17:52:56 PST 2001
+>Last-Modified:  Thu Dec 20 17:52:56 PST 2001
+>Originator:     jazbrown@mail.com
+>Release:        1.3.20
+>Organization:
+>Environment:
+Windows 98 SE, Apache 1.3.20 with the bug from PR#7873 taken into account.
+>Description:
+In some circumstances, RewriteRule can erroneously add the requested
+filename (from path_info) to the end of the requested URI when the filename
+is already part of the requested URI. Multiple RewriteRules exacerbate the
+problem, adding additional copies of the filename to the end of the URI.
+>How-To-Repeat:
+Let us say that you have an account "domain1" on a webhost which gives you
+one virtual host (www.domain1.com). This webhost account permits you to
+point a second domain (www.domain2.com) to the SAME virtual host (the
+webhost is not creating two virtual hosts for you). By default, these two
+domains will access the same website. But you wish to emulate a second
+virtual host by making www.domain2.com internally redirect to a
+subdirectory of www.domain1.com. Thus the webhost's directory structure
+might look like this:
+
+/www/domain1/
+/www/domain1/index.html               -- this file is retrieved by http://www.domain1.com/
+/www/domain1/domain2/
+/www/domain1/domain2/index.html       -- you want to access this with http://www.domain2.com/
+/www/domain1/domain2/banana/foo.html  -- a sample web page within a subdirectory of "domain2"
+
+To achieve this, you create the file /www/domain1/.htaccess with the
+following content:
+
+    RewriteEngine on
+    RewriteBase /
+    RewriteCond %{HTTP_HOST} ^www\.domain2\.com$
+    RewriteRule ^(.*)$ domain2/$1
+    RewriteRule ^(.*)$ $1
+
+This first four lines achieve what you want. The last line represents some
+other RewriteRule on your website; the last line given here is just a dummy
+RewriteRule that should have no effect (but in fact does, and that is the
+bug I am demonstrating).
+
+Now, you try to access http://www.domain2.com/banana/foo.html
+The request fails, and Apache generates an error. RewriteLog with
+RewriteLogLevel 9 gives the following 10 lines:
+
+(3) [per-dir /www/domain1/] add path-info postfix: /www/domain1/banana -> /www/domain1/banana/foo.html
+(3) [per-dir /www/domain1/] strip per-dir prefix: /www/domain1/banana/foo.html -> banana/foo.html
+(3) [per-dir /www/domain1/] applying pattern '^(.*)$' to uri 'banana/foo.html'
+(2) [per-dir /www/domain1/] rewrite banana/foo.html -> domain2/banana/foo.html
+(3) [per-dir /www/domain1/] add per-dir prefix: domain2/banana/foo.html -> /www/domain1/domain2/banana/foo.html
+(3) [per-dir /www/domain1/] add path-info postfix: /www/domain1/domain2/banana/foo.html -> /www/domain1/domain2/banana/foo.html/foo.html
+(3) [per-dir /www/domain1/] strip per-dir prefix: /www/domain1/domain2/banana/foo.html/foo.html -> domain2/banana/foo.html/foo.html
+(3) [per-dir /www/domain1/] applying pattern '^(.*)$' to uri 'domain2/banana/foo.html/foo.html'
+(2) [per-dir /www/domain1/] rewrite domain2/banana/foo.html/foo.html -> domain2/banana/foo.html/foo.html
+(3) [per-dir /www/domain1/] add per-dir prefix: domain2/banana/foo.html/foo.html -> /www/domain1/domain2/banana/foo.html/foo.html
+
+The first five lines are the result of the first RewriteRule, which works
+correctly. It begins by adding the path-info postfix, which is needed to
+generate a full URI to work on. It ends up by correctly generating the path
+/www/domain1/domain2/banana/foo.html
+
+The second five lines are the result of the second RewriteRule. Note that
+the first thing that is done is that the path-info postfix is added
+_again_, despite that the working URI already has the filename, and hence
+the filename gets erroneously added to the URI a second time.
+
+If there were more RewriteRules, they could each add the filename again,
+making the problem worse and worse.
+>Fix:
+mod_rewrite.c needs to be modified to prevent a series of RewriteRules
+appending r->path_info to r->filename more than once. r->path_info gets
+added to the variable 'uri' in the function apply_rewrite_rule() on line
+1782 of mod_rewrite.c:
+        uri = ap_pstrcat(r->pool, uri, r->path_info, NULL);
+and this gets committed to r->filename on line 1977:
+    r->filename = ap_pstrdup(r->pool, newuri);
+One simple solution to fix this problem would be to zero out r->path_info
+after line 1782 with something like:
+        r->path_info[0] = '\0';
+however this may not be desirable if the value of r->path_info is needed at
+some other time (I don't know whether it is or might be).
+
+Perhaps a better solution might be if the apply_rewrite_rule() function
+kept track of whether r->path_info gets appended to the URI on line 1782.
+If this change gets committed to r->filename on line 1977, then when the
+function returns back to apply_rewrite_list(), it could somehow signal to
+apply_rewrite_list() whether r->path_info got appended to
+r->filename.
+
+When apply_rewrite_list() calls apply_rewrite_rule() to process
+subsequent RewriteRules, it would then in turn pass some parameter
+indicating whether r->path_info has already been appended to r->filename.
+The test on line 1779 should include a check on this parameter, and thus the
+test evaluates to FALSE if r->file_path has been appended to r->filename by a
+previous call to apply_rewrite_rule().
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Thu Dec 20 17:52:56 PST 2001
+State-Changed-Why:
+This may not be fixed in 1.3.x, but it is fixed in 2.0.30
+and beyond.  The backport is less-than-trivial.
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

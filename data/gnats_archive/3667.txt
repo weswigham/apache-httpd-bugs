@@ -1,0 +1,97 @@
+Received: (qmail 25540 invoked by uid 2012); 14 Jan 1999 17:24:02 -0000
+Message-Id: <19990114172402.25539.qmail@hyperreal.org>
+Date: 14 Jan 1999 17:24:02 -0000
+From: Max Caines <M.B.Caines@wlv.ac.uk>
+Reply-To: M.B.Caines@wlv.ac.uk
+To: apbugs@hyperreal.org
+Subject: 'make' fails to compile 'suexec.c'
+X-Send-Pr-Version: 3.2
+
+>Number:         3667
+>Category:       config
+>Synopsis:       'make' fails to compile 'suexec.c'
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jan 14 09:30:00 PST 1999
+>Last-Modified:
+>Originator:     M.B.Caines@wlv.ac.uk
+>Organization:
+apache
+>Release:        1.3.4
+>Environment:
+Solaris 2.5.1, Sun C Compiler 4.2, Sparc 10.
+>Description:
+Using autoconf, the generated Makefile includes this:
+
+build-support:
+        @echo "===> $(SRC)/support"; \
+        cd $(TOP)/$(SRC)/support; $(MAKE) $(MFLAGS) all; \
+        if [ ".$(suexec)" = .1 ]; then \
+            $(MAKE) $(MFLAGS) \
+                EXTRA_CFLAGS='\
+                        -DHTTPD_USER=\"$(suexec_caller)\" \
+                        -DUID_MIN=$(suexec_uidmin) \
+                        -DGID_MIN=$(suexec_gidmin) \
+                        -DUSERDIR_SUFFIX=\"$(suexec_userdir)\" \
+                        -DLOG_EXEC=\"$(suexec_logexec)\" \
+                        -DDOC_ROOT=\"$(suexec_docroot)\" \
+                        -DSAFE_PATH=\"$(suexec_safepath)\" \
+                ' \
+                suexec; \
+        fi; \
+
+When this is compiled, the following error occurs:
+
+===> src/support
+cc -c  -I../os/unix -I../include   -DSOLARIS2=251 \
+                -DHTTPD_USER=\"www\" \
+                -DUID_MIN=100 \
+                -DGID_MIN=100 \
+                -DUSERDIR_SUFFIX=\"public_html\" \
+                -DLOG_EXEC=\"/www/logfiles/cgi\" \
+                -DDOC_ROOT=\"/apps/ftp/www\" \
+                -DSAFE_PATH=\"/bin:/usr/ucb\" \ suexec.c
+command line: fatal: cannot open   suexec.c: No such file or directory
+cc: acomp failed for  suexec.c
+*** Error code 2
+make: Fatal error: Command failed for target `suexec.o'
+Current working directory /newapps/apache_1.3.4/src/support
+*** Error code 1
+make: Fatal error: Command failed for target `build-support'
+Current working directory /newapps/apache_1.3.4
+*** Error code 1
+make: Fatal error: Command failed for target `build'
+
+as a spurious '\' is left on the command line. The template Makefile looks the same
+>How-To-Repeat:
+I assume any build that requests suexec suport will raise the problem.
+>Fix:
+I applied this change to Makefile.tmpl (output from standard 'diff'):
+
+181,182c181
+<                       -DSAFE_PATH=\"$(suexec_safepath)\" \
+<               ' \
+---
+>                       -DSAFE_PATH=\"$(suexec_safepath)\"' \
+
+which placed a terminating single quote after the double-quote on the
+line above, and removed the line that just contains " ' \ " and redid the
+config. This gave a Makefile that complied correctly.
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

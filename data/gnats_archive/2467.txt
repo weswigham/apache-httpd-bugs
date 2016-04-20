@@ -1,0 +1,101 @@
+Received: (qmail 14782 invoked by uid 2012); 18 Jun 1998 18:15:16 -0000
+Message-Id: <19980618181516.14781.qmail@hyperreal.org>
+Date: 18 Jun 1998 18:15:16 -0000
+From: Pierpaolo Fumagalli <ianosh@iname.com>
+Reply-To: ianosh@iname.com
+To: apbugs@hyperreal.org
+Subject: Windows/Linux startup/shutdown different behaviour
+X-Send-Pr-Version: 3.2
+
+>Number:         2467
+>Category:       os-windows
+>Synopsis:       Windows/Linux startup/shutdown different behaviour
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jun 18 11:20:01 PDT 1998
+>Last-Modified:  Sat Jun 27 07:18:12 PDT 1998
+>Originator:     ianosh@iname.com
+>Organization:
+>Release:        1.3.0
+>Environment:
+OS-1: Ms Windows NT 4.0 Wks w/ SP3 (Arch. Double PPro 200)
+OS-2: Linux 2.0.33 w/ libc5 Slackware Distr.  (Arch. Single PPro 200)
+Administrator privileges under NT, Root under Linux
+>Description:
+During Startup and Shutdown, when Apache initializes modules, he works differently under Win32 and Linux.
+My module has only 2 functions: module_init(...) and module_cleanup(...).
+In module_init() I placed a call to ap_register_cleanup(...) for module_cleanup(). Il both modules I added a log call via ap_log_error(...) and my own log via fopen(...) fprintf(...) fclose(...).
+Under Linux everything works right, when I look at error log I see the calls to mod_init(), mod_cleanup() two times, one of the first startup procedure (call it "Defensive Programming" -said Brian- ) and one for the actual -running- startup.
+Under Win32 the log says:
+mod_init() called
+mod_init() called
+mod_init() called
+three times (yes) with no cleanup... under my own log I see:
+mod_init() called
+mod_cleanup() called
+mod_init() called
+mod_init() called
+so three inits and 1 cleanup (after first startup) and NOT a final cleanup when server shutdowns.
+>How-To-Repeat:
+Alwais on Win32 machines (I tried also on a couple of other machines).
+>Fix:
+I'm looking around master_main() and service_main() under http_main.c... and code reflects logs...
+>Audit-Trail:
+Release-Changed-From-To: 1.3.0 and prev.-1.3.0
+Release-Changed-By: coar
+Release-Changed-When: Thu Jun 18 11:28:14 PDT 1998
+Category-Changed-From-To: os-windows-apache-api
+Category-Changed-By: coar
+Category-Changed-When: Thu Jun 18 11:28:14 PDT 1998
+
+
+From: "Pierpaolo Fumagalli" <ianosh@iname.com>
+To: <coar@apache.org>
+Cc: <apbugs@apache.org>
+Subject: Re: apache-api/2467: Windows/Linux startup/shutdown different behaviour
+Date: Thu, 18 Jun 1998 23:11:46 +0200
+
+ I found a "working" solution that probably could help in better resolving
+ the problem...
+ the pconf pool is never cleaned in the shutdown process, neither in "main"
+ process, nor in "child" processes.
+ I solved the problem adding these two lines:
+ 
+ http_main.c Line 5036) ap_destroy_pool(pconf);
+ (the last row of worker_main() procedure);
+ 
+ This does not seem to hurt since under Win32 the pool is created at the
+ beginning of the process (when it is spawned) via malloc() in function
+ malloc_block() in file alloc.c.
+ 
+ http_main.c Line 5484) clean_parent_exit(0);
+ (the last row of apache_main() / REALMAIN() procedure);
+ 
+ This seems to work since when apache_main() returns, it just return back to
+ the Operating System.
+ 
+ 
+ 
+ 
+Category-Changed-From-To: apache-api-os-windows
+Category-Changed-By: dgaudet
+Category-Changed-When: Sun Jun 21 15:03:35 PDT 1998
+
+State-Changed-From-To: open-closed
+State-Changed-By: ben
+State-Changed-When: Sat Jun 27 07:18:12 PDT 1998
+State-Changed-Why:
+Patch committed for 1.3.1.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,388 @@
+Received: (qmail 13443 invoked by uid 2012); 18 Nov 1999 08:15:07 -0000
+Message-Id: <19991118081507.13442.qmail@hyperreal.org>
+Date: 18 Nov 1999 08:15:07 -0000
+From: Darrin Thompson <dthompson@characterlink.net>
+Reply-To: dthompson@characterlink.net
+To: apbugs@hyperreal.org
+Subject: Fix for ftp directory listing problems involving spaces.
+X-Send-Pr-Version: 3.2
+
+>Number:         5331
+>Category:       mod_proxy
+>Synopsis:       Fix for ftp directory listing problems involving spaces.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Nov 18 00:20:05 PST 1999
+>Last-Modified:  Fri Nov 19 10:50:04 PST 1999
+>Originator:     dthompson@characterlink.net
+>Organization:
+apache
+>Release:        1.3.9
+>Environment:
+Linux - Rehat 6
+>Description:
+If you try to view a directory with the apache proxy and the first filename in 
+list contains at least one space, the directory list in the browser will be
+corrupt.
+
+My patch approaches the problem in a less effcient manner than the current 
+Apache code. I use regex and string handling much more than the current Apache 
+code. I believe that is the only disavantage to using it. My version works.
+
+My version is extremely paraniod. It escapes just about everything before 
+sending it to the browser.
+
+Also, my version supports those dumb dos style Microsoft FTP servers.
+
+I don't know where to get to an EPLF style listing so I couldn't add that. 
+You will see that my version of send_dir is VERY easy to extend if you want 
+to add something like EPLF.
+
+I posted a fix to this several months ago but there were some concerns about 
+how closely I had followed squid's version of parsing ftp listings. This 
+version has NO squid code whatsoever. All original.
+
+Darrin
+>How-To-Repeat:
+browse these urls using the apache proxy
+ftp://ftptest.characterlink.net/
+ftp://dos.ftptest.characterlink.net/
+
+>Fix:
+*** proxy_ftp.c	1999/11/17 18:58:43	1.1
+--- proxy_ftp.c	1999/11/18 08:04:19
+***************
+*** 64,69 ****
+--- 64,71 ----
+  
+  #define AUTODETECT_PWD
+  
++ #define NUMDOLLARS 10
++ 
+  DEF_Explain
+  
+  /*
+***************
+*** 279,284 ****
+--- 281,292 ----
+      conn_rec *con = r->connection;
+      char *dir, *path, *reldir, *site;
+  
++     regex_t *unixfilereg, *dosfilereg, *dosdirreg, *linkreg;
++     regmatch_t dollarvars[NUMDOLLARS];
++     char *output;
++     char *file, *fullurl, *fluff, *linktarget, *filelink;
++     char type;
++ 
+      /* Save "scheme://site" prefix without password */
+      site = ap_unparse_uri_components(r->pool, &r->parsed_uri, UNP_OMITPASSWORD|UNP_OMITPATHINFO);
+      /* ... and path without query args */
+***************
+*** 307,313 ****
+  	else
+  	    ++reldir;
+  	/* print "path/" component */
+! 	ap_snprintf(buf, sizeof(buf), "<A HREF=\"/%s/\">%s</A>/", path+1, reldir);
+  	total_bytes_sent += ap_proxy_bputs2(buf, con->client, c);
+  	*dir = '/';
+      }
+--- 315,321 ----
+  	else
+  	    ++reldir;
+  	/* print "path/" component */
+! 	ap_snprintf(buf, sizeof(buf), "<A HREF=\"/%s/\">%s</A>/", ap_escape_uri(r->pool, path+1), reldir);
+  	total_bytes_sent += ap_proxy_bputs2(buf, con->client, c);
+  	*dir = '/';
+      }
+***************
+*** 320,412 ****
+      }
+      total_bytes_sent += ap_proxy_bputs2(buf, con->client, c);
+  
+!     while (!con->aborted) {
+! 	n = ap_bgets(buf, sizeof buf, f);
+! 	if (n == -1) {		/* input error */
+! 	    if (c != NULL) {
+! 		ap_log_rerror(APLOG_MARK, APLOG_ERR, c->req,
+! 		    "proxy: error reading from %s", c->url);
+! 		c = ap_proxy_cache_error(c);
+! 	    }
+! 	    break;
+! 	}
+! 	if (n == 0)
+! 	    break;		/* EOF */
+! 	if (buf[0] == 'l' && (filename=strstr(buf, " -> ")) != NULL) {
+! 	    char *link_ptr = filename;
+! 
+! 	    do {
+! 		filename--;
+! 	    } while (filename[0] != ' ');
+! 	    *(filename++) = '\0';
+! 	    *(link_ptr++) = '\0';
+! 	    if ((n = strlen(link_ptr)) > 1 && link_ptr[n - 1] == '\n')
+! 	      link_ptr[n - 1] = '\0';
+! 	    ap_snprintf(buf2, sizeof(buf2), "%s <A HREF=\"%s\">%s %s</A>\n", buf, filename, filename, link_ptr);
+! 	    ap_cpystrn(buf, buf2, sizeof(buf));
+! 	    n = strlen(buf);
+! 	}
+! 	else if (buf[0] == 'd' || buf[0] == '-' || buf[0] == 'l' || ap_isdigit(buf[0])) {
+! 	    if (ap_isdigit(buf[0])) {	/* handle DOS dir */
+! 		searchptr = strchr(buf, '<');
+! 		if (searchptr != NULL)
+! 		    *searchptr = '[';
+! 		searchptr = strchr(buf, '>');
+! 		if (searchptr != NULL)
+! 		    *searchptr = ']';
+! 	    }
+! 
+! 	    filename = strrchr(buf, ' ');
+! 	    *(filename++) = 0;
+! 	    filename[strlen(filename) - 1] = 0;
+! 
+! 	    /* handle filenames with spaces in 'em */
+! 	    if (!strcmp(filename, ".") || !strcmp(filename, "..") || firstfile) {
+! 		firstfile = 0;
+! 		searchidx = filename - buf;
+! 	    }
+! 	    else if (searchidx != 0 && buf[searchidx] != 0) {
+! 		*(--filename) = ' ';
+! 		buf[searchidx - 1] = 0;
+! 		filename = &buf[searchidx];
+! 	    }
+! 
+! 	    /* Special handling for '.' and '..' */
+! 	    if (!strcmp(filename, ".") || !strcmp(filename, "..") || buf[0] == 'd') {
+! 		ap_snprintf(buf2, sizeof(buf2), "%s <A HREF=\"%s/\">%s</A>\n",
+! 		    buf, filename, filename);
+! 	    }
+! 	    else {
+! 		ap_snprintf(buf2, sizeof(buf2), "%s <A HREF=\"%s\">%s</A>\n", buf, filename, filename);
+! 	    }
+! 	    ap_cpystrn(buf, buf2, sizeof(buf));
+! 	    n = strlen(buf);
+! 	}
+! 
+! 	o = 0;
+! 	total_bytes_sent += n;
+  
+! 	if (c != NULL && c->fp && ap_bwrite(c->fp, buf, n) != n) {
+! 	    ap_log_rerror(APLOG_MARK, APLOG_ERR, c->req,
+! 		"proxy: error writing to %s", c->tempfile);
+! 	    c = ap_proxy_cache_error(c);
+! 	}
+! 
+! 	while (n && !r->connection->aborted) {
+! 	    w = ap_bwrite(con->client, &buf[o], n);
+! 	    if (w <= 0)
+! 		break;
+! 	    ap_reset_timeout(r);	/* reset timeout after successfule write */
+! 	    n -= w;
+! 	    o += w;
+  	}
+      }
+! 
+      total_bytes_sent += ap_proxy_bputs2("</PRE><HR>\n", con->client, c);
+      total_bytes_sent += ap_proxy_bputs2(ap_psignature("", r), con->client, c);
+      total_bytes_sent += ap_proxy_bputs2("</BODY></HTML>\n", con->client, c);
+  
+      ap_bflush(con->client);
+  
+      return total_bytes_sent;
+  }
+--- 328,444 ----
+      }
+      total_bytes_sent += ap_proxy_bputs2(buf, con->client, c);
+  
+!     /* set up a bunch of regular expressions so we can */ 
+!     /* EASILY tell which format we are reading. */
+!     unixfilereg=ap_pregcomp(r->pool, 
+! 			    "^([[:alpha:]-])(([^[:space:]]+[[:space:]]+){8})(.*)", 
+! 			    REG_EXTENDED | REG_NEWLINE);
+!     dosfilereg=ap_pregcomp(r->pool, 
+! 			   "^([[:digit:]])(([^[:space:]]+[[:space:]]+){2}[[:digit:]]+[[:space:]]+)(.*)", 
+! 			   REG_EXTENDED | REG_NEWLINE);
+!     dosdirreg=ap_pregcomp(r->pool,  
+! 			  "^([[:digit:]])(([^[:space:]]+[[:space:]]+){2}<DIR>[[:space:]]+)(.*)", 
+! 			  REG_EXTENDED | REG_NEWLINE);
+!     linkreg=ap_pregcomp(r->pool, 
+! 			"^(.*)([[:space:]]+->.*)", 
+! 			REG_EXTENDED | REG_NEWLINE);
+  
+!     while (!con->aborted) {
+!       n = ap_bgets(buf, sizeof buf, f);
+!       if (n == -1) {		/* input error */
+! 	if (c != NULL) {
+! 	  ap_log_rerror(APLOG_MARK, APLOG_ERR, c->req,
+! 			"proxy: error reading from %s", c->url);
+! 	  c = ap_proxy_cache_error(c);
+  	}
++ 	break;
++       }
++       if (n == 0)
++ 	break;		/* EOF */
++ 
++       if (ap_regexec(unixfilereg, buf, NUMDOLLARS, dollarvars, 0)!=REG_NOMATCH) {
++ 	file=ap_pregsub(r->pool, "$4", buf, NUMDOLLARS, dollarvars);
++ 	fullurl=ap_pstrcat(r->pool, site, path, file, NULL);
++ 	fluff=ap_pregsub(r->pool, "$1$2", buf, NUMDOLLARS, dollarvars);
++ 	switch(fluff[0]) {
++ 	case '-':
++ 	  type='f';
++ 	  break;
++ 	case 'd':
++ 	  type='d';
++ 	  break;
++ 	case 'l':
++ 	  if (ap_regexec(linkreg, file, NUMDOLLARS, dollarvars, 0)!=REG_NOMATCH) {
++ 	    type='l';
++ 	    linktarget=ap_pregsub(r->pool, "$2", file, NUMDOLLARS, dollarvars);
++ 	    file=ap_pregsub(r->pool, "$1", file, NUMDOLLARS, dollarvars);
++ 	  }
++ 	  else {
++ 	    type='u';
++ 	  }
++ 	  break;
++ 	default:
++ 	  type='u';
++ 	  break;
++ 	} 
++       }
++       else if (ap_regexec(dosfilereg, buf, NUMDOLLARS, dollarvars, 0)!=REG_NOMATCH) {
++ 	file=ap_pregsub(r->pool, "$4", buf, NUMDOLLARS, dollarvars);
++ 	fullurl=ap_pstrcat(r->pool, site, path, file, NULL);
++ 	fluff=ap_pregsub(r->pool, "$1$2", buf, NUMDOLLARS, dollarvars);
++ 	type='f';
++       }
++       else if (ap_regexec(dosdirreg, buf, NUMDOLLARS, dollarvars, 0)!=REG_NOMATCH) {
++ 	file=ap_pregsub(r->pool, "$4", buf, NUMDOLLARS, dollarvars);
++ 	fullurl=ap_pstrcat(r->pool, site, path, file, NULL);
++ 	fluff=ap_pregsub(r->pool, "$1$2", buf, NUMDOLLARS, dollarvars);
++ 	type='d';
++       }
++       else {
++ 	file="";
++ 	fluff="";
++ 	fullurl="";
++ 	filelink="";
++ 	type='u';
++       }
++ 
++       if (type=='d') {
++ 	file=ap_pstrcat(r->pool, file, "/", NULL);
++       }
++ 
++       fluff=ap_escape_html(r->pool, fluff);
++       fullurl=ap_escape_uri(r->pool, fullurl);
++       filelink=ap_psprintf(r->pool, "<a href=\"%s\">%s</a>", fullurl, ap_escape_html(r->pool, file));
++ 
++       switch(type) {
++       case 'd':
++       case 'f':
++ 	output=ap_pstrcat(r->pool, fluff, filelink, "\n", NULL);
++ 	break;
++       case 'l':
++ 	linktarget=ap_escape_html(r->pool, linktarget);
++ 	output=ap_pstrcat(r->pool, fluff, filelink, linktarget, "\n", NULL);
++ 	break;
++       case 'u':
++ 	output=ap_escape_html(r->pool, buf);
++ 	break;
++       default:
++ 	output=ap_escape_html(r->pool, buf); /* shouldn't ever get here */
++ 	break;
++       }
++ 	
++       /* Am I an idiot or should this be ap_proxy_bputs2? */
++       /* I used this because the old proxy_ftp.c used this */
++       /* function when it wrote the directory listing. */
++       total_bytes_sent += ap_bputs(output, con->client);
+      }
+!     
+      total_bytes_sent += ap_proxy_bputs2("</PRE><HR>\n", con->client, c);
+      total_bytes_sent += ap_proxy_bputs2(ap_psignature("", r), con->client, c);
+      total_bytes_sent += ap_proxy_bputs2("</BODY></HTML>\n", con->client, c);
+  
+      ap_bflush(con->client);
++ 
+  
+      return total_bytes_sent;
+  }
+>Audit-Trail:
+
+From: Darrin Thompson <dthompson@characterlink.net>
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: mod_proxy/5331: Fix for ftp directory listing problems involving 
+ spaces.
+Date: Fri, 19 Nov 1999 13:50:16 -0500
+
+ Oops, here is a further patch that corrects the ftp directory listings
+ on some servers.
+ 
+ Problem: if the ftp server actually accepted the -g part of LIST -lag
+ then the resulting list would be readable but the links would be
+ corrupt.
+ 
+ I took out the -g flag so the lists are consistent.
+ 
+ There should be two patches in this change request. Apply the original
+ patch first.
+ 
+ Darrin
+ 
+ 
+ *** proxy_ftp.c.old	Fri Nov 19 13:42:09 1999
+ --- proxy_ftp.c	Fri Nov 19 13:42:39 1999
+ ***************
+ *** 1055,1061 ****
+   	if (len != 0)
+   	    ap_bvputs(f, "LIST ", path, CRLF, NULL);
+   	else
+ ! 	    ap_bputs("LIST -lag" CRLF, f);
+   	Explain1("FTP: LIST %s", (len == 0 ? "" : path));
+       }
+       else {
+ --- 1055,1065 ----
+   	if (len != 0)
+   	    ap_bvputs(f, "LIST ", path, CRLF, NULL);
+   	else
+ ! 	  /* DT - changed from -lag to la */
+ ! 	  /* sometimes leaving out group info is really */
+ ! 	  /* confusing to send_dir, since it doesn't */
+ ! 	  /* always work */
+ ! 	    ap_bputs("LIST -la" CRLF, f); 
+   	Explain1("FTP: LIST %s", (len == 0 ? "" : path));
+       }
+       else {
+ 
+ 
+ apbugs@hyperreal.org wrote:
+ > 
+ > Thank you very much for your problem report.
+ > It has the internal identification `mod_proxy/5331'.
+ > The individual assigned to look at your
+ > report is: apache.
+ > 
+ > >Category:       mod_proxy
+ > >Responsible:    apache
+ > >Synopsis:       Fix for ftp directory listing problems involving spaces.
+ > >Arrival-Date:   Thu Nov 18 00:20:05 PST 1999
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

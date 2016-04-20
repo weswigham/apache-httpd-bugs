@@ -1,0 +1,316 @@
+Received: (qmail 26821 invoked by uid 2012); 10 Oct 1998 22:50:15 -0000
+Message-Id: <19981010225015.26820.qmail@hyperreal.org>
+Date: 10 Oct 1998 22:50:15 -0000
+From: Michael Robinton <michael@bzs.org>
+Reply-To: michael@bzs.org
+To: apbugs@hyperreal.org
+Subject: typedef error in http_core.c
+X-Send-Pr-Version: 3.2
+
+>Number:         3177
+>Category:       os-linux
+>Synopsis:       typedef error in http_core.c
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Oct 10 16:00:00 PDT 1998
+>Last-Modified:  Wed Nov  4 14:27:13 PST 1998
+>Originator:     michael@bzs.org
+>Organization:
+>Release:        1.3.3
+>Environment:
+Linux 1.2.13
+gcc version 2.7.0
+libc.so.5.0.9
+>Description:
+On this system the following error is produced:
+http_core.c: In function `set_rlimit':
+http_core.c:2029: `rlim_t' undeclared (first use this function)
+http_core.c:2029: (Each undeclared identifier is reported only once
+http_core.c:2029: for each function it appears in.)
+http_core.c:2029: parse error before `cur'
+http_core.c:2043: `cur' undeclared (first use this function)
+http_core.c:2056: `max' undeclared (first use this function)
+make[1]: *** [http_core.o] Error 1
+
+Using the suggestion in http_core.c line 46
+
+/* If your platform doesn't define rlim_t then typedef it in ap_config.h */
+
+results in multiple definition errors in other modules that recursively include
+the ap_config.h file.
+
+
+
+make: *** [subdirs] Error 1
+>How-To-Repeat:
+Unless you can duplicate the conditions on this system, no.
+
+you might try to typedef rlim_t and see if the results are the same on 
+a more recent system.
+>Fix:
+The simple solution was to put the typedef directly in the http_core.c file.
+
+I suggest a change to ./Configure to properly handle this.
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: manoj
+State-Changed-When: Tue Oct 13 16:04:46 PDT 1998
+State-Changed-Why:
+To me, this looks like it should work. This code which is in ap_config.h
+should handle your situation:
+
+/* glibc 2.1 and later finally define rlim_t */
+#if !defined(__GLIBC__) || __GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 1)
+typedef int rlim_t;
+#endif
+
+I don't understand why it isn't. Is __GLIBC__ defined somewhere?
+Try 
+
+gcc -E ap_config.h
+
+and see if the typedef shows up in the output.
+
+From: Manoj Kasichainula <manojk@raleigh.ibm.com>
+To: michael@bizsystems.com
+Cc: apbugs@apache.org
+Subject: Re: os-linux/3177: typedef error in http_core.c
+Date: Wed, 21 Oct 1998 17:11:05 -0400
+
+ On Wed, Oct 14, 1998 at 10:07:57AM +0000, Michael wrote:
+ > Nope, output attached.
+ > 
+ > also get this error, could this be part of the problem?
+ > 
+ > # gcc -E ap_config.h >tmp
+ > ap_config.h:92: os.h: No such file or directory
+ 
+ Yes, this is a problem. You should have an os.h in src/os/unix
+ and the includes during compiles should reference it. Try again with a
+ completely clean 1.3.3 and see if the problem shows up again. If so,
+ could you also paste in the compile command used for http_core.c, and
+ tell us exactly how you ran the configuration step?
+
+From: Manoj Kasichainula <manojk@raleigh.ibm.com>
+To: michael@bizsystems.com
+Cc: apbugs@apache.org
+Subject: Re: os-linux/3177: typedef error in http_core.c
+Date: Wed, 21 Oct 1998 19:26:52 -0400
+
+ Please cc: apbugs@apache.org on anything having to do with this PR
+ 
+ On Wed, Oct 21, 1998 at 04:14:52PM +0000, Michael wrote:
+ > > On Wed, Oct 14, 1998 at 10:07:57AM +0000, Michael wrote:
+ > > > Nope, output attached.
+ > > > 
+ > > > also get this error, could this be part of the problem?
+ > > > 
+ > > > # gcc -E ap_config.h >tmp
+ > > > ap_config.h:92: os.h: No such file or directory
+ > 
+ > Oh, by the way, this fails on 2.0.3x systems as well. I don't think 
+ > is necessarily the problem, but there must be a chain of includes 
+ > that gets back around to this during the compile (on 2.0.3x) that 
+ > fails on 1.2.13
+ > > 
+ > > Yes, this is a problem. You should have an os.h in src/os/unix
+ > 
+ > it is there
+ > 
+ > > and the includes during compiles should reference it. Try again with a
+ > > completely clean 1.3.3 and see if the problem shows up again. 
+ > 
+ > Yep.
+ > 
+ > local/etc/httpd\" http_core.c
+ > http_core.c: In function `set_rlimit':
+ > http_core.c:2029: `rlim_t' undeclared (first use this function)
+ > 
+ > Done with a freshly un-tarred 1.3.3
+ > 
+ > > If so,
+ > > could you also paste in the compile command used for http_core.c, and
+ > 
+ > whatever is in the Makefile, I made no changes
+ 
+ But what is the specific command used to compile http_core.c that you
+ see on the screen?
+ 
+ Something like:
+ 
+ gcc -a -b -c -I../os/unix -blah -blah http_core.c
+ 
+ > here is what I did:
+ > 
+ > tar -xvf apache_1.3.3.tar (fresh)
+ > cd apache_1.3.3/src
+ > Configure (no arguments) 
+ > make
+ > 
+ > pure vanilla
+ > -------------------------
+ > When this is done on a 2.0.3x system, everything works great.
+ > on my 1.2.13 system I get the error.
+ 
+ Didn't you say at the top that this fails on 2.0.3x as well?
+ 
+ > I think something is missing from the Configure script or one of the 
+ > header files and an assumption has been made about system includes 
+ > that have changed from the older OS to the newer ones.
+ 
+ Maybe. I don't have any systems running 1.x, so I can't diagnose this.
+ 
+ > Manually editing httpd_core.c to include the typedef works fine, and 
+ > the httpd executes normally
+ 
+ I'm guessing some mixup in your include files actually. I believe that
+ rlim_t is defined in the header files for libc, not the kernel, and
+ Apache will typedef rlim_t if your libc is before glibc 2.1.
+ 
+ -- 
+ Manoj Kasichainula - manojk@raleigh.ibm.com
+ IBM Apache Development Team
+ Research Triangle Park, NC
+
+From: "Michael" <michael@bizsystems.com>
+To: Manoj Kasichainula <manojk@raleigh.ibm.com>
+Cc: apbugs@apache.org
+Subject: Re: os-linux/3177: typedef error in http_core.c
+Date: Wed, 21 Oct 1998 17:30:18 +0000
+
+ > > > > # gcc -E ap_config.h >tmp
+ > > > > ap_config.h:92: os.h: No such file or directory
+ > > 
+ > > Oh, by the way, this fails on 2.0.3x systems as well. I don't think 
+ > > is necessarily the problem, but there must be a chain of includes 
+ > > that gets back around to this during the compile (on 2.0.3x) that 
+ > > fails on 1.2.13
+ > > > 
+ > > > Yes, this is a problem. You should have an os.h in src/os/unix
+ > > 
+ > > it is there
+ > > 
+ > > > and the includes during compiles should reference it. Try again with a
+ > > > completely clean 1.3.3 and see if the problem shows up again. 
+ > > 
+ > > Yep.
+ > > 
+ > > local/etc/httpd\" http_core.c
+ > > http_core.c: In function `set_rlimit':
+ > > http_core.c:2029: `rlim_t' undeclared (first use this function)
+ > > 
+ > > Done with a freshly un-tarred 1.3.3
+ > > 
+ > > > If so,
+ > > > could you also paste in the compile command used for http_core.c, and
+ > > 
+ > > whatever is in the Makefile, I made no changes
+ > 
+ > But what is the specific command used to compile http_core.c that you
+ > see on the screen?
+ > 
+ Sorry here it is...
+ 
+ gcc -c  -I../os/unix -I../include   -DLINUX=1 -DUSE_HSREGEX  
+ http_core.c 
+ 
+ http_core.c: In function `set_rlimit': 
+ http_core.c:2029:`rlim_t' undeclared (first use this function)
+ 
+ 
+ > > here is what I did:
+ > > 
+ > > tar -xvf apache_1.3.3.tar (fresh)
+ > > cd apache_1.3.3/src
+ > > Configure (no arguments) 
+ > > make
+ > > 
+ > > pure vanilla
+ > > -------------------------
+ > > When this is done on a 2.0.3x system, everything works great.
+ > > on my 1.2.13 system I get the error.
+ > 
+ > Didn't you say at the top that this fails on 2.0.3x as well?
+ > 
+ > > I think something is missing from the Configure script or one of the 
+ > > header files and an assumption has been made about system includes 
+ > > that have changed from the older OS to the newer ones.
+ > 
+ > Maybe. I don't have any systems running 1.x, so I can't diagnose this.
+ > 
+ > > Manually editing httpd_core.c to include the typedef works fine, and 
+ > > the httpd executes normally
+ > 
+ > I'm guessing some mixup in your include files actually. I believe that
+ > rlim_t is defined in the header files for libc, not the kernel, and
+ > Apache will typedef rlim_t if your libc is before glibc 2.1.
+ > 
+ Michael@bzs.org
+
+From: Manoj Kasichainula <manojk@raleigh.ibm.com>
+To: Michael <michael@bizsystems.com>
+Cc: apbugs@apache.org
+Subject: Re: os-linux/3177: typedef error in http_core.c
+Date: Sun, 1 Nov 1998 23:44:52 -0500
+
+ I've been working with the submitter offline on this problem, but to
+ summarize: I think the problem is that the #ifdef block that contains
+ the typedef for rlim_t in ap_config.h is contained in an #ifdef block
+ limiting it to kernels >= 2.0. Here's a potential patch for this:
+ please try it and report on whether it works. I was able to compile
+ successfully on a 1.x system with this patch.
+ 
+ Index: src/include/ap_config.h
+ ===================================================================
+ RCS file: /export/home/cvs/apache-1.3/src/include/ap_config.h,v
+ retrieving revision 1.241
+ diff -u -r1.241 ap_config.h
+ --- ap_config.h	1998/10/19 02:16:27	1.241
+ +++ ap_config.h	1998/10/29 23:12:36
+ @@ -436,11 +436,6 @@
+  #define HAVE_MMAP 1
+  #define USE_MMAP_FILES
+  
+ -/* glibc 2.1 and later finally define rlim_t */
+ -#if !defined(__GLIBC__) || __GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 1)
+ -typedef int rlim_t;
+ -#endif
+ -
+  /* flock is faster ... but hasn't been tested on 1.x systems */
+  #define USE_FLOCK_SERIALIZED_ACCEPT
+  
+ @@ -456,6 +451,11 @@
+  #undef NEED_STRDUP
+  #include <sys/time.h>
+  #define HAVE_SYSLOG 1
+ +
+ +/* glibc 2.1 and later finally define rlim_t */
+ +#if !defined(__GLIBC__) || __GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 1)
+ +typedef int rlim_t;
+ +#endif
+  
+  #elif defined(SCO)
+  #undef HAVE_GMTOFF
+State-Changed-From-To: feedback-closed
+State-Changed-By: manoj
+State-Changed-When: Wed Nov  4 14:27:12 PST 1998
+State-Changed-Why:
+This has now been fixed for the next release. Thanks for
+using Apache.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

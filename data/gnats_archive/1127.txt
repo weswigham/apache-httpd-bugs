@@ -1,0 +1,228 @@
+From apwww@hyperreal.org  Fri Sep 12 08:22:26 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id IAA01651;
+	Fri, 12 Sep 1997 08:22:26 -0700 (PDT)
+Message-Id: <199709121522.IAA01651@hyperreal.org>
+Date: Fri, 12 Sep 1997 08:22:26 -0700 (PDT)
+From: Steve Resnick <steve@ducksfeet.com>
+Reply-To: steve@ducksfeet.com
+To: apbugs@hyperreal.org
+Subject: Log files for main server and virtual hosts are written with different UID/GID
+X-Send-Pr-Version: 3.2
+
+>Number:         1127
+>Category:       mod_log-any
+>Synopsis:       Log files for main server and virtual hosts are written with different UID/GID
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          duplicate
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Sep 12 08:30:04 1997
+>Last-Modified:  Sat Feb 14 14:20:01 PST 1998
+>Originator:     steve@ducksfeet.com
+>Organization:
+>Release:        1.2.4
+>Environment:
+Linux la 2.0.30 #19 Thu Aug 14 15:13:47 PDT 1997 i486
+Reading specs from /usr/lib/gcc-lib/i486-linux/2.7.2.1/specs
+gcc version 2.7.2.1
+                                  -- And --
+SunOS genesis 5.5.1 Generic_103640-08 sun4u sparc SUNW,Ultra-Enterprise
+Reading specs from /opt/gnu/lib/gcc-lib/sparc-sun-solaris2.5/2.7.2/specs
+gcc version 2.7.2
+>Description:
+
+When my server starts up my main server's log files are owned by www:www
+which is what the server runs as. (according to User and Group directives)
+
+When the virtual servers write their logs they are owned by root:root.
+>How-To-Repeat:
+Start the server w/ at least one virtual server with an empy log directoy and
+do an ls -l
+>Fix:
+This is only a guess, but it would  seem the logs are created by the server before
+the setuid() call. (Or whatever the server does to do an effective su) If this were the case making the setuid call before the logs are created would fix this.
+%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Fri Sep 12 09:42:46 PDT 1997
+State-Changed-Why:
+As I said in the newsgroup, the code creates all logfiles
+as the user that Apache starts as.
+
+Please show me the output of a "ls -ld logdir", where logdir
+is the diretory your logfiles go in.
+
+What user are you starting Apache as?  Not the one you
+run it as, but the one you start it as.
+
+As I said before, they should all be owned by the user
+that starts Apache.  The problem is not how the virtual
+host logs are being created but how the main server log
+is being created.
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Subject: Re: mod_log-any/1127: Log files for main server and virtual  hosts are written with different UID/GID (fwd)
+Date: Fri, 12 Sep 1997 13:02:52 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Fri, 12 Sep 1997 10:44:33 -0700
+ From: Steve Resnick <steve@ducksfeet.com>
+ To: Marc Slemko <marc@hyperreal.org>
+ Subject: Re: mod_log-any/1127: Log files for main server and virtual  hosts are written with different UID/GID
+ 
+ At 09:42 AM 9/12/97 -0700, you wrote:
+ >Synopsis: Log files for main server and virtual hosts are written with
+ different UID/GID
+ >
+ >State-Changed-From-To: open-analyzed
+ >State-Changed-By: marc
+ >State-Changed-When: Fri Sep 12 09:42:46 PDT 1997
+ >State-Changed-Why:
+ >As I said in the newsgroup, the code creates all logfiles
+ >as the user that Apache starts as.
+ >
+ >Please show me the output of a "ls -ld logdir", where logdir
+ >is the diretory your logfiles go in.
+ 
+ 	drwxrwxr-x   2 www      www          1024 Sep 12 08:22 httpd
+ 	This is from my /var/logs directory.
+ 
+ >
+ >What user are you starting Apache as?  Not the one you
+ >run it as, but the one you start it as.
+ 
+ I am starting it as root -- since I need to run at port 80 
+ 
+ >
+ >As I said before, they should all be owned by the user
+ >that starts Apache.  The problem is not how the virtual
+ >host logs are being created but how the main server log
+ >is being created.
+ >
+ >
+ 
+ I have one major concern and a question about all of this ...
+ My concern is the incosistency of the UID/GID ownership of 
+ log files with some seeming to be root and others not. 
+ My concern is the usual what is running as root, what does it do,
+ what holes does it allow for. 
+ 
+ The other question I have is how to allow for my customers to truncate
+ their log files (if I charge for disk space, they should be able to 
+ truncate their files, no?) 
+ 
+ Cheers,
+ 
+ Steve
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Steve Resnick <steve@ducksfeet.com>
+Subject: Re: mod_log-any/1127: Log files for main server and virtual  hosts are written with different UID/GID
+Date: Fri, 12 Sep 1997 13:26:35 -0600 (MDT)
+
+ 
+ On Fri, 12 Sep 1997, Steve Resnick wrote:
+ 
+ > At 09:42 AM 9/12/97 -0700, you wrote:
+ > >Synopsis: Log files for main server and virtual hosts are written with
+ > different UID/GID
+ > >
+ > >State-Changed-From-To: open-analyzed
+ > >State-Changed-By: marc
+ > >State-Changed-When: Fri Sep 12 09:42:46 PDT 1997
+ > >State-Changed-Why:
+ > >As I said in the newsgroup, the code creates all logfiles
+ > >as the user that Apache starts as.
+ > >
+ > >Please show me the output of a "ls -ld logdir", where logdir
+ > >is the diretory your logfiles go in.
+ > 
+ > 	drwxrwxr-x   2 www      www          1024 Sep 12 08:22 httpd
+ > 	This is from my /var/logs directory.
+ 
+ The documentation explicitly states that you should not do this.  Anyone
+ who has write permission to the directory the logs are in can get
+ root.  This has been discussed time and time again in the newsgroups
+ and there is a big warning in the docs.
+ 
+ There may be something odd going on with your system making the files
+ owned by the owner of the directory.  Try changing to to something
+ more sane, like root.wheel and see what user the log files are created
+ as then.  Apache isn't doing anything to change who they are created
+ as.
+ 
+ [...]
+ > 
+ > I have one major concern and a question about all of this ...
+ > My concern is the incosistency of the UID/GID ownership of 
+ > log files with some seeming to be root and others not. 
+ > My concern is the usual what is running as root, what does it do,
+ > what holes does it allow for. 
+ 
+ The log files are opened before the process setuid()s.  This is
+ by design; in most environments, it is not acceptable for people running 
+ CGIs to be able to mess with the log files.
+ 
+ > The other question I have is how to allow for my customers to truncate
+ > their log files (if I charge for disk space, they should be able to 
+ > truncate their files, no?) 
+ 
+ You should not let them do anything with them directly.  If you
+ want, run a script that rotates them out into another location
+ every day and changes the permissions so your clients can play with
+ them.  Or treat the log files as seperate, and don't bill them for
+ them.
+ 
+ If you must let users play with the log files directly, just have
+ a cron job or something that changes the permissions on the files
+ (_not_ the directory) so they can play with them.  Be warned that
+ they will probably mess things up often.
+ 
+ I'm not sure it is wise to have no reliable logs of what accesses their
+ are to your client's sites, but that is a local issue.
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: coar
+State-Changed-When: Thu Nov 13 10:28:49 PST 1997
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+Class-Changed-From-To: sw-bug-duplicate
+Class-Changed-By: coar
+Class-Changed-When: Thu Nov 13 10:28:49 PST 1997
+State-Changed-From-To: closed-analyzed
+State-Changed-By: coar
+State-Changed-When: Thu Nov 13 10:44:02 PST 1997
+State-Changed-Why:
+[Re-opening; submitter says there is out-of-band data]
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Feb 14 14:20:00 PST 1998
+State-Changed-Why:
+Apache 1.2 will create logs with the group of the Group setting,
+this is fixed in Apache 1.3 and won't be fixed in Apache 1.2.
+A proper umask makes this irrelevant.
+
+But logs are definately created with the user that apache is
+invoked as.  So I cannot reproduce the problem, and I see no
+code path that could cause this to happen.
+
+Please provide a minimal config that shows the problem if you
+are still having problems.
+
+Dean
+>Unformatted:
+
+
+
+

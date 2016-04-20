@@ -1,0 +1,191 @@
+Received: (qmail 3321 invoked by uid 2012); 23 May 1998 20:39:59 -0000
+Message-Id: <19980523203959.3320.qmail@hyperreal.org>
+Date: 23 May 1998 20:39:59 -0000
+From: Scot Hetzel <hetzels@westbend.net>
+Reply-To: hetzels@westbend.net
+To: apbugs@hyperreal.org
+Subject: SUEXEC not allowing FrontPage Extentions to run
+X-Send-Pr-Version: 3.2
+
+>Number:         2271
+>Category:       suexec
+>Synopsis:       SUEXEC not allowing FrontPage Extentions to run
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sat May 23 13:40:01 PDT 1998
+>Closed-Date:    Tue Mar 26 06:25:57 PST 2002
+>Last-Modified:  Tue Mar 26 06:25:57 PST 2002
+>Originator:     hetzels@westbend.net
+>Release:        1.3b7
+>Organization:
+>Environment:
+FreeBSD-2.2.6-STABLE, gcc
+>Description:
+When using suexec on a Apache Server with FrontPage extentions and module installed, suexec will not allow the fpexe program to execute due to the permission on the file and directory /usr/local/frontpage/currentversion/apache-fp/_vti_bin.  The problem only occurs when trying to access user subwebs, or virtual webs on the server, there is no problem accessing the root web.
+
+The attached patches corrects this problem.
+
+Scot W. Hetzel
+>How-To-Repeat:
+Compile & install Apache 1.2.x with fp-patch-apache-1.2.5 and suexec.
+Install the FrontPage Extentions on a user web & virtual web.
+Start the server and try to access the user web from FrontPage 98.
+>Fix:
+Index: apache-1.3/src/support/suexec.c
+===================================================================
+RCS file: /cvs/apache-1.3/src/support/suexec.c,vretrieving revision 1.38
+diff -c -u -r1.38 suexec.c
+/usr/bin/diff: conflicting specifications of output style
+--- suexec.c	1998/04/21 20:14:06	1.38+++ suexec.c	1998/05/23 20:15:37
+@@ -70,6 +70,16 @@  *  *  */+ /*
++ * "FPEXE modification made on 98.05.19 by Scot Hetzel (hetzels@westbend.net)
++ * based on previous FPEXE modifications supplied by Mark Wormgoor
++ * (riddles@ipe.nl)+ *
++ * Changes were made in order to use Suexec and Frontpage 98 at the same time.
++ * After we change to the target_uid and target_gid.  We check if cmd = FPEXE,
++ * if it does then we execute the cmd without performing any further tests.+ *
++ */   #include "conf.h" #include <sys/param.h>@@ -393,6 +403,14 @@     } 
+     /*+     * We logged everything, changed to the target uid/gid, and know the
++     * user is ok.  We run fpexe now and bail out before anything goes wrong.
++     */+#ifdef FPEXE+     if ((strcmp(cmd, FPEXE)) != NULL) {+#endif ++    /*
+      * Get the current working directory, as well as the proper
+      * document root (dependant upon whether or not it is a
+      * ~userdir request).  Error out if we cannot get either one,
+@@ -482,6 +500,7 @@ 		prg_info.st_uid, prg_info.st_gid); 	exit(120);     }+
+     /*      * Error out if the program is not executable for the user.
+      * Otherwise, she won't find any error in the logs except for
+@@ -493,6 +512,49 @@     }      clean_env();++#ifdef FPEXE+    }+    else {+
++        /* The following taken from mod_frontpage.c to check permissions */+
++        /*
++         * We can't stat the stub dir.  Make sure the stub directory is not
++         * owned by root and not group/world writable+         */
++        if ((lstat(FPSTUBDIR, &dir_info) == -1       ||
++            dir_info.st_uid                          ||
++            (dir_info.st_mode & (S_IWGRP | S_IWOTH)) ||
++            (!S_ISDIR(dir_info.st_mode)))) {+            /*
++             * User recovery: set directory to be owned by by root with
++             * permissions r*x*-x*-x.+             */
++            log_err("Incorrect permissions on stub directory \"%-.1024s\"",
++                    FPSTUBDIR);+            exit (250);+        }++        /*
++	 * We can't stat the stub.  Make sure the stub is not owned by root,
++         * set-uid, set-gid, and is not group/world writable or executable.
++         */+        if ((stat(cmd, &prg_info) == -1    ||
++            prg_info.st_uid                          ||
++            !(prg_info.st_mode & S_ISUID)            ||
++            (prg_info.st_mode & S_ISGID)             ||
++            (prg_info.st_mode & (S_IWGRP | S_IWOTH)) ||
++            !(prg_info.st_mode & (S_IXGRP | S_IXOTH)))) {+            /*
++             * User recovery: set stub to be owned by by root with permissions
++             * r*s*-x*-x.+             */
++            log_err("Incorrect permissions on stub \"%-.1024s\"", cmd);
++            exit (251);+        }+    }+#endif        /* 
+      * Be sure to close the log file so the CGI can't
+Index: apache-1.3/src/support/suexec.h
+===================================================================
+RCS file: /cvs/apache-1.3/src/support/suexec.h,vretrieving revision 1.14
+diff -c -u -r1.14 suexec.h
+/usr/bin/diff: conflicting specifications of output style
+--- suexec.h	1998/03/31 12:54:09	1.14+++ suexec.h	1998/05/23 20:15:37
+@@ -56,6 +56,17 @@  */  /*
++ * "FPEXE modification made on 98.05.21 by Scot Hetzel (hetzels@westbend.net)
++ * based on previous FPEXE modifications supplied by Mark Wormgoor
++ * (riddles@ipe.nl)+ *
++ * Changes were made in order to use Suexec and Frontpage 98 at the same time.
++ * After we change to the target_uid and target_gid.  We check if cmd = FPEXE,
++ * if it does then we execute the cmd without performing any further tests.+ *
++ */ ++/*  * suexec.h -- user-definable variables for the suexec wrapper code.
+  */ @@ -129,6 +140,24 @@  */ #ifndef DOC_ROOT
+ #define DOC_ROOT "/usr/local/apache/htdocs"+#endif++/*+ * FPEXE, FPSTUB
++ * FPSTUBDIR -- We are running frontpage and we don't need to run
++ *              fpexe suid, since it's already set suid.  Also, the
++ *              dir-rights are incorrect and so on...+ */+#ifndef FPEXE
++#define FPEXE "fpexe"+#endif++#ifndef FPSTUB
++#define FPSTUB "/usr/local/frontpage/version3.0/apache-fp/_vti_bin/fpexe"
++#endif++#ifndef FPSTUBDIR
++#define FPSTUBDIR "/usr/local/frontpage/currentversion/apache-fp/_vti_bin"
+ #endif  /*
+>Release-Note:
+>Audit-Trail:
+Release-Changed-From-To: 1.2.x - 1.3b8-dev-1.3b7
+Release-Changed-By: coar
+Release-Changed-When: Thu May 28 13:25:50 PDT 1998
+Class-Changed-From-To: sw-bug-change-request
+Class-Changed-By: coar
+Class-Changed-When: Thu May 28 13:25:50 PDT 1998
+State-Changed-From-To: open-feedback
+State-Changed-By: jim
+State-Changed-When: Thu Jun 10 05:03:11 PDT 1999
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+
+From: Rodent of Unusual Size <Ken.Coar@Golux.Com>
+To: Apache bug database <apbugs@Apache.Org>
+Cc:  Subject: Re: suexec/2271: SUEXEC not allowing FrontPage Extentions to run
+Date: Mon, 21 Jun 1999 15:03:19 -0400
+
+ Scot W. Hetzel wrote:
+ > 
+ > Yes, this is still a problem with SUEXEC and the FrontPage Extensions.
+ > 
+ >  When the CGI program fpexe is executed from Apache, SUEXEC will not
+ > be able to gets stats on the /usr/local/frontpage/version${FP_VER}/apache-fp
+ > directory (where FP_VER is either 3.0 or 4.0) due to its permissions
+ > (711, owner = root, group = bin), which causes the call to fpexe to
+ > fail.
+ > 
+ > Scot
+Comment-Added-By: coar
+Comment-Added-When: Wed May  3 13:53:57 PDT 2000
+Comment-Added:
+The patch is, unfortunately, unreadable; newlines seem
+to have gotten chomped with abandon.  Do you have a version
+for 1.3.12 that you can send?
+
+Comment-Added-By: coar
+Comment-Added-When: Wed May 24 10:38:56 PDT 2000
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: jim
+State-Changed-When: Tue Mar 26 06:25:57 PST 2002
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

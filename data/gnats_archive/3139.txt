@@ -1,0 +1,170 @@
+Received: (qmail 6088 invoked by uid 2012); 5 Oct 1998 09:52:27 -0000
+Message-Id: <19981005095227.6087.qmail@hyperreal.org>
+Date: 5 Oct 1998 09:52:27 -0000
+From: Paul Bennett <p.a.bennett@btinternet.com>
+Reply-To: p.a.bennett@btinternet.com
+To: apbugs@hyperreal.org
+Subject: [PATCH] disallow access to hard linked files
+X-Send-Pr-Version: 3.2
+
+>Number:         3139
+>Category:       other
+>Synopsis:       [PATCH] disallow access to hard linked files
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Oct  5 04:10:00 PDT 1998
+>Last-Modified:  Mon Oct  5 10:20:00 PDT 1998
+>Originator:     p.a.bennett@btinternet.com
+>Organization:
+apache
+>Release:        1.3.2
+>Environment:
+% uname -a 
+SunOS povondra 5.6 Generic sun4u sparc SUNW,Ultra-1
+% gcc -v
+Reading specs from /export/tools/lib/gcc-lib/sparc-sun-solaris2.6/2.8.1/specs
+gcc version 2.8.1
+>Description:
+Thanks to Apache's "SymLinkIfOwnerMatch" Option, it's possible to protect 
+against content authors trying to get around UNIX's security by creating a
+soft link to a protected file and using Apache to display the file.
+
+There is currently no fix for hard links.
+
+I have come across this on a server running as root (!), where a quick
+  % ln /etc/shadow ~/public_html/shadow
+Allowed all to read the contents of /etc/shadow through http://server/~me/shadow
+
+The answer to this specific problem is never to run a server as root, and to
+make sure that any sensitive files readable by Apache (but not users) are not
+in a user-readble directory on the same file system as a user-writable part of
+the document tree.  (Another example: Apache's log files may be considered
+sensitive - and therefore chmod 600'd to the web user - and are commonly on the
+same filesystem as the document tree.)
+>How-To-Repeat:
+On UNIX, assuming Apache runs as 'httpd' and another user, 'user' can write 
+to the document tree:
+  httpd% cd $DOCUMENT_ROOT/..
+  httpd% echo "user mustn't see this" > foo
+  httpd% chmod 600 foo
+
+  user% cd $DOCUMENT_ROOT
+  user% ln ../foo bar
+
+The file 'foo' is now visible to the user at http://server/bar.
+
+Note: this is a real situation; some sites maintain password files (perhaps
+passwords for web authorisation) in stupid places - like on the same filesystem
+as the document tree.
+>Fix:
+Since a hard link cannot be distinguished from the original file, there's no way
+of implementing a HardLinkIfOwnerMatch option.  However, we can tell when a file
+has more than one link through stat's st_nlink member.  If the file isn't a
+directory and st_nlink > 1, a hard link has been created to the original file.
+
+(If it's a directory, st_nlink will always be > 1, and unless we look at the
+directory's contents, we have no way of knowing whether an extra hard link has
+been created, but that doesn't matter 'cause only root can hard link to
+directories, anyway.)
+
+The patch below modifies the behaviour of the 'AllowSymLinks' option.  With said
+option not set, Apache refuses to serve files with a link count > 1.  I wanted
+to introduce a new option to do this, but as you know we've run out of bits in
+the option structure.
+
+(An alternative to this patch would be to patch the documentation to warn of 
+these rather esoteric cases, but I prefer the code, myself.)
+
+The patch has been tested on:
+  apache_1.3.0	SunOS 5.6 sun4u
+  apache_1.3.1	SunOS 5.6 sun4u
+  apache_1.3.2	SunOS 5.6 sun4u
+
+(I'm sorry: I don't have access to other platforms.)
+
+--- apache_1.3.2/src/main/http_request.c  Tue Aug 11 00:09:46 1998
++++ apache_1.3.2_no-hard-links/src/main/http_request.c  Mon Sep 28 18:16:27 1998
+@@ -153,9 +153,17 @@
+      * the like may cons up a way to run the transaction anyway)...
+      */
+ 
+-    if (!(res >= 0) || !S_ISLNK(lfi.st_mode))
++    if (!(res >= 0))
+         return OK;
+ 
++    /* Is it a hard linked file?  (We can't tell about directories.) */
++
++    if (!S_ISDIR(lfi.st_mode) && (lfi.st_nlink > 1))
++      return HTTP_FORBIDDEN;
++
++    if (!S_ISLNK(lfi.st_mode))
++        return OK;
++       
+     /* OK, it's a symlink.  May still be OK with OPT_SYM_OWNER */
+ 
+     if (!(opts & OPT_SYM_OWNER))
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Paul Bennett <p.a.bennett@btinternet.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: other/3139: [PATCH] disallow access to hard linked files
+Date: Mon, 5 Oct 1998 10:08:35 -0700 (PDT)
+
+ On 5 Oct 1998, Paul Bennett wrote:
+ 
+ > >Description:
+ > Thanks to Apache's "SymLinkIfOwnerMatch" Option, it's possible to protect 
+ > against content authors trying to get around UNIX's security by creating a
+ > soft link to a protected file and using Apache to display the file.
+ > 
+ > There is currently no fix for hard links.
+ > 
+ > I have come across this on a server running as root (!), where a quick
+ >   % ln /etc/shadow ~/public_html/shadow
+ > Allowed all to read the contents of /etc/shadow through http://server/~me/shadow
+ 
+ Well, that is really their problem.  Running it as root there are many
+ ways to do similar things.
+ 
+ > >Fix:
+ > Since a hard link cannot be distinguished from the original file, there's no way
+ > of implementing a HardLinkIfOwnerMatch option.  However, we can tell when a file
+ > has more than one link through stat's st_nlink member.  If the file isn't a
+ > directory and st_nlink > 1, a hard link has been created to the original file.
+ > 
+ > (If it's a directory, st_nlink will always be > 1, and unless we look at the
+ > directory's contents, we have no way of knowing whether an extra hard link has
+ > been created, but that doesn't matter 'cause only root can hard link to
+ > directories, anyway.)
+ > 
+ > The patch below modifies the behaviour of the 'AllowSymLinks' option.  With said
+ > option not set, Apache refuses to serve files with a link count > 1.  I wanted
+ > to introduce a new option to do this, but as you know we've run out of bits in
+ > the option structure.
+ 
+ The problem with this is it introduces a new denial of service attack: all
+ someone has to do is link to some other person's content, and suddenly
+ access is denied.  
+ 
+ I do agree that there are situations where people linking to content can
+ be problematic, but I'm afraid that this solution can be even more
+ problematic...
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

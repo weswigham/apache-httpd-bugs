@@ -1,0 +1,108 @@
+Received: (qmail 17364 invoked by uid 501); 10 May 2001 10:29:04 -0000
+Message-Id: <20010510102904.17352.qmail@apache.org>
+Date: 10 May 2001 10:29:04 -0000
+From: Masahiro TAKEMURA <mastake@msel.t.u-tokyo.ac.jp>
+Reply-To: mastake@msel.t.u-tokyo.ac.jp
+To: submit@bugz.apache.org
+Subject: when enabled suEXEC, cannot run SSI's 'exec cmd' with argument.
+X-Send-Pr-Version: 3.110
+
+>Number:         7694
+>Category:       suexec
+>Synopsis:       when enabled suEXEC, cannot run SSI's 'exec cmd' with argument.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu May 10 03:30:02 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     mastake@msel.t.u-tokyo.ac.jp
+>Release:        1.3.19
+>Organization:
+apache
+>Environment:
+FreeBSD 4.3-STABLE at May 3 2001
+gcc version 2.95.2 19991024 (release)
+>Description:
+When enabled suEXEC, cannot run SSI's 'exec cmd' with argument
+>How-To-Repeat:
+for example:
+<!--exec cmd="scriptname arg1"-->
+>Fix:
+Patch for src/support/suexec.c is later.
+but I think this is only Quick Hack.
+-----begin
+--- suexec.c.orig	Tue Jan 16 02:06:40 2001
++++ suexec.c	Thu May 10 19:08:31 2001
+@@ -268,6 +268,9 @@
+     struct stat dir_info;	/* directory info holder     */
+     struct stat prg_info;	/* program info holder       */
+ 
++    int idx, su_arg_size = 1;
++    char **su_args;
++
+     /*
+      * If there are a proper number of arguments, set
+      * all of them to variables.  Otherwise, error out.
+@@ -279,7 +282,22 @@
+     }
+     target_uname = argv[1];
+     target_gname = argv[2];
+-    cmd = argv[3];
++
++    idx = 0;
++    while(argv[3][idx]){
++	if (argv[3][idx] == 0x20) {
++		argv[3][idx] = 0;
++		su_arg_size++;
++	}
++	idx++;
++    }
++    su_args = (char **) malloc(su_arg_size * sizeof(char *));
++    for (idx=0; idx<su_arg_size; idx++){
++	su_args[idx] = argv[3];
++	while(*(argv[3]++) != 0) {};
++    }
++
++    cmd = su_args[0];
+ 
+     /*
+      * Check existence/validity of the UID of the user
+@@ -575,10 +593,10 @@
+     {
+ 	extern char **environ;
+ 
+-	ap_execve(cmd, &argv[3], environ);
++	ap_execve(cmd, su_args, environ);
+     }
+ #else /*NEED_HASHBANG_EMUL*/
+-    execv(cmd, &argv[3]);
++    execv(cmd, su_args);
+ #endif /*NEED_HASHBANG_EMUL*/
+ 
+     /*
+-----end
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

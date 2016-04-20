@@ -1,0 +1,90 @@
+Received: (qmail 18825 invoked by uid 2012); 12 Jul 1998 06:16:37 -0000
+Message-Id: <19980712061637.18824.qmail@hyperreal.org>
+Date: 12 Jul 1998 06:16:37 -0000
+From: Hans Bergsten <hans@gefionsoftware.com>
+Reply-To: hans@gefionsoftware.com
+To: apbugs@hyperreal.org
+Subject: Setting headers from SSI Servlet doesn't work
+X-Send-Pr-Version: 3.2
+
+>Number:         2591
+>Category:       mod_jserv
+>Synopsis:       Setting headers from SSI Servlet doesn't work
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Jul 11 23:20:00 PDT 1998
+>Last-Modified:  Sun Sep 19 14:54:00 PDT 1999
+>Originator:     hans@gefionsoftware.com
+>Organization:
+>Release:        JServ 0.9.11/Apache 1.3.0
+>Environment:
+Any OS, problem in Java code
+>Description:
+Setting headers from an SSI Servlet doesn't work since all headers
+are sent to the client on the first write() call in JServOutputStream,
+and for SSI Servlets JServSSI has already written at least
+"<HTML><BODY>" to the stream.
+>How-To-Repeat:
+Try setting any header, e.g. with addCookie(), from a Servlet called
+through a <SERVLET> tag in a jhtml file.
+>Fix:
+A simple solution is to buffer the output stream and only
+send it to the client on flush() and close(), with the headers
+the first time. This way headers can be set upto the first
+flush() or close(). The following changes work:
+
+1) Add
+     private ByteArrayOutputStream os = new ByteArrayOutputStream(1024);
+   to JServOutputStream.
+2) Modify write() and write(int) and write(byte[], int, int) so
+   they write to os instead of out.
+3) Rewrite flush() as
+     public void flush() throws IOException {
+       sendHttpHeaders();
+       byte[] outbuff = os.toByteArray();
+       os.reset();
+       out.write(outbuff, 0, outbuff.length);
+       out.flush();
+     }
+4) Rewrite close() as
+     public void close() throws IOException {
+       flush();
+       out.close();
+     }
+
+
+An even better solution is to not really close the stream in 
+close() since that causes problems in case a jhtml page contains 
+multiple SSI Servlets and one of them calls close(). If close()
+just calls flush() and another package scope function called
+reallyClose() closes the stream, it solves the problem.
+reallyClose() must then be called when the service() call returns
+in JServ.
+>Audit-Trail:
+Category-Changed-From-To: other-mod_jserv
+Category-Changed-By: marc
+Category-Changed-When: Tue Jul 14 10:14:47 PDT 1998
+
+Responsible-Changed-From-To: apache-jserv
+Responsible-Changed-By: marc
+Responsible-Changed-When: Mon Jul 27 23:16:22 PDT 1998
+Responsible-Changed-Why:
+The sky is blue
+State-Changed-From-To: open-closed
+State-Changed-By: jon@clearink.com
+State-Changed-When: Sun Sep 19 14:54:00 PDT 1999
+State-Changed-Why:
+hans, i'm going to close this one cause 0.9.11 is a dead development tree now. ;-)
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

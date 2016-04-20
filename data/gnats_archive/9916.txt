@@ -1,0 +1,82 @@
+Received: (qmail 86527 invoked by uid 501); 22 Feb 2002 21:27:20 -0000
+Message-Id: <20020222212720.86521.qmail@apache.org>
+Date: 22 Feb 2002 21:27:20 -0000
+From: Landy Manderson <landy@uab.edu>
+Reply-To: landy@uab.edu
+To: submit@bugz.apache.org
+Subject: Default build hangs on start-up
+X-Send-Pr-Version: 3.110
+
+>Number:         9916
+>Category:       os-solaris
+>Synopsis:       Default build hangs on start-up
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Feb 22 13:30:00 PST 2002
+>Closed-Date:    Fri Feb 22 14:08:51 PST 2002
+>Last-Modified:  Fri Feb 22 14:08:51 PST 2002
+>Originator:     landy@uab.edu
+>Release:        2.0.32
+>Organization:
+>Environment:
+SunOS chambord 5.8 Generic sun4u sparc SUNW,Ultra-250
+gcc 2.95.3
+>Description:
+Did a vanilla configure/make/make install on this platform.  When trying
+to start httpd, it hangs before making any real progress (nothing in logs,
+etc.)  adb showed program was consistently hanging in this chain:
+
+_get_hostserv_inetnetdir_byname(ffbef6ac,ffbef6b4,0,ffbef6b4,ff29ae30,8d8d1) + 224
+getipnodebyname(0,0,88bd0,ffbef72c,8d8d0,d1e90) + 12c
+get_addr(0,8d8d0,ffbef8a0,1,ff2fa000,50) + c4
+getaddrinfo(ff2fac0c,8d8d0,50,ffbef924,ff2fa000,ffbef8a0) + 524
+apr_sockaddr_info_get(dd59c,8d8d0,8,98,0,8f5b8) + 11c
+ap_mpm_pod_open(0,84eac,1a,1,ff3e0000,ff37023c) + 78
+prefork_open_logs(8f5b8,c7698,c96a0,84c00,43ba8,0) + 54
+ap_run_open_logs(0,c7698,c96a0,91e98,83800,0) + 50
+main(8d630,8f5b8,0,83800,ffbefb24,83000) + 4cc
+
+This appears to be related to the code trying to use IPv6 by default
+(hostname passed to getaddrinfo is "::"), though we don't use that
+for any production purposes on this system.  Hardcoding server address
+in httpd.conf helped, as did manually setting APR_HAVE_IPV6 to 0 in apr.h
+>How-To-Repeat:
+
+>Fix:
+Hangup seems to be related to specific parameters passed to getaddrinfo.
+Debug stmts show first call to this function succeeds with no problem.
+Don't know if this may be a Solaris bug, but will be glad to do more
+testing if that would help.  (Maybe it's hanging because we don't have 
+any IPv6 stuff defined?  But it's going to be confusing when the server
+chokes and the admin isn't suspecting this is the reason.)
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: trawick
+State-Changed-When: Fri Feb 22 14:08:51 PST 2002
+State-Changed-Why:
+This is caused by a bug in the Solaris 8 resolver library.
+A fix is available from Sun.  If you install the current Solaris 8 recommended patch cluster you will get the Solaris fix for this problem.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

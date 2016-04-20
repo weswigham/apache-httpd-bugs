@@ -1,0 +1,225 @@
+Received: (qmail 14980 invoked by uid 2012); 10 Feb 1998 01:00:37 -0000
+Message-Id: <19980210010037.14975.qmail@hyperreal.org>
+Date: 10 Feb 1998 01:00:37 -0000
+From: Matt Braithwaite <mab@alink.net>
+Reply-To: mab@alink.net
+To: apbugs@hyperreal.org
+Subject: accept loops on ENOTSOCK, filling up logfile
+X-Send-Pr-Version: 3.2
+
+>Number:         1787
+>Category:       general
+>Synopsis:       accept loops on ENOTSOCK, filling up logfile
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Feb  9 17:10:00 PST 1998
+>Last-Modified:  Mon Feb 16 17:47:29 PST 1998
+>Originator:     mab@alink.net
+>Organization:
+>Release:        1.2.1
+>Environment:
+BSDI 3.1, gcc2, apache 1.2.1
+BSD/OS fg.alink.net 3.1 BSDI BSD/OS 3.1 Kernel #3: Mon Dec  8 14:32:38 PST 1997     mab@fg.alink.net:/usr/src/sys/compile/ALINK  i386  
+>Description:
+we do graceful restarts hourly.  on rare occasions, right after a graceful
+restart, the logfile will fill up with
+	
+	accept: (client socket): socket operation on non-socket
+
+from examining the code, it appears that the meaning of this is that a socket
+becomes invalid in one or more children's lists, and consistently is reported
+as being read-ready by select, and is consistently bonged by accept.  i have no
+idea how the child wound up with a bogus socket descriptor in the first place,
+though.  i am curious to know what graceful restarts have to do with it.
+could anything done by the parent cause the child's socket to become invalid?
+this is a plausible question for me because of the race condition with graceful
+restarts---it looks, at first glance, as though a child could miss a SIGUSR1. 
+>How-To-Repeat:
+not reproducible.  has happened a handful of times.
+>Fix:
+i have found a number of tickets that sound a lot like this, but none that are
+exactly the same.  there are perhaps 3-6 of the form ``accept/select in 
+http_main.c loops on some error, filling up the logfile.''  in these tickets
+you have been able to suggest specific fixes that go to the root of the problem.
+however, i think this loop could be more defensive, given that the case of 
+accept or select getting stuck on a particular error seems not entirely
+uncommon.  one possibility:  count failed accept()s against the maximum number
+of connections permitted for a child process, so that in conditions like this
+the logs won't fill up
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Matt Braithwaite <mab@alink.net>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/1787: accept loops on ENOTSOCK, filling up logfile
+Date: Wed, 11 Feb 1998 17:25:16 -0800 (PST)
+
+ On 10 Feb 1998, Matt Braithwaite wrote:
+ 
+ > i have found a number of tickets that sound a lot like this, but none that are
+ > exactly the same.  there are perhaps 3-6 of the form ``accept/select in 
+ > http_main.c loops on some error, filling up the logfile.''
+ 
+ Linux is very guilty of this one.
+ 
+ > in these tickets
+ > you have been able to suggest specific fixes that go to the root of the problem.
+ > however, i think this loop could be more defensive, given that the case of 
+ > accept or select getting stuck on a particular error seems not entirely
+ > uncommon.  one possibility:  count failed accept()s against the maximum number
+ > of connections permitted for a child process, so that in conditions like this
+ > the logs won't fill up
+ 
+ Interesting idea... 'cept I tend to run servers with MaxRequestsPerChild 100000.
+ I think what I'll try to do is figure out what accept responses are expected and make
+ the rest die immediately.  In many of these cases the child is just useless at
+ that point.
+ 
+ Oh yeah your note about possibly missing SIGUSR1 -- it shouldn't matter
+ because there is a generation check against the scoreboard to make sure
+ the generation hasn't changed.
+ 
+ Dean
+ 
+
+From: Matt Braithwaite <mab@alink.net>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/1787: accept loops on ENOTSOCK, filling up logfile
+Date: 12 Feb 1998 13:13:35 -0800
+
+ -----BEGIN PGP SIGNED MESSAGE-----
+ 
+ Content-Type: text/plain; charset=ISO-8859-1
+ Content-Transfer-Encoding: 8bit
+ 
+ >>>>> "DG" == Dean Gaudet <dgaudet@arctic.org> writes:
+ 
+     DG> On 10 Feb 1998, Matt Braithwaite wrote:
+ 
+     >> in these tickets you have been able to suggest specific fixes
+     >> that go to the root of the problem.  however, i think this loop
+     >> could be more defensive, given that the case of accept or
+     >> select getting stuck on a particular error seems not entirely
+     >> uncommon.  one possibility: count failed accept()s against the
+     >> maximum number of connections permitted for a child process, so
+     >> that in conditions like this the logs won't fill up
+ 
+     DG> Interesting idea... 'cept I tend to run servers with
+     DG> MaxRequestsPerChild 100000.  
+ 
+ yeah, but 100000 * (100 * sizeof(char)) == 10,000,000, which is
+ *still* a lot better than filling up the disk. :-)
+ 
+     DG> I think what I'll try to do is figure out what accept
+     DG> responses are expected and make the rest die immediately.  In
+     DG> many of these cases the child is just useless at that point.
+ 
+ that sounds good.  since it can never *hurt*, it seems best to err on
+ the side of having the child exit when it doesn't know how to
+ interpret something.
+ 
+ if you feel like sending us a patch, that would just be super. :-)
+ 
+ have you any ideas on how the ENOTSOCK occurs in the first place?  i
+ still have no ideas about this.  it's important to me, because one
+ thing i do not know, which it is very important to me to know, is
+ whether the accept(2) error is being simultaneously encountered and
+ logged by all children, or just by one.  if the former, the root
+ problem cannot be fixed just by having the children encountering the
+ error exit.
+ 
+     DG> Oh yeah your note about possibly missing SIGUSR1 -- it
+     DG> shouldn't matter because there is a generation check against
+     DG> the scoreboard to make sure the generation hasn't changed.
+ 
+ sorry, i don't know what you mean by ``generation''. 
+ 
+ - -- 
+ Matthew Braithwaite <mab@alink.net>
+ A-Link Network Services, Inc.    408.720.6161    http://www.alink.net/
+ 
+ Alors, ô ma beauté!  dites à la vermine / Qui vous mangera de baisers,
+ Qui j'ai gardé la forme et l'essence divine / De mes amours décomposés!
+                                                ---Baudelaire
+ 
+ -----BEGIN PGP SIGNATURE-----
+ Version: 2.6.2
+ Comment: Processed by Mailcrypt 3.4, an Emacs/PGP interface
+ 
+ iQCVAwUBNONl/J6nR3MdS46dAQGpngQAmdBdQlIoiS3j7KeOpRxH7GXtzIfSr+HA
+ I9r9jWC5novCXe6YeuKmHivB1U/X3omcOqTZ07HB7vOJTXvt0V4jQRvAK5TuCSY9
+ 6dGyQu65zFkI6+C4t4y7awUtdT+zTOKWJOFk1wmhEHCbNpA1t4sHAA/1GubreV3+
+ CYn9JVtpYXQ=
+ =inev
+ -----END PGP SIGNATURE-----
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Matt Braithwaite <mab@alink.net>
+Cc: apbugs@apache.org
+Subject: Re: general/1787: accept loops on ENOTSOCK, filling up logfile
+Date: Thu, 12 Feb 1998 13:41:56 -0800 (PST)
+
+ On 12 Feb 1998, Matt Braithwaite wrote:
+ 
+ >  have you any ideas on how the ENOTSOCK occurs in the first place?
+ 
+ Nope.  It doesn't seem that it's an apache bug, because it doesn't happen
+ on multiple architectures for example.  It's likely to be an OS bug... we
+ tickle a few in this area occasionally.  It's likely happening to more
+ than one child, which is why exiting is probably the best thing to do. 
+ 
+ If you want a quick hack patch that might do the job for you, see the
+ bottom of the message.
+ 
+ >      DG> Oh yeah your note about possibly missing SIGUSR1 -- it
+ >      DG> shouldn't matter because there is a generation check against
+ >      DG> the scoreboard to make sure the generation hasn't changed.
+ >  
+ >  sorry, i don't know what you mean by ``generation''. 
+ 
+ Each restart cycle is a "generation"... and the children know what
+ generation they were spawned during.  So they can test the generation in
+ the shared scoreboard to see if they're older than the current generation.
+ This deals with systems that have unreliable signals.
+ 
+ Dean
+ 
+ Index: http_main.c
+ ===================================================================
+ RCS file: /export/home/cvs/apache-1.2/src/http_main.c,v
+ retrieving revision 1.150
+ diff -u -r1.150 http_main.c
+ --- http_main.c	1998/01/30 09:13:55	1.150
+ +++ http_main.c	1998/02/12 21:40:31
+ @@ -1828,6 +1828,7 @@
+                if (errno != ECONNABORTED)
+  #endif
+                  log_unixerr("accept", "(client socket)", NULL, server_conf);
+ +		exit(0);
+              }
+  
+  	    /* go around again, safe to die */
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Feb 16 17:47:29 PST 1998
+State-Changed-Why:
+A patch to deal with this situation gracefully has been applied
+to 1.2.6-dev and 1.3b6-dev.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

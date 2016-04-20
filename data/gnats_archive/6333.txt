@@ -1,0 +1,130 @@
+Received: (qmail 8533 invoked by uid 501); 21 Jul 2000 22:23:13 -0000
+Message-Id: <20000721222313.8532.qmail@locus.apache.org>
+Date: 21 Jul 2000 22:23:13 -0000
+From: Josh Wilmes <jwilmes@cisco.com>
+Reply-To: jwilmes@cisco.com
+To: submit@bugz.apache.org
+Subject: Redirected error document causes authentication to fail
+X-Send-Pr-Version: 3.110
+
+>Number:         6333
+>Category:       config
+>Synopsis:       Redirected error document causes authentication to fail
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jul 21 15:30:01 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     jwilmes@cisco.com
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Solaris 2.7
+>Description:
+We had an apache configuration which included the following (cut down and 
+names changed for clarity)
+
+----------------------------------------------------------------------
+
+NameVirtualHost 1.2.3.4
+<VirtualHost 1.2.3.4>
+  ServerName foo1
+  ServerAlias foo1.bar.com
+  DocumentRoot /usr/SD/docs
+  RewriteEngine on
+  RewriteOptions inherit
+</VirtualHost>
+
+<VirtualHost 1.2.3.4>
+  ServerName foo.bar.com
+  ServerAlias foo
+  DocumentRoot /usr/SD/docs
+  RewriteEngine on
+  RewriteOptions inherit
+</VirtualHost>
+
+<FilesMatch "\.(pcgi|phtml)$">
+  AuthName "Foo Protected Resource"
+  AuthType Basic
+  AuthDBMUserFile foo.passwd
+  <Limit GET POST>
+    require valid-user
+  </Limit>
+  ErrorDocument 401 /errors/auth_failed.html
+</FilesMatch>
+
+# OK, now we try to even out load on each individual web server cluster
+# redirect traffic from foo(number) to foo.
+RewriteCond %{HTTP_HOST}   ^foo[0-9]+.*
+# a few things might legitimately need to run on a particular web server..
+RewriteCond %{REQUEST_URI} !^/One/Directory/.*
+RewriteRule ^/(.*) http://foo.bar.com/$1
+
+----------------------------------------------------------------------
+
+Now, when the following URL was loaded:
+
+http://foo1.bar.com/One/Directory/foo.pcgi
+
+The response was contained headers like this:
+HTTP/1.1 302 Found
+Date: Fri, 21 Jul 2000 19:45:58 GMT
+Server: Apache/1.3.12 (Unix) mod_perl/1.24
+WWW-Authenticate: Basic realm="Foo Protected Resource"
+Location: http://foo.bar.com/errors/auth_failed.html
+Connection: close
+
+And the user would get redirected to the "authentication failed"
+page without even getting prompted for a password.
+
+However, if I went to http://foo.bar.com/One/Directory/foo.pcgi instead,
+the page would work normally, with a "401 Authorization Required", etc.
+
+
+After some fiddling, I found that the problem was caused by the fact that 
+/errors/ was not excluded from the RewriteRule.  Apparently, apache did 
+something like this:
+
+"Hm. This page is protected, and they didn't supply the password"
+"I need to send them a reply with a 401 header and the contents of
+ /errors/auth_failed.html"
+"But to get to /errors/auth_failed.html, they need to go over to 
+foo.bar.com".
+"I'll redirect them there!"
+
+This isn't really quite right.  Granted, the omission of /errors/ from my 
+rewrite rule was a bug and I don't expect that it should have worked.  But
+the way in which it broke was pretty baffling.
+>How-To-Repeat:
+My configuration excerpts above should suffice.  The web server which
+was having the problem has been corrected.
+>Fix:
+Perhaps some sort of error message "ErrorDocument is inaccessable on this 
+VirtualHost" would have helped to debug the problem?  Does this sound like 
+a good idea?
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

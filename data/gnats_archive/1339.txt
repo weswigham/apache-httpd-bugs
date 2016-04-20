@@ -1,0 +1,74 @@
+Received: (qmail 12178 invoked by uid 2012); 30 Oct 1997 22:20:34 -0000
+Message-Id: <19971030222034.12177.qmail@hyperreal.org>
+Date: 30 Oct 1997 22:20:34 -0000
+From: Jim Patterson <Jim.Patterson@Cognos.COM>
+Reply-To: Jim.Patterson@Cognos.COM
+To: apbugs@hyperreal.org
+Subject: Apache aborts attemting to call CGI program with GET-style query string
+X-Send-Pr-Version: 3.2
+
+>Number:         1339
+>Category:       os-windows
+>Synopsis:       Apache aborts attemting to call CGI program with GET-style query string
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Oct 30 14:30:00 PST 1997
+>Last-Modified:  Thu Oct 30 14:35:23 PST 1997
+>Originator:     Jim.Patterson@Cognos.COM
+>Organization:
+>Release:        1.3B2
+>Environment:
+Windows NT 5.0 Beta 1
+Visual C++ 5.0
+>Description:
+Follow instructions below on Windows NT version, and you will get this trace:
+
+create_argv(pool * 0x01251a40, char * 0x012521c2, char * 0x00000000, char * 0x00000000, char * 0x01252038, char * 0x00000000) line 93 + 31 bytes
+call_exec(request_rec * 0x01250a58, char * 0x012521c2, char * * 0x01252860, int 0) line 753 + 35 bytes
+cgi_child(void * 0x044dde80) line 320 + 19 bytes
+spawn_child_err_core(pool * 0x01251a40, int (void *)* 0x10021112 cgi_child(void *), void * 0x044dde80, int 2, int * 0x044dbe14, int * 0x044dbe04, int * 0x044dbe10) line 1298 + 7 bytes
+spawn_child_err_buff(pool * 0x01251a40, int (void *)* 0x10021112 cgi_child(void *), void * 0x044dde80, int 2, buff_struct * * 0x044dde94, buff_struct * * 0x044dde90, buff_struct * * 0x044dde9c) line 1468 + 60 bytes
+cgi_handler(request_rec * 0x01250a58) line 420 + 83 bytes
+invoke_handler(request_rec * 0x01250a58) line 437 + 10 bytes
+process_request_internal(request_rec * 0x01250a58) line 1105 + 9 bytes
+process_request(request_rec * 0x01250a58) line 1122 + 9 bytes
+child_sub_main(int 49, int 0, int 476, int 476, int 1, pool * 0x0124d990) line 3699 + 9 bytes
+child_main(int 49) line 3763 + 29 bytes
+_threadstartex(void * 0x00413da0) line 212 + 13 bytes
+KERNEL32! 77ef3f84()
+>How-To-Repeat:
+Try this URL (where localhost is running the Apache server):
+http://localhost/cgi-bin/echo.cgi?test
+
+Note: echo.cgi must be an executable, not a script, to reproduce the bug.
+
+This problem is closely related to problem 1256 which was reported elsewhere, but is
+not the same problem. (That problem seems to be an inappropriate assert, it would seem).
+
+>Fix:
+It seems the arguments passed to create_argv are out of order. Here is what is
+in my version of the code on util_script.c line 753:
+	create_argv(r->pool, argv0, NULL, NULL, r->args, (void *) NULL), env);
+when it appears that the "args" argument should come last. I think this
+would be correct:
+      create_argv(r->pool, argv0, NULL, NULL, argv0, r->args)
+
+This is in a WIN32-specific block, and only in the case where it's executable or binary.
+
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Thu Oct 30 14:35:23 PST 1997
+State-Changed-Why:
+You are correct.  This change has already been made in
+the development tree while fixing PR#1256.
+
+Thanks for the report.
+>Unformatted:
+

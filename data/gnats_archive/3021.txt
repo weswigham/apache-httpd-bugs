@@ -1,0 +1,94 @@
+Received: (qmail 29061 invoked by uid 2012); 17 Sep 1998 13:21:48 -0000
+Message-Id: <19980917132148.29060.qmail@hyperreal.org>
+Date: 17 Sep 1998 13:21:48 -0000
+From: Colin Spensley <cspensley@servlet.co.uk>
+Reply-To: cspensley@servlet.co.uk
+To: apbugs@hyperreal.org
+Subject: mod_jserv does not setgid to the group specified for Apache
+X-Send-Pr-Version: 3.2
+
+>Number:         3021
+>Category:       mod_jserv
+>Synopsis:       mod_jserv does not setgid to the group specified for Apache
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    jserv
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Sep 17 06:30:01 PDT 1998
+>Last-Modified:  Sun Nov  1 12:53:39 PST 1998
+>Originator:     cspensley@servlet.co.uk
+>Organization:
+>Release:        mod_jserv 0.9.11
+>Environment:
+Debian 2.0 Linux - kernel 2.0.35 - gcc 2.7.2.3 - Debian Apache package 1.3.1-3.
+>Description:
+If Apache user has access rights to servlets only via group, servlets are 
+not loaded/run.
+
+Attached patch seems to correct.
+>How-To-Repeat:
+Change access so that Apache user has access rights 
+to servlet class files only via configured group.
+>Fix:
+--- mod_jserv.c.dist	Tue Sep 15 10:59:27 1998
++++ mod_jserv.c	Tue Sep 15 09:45:25 1998
+@@ -532,8 +532,15 @@
+     if (conf->add_tz_env && getenv("TZ") != NULL)
+         env[i++] = pstrcat(p, "TZ=", getenv("TZ"), NULL);
+     env[i] = NULL;
+ 
++    //Colin 15/9/98
++    /* Change gid to the server's Group, if we're running as root */
++    if (!getegid() && setgid(s->server_gid) == -1) {
++	log_unixerr("setgid", NULL, "unable to change gid for JServ", s);
++	exit(1);
++    }
++
+     /* Change uid to the server's User, if we're running as root */
+     if (!geteuid() && setuid(s->server_uid) == -1) {
+ 	log_unixerr("setuid", NULL, "unable to change uid for JServ", s);
+ 	exit(1);
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: ed
+State-Changed-When: Sun Oct 25 23:56:11 PST 1998
+State-Changed-Why:
+
+This is fixed in the latest version of JServSSI.  You can
+get this with the latest snapshot of the JServ source tree
+(the 0.9.x tree is no longer in development); the snapshots
+are available from http://java.working-dogs.com/daily/
+
+This bug will be marked closed when a checkpointed version
+of the 1.0b development tree is released, unless we hear
+that this is still a problem.
+
+FYI -- to fix this for all OSes requires a bit more code;
+check out http_main.c in the Apache 1.3 distribution, if
+you're curious.  But the patch looks fine for standard
+unixes.
+
+Thanks for the bug report and patch!
+
+Ed
+State-Changed-From-To: suspended-closed
+State-Changed-By: ed
+State-Changed-When: Sun Nov  1 12:53:39 PST 1998
+State-Changed-Why:
+marked closed based on more reasonable criteria (since the
+fix is available in source form...).
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

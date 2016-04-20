@@ -1,0 +1,124 @@
+Received: (qmail 22677 invoked by uid 2012); 13 Jan 1999 16:54:54 -0000
+Message-Id: <19990113165454.22676.qmail@hyperreal.org>
+Date: 13 Jan 1999 16:54:54 -0000
+From: Phil Dietz <pedietz@west.com>
+Reply-To: pedietz@west.com
+To: apbugs@hyperreal.org
+Subject: apache returning status 304 on images that are updated
+X-Send-Pr-Version: 3.2
+
+>Number:         3659
+>Category:       apache-api
+>Synopsis:       apache returning status 304 on images that are updated
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan 13 10:10:00 PST 1999
+>Last-Modified:  Wed Jan 13 10:12:17 PST 1999
+>Originator:     pedietz@west.com
+>Organization:
+>Release:        1.3.3 1.3.4
+>Environment:
+AIX 4.3.2
+both cc and gcc
+browsers IE4.1, IE5.0 beta, (Netscape4.5 generally works right)
+
+>Description:
+A CGI script updates an image and displays it every so often.
+He ported his script from Netscape server to apache 1.3.3 yesterday.
+His graphics quit updating.  The graphic displayed is the initial graphic when he first opened his browser.  None of the updates come across.
+
+After snooping with a proxy and later apache source code, it appears the ap_find_token() command is not working correctly.
+
+Internet Explorer 4.1 and 5.0beta browser sends:
+                If-None-Match: W/"2f30-f20-369bbd06"
+apache returns  Etag: W/"2f30-11b3-369bd28d"
+
+The two are completely different which jives since the image was updated.
+
+Inside of ap_find_token() (which was called by ap_meets_conditions() in the If-None-Match" section), I put in some debugging code:
+
+/* find http tokens, see the definition of token from RFC2068 */
+API_EXPORT(int) ap_find_token(pool *p, const char *line, const char *tok)
+{
+    const unsigned char *start_token;
+    const unsigned char *s;
+
+    if (!line)
+        return 0;
+
+    s = (const unsigned char *)line;
+    for (;;) {
+        /* find start of token, skip all stop characters, note NUL
+         * isn't a token stop, so we don't need to test for it
+         */
+        while (TEST_CHAR(*s, T_HTTP_TOKEN_STOP)) {
+            ++s;
+        }
+        if (!*s) {
+            return 0;
+        }
+        start_token = s;
+        /* find end of the token */
+        while (*s && !TEST_CHAR(*s, T_HTTP_TOKEN_STOP)) {
+            ++s;
+        }
+
+        DEBUG(123456, "debug: %s, %s, %d\n", start_token, tok, s - start_token);
+
+        if (!strncasecmp((const char *)start_token, (const char *)tok, s - start_token)) {
+            return 1;
+        }
+        if (!*s) {
+            return 0;
+        }
+    }
+}
+
+A result is:
+debug: W/"2f2d-1299-369cbbd9", W/"2f2d-12a5-369cbf5e", 1
+
+Notice the strncasecmp length of 1.  That means only the leading W's are being compared, which do match.
+
+Shouldn't the entire string be compared ?
+
+Because the leading W's match, ap_meets_conditions() is sending back a HTTP_NOT_MODIFIED status for my images -- when they have updated.
+
+Any help ?
+>How-To-Repeat:
+I tested this on both apache1.3.3 and apache1.3.4.
+
+>Fix:
+in ap_meets_conditions(request_rec *r):
+
+        if ((if_nonematch[0] == '*')
+            || ((etag != NULL) && !(strncasecmp(if_nonematch, etag)))) {
+            rstatus = (r->method_number == M_GET) ? HTTP_NOT_MODIFIED
+                                                  : HTTP_PRECONDITION_FAILED;
+            return rstatus;
+        }
+
+fixes it.  304s only get sent when not updated.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Wed Jan 13 10:12:16 PST 1999
+State-Changed-Why:
+Please don't submit dupe PRs.  You already submitted one,
+and can append any information you need to to it.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

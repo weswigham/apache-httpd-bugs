@@ -1,0 +1,182 @@
+From ccsmrh@bath.ac.uk  Mon Jun  9 02:45:42 1997
+Received: from goggins.bath.ac.uk (pp@goggins.bath.ac.uk [138.38.32.13])
+	by hyperreal.com (8.8.5/8.8.5) with ESMTP id CAA05412
+	for <apbugs@hyperreal.com>; Mon, 9 Jun 1997 02:45:41 -0700 (PDT)
+Message-Id: <9706091040.aa05013@amos.bath.ac.uk>
+Date: Mon, 09 Jun 1997 10:40:49 +0100
+From: Mark Hindess <ccsmrh@bath.ac.uk>
+To: apbugs@hyperreal.com
+Subject: [PR 260] : Mod_Proxy passes original URLs, never rewritten URLs
+
+>Number:         699
+>Category:       mod_proxy
+>Synopsis:       Mod_Proxy passes original URLs, never rewritten URLs (re #260)
+>Confidential:   yes
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   unknown
+>Arrival-Date:   Mon Jun  9 02:50:00 1997
+>Last-Modified:  Mon Aug 18 02:39:35 PDT 1997
+>Originator:     ccsmrh@bath.ac.uk
+>Organization:
+>Release:        1.2.0
+>Environment:
+>Description:
+>How-To-Repeat:
+>Fix:
+>Audit-Trail:
+Responsible-Changed-From-To: gnats-admin (GNATS administrator)-apache
+Responsible-Changed-By: coar
+Responsible-Changed-When: Tue Jun 10 09:21:05 PDT 1997
+Responsible-Changed-Why:
+Putting back into system.
+Category-Changed-From-To: pending-mod_proxy
+Category-Changed-By: coar
+Category-Changed-When: Tue Jun 10 09:21:05 PDT 1997
+
+Comment-Added-By: coar
+Comment-Added-When: Tue Jun 10 09:38:35 PDT 1997
+Comment-Added:
+[Additional text from submitter]
+
+Some more info regarding the problem report I sent earlier today.
+
+I made the following two modifications to the proxy modules to get some
+more log information:
+
+*** mod_proxy.c Mon Jun  9 13:47:00 1997
+--- mod_proxy.c.orig    Mon Jun  9 13:38:59 1997
+***************
+*** 143,150 ****
+            {
+                r->filename = pstrcat(r->pool, "proxy:", ent[i].real,
+                                      r->uri + len, NULL);
+-               log_printf(r->server, "proxy alias %s -> %s",
+-                          r->uri, r->filename);
+                r->handler = "proxy-server";
+                return OK;
+            }
+--- 143,148 ----
+
+
+*** proxy_http.c        Mon Jun  9 14:05:11 1997
+--- proxy_http.c.orig   Mon Jun  9 14:01:48 1997
+***************
+*** 247,254 ****
+      f = bcreate(pool, B_RDWR);
+      bpushfd(f, sock, sock);
+  
+-     log_printf(r->server, "proxy request %s",url);
+- 
+      hard_timeout ("proxy send", r);
+      bvputs(f, r->method, " ", url, " HTTP/1.0\015\012", NULL);
+      bvputs(f, "Host: ", desthost, NULL);
+--- 247,252 ----
+
+Using the directive:
+
+ProxyPass /internal/ss1 http://ss1.bath.ac.uk
+
+and requesting "/internal/ss1/" produces the following log messages:
+
+["date"] proxy alias /internal/ss1/ -> proxy:http://ss1.bath.ac.uk/
+["date"] proxy request /internal/ss1/
+
+Regards,
+ Mark Hindess.
+
+Comment-Added-By: coar
+Comment-Added-When: Thu Jun 12 02:47:08 PDT 1997
+Comment-Added:
+Adding the originator and release version, missing due to
+how this got into the bugdb.
+
+Synopsis-Changed-From: [PR 260] : Mod_Proxy passes original URLs, never rewritten URLs
+Synopsis-Changed-To: Mod_Proxy passes original URLs, never rewritten URLs (re #260)
+Synopsis-Changed-By: coar
+Synopsis-Changed-When: Thu Jun 12 02:47:08 PDT 1997
+Originator-Changed-From-To: -ccsmrh@bath.ac.uk
+Originator-Changed-By: coar
+Originator-Changed-When: Thu Jun 12 02:47:08 PDT 1997
+Release-Changed-From-To: -1.2.0
+Release-Changed-By: coar
+Release-Changed-When: Thu Jun 12 02:47:08 PDT 1997
+
+From: coar@decus.org (Rodent of Unusual Size)
+To: apbugs@apache.org, ccsmrh@bath.ac.uk, Coar@decus.org
+Subject: Re: mod_proxy/699: Mod_Proxy passes original URLs,
+ never rewritten URLs (re #260)
+Date: Thu, 12 Jun 1997 10:19:11 -0400
+
+ 
+     [Additional information from the originator]
+ 
+ By the way, the following patch fixes both "bugs" for _ME_:
+ 
+ *** proxy_http.c        Wed Jun 11 10:37:33 1997
+ --- proxy_http.c.orig   Mon Jun  9 14:01:48 1997
+ ***************
+ *** 207,213 ****
+   
+       if (proxyhost != NULL)
+       {
+ !       url = r->filename + 6;                  /* restore original URL */
+         server.sin_port = htons(proxyport);
+         err = proxy_host2addr(proxyhost, &server_hp);
+         if (err != NULL) return DECLINED;  /* try another */
+ --- 207,213 ----
+   
+       if (proxyhost != NULL)
+       {
+ !       url = r->uri;                   /* restore original URL */
+         server.sin_port = htons(proxyport);
+         err = proxy_host2addr(proxyhost, &server_hp);
+         if (err != NULL) return DECLINED;  /* try another */
+ 
+ Clearly, this only fixes things when you are chaining to another proxy
+ with ProxyRemote, since without ProxyRemote proxyhost always equals
+ NULL. I believe the problem with losing the query string only occurred
+ when ProxyRemote was used. However, the problem with ProxyPass semantics
+ occurs with or without the ProxyRemote statement.
+ 
+ This leads me to the conclusion that my solution is probably _not_ the
+ correct solution!
+ 
+ Hope that makes some sense,
+  Cheers,
+   Mark.
+State-Changed-From-To: open-closed
+State-Changed-By: Lars.Eilebrecht@unix-ag.org
+State-Changed-When: Mon Aug 18 02:39:34 PDT 1997
+State-Changed-Why:
+
+A patch has been committed to 1.2.3 and 1.3a2-dev.
+
+>Unformatted:
+
+
+I notice that the above problem has been closed because the originator
+of the report did not response to your question. However, the problem
+described in the report still exists in Apache 1.2.0.
+
+I have two servers www and ss1. www has a line in srm.conf:
+
+ProxyPass /internal/ss1 http://ss1.bath.ac.uk/
+
+If www receives a request for "/internal/ss1/", then the logs on ss1
+also show a request for "/internal/ss1/" _not_ a request for "/".
+
+If you require further details, I will happily supply them.
+
+Cheers,
+ Mark Hindess.
+
+-- 
+Mark Hindess <M.R.Hindess@bath.ac.uk>		  Tel: (+44) 1225 826485
+Computing Services (BUCS),University of Bath,Claverton Down,Bath,BA2 7AY
+
+
+

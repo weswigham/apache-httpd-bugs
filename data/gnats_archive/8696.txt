@@ -1,0 +1,80 @@
+Received: (qmail 53043 invoked by uid 501); 7 Nov 2001 07:19:10 -0000
+Message-Id: <20011107071910.53042.qmail@apache.org>
+Date: 7 Nov 2001 07:19:10 -0000
+From: Nic Wolff <nic@angel.net>
+Reply-To: nic@angel.net
+To: submit@bugz.apache.org
+Subject: ProxyPassReverse always rewrites redirects to same scheme as request
+X-Send-Pr-Version: 3.110
+
+>Number:         8696
+>Category:       mod_proxy
+>Synopsis:       ProxyPassReverse always rewrites redirects to same scheme as request
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Nov 06 23:20:00 PST 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     nic@angel.net
+>Release:        1.3.22
+>Organization:
+apache
+>Environment:
+Any.
+>Description:
+When Apache/mod_proxy is used as a reverse proxy and directed with ProxyPassReverse to munge the Location header of a redirect, it always replaces the URL's scheme with that of the initial request. This happens because proxy_location_reverse_map() in modules/proxy/proxy_httpd.c calls ap_construct_url() from main/http_core.c to build the URL after changing the hostname and path, and ap_construct_url() gets the scheme from the ap_http_method macro.
+
+This prevents, in the most likely example, redirection from an insecure to a secure URL. Note that I've tested 1.3.20 because that's the version that the current mod_ssl patches, and it's mod_ssl users who will probably have this problem, but 1.3.22 has the same bug.
+>How-To-Repeat:
+Set up a reverse proxy, then make the Web server redirect from http to https and request the http URL from the proxy.
+>Fix:
+Apply this patch to modules/proxy/proxy_httpd.c. (It only handles redirecting to http or https; a better solution would copy the scheme from the "real" partial URL in the ProxyPassReverse directive.)
+
+115a116,132
+> static const char *ap_construct_redirect_url(pool *p, const char *uri, char *u
+rl, request_rec *r)
+> {
+>     unsigned port = ap_get_server_port(r);
+>     const char *host = ap_get_server_name(r);
+>     const char *scheme;
+> 
+>     if (strncasecmp(url, "https:", 6) == 0)
+>         scheme = "https";
+>     else
+>         scheme = "http";
+> 
+>     if (ap_is_default_port(port, r)) {
+>         return ap_pstrcat(p, scheme, "://", host, uri, NULL);
+>     }
+>     return ap_psprintf(p, "%s://%s:%u%s", scheme, host, port, uri);
+> }
+> 
+132c149
+<             return ap_construct_url(r->pool, u, r);
+---
+>             return ap_construct_redirect_url(r->pool, u, ent[i].real, r);
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

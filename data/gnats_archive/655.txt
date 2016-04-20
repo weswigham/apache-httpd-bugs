@@ -1,0 +1,78 @@
+From nobody@hyperreal.com  Mon Jun  2 07:49:51 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id HAA10945;
+	Mon, 2 Jun 1997 07:49:51 -0700 (PDT)
+Message-Id: <199706021449.HAA10945@hyperreal.com>
+Date: Mon, 2 Jun 1997 07:49:51 -0700 (PDT)
+From: Peter Lister <p.lister@cranfield.ac.uk>
+Reply-To: p.lister@cranfield.ac.uk
+To: apbugs@hyperreal.com
+Subject: mod_dir should DECLINE PUT method rather than NOT_IMPLEMENTED
+X-Send-Pr-Version: 3.2
+
+>Number:         655
+>Category:       mod_dir
+>Synopsis:       mod_dir should DECLINE PUT method rather than NOT_IMPLEMENTED
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun  2 08:00:01 1997
+>Last-Modified:  Sun Jun 22 22:13:41 PDT 1997
+>Originator:     p.lister@cranfield.ac.uk
+>Organization:
+>Release:        1.2b10
+>Environment:
+Linux 2.0.18
+gcc 2.7.2.1
+>Description:
+I'm trying to implement handlers to permit uploading to the server (initially
+using CGIs, now mod_perl). handle_dir rejects all PUTs to directories with
+
+    if (r->method_number != M_GET) return NOT_IMPLEMENTED;
+
+While I appreciate that, PUTs should not be enabled, mod_dir should not state
+that PUTs are impossible, only that it can't do them by returning DECLINED.
+I reckon that only http_core and http_config have the right to state that PUTs
+to directories are not implemented, since (as I understand it) only they can
+state with certainty that either no handler was configured or that all the
+handlers DECLINED.
+
+I consider this a bug. Note that since the request CAN be intercepted if the
+URL is non-existant; I can therefore treat any non-existant URL as a
+directory yet to be created and call mkdir - but I can't modify that directory
+once created! mod_status also feels it has the right to say NOT_IMPLEMENTED.
+This is also arguably wrong, and I feel it should DECLINE.
+>How-To-Repeat:
+
+>Fix:
+handle_dir should return DECLINED rather than NOT_IMPLEMENTED so that other
+handlers (e.g. mod_perl) can get a look in.
+
+I have made this change in my local mod_dir.c and it has the desired effect.
+
+However, there appear to be knock-on effects in doing this, so this fix is
+presumably showing up other invalid assumptions elsewhere in Apache.
+Specifically, when a PUT handler for a directory has NOT been specified, the
+code which returns a relocation to the directory name with "/" appended runs
+unecessarily, and the URL ends up with 2 trailing "/". If I find out where, I'll
+let you know
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sun Jun 22 22:13:41 PDT 1997
+State-Changed-Why:
+We're considering an API change for 2.0 in which handlers would
+declare not only content-types they handle, but also methods they
+handle.  That would deal with this... If you do find out more
+though, please report it -- it'll save us having to track the
+same problem down :)
+
+Thanks
+Dean
+>Unformatted:
+
+

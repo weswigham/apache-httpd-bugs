@@ -1,0 +1,84 @@
+Received: (qmail 6260 invoked by uid 501); 19 Feb 2001 03:40:57 -0000
+Message-Id: <20010219034057.6259.qmail@apache.org>
+Date: 19 Feb 2001 03:40:57 -0000
+From: Taketo Kabe <kabe@sra-tohoku.co.jp>
+Reply-To: kabe@sra-tohoku.co.jp
+To: submit@bugz.apache.org
+Subject: dereferencing NULL pointer in mod_userdir.c
+X-Send-Pr-Version: 3.110
+
+>Number:         7271
+>Category:       mod_userdir
+>Synopsis:       dereferencing NULL pointer in mod_userdir.c
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Feb 18 19:50:00 PST 2001
+>Closed-Date:    Thu Feb 22 12:52:11 PST 2001
+>Last-Modified:  Thu Feb 22 12:52:11 PST 2001
+>Originator:     kabe@sra-tohoku.co.jp
+>Release:        httpd-2_0_11-alpha
+>Organization:
+>Environment:
+SunOS 5.8 Generic_108528-05 sun4u sparc SUNW,Ultra-60
+gcc version 2.95.2 19991024 (release)
+>Description:
+modules/mappers/mod_userdir.c:get_suexec_id_doer()
+references members of struct passwd pw without calling getpwnam(),
+so causes a coredump when CGI is invoked.
+
+>How-To-Repeat:
+configure --enable-cgi --disable-cgid (yes, no cgid)
+and make the server invoke CGI several times.
+The child httpd will coredump on first couple of tries.
+>Fix:
+Just adding getpwnam() is easy but I'm not convinced enough to
+make this MT-safe.
+
+diff -u httpd-2_0_11-alpha/modules/mappers/mod_userdir.c.dist httpd-2_0_11-alpha/modules/mappers/mod_userdir.c
+--- httpd-2_0_11-alpha/modules/mappers/mod_userdir.c.dist	Sat Feb 10 23:04:20 2001
++++ httpd-2_0_11-alpha/modules/mappers/mod_userdir.c	Mon Feb 19 12:21:42 2001
+@@ -375,6 +375,9 @@
+     if (username == NULL) {
+         return NULL;
+     }
++    if ((pw = getpwnam(username)) == NULL) {	/*XXX MT unsafe*/
++	return NULL;
++    }
+ 
+     if ((ugid = apr_palloc(r->pool, sizeof(ap_unix_identity_t *))) == NULL) {
+         return NULL;
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rbb
+State-Changed-When: Thu Feb 22 12:52:08 PST 2001
+State-Changed-Why:
+This has been fixed in the CVS tree.  The patch was a bit
+different, because we need to be thread-safe if we are
+using threads.  This required an additional APR function
+to deal with threads cleanly.
+
+Thank you for the bug report and the patch.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

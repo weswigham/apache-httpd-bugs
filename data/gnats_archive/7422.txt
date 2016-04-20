@@ -1,0 +1,177 @@
+Received: (qmail 40661 invoked by uid 501); 16 Mar 2001 09:38:47 -0000
+Message-Id: <20010316093847.40660.qmail@apache.org>
+Date: 16 Mar 2001 09:38:47 -0000
+From: Matthias Lohmann <lohm@lynet.de>
+Reply-To: lohm@lynet.de
+To: submit@bugz.apache.org
+Subject: Have a "master" password and group file. (Suggestion, Patch)
+X-Send-Pr-Version: 3.110
+
+>Number:         7422
+>Category:       mod_auth-any
+>Synopsis:       Have a "master" password and group file. (Suggestion, Patch)
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Mar 16 01:40:01 PST 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     lohm@lynet.de
+>Release:        1.3.x
+>Organization:
+apache
+>Environment:
+Every
+>Description:
+We had a problem, that when hosting multiple servers and securing
+access to parts of different sites, we had do edit and support
+a lot of password and group files (not every VHost has a database to use),
+if the sysadmins must have access to these parts also.
+So we thought of master files for password and group, which are always
+looked up, if the user and group for authentication are not found in the
+normal password and group file, which is configured in the .htacces protecting
+the directory.
+We created a little hack for mod_auth to look up master files, if the
+normal password file does not contain the user.
+2 new directives for httpd.conf were created.
+
+Perhaps this is interesting for the apache source or other people.
+It works as we need it, and perhaps it is a good idea and can be 
+intgrated in the other mod_auths also.
+Think about it.
+>How-To-Repeat:
+-
+>Fix:
+Here is a context diff (apache 1.3.14):
+
+diff -c mod_auth.c-orig mod_auth_new.c
+
+*** mod_auth.c-orig     Fri Jan 26 13:28:55 2001
+--- mod_auth_new.c      Fri Jan 26 13:30:06 2001
+***************
+*** 99,106 ****
+--- 99,126 ----
+      return ap_set_file_slot(cmd, offset, f);
+  }
+  
++ static char *master_auth_pwfile = NULL;
++ static char *master_auth_grpfile = NULL;
++ 
++ static const char *set_masterauthuserfile(cmd_parms * parms, void *dummy, char *file)
++ {
++       master_auth_pwfile = file;
++       return NULL;
++ }
++ 
++ static const char *set_masterauthgroupfile(cmd_parms * parms, void *dummy, char *file)
++ {
++       master_auth_grpfile = file;
++       return NULL;
++ }
++ 
+  static const command_rec auth_cmds[] =
+  {
++       { "MasterAuthUserFile", set_masterauthuserfile, NULL, RSRC_CONF,
++       TAKE1,  "text file containing master or admin user IDs and passwords" },
++       { "MasterAuthGroupFile", set_masterauthgroupfile, NULL, RSRC_CONF,
++       TAKE1,  "text file containing master or admin group names and member user IDs" },
++ 
+      {"AuthUserFile", set_auth_slot,
+       (void *) XtOffsetOf(auth_config_rec, auth_pwfile), OR_AUTHCFG, TAKE12,
+       "text file containing user IDs and passwords"},
+***************
+*** 176,181 ****
+--- 196,231 ----
+      }
+      ap_cfg_closefile(f);
+      ap_destroy_pool(sp);
++     
++       /* and again for master group file */
++       if (!master_auth_grpfile || !(f = ap_pcfg_openfile(p, master_auth_grpfile))) {
++ /*add?        aplog_error(APLOG_MARK, APLOG_ERR, NULL,
++                   "Could not open master group file: %s", (master_auth_grpfile) ? master_auth_grpfile : "not defined");*/
++     }
++       else
++       {
++       sp = ap_make_sub_pool(p);
++ 
++       while (!(ap_cfg_getline(l, MAX_STRING_LEN, f))) {
++               if ((l[0] == '#') || (!l[0]))
++                continue;
++               ll = l;
++               ap_clear_pool(sp);
++ 
++               group_name = ap_getword(sp, &ll, ':');
++ 
++               while (ll[0]) {
++                w = ap_getword_conf(sp, &ll);
++                if (!strcmp(w, user)) {
++                       ap_table_setn(grps, ap_pstrdup(p, group_name), "in");
++                       break;
++                }
++               }
++       }
++       ap_cfg_closefile(f);
++       ap_destroy_pool(sp);
++     }
++ 
+      return grps;
+  }
+  
+***************
+*** 209,215 ****
+      if (!sec->auth_pwfile)
+        return DECLINED;
+  
+!     if (!(real_pw = get_pw(r, c->user, sec->auth_pwfile))) {
+        if (!(sec->auth_authoritative))
+            return DECLINED;
+        ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r,
+--- 259,269 ----
+      if (!sec->auth_pwfile)
+        return DECLINED;
+  
+!     real_pw = get_pw(r, c->user, sec->auth_pwfile);
+!     if (!real_pw && master_auth_pwfile)
+!               real_pw = get_pw(r, c->user, master_auth_pwfile);
+! 
+!     if (!real_pw) {
+        if (!(sec->auth_authoritative))
+            return DECLINED;
+        ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r,
+***************
+*** 217,222 ****
+--- 271,278 ----
+        ap_note_basic_auth_failure(r);
+        return AUTH_REQUIRED;
+      }
++ 
++ 
+      invalid_pw = ap_validate_password(sent_pw, real_pw);
+      if (invalid_pw != NULL) {
+        ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r,
+-------------------------------------------------------------------
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

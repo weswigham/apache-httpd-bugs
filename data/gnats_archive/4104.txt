@@ -1,0 +1,80 @@
+Received: (qmail 23226 invoked by uid 2012); 23 Mar 1999 17:46:34 -0000
+Message-Id: <19990323174634.23225.qmail@hyperreal.org>
+Date: 23 Mar 1999 17:46:34 -0000
+From: Andrew Kuchling <akuchlin@cnri.reston.va.us>
+Reply-To: akuchlin@cnri.reston.va.us
+To: apbugs@hyperreal.org
+Subject: Typos (& and &&) in mod_jserv.c
+X-Send-Pr-Version: 3.2
+
+>Number:         4104
+>Category:       mod_jserv
+>Synopsis:       Typos (& and &&) in mod_jserv.c
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    jserv
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Mar 23 09:50:00 PST 1999
+>Last-Modified:  Tue Mar 23 14:20:01 PST 1999
+>Originator:     akuchlin@cnri.reston.va.us
+>Organization:
+apache
+>Release:        1.3.3 + 1.0b3
+>Environment:
+Solaris 2.6
+>Description:
+When trying to debug an Apache problem with Electric Fence, EF reported
+an out-of-bounds access.  This turned out to stem from this code in mod_jserv.c:
+
+        /* Try to find if we have a protocol://host */
+        for (x=0; (x<128) & (buf[x]!='\0'); x++) {
+            if ((buf[x]==':') & (buf[x+1]=='/') & (buf[x+2]=='/')) {
+            ^^^^ previous line is caught by ElectricFence
+                if (x!=0) {
+                    protocol=buf;
+                    buf[x]='\0';
+                }
+
+The bug is a typo, or confusion on the part of the person who wrote the code;
+the bitwise operator & was used instead of the logical operator &&.
+& isn't short-circuited and && is, so the above line always accesses
+all of  buf[x], buf[x+1], buf[x+2].
+>How-To-Repeat:
+Compile Apache with Electric Fence, and edit main/alloc.c to use malloc()
+and free().
+>Fix:
+A patch that fixes the place where EF segfaults is at
+   ftp://starship.python.net/pub/crew/amk/new/jserv-patch
+
+This patch does NOT fix all the typos.  Do a search for '{space}&{space}'
+and '{space}|{space}', and you'll find other places where bitwise operators
+have been used where logical ones make more sense.  
+
+A grep through the other C files didn't turn up any problems, so mod_jserv.c
+may be the only affected file.
+>Audit-Trail:
+
+From: "jon *" <jon@clearink.com>
+To: akuchlin@cnri.reston.va.us
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_jserv/4104: Typos (& and &&) in mod_jserv.c
+Date: Tue, 23 Mar 1999 14:15:49 -0800
+
+ this has been fixed in cvs. thanks for the excellent report.
+ 
+ -jon
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

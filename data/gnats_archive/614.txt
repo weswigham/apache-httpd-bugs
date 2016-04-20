@@ -1,0 +1,76 @@
+From nobody@hyperreal.com  Fri May 23 14:57:20 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id OAA04831;
+	Fri, 23 May 1997 14:57:20 -0700 (PDT)
+Message-Id: <199705232157.OAA04831@hyperreal.com>
+Date: Fri, 23 May 1997 14:57:20 -0700 (PDT)
+From: Jozsef Hollosi <hollosi@sbcm.com>
+Reply-To: hollosi@sbcm.com
+To: apbugs@hyperreal.com
+Subject: proxy does not handle numeric addresses in URL
+X-Send-Pr-Version: 3.2
+
+>Number:         614
+>Category:       mod_proxy
+>Synopsis:       proxy does not handle numeric addresses in URL
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri May 23 15:00:01 1997
+>Last-Modified:  Tue May 27 01:05:59 PDT 1997
+>Originator:     hollosi@sbcm.com
+>Organization:
+>Release:        
+>Environment:
+ULTRIX sbcm60 4.3 1 RISC
+>Description:
+proxy does not handle numeric addresses in URL
+>How-To-Repeat:
+try to use apache as a proxy and GET any numeric address
+>Fix:
+diff proxy_util.c ../../../../apache_1.2b10/src/modules/proxy/proxy_util.c
+697,698c697
+<     static struct hostent hpbuf;
+<     static u_long ipaddr;
+---
+>     u_long ipaddr;
+713,725c712,713
+<       if (hp == NULL) {
+<           /* vvv hollosi vvv */
+<           memchr(&hpbuf, 0, sizeof(hpbuf));
+<           hpbuf.h_name = 0; (char*)host;
+<           hpbuf.h_addrtype = AF_INET;
+<           hpbuf.h_length = sizeof(u_long);
+<           hpbuf.h_addr_list = malloc(2 * sizeof(char*));
+<           hpbuf.h_addr_list[0] = (char*)&ipaddr;
+<           hpbuf.h_addr_list[1] = 0;
+<           hp = &hpbuf;
+<           /* return "Address not found"; */
+<           /* ^^^ hollosi ^^^ */
+<       }
+---
+>       if (hp == NULL)
+>           return "Address not found";
+%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: chuck
+State-Changed-When: Fri May 23 15:59:48 PDT 1997
+State-Changed-Why:
+Thanks for the patch. I've been testing a similar patch
+here, the only difference being that the malloc() in your
+patch will leak 2*sizeof(char *) bytes per call. I'll send
+a revised patch for you to try over the weekend, the memory
+management being the only real difference.
+State-Changed-From-To: analyzed-closed
+State-Changed-By: chuck
+State-Changed-When: Tue May 27 01:05:59 PDT 1997
+State-Changed-Why:
+Added user patch with small change to insure no leaks.
+>Unformatted:
+
+

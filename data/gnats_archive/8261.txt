@@ -1,0 +1,95 @@
+Received: (qmail 59221 invoked by uid 501); 29 Aug 2001 04:35:22 -0000
+Message-Id: <20010829043522.59220.qmail@apache.org>
+Date: 29 Aug 2001 04:35:22 -0000
+From: Christian Reis <kiko@async.com.br>
+Reply-To: kiko@async.com.br
+To: submit@bugz.apache.org
+Subject: Child processes in KeepAlive state can not be killed by SIGALRM, and do not timeout
+X-Send-Pr-Version: 3.110
+
+>Number:         8261
+>Category:       general
+>Synopsis:       Child processes in KeepAlive state can not be killed by SIGALRM, and do not timeout
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Aug 28 21:40:00 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     kiko@async.com.br
+>Release:        1.3.20
+>Organization:
+apache
+>Environment:
+Linux ngweb2 2.2.16-RAID #8 Sat Nov 18 02:11:44 BRST 2000 i686 unknown
+Linux ngweb3 2.2.18 #3 SMP Wed Apr 4 01:11:46 BRT 2001 i686 unknown
+egcs-1.1.2 on both
+
+Apache 1.3.20 + PHP4.0.6 + mod_ssl-2.8.4 + mod_log_spread.
+>Description:
+We have a high-traffic site that is distributed through ipvs to several servers. On two of these servers -- the only ones that run 1.3.20 -- we have the following problem.
+
+A number of httpds - a few at the beginning, but many after a while - are left in th e K state, viewable in /server-status. A strace on them reveals they are blocked on fd 4, which an inspection to /proc reports is the remote socket. I have seen processes hanging for over 50,000s, and apache will not kill them. I've tried inspecting the socket, and many times the remote host is actually offline. If I kill -ALRM the pid of the process, it refuses to die; using -USR2, however, it dies off immediately.
+
+I can't really see where this bug is. I've read through bug reports at http://bugs.apache.org/index.cgi/full/1190 and http://bugs.apache.org/index.cgi/full/3906 but they don't really provide definitive information at all. Both these bugs are for other architectures, but I suppose it could be a kernel bug, or a problem with one of the dependencies masking SIGALRM and not unmasking afterwards.
+
+The /server-status map looks like this at times:
+
+KKKKKKKKKKKKKKKKKKKKK_KKK_KKK_KWKKKKKKKKKKWRKWKKKKKK__KKWKKKKKKK
+KKKKKKKK_KKKKKKKKK_K_KKKKKKKWKK_.KKKKKKKKKKKKKKKKKKKKKKKKKKKK_KK
+KKKKKKKR_KKKKKKKKKKKKKKKKKKK_KKKKKKKKKKKKKKKKKKKKK__KKKKKKKKKKKK
+KKRKKKKKKK_KKKRK_KKKKK_KKKKK_KKKKKKKKK__K__W....................
+
+And, listing the processes out, I find things like 50,000 SS times or more. My timeout is 300s and my keepalivetimeout, 15s.
+
+I've asked on the newsgroup, but no answer was given, so I'm trying here.
+>How-To-Repeat:
+It is very difficult to generate a simple repeat pattern. But if the site is left up for enough time (usually a couple of hours) it will slow to a crawl because of the amount of httpds blocked doing nothing.
+>Fix:
+I've in the meantime tried recompiling everything, and since that didn't work, now, after a week, I've patched with the following change. However, I know this is _not_ a fix and I would like to see this solved. Thanks.
+
+--- http_main.c-orig	Wed Aug 29 01:15:12 2001
++++ http_main.c	Wed Aug 29 01:15:23 2001
+@@ -3986,7 +3986,7 @@
+     signal(SIGURG, timeout);
+ #endif
+ #endif
+-    signal(SIGALRM, alrm_handler);
++    signal(SIGUSR2, alrm_handler);
+ #ifdef TPF
+     signal(SIGHUP, just_die);
+     signal(SIGTERM, just_die);
+@@ -4580,7 +4580,7 @@
+ 		else if (ps->last_rtime + ss->timeout_len < now) {
+ 		    /* no progress, and the timeout length has been exceeded */
+ 		    ss->timeout_len = 0;
+-		    kill(ps->pid, SIGALRM);
++		    kill(ps->pid, SIGUSR2);
+ 		}
+ 	    }
+ #endif
+
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

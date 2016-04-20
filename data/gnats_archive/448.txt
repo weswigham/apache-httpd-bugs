@@ -1,0 +1,94 @@
+From nobody@hyperreal.com  Mon Apr 21 22:22:16 1997
+Received: (from nobody@localhost)
+          by hyperreal.com (8.8.4/8.8.4)
+	  id WAA18523; Mon, 21 Apr 1997 22:22:16 -0700 (PDT)
+Message-Id: <199704220522.WAA18523@hyperreal.com>
+Date: Mon, 21 Apr 1997 22:22:16 -0700 (PDT)
+From: Josh Rabinowitz <joshr@stockmaster.com>
+Reply-To: joshr@stockmaster.com
+To: apbugs@hyperreal.com
+Subject: The 'root' httpd server process will block, the machine will respond very slowly, and refuse all connections.
+X-Send-Pr-Version: 3.2
+
+>Number:         448
+>Category:       os-sunos
+>Synopsis:       The 'root' httpd server process will block, the machine will respond very slowly, and refuse all connections.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Apr 21 22:30:01 1997
+>Last-Modified:  Sun Jun 29 18:33:26 PDT 1997
+>Originator:     joshr@stockmaster.com
+>Organization:
+>Release:        1.2b8
+>Environment:
+SunOS 4.1.4, few patches, built with gcc.  On a Sparc IPX running
+about 50,000 invokations of a nph- cgi daily.
+>Description:
+I have observed the server to seriously misbehave in the following way.
+I have not tried to reproduce it.  
+Symptoms:
+1)  top display showed the root httpd process at the top of the
+	display, but not spinning cpus,  
+4083 root      32    0  372K  276K run    14:51  1.96%  1.95% httpd
+
+2) When I attached to the same process with gdb: Attaching to program `/usr/local/etc/httpd/httpd', process 4083sendmail
+Reading symbols from /usr/lib/libc.so.1.9.1...done.
+Reading symbols from /usr/lib/libdl.so.1.0...done.
+0xf7737300 in fork ()
+(gdb) where
+#0  0xf7737300 in fork ()
+#1  0x5680 in make_child ()
+#2  0x60e4 in standalone_main ()
+#3  0x6438 in main ()
+(gdb) c
+Continuing. (...no return...)
+
+3) Then I traced the process:
+race -p process
+wait4 (0, 0xf7fffc94, 0x1, 0) = 15139
+getpid () = 4083
+gettimeofday (0xf7fffb08, 0) = 0
+getpid () = 4083
+gettimeofday (0xf7fffb08, 0) = 0
+fork () = 15140
+- SIGCHLD (20)
+wait4 (0, 0xf7fffc94, 0x1, 0) = 15140
+getpid () = 4083
+gettimeofday (0xf7fffb08, 0) = 0
+getpid () = 4083
+gettimeofday (0xf7fffb08, 0) = 0
+fork () = 15141
+- SIGCHLD (20)
+wait4 (0, 0xf7fffc94, 0x1, 0) = 15141
+>How-To-Repeat:
+I have no idea. This only happens very occasionally 
+(I catch it occurring, say, once a month)
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sun Apr 27 00:27:37 PDT 1997
+State-Changed-Why:
+There were related changes in the code for 1.2b9, if you could
+give it a try when it comes out in a few days that'd be great.
+
+Thanks
+Dean
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sun Jun 29 18:33:26 PDT 1997
+State-Changed-Why:
+There were many race condition fixes around 1.2b10.  You should
+try 1.2 release.  We're also recommending "KeepAlive off" in httpd.conf
+for SunOS4 machines.
+
+Dean
+>Unformatted:
+
+

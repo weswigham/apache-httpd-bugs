@@ -1,0 +1,117 @@
+From nobody@hyperreal.com  Mon Apr 14 06:10:12 1997
+Received: (from nobody@localhost)
+          by hyperreal.com (8.8.4/8.8.4)
+	  id GAA10530; Mon, 14 Apr 1997 06:10:12 -0700 (PDT)
+Message-Id: <199704141310.GAA10530@hyperreal.com>
+Date: Mon, 14 Apr 1997 06:10:12 -0700 (PDT)
+From: Ron Culver <ronc@earthlink.net>
+Reply-To: ronc@earthlink.net
+To: apbugs@hyperreal.com
+Subject: redefinition of struct in compile - redef takes place in buff.c - post  include of sys/uio.h
+X-Send-Pr-Version: 3.2
+
+>Number:         386
+>Category:       os-linux
+>Synopsis:       redefinition of struct in compile - redef takes place in buff.c - post  include of sys/uio.h
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Apr 14 06:20:01 1997
+>Last-Modified:  Mon Apr 14 07:22:06 PDT 1997
+>Originator:     ronc@earthlink.net
+>Organization:
+>Release:        1.2b8
+>Environment:
+Linux 2.0.27, patchlevel(?) - gcc compiler
+>Description:
+contents of /usr/include/sys/uio.h included by buff.c follows:
+
+---- begin ----
+dusty:/usr/include/sys# cat uio.h
+/* Copyright (C) 1991, 1992 Free Software Foundation, Inc.
+This file is part of the GNU C Library. ....... etc. */
+#ifndef _SYS_UIO_H
+
+#define _SYS_UIO_H      1
+#include <features.h>
+
+__BEGIN_DECLS
+
+#define __need_size_t
+#include <stddef.h>
+
+
+/* Structure describing a section of memory.  */
+
+struct iovec
+{
+  /* Starting address.  */
+  __ptr_t iov_base;
+  /* Length in bytes.  */
+  size_t iov_len;
+};
+
+
+/* Read data from file descriptor FD, and put the result in the
+   buffers described by VECTOR, which is a vector of COUNT `struct iovec's.
+   The buffers are filled in the order specified.
+   Operates just like `read' (see <unistd.h>) except that data are
+   put in VECTOR instead of a contiguous buffer.  */
+int readv __P ((int __fd, __const struct iovec * __vector, size_t __count));
+
+/* Write data pointed by the buffers described by VECTOR, which
+   is a vector of COUNT `struct iovec's, to file descriptor FD.
+   The data is written in the order specified.
+   Operates just like `write' (see <unistd.h>) except that the data
+   are taken from VECTOR instead of a contiguous buffer.  */
+int writev __P ((int __fd, __const struct iovec * __vector, size_t __count));
+
+
+__END_DECLS
+
+#endif /* sys/uio.h */
+----- end ----
+
+Since compile error was:
+
+--- begin ---
+[snip]
+gcc -c -Iregex  -O2 -DLINUX -DSTATUS   buff.c
+In file included from buff.c:66:
+/usr/include/sys/uio.h:33: redefinition of `struct iovec'
+make: *** [buff.o] Error 1
+--- end ---
+
+I rem'd the include at line 66 of buff.c - as per:
+
+#ifndef NO_WRITEV
+#include <sys/types.h>
+/*
+#include <sys/uio.h>
+*/
+#endif
+
+since struct iovec is defined at line 644 of buff.c
+
+I'm not competent at C, but it looked like a possibility to me, the
+compile then ran ok to end, and httpd 'appeared' to work... however
+I did not leave it in service since I was not sure of the consequences.
+
+>How-To-Repeat:
+easy to repeat using code of 1.2b8 and uio.h given above
+>Fix:
+suspect that /usr/include/sys/uio.h may be obsolete code..?  If not,
+one can't help note the comment in buff.c abou
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Mon Apr 14 07:22:06 PDT 1997
+State-Changed-Why:
+Dupe PR.
+>Unformatted:
+
+

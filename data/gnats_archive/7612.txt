@@ -1,0 +1,149 @@
+Received: (qmail 35888 invoked by uid 501); 24 Apr 2001 14:03:33 -0000
+Message-Id: <20010424140333.35884.qmail@apache.org>
+Date: 24 Apr 2001 14:03:33 -0000
+From: Bernhard Schrenk <b.schrenk@improx.com>
+Reply-To: b.schrenk@improx.com
+To: submit@bugz.apache.org
+Subject: mod_tls does not compile and asserts under windows
+X-Send-Pr-Version: 3.110
+
+>Number:         7612
+>Category:       build
+>Synopsis:       mod_tls does not compile and asserts under windows
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Apr 24 07:10:01 PDT 2001
+>Closed-Date:    Fri Apr 27 11:03:50 PDT 2001
+>Last-Modified:  Mon Apr 30 04:30:00 PDT 2001
+>Originator:     b.schrenk@improx.com
+>Release:        2.0.16beta
+>Organization:
+>Environment:
+Microsoft Windows 2000
+Microsoft Visual C++ 6.0 SP4
+>Description:
+mod_tls does not compile under windows with microsoft compiler
+After minor code changes mod_tls compiled, but asserts when reading data from client, caused by the return code WSAEWOULDBLOCK from Windows Socket Library during nono blocking network IO. Expected by mod_tls is EAGAIN.
+>How-To-Repeat:
+Compile mod_tls under windows with microsoft compiler
+>Fix:
+I have patched mod_tls, but I don't know if I used the apr macro APR_STATUS_IS_EAGAIN(ret) and the macro AP_MODULE_DECLARE_DATA correctly. Patch follows:
+
+diff -uP tls.old/mod_tls.c tls/mod_tls.c
+--- tls.old/mod_tls.c	Wed Apr  4 01:36:06 2001
++++ tls/mod_tls.c	Tue Apr 24 13:12:03 2001
+@@ -68,7 +68,7 @@
+ // temp
+ #include <assert.h>
+ 
+-AP_DECLARE_DATA module tls_module;
++module AP_MODULE_DECLARE_DATA tls_module;
+ static const char s_szTLSFilterName[]="TLSFilter";
+ typedef struct
+ {
+@@ -234,7 +234,7 @@
+ 		ap_log_error(APLOG_MARK,APLOG_ERR,ret,NULL,
+ 			     "Read failed in tls_in_filter");
+ 	    assert(eReadType == APR_NONBLOCK_READ);
+-	    assert(ret == APR_SUCCESS || ret == APR_EAGAIN);
++	    assert(ret == APR_SUCCESS || APR_STATUS_IS_EAGAIN(ret));
+ 	    /* In this case, we have data in the output bucket, or we were
+ 	     * non-blocking, so returning nothing is fine.
+ 	     */
+@@ -401,7 +401,7 @@
+     ap_hook_http_method(tls_method,NULL,NULL,APR_HOOK_MIDDLE);
+ }
+ 
+-AP_DECLARE_DATA module tls_module = {
++module AP_MODULE_DECLARE_DATA tls_module = {
+     STANDARD20_MODULE_STUFF,
+     NULL,			/* create per-directory config structure */
+     NULL,			/* merge per-directory config structures */
+
+diff -uP tls.old/openssl_state_machine.c tls/openssl_state_machine.c
+--- tls.old/openssl_state_machine.c	Wed Apr  4 01:36:06 2001
++++ tls/openssl_state_machine.c	Tue Apr 24 13:33:11 2001
+@@ -78,7 +78,9 @@
+ 
+ #include <openssl/ssl.h>
+ #include <assert.h>
++#ifndef WIN32
+ #include <unistd.h>
++#endif
+ #include <string.h>
+ #include <openssl/err.h>
+ #include "openssl_state_machine.h"
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: trawick
+State-Changed-When: Fri Apr 27 11:03:49 PDT 2001
+State-Changed-Why:
+These changes were just committed with a minor tweak and
+will be in the next beta release.
+
+
+From: Bernhard Schrenk <b.schrenk@improx.com>
+To: "'trawick@apache.org'" <trawick@apache.org>
+Cc: "'apbugs@Apache.Org'" <apbugs@apache.org>
+Subject: build/7612: mod_tls does not compile and asserts under windows
+Date: Mon, 30 Apr 2001 09:59:15 +0200
+
+ I think APR_STATUS_IS_EAGAIN(ret) returns true or false, because the new
+ version from the CVS does not work under Windows and under Linux in contrast
+ to my previous patched version.
+ 
+ diff -uP tls.old/mod_tls.c tls/mod_tls.c
+ --- tls.old/mod_tls.c	Wed Apr  30 09:12:03 2001
+ +++ tls/mod_tls.c	Tue Apr 30 09:52:01 2001
+ @@ -235,7 +235,7 @@
+  		ap_log_error(APLOG_MARK,APLOG_ERR,ret,NULL,
+  			     "Read failed in tls_in_filter");
+  	    assert(eReadType == APR_NONBLOCK_READ);
+ -	    assert(ret == APR_SUCCESS || ret == APR_STATUS_IS_EAGAIN(ret));
+ +	    assert(ret == APR_SUCCESS || APR_STATUS_IS_EAGAIN(ret));
+  	    /* In this case, we have data in the output bucket, or we were
+  	     * non-blocking, so returning nothing is fine.
+  	     */
+
+From: Jeff Trawick <trawickj@bellsouth.net>
+To: Bernhard Schrenk <b.schrenk@improx.com>
+Cc: "'apbugs@Apache.Org'" <apbugs@apache.org>
+Subject: Re: build/7612: mod_tls does not compile and asserts under windows
+Date: 30 Apr 2001 07:20:22 -0400
+
+ Bernhard Schrenk <b.schrenk@improx.com> writes:
+ 
+ > I think APR_STATUS_IS_EAGAIN(ret) returns true or false, because the new
+ > version from the CVS does not work under Windows and under Linux in contrast
+ > to my previous patched version.
+ 
+ Fixed... thanks for the report... sorry for the SNAFU...
+ 
+ -- 
+ Jeff Trawick | trawickj@bellsouth.net | PGP public key at web site:
+        http://www.geocities.com/SiliconValley/Park/9289/
+              Born in Roswell... married an alien...
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

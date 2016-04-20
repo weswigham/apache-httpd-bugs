@@ -1,0 +1,112 @@
+Received: (qmail 31654 invoked by uid 501); 6 Nov 2001 22:26:05 -0000
+Message-Id: <20011106222605.31653.qmail@apache.org>
+Date: 6 Nov 2001 22:26:05 -0000
+From: Joe Pepersack <tassach@rapiertech.com>
+Reply-To: tassach@rapiertech.com
+To: submit@bugz.apache.org
+Subject: Wrong error generated for nimdA attack while using SetEnvIf, CustomLog, and ErrorDocument directives
+X-Send-Pr-Version: 3.110
+
+>Number:         8692
+>Category:       config
+>Synopsis:       Wrong error generated for nimdA attack while using SetEnvIf, CustomLog, and ErrorDocument directives
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          duplicate
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Nov 06 14:30:00 PST 2001
+>Closed-Date:
+>Last-Modified:  Tue Nov 06 15:35:54 PST 2001
+>Originator:     tassach@rapiertech.com
+>Release:        Apache/1.3.14 (Unix)  (Red-Hat/Linux)
+>Organization:
+>Environment:
+Linux elrond.rapiertech.com 2.2.19-7.0.1 #1 Tue Apr 10 01:23:42 EDT 2001 i586 unknown 
+>Description:
+I set up the following rules in httpd.conf to deny nimda and code red/blue attacks:
+
+SetEnvIf Request_URI "cmd\.exe" ATTACK
+SetEnvIf Request_URI "root\.exe" ATTACK
+SetEnvIf Request_URI "default\.ida" ATTACK
+
+CustomLog /var/log/httpd/attack_log common env=ATTACK
+CustomLog /var/log/httpd/access_log common env=!ATTACK
+...
+<Location />
+    Order Allow,Deny
+    Allow from all
+    Deny from env=ATTACK
+    ErrorDocument 403 "
+</Location>
+<Location /scripts/>
+    Order Deny,Allow
+    Deny from all
+    ErrorDocument 403 "
+</Location>
+
+With this rule set, I would expect any URI referencing root.exe, default.ida, or cmd.exe, as well as anything in the scripts directory, to log a 403 record with 0 byte output to the attack_log file.  This works for almost all the attacks in the typical nimdA sequence, but there are a few URIs which consistently give 400 or 404 errors: 
+
+cc19788-a.ewndsr1.nj.home.com - - [06/Nov/2001:16:56:31 -0500] "GET /scripts/root.exe?/c+dir HTTP/1.0" 403 0
+cc19788-a.ewndsr1.nj.home.com - - [06/Nov/2001:16:56:32 -0500] "GET /MSADC/root.exe?/c+dir HTTP/1.0" 403 0
+cc19788-a.ewndsr1.nj.home.com - - [06/Nov/2001:16:56:33 -0500] "GET /c/winnt/system32/cmd.exe?/c+dir HTTP/1.0" 403 0
+cc19788-a.ewndsr1.nj.home.com - - [06/Nov/2001:16:56:34 -0500] "GET /d/winnt/system32/cmd.exe?/c+dir HTTP/1.0" 403 0
+cc19788-a.ewndsr1.nj.home.com - - [06/Nov/2001:16:56:36 -0500] "GET /scripts/..%255c../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 403 0
+cc19788-a.ewndsr1.nj.home.com - - [06/Nov/2001:16:56:37 -0500] "GET /_vti_bin/..%255c../..%255c../..%255c../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 403
+0
+cc19788-a.ewndsr1.nj.home.com - - [06/Nov/2001:16:56:38 -0500] "GET /_mem_bin/..%255c../..%255c../..%255c../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 403
+0
+cc19788-a.ewndsr1.nj.home.com - - [06/Nov/2001:16:56:40 -0500] "GET /msadc/..%255c../..%255c../..%255c/..%c1%1c../..%c1%1c../..%c1%1c../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 403 0
+cc19788-a.ewndsr1.nj.home.com - - [06/Nov/2001:16:56:41 -0500] "GET /scripts/..%c1%1c../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 403 0
+cc19788-a.ewndsr1.nj.home.com - - [06/Nov/2001:16:56:43 -0500] "GET /scripts/..%c0%2f../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 404 306
+cc19788-a.ewndsr1.nj.home.com - - [06/Nov/2001:16:56:44 -0500] "GET /scripts/..%c0%af../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 403 0
+cc19788-a.ewndsr1.nj.home.com - - [06/Nov/2001:16:56:45 -0500] "GET /scripts/..%c1%9c../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 403 0
+cc19788-a.ewndsr1.nj.home.com - - [06/Nov/2001:16:56:47 -0500] "GET /scripts/..%%35%63../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 400 290
+cc19788-a.ewndsr1.nj.home.com - - [06/Nov/2001:16:56:48 -0500] "GET /scripts/..%%35c../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 400 290
+cc19788-a.ewndsr1.nj.home.com - - [06/Nov/2001:16:56:49 -0500] "GET /scripts/..%25%35%63../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 403 0
+cc19788-a.ewndsr1.nj.home.com - - [06/Nov/2001:16:56:50 -0500] "GET /scripts/..%252f../winnt/system32/cmd.exe?/c+dir HTTP/1.0" 403 
+
+The whole point of my ruleset is to avoid sending any response back to a nimdA infected server, so as not to consume any of my (limited) upstream bandwidth.  As written, it should be 100% effective; in reality it only works 81% of the time (13 out of 16 URIs).
+>How-To-Repeat:
+Add aforementioned rules to httpd.conf, then expose server to nimdA attack or manually enter offending GET command via telnet.
+>Fix:
+not really :(
+
+A user-defined ErrorDoc directive for a given Location should supercede any built-in or default error messages.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: jwoolley
+State-Changed-When: Tue Nov  6 15:35:04 PST 2001
+State-Changed-Why:
+Please see PR8625.  The 404's and 400's are not incorrect. These worms are deliberately sending requests designed to foul up request processing.  Some really are bad requests, so 400 is the correct response; similar issues apply with 404.
+Class-Changed-From-To: sw-bug-mistaken
+Class-Changed-By: jwoolley
+Class-Changed-When: Tue Nov  6 15:35:04 PST 2001
+Category-Changed-From-To: general-config
+Category-Changed-By: jwoolley
+Category-Changed-When: Tue Nov  6 15:35:04 PST 2001
+
+Class-Changed-From-To: mistaken-duplicate
+Class-Changed-By: jwoolley
+Class-Changed-When: Tue Nov  6 15:35:54 PST 2001
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

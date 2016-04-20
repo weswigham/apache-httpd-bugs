@@ -1,0 +1,360 @@
+Received: (qmail 21621 invoked by uid 2012); 27 Jul 1998 08:38:11 -0000
+Message-Id: <19980727083811.21620.qmail@hyperreal.org>
+Date: 27 Jul 1998 08:38:11 -0000
+From: Youichirou Koga <y-koga@jp.FreeBSD.org>
+Reply-To: y-koga@jp.FreeBSD.org
+To: apbugs@hyperreal.org
+Subject: Command line option '-?' doesn't work.
+X-Send-Pr-Version: 3.2
+
+>Number:         2714
+>Category:       general
+>Synopsis:       Command line option '-?' doesn't work.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jul 27 01:40:00 PDT 1998
+>Last-Modified:  Fri Dec 18 03:15:03 PST 1998
+>Originator:     y-koga@jp.FreeBSD.org
+>Organization:
+>Release:        1.3.1
+>Environment:
+FreeBSD 2.2.7-STABLE
+>Description:
+Command line option '-?' doesn't work. If you run with '-?' option, error message is printed.
+>How-To-Repeat:
+Run httpd with '-?' option.
+>Fix:
+Following patch is for 1.3.1:
+
+--- src/main/http_main.c.ORG	Tue Jul 14 18:57:56 1998
++++ src/main/http_main.c	Mon Jul 27 17:25:28 1998
+@@ -4250,7 +4250,7 @@
+     ap_setup_prelinked_modules();
+ 
+     while ((c = getopt(argc, argv,
+-				    "D:C:c:Xd:f:vVhlL:St"
++				    "D:C:c:Xd:f:vVhlL:St?"
+ #ifdef DEBUG_SIGSTOP
+ 				    "Z:"
+ #endif
+@@ -5416,7 +5416,7 @@
+ 
+     ap_setup_prelinked_modules();
+ 
+-    while ((c = getopt(argc, argv, "D:C:c:Xd:f:vVhlZ:iusSt")) != -1) {
++    while ((c = getopt(argc, argv, "D:C:c:Xd:f:vVhlZ:iusSt?")) != -1) {
+         char **new;
+ 	switch (c) {
+ 	case 'c':
+@@ -5607,7 +5607,7 @@
+      * but only handle the -L option 
+      */
+     llp_dir = SHARED_CORE_DIR;
+-    while ((c = getopt(argc, argv, "D:C:c:Xd:f:vVhlL:SZ:t")) != -1) {
++    while ((c = getopt(argc, argv, "D:C:c:Xd:f:vVhlL:SZ:t?")) != -1) {
+ 	switch (c) {
+ 	case 'D':
+ 	case 'C':
+>Audit-Trail:
+
+From: "Ralf S. Engelschall" <rse@engelschall.com>
+To: y-koga@jp.FreeBSD.org
+Cc: apbugs@apache.org
+Subject: Re: general/2714: Command line option '-?' doesn't work.
+Date: Mon, 27 Jul 1998 17:14:23 +0200
+
+ In article <19980727083811.21620.qmail@hyperreal.org> you wrote:
+ 
+ >>Description:
+ > Command line option '-?' doesn't work. If you run with '-?' option, error message is printed.
+ >>How-To-Repeat:
+ > Run httpd with '-?' option.
+ >>Fix:
+ > Following patch is for 1.3.1:
+ 
+ > --- src/main/http_main.c.ORG  Tue Jul 14 18:57:56 1998
+ > +++ src/main/http_main.c  Mon Jul 27 17:25:28 1998
+ > @@ -4250,7 +4250,7 @@
+ >      ap_setup_prelinked_modules();
+ >  
+ >      while ((c = getopt(argc, argv,
+ > -                 "D:C:c:Xd:f:vVhlL:St"
+ > +                 "D:C:c:Xd:f:vVhlL:St?"
+ >  #ifdef DEBUG_SIGSTOP
+ >                   "Z:"
+ >  #endif
+ > @@ -5416,7 +5416,7 @@
+ >  
+ >      ap_setup_prelinked_modules();
+ >  
+ > -    while ((c = getopt(argc, argv, "D:C:c:Xd:f:vVhlZ:iusSt")) != -1) {
+ > +    while ((c = getopt(argc, argv, "D:C:c:Xd:f:vVhlZ:iusSt?")) != -1) {
+ >          char **new;
+ >   switch (c) {
+ >   case 'c':
+ > @@ -5607,7 +5607,7 @@
+ >       * but only handle the -L option 
+ >       */
+ >      llp_dir = SHARED_CORE_DIR;
+ > -    while ((c = getopt(argc, argv, "D:C:c:Xd:f:vVhlL:SZ:t")) != -1) {
+ > +    while ((c = getopt(argc, argv, "D:C:c:Xd:f:vVhlL:SZ:t?")) != -1) {
+ >   switch (c) {
+ >   case 'D':
+ >   case 'C':
+ 
+ Ops, there is a bug, yes. But be careful. According to getopt(3)
+ on my FreeBSD box:
+ 
+  | [..] The getopt() function returns -1 when the argument list is exhausted,
+  | or `?' if a non-recognized option is encountered. [...]
+ 
+ So, adding '?' is not correct, IMHO. Because then invalid options are no
+ longer catched. Instead the correct fix seems to be to change the httpd.8
+ document: Not -? should list the usage.  Instead something like -h should be
+ used. But because this is already used we usually first habe to rename it to
+ -L and then provide a -h which does what is expected: Show a little help by
+ giving the usage page.
+                                        Ralf S. Engelschall
+                                        rse@engelschall.com
+                                        www.engelschall.com
+
+From: Maybe TABOO <y-koga@jp.FreeBSD.org>
+To: rse@engelschall.com
+Cc: apbugs@apache.org
+Subject: Re: general/2714: Command line option '-?' doesn't work.
+Date: Tue, 28 Jul 1998 01:10:01 +0900 (JST)
+
+ "Ralf S. Engelschall" <rse@engelschall.com>:
+ > >>Description:
+ > > Command line option '-?' doesn't work. If you run with '-?' option, error message is printed.
+ > >>How-To-Repeat:
+ > > Run httpd with '-?' option.
+ > >>Fix:
+ > > Following patch is for 1.3.1:
+ ...snip...
+ > Ops, there is a bug, yes. But be careful. According to getopt(3)
+ > on my FreeBSD box:
+ > 
+ >  | [..] The getopt() function returns -1 when the argument list is exhausted,
+ >  | or `?' if a non-recognized option is encountered. [...]
+ > 
+ > So, adding '?' is not correct, IMHO. Because then invalid options are no
+ > longer catched. Instead the correct fix seems to be to change the httpd.8
+ 
+ Getopt() returns '?' after it prints error message such as
+ "progname: illegal option -- opt". So I think adding '?' is correct way.
+ 
+ Check the file /usr/src/lib/libc/stdlib/getopt.c on your system.
+ 
+ Regards,
+ 
+ -- Koga, Youichirou
+
+From: Marc Slemko <marcs@znep.com>
+To: Youichirou Koga <y-koga@jp.FreeBSD.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/2714: Command line option '-?' doesn't work.
+Date: Mon, 27 Jul 1998 09:42:36 -0700 (PDT)
+
+ On 27 Jul 1998, Youichirou Koga wrote:
+ 
+ > Command line option '-?' doesn't work. If you run with '-?' option, error message is printed.
+ > >How-To-Repeat:
+ > Run httpd with '-?' option.
+ 
+ What do you mean by "error message"?
+ 
+ I get:
+ 
+ httpd: illegal option -- ?
+ Usage: 1.3/src/httpd [-d directory] [-f file]
+                      [-C "directive"] [-c "directive"]
+                      [-v] [-V] [-h] [-l] [-S] [-t]
+ Options:
+   -d directory     : specify an alternate initial ServerRoot
+   -f file          : specify an alternate ServerConfigFile
+   -C "directive"   : process directive before reading config files
+   -c "directive"   : process directive after  reading config files
+   -v               : show version number
+   -V               : show compile settings
+   -h               : list available configuration directives
+   -l               : list compiled-in modules
+   -S               : show parsed settings (currently only vhost settings)
+   -t               : run syntax test for configuration files only
+ 
+ Which gives the exact output that you want from -? except for the first
+ line saying "illegal option" which is arguable.  I think that is by 
+ design.
+ 
+
+From: "Ralf S. Engelschall" <rse@engelschall.com>
+To: Maybe TABOO <y-koga@jp.FreeBSD.org>
+Cc: apbugs@apache.org
+Subject: Re: general/2714: Command line option '-?' doesn't work.
+Date: Mon, 27 Jul 1998 19:02:41 +0200
+
+ On Tue, Jul 28, 1998, Maybe TABOO wrote:
+ 
+ > > >>Description:
+ > > > Command line option '-?' doesn't work. If you run with '-?' option, error message is printed.
+ > > >>How-To-Repeat:
+ > > > Run httpd with '-?' option.
+ > > >>Fix:
+ > > > Following patch is for 1.3.1:
+ > ...snip...
+ > > Ops, there is a bug, yes. But be careful. According to getopt(3)
+ > > on my FreeBSD box:
+ > > 
+ > >  | [..] The getopt() function returns -1 when the argument list is exhausted,
+ > >  | or `?' if a non-recognized option is encountered. [...]
+ > > 
+ > > So, adding '?' is not correct, IMHO. Because then invalid options are no
+ > > longer catched. Instead the correct fix seems to be to change the httpd.8
+ > 
+ > Getopt() returns '?' after it prints error message such as
+ > "progname: illegal option -- opt". So I think adding '?' is correct way.
+ > 
+ > Check the file /usr/src/lib/libc/stdlib/getopt.c on your system.
+ 
+ Correct, but at least the error message is nasty. And the behavior that
+ getopt() really returns the "?" is not really portable I think, isn't it?
+ When one wants the usage list one doesn't expect an error ;-) I've now already
+ prepared a patch which tried to cleanup this option stuff. But nevertheless
+ thanks for your report and inital patch.
+ 
+                                        Ralf S. Engelschall
+                                        rse@engelschall.com
+                                        www.engelschall.com
+
+From: Koga Youichirou <y-koga@jp.FreeBSD.org>
+To: marcs@znep.com
+Cc: apbugs@hyperreal.org
+Subject: Re: general/2714: Command line option '-?' doesn't work.
+Date: Tue, 28 Jul 1998 04:35:55 +0900 (JST)
+
+ Marc Slemko <marcs@znep.com>:
+ > What do you mean by "error message"?
+ > 
+ > I get:
+ > 
+ > httpd: illegal option -- ?
+ 
+ This line is error message of getopt().
+ 
+ "Ralf S. Engelschall" <rse@engelschall.com>:
+ > Correct, but at least the error message is nasty. And the behavior that
+ > getopt() really returns the "?" is not really portable I think, isn't it?
+ 
+ I don't think its design is good, too. Probably the behavior was
+ designed that expects help message for illegal options, or it doesn't
+ take the trouble to return "?".
+ 
+ > When one wants the usage list one doesn't expect an error ;-)
+ 
+ My patch prevends an error when you use "-?"(as manual says).
+ If you use illegal options, printing an error is right behavior, isn't it?
+ 
+ -- Koga, Youichirou
+
+From: Marc Slemko <marcs@znep.com>
+To: Koga Youichirou <y-koga@jp.FreeBSD.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/2714: Command line option '-?' doesn't work.
+Date: Mon, 27 Jul 1998 22:31:34 -0700 (PDT)
+
+ On Tue, 28 Jul 1998, Koga Youichirou wrote:
+ 
+ > Marc Slemko <marcs@znep.com>:
+ > > What do you mean by "error message"?
+ > > 
+ > > I get:
+ > > 
+ > > httpd: illegal option -- ?
+ > 
+ > This line is error message of getopt().
+ 
+ So?  I still really don't see the problem.  It tells you to use -? to get
+ a list of options, -? gives you a list of options.
+ 
+ 
+
+From: Koga Youichirou <y-koga@jp.FreeBSD.org>
+To: marcs@znep.com
+Cc: apbugs@hyperreal.org
+Subject: Re: general/2714: Command line option '-?' doesn't work.
+Date: Tue, 28 Jul 1998 14:44:21 +0900 (JST)
+
+ Marc Slemko <marcs@znep.com>:
+ > > > What do you mean by "error message"?
+ > > > 
+ > > > I get:
+ > > > 
+ > > > httpd: illegal option -- ?
+ > > 
+ > > This line is error message of getopt().
+ > 
+ > So?  I still really don't see the problem.  It tells you to use -? to get
+ > a list of options, -? gives you a list of options.
+ 
+ "-?" is NOT an illegal option as the manual says, so that httpd should
+ not show such error message.
+ 
+ -- Koga, Youichirou
+
+From: Marc Slemko <marcs@znep.com>
+To: Koga Youichirou <y-koga@jp.FreeBSD.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/2714: Command line option '-?' doesn't work.
+Date: Mon, 27 Jul 1998 23:01:33 -0700 (PDT)
+
+ On Tue, 28 Jul 1998, Koga Youichirou wrote:
+ 
+ > Marc Slemko <marcs@znep.com>:
+ > > > > What do you mean by "error message"?
+ > > > > 
+ > > > > I get:
+ > > > > 
+ > > > > httpd: illegal option -- ?
+ > > > 
+ > > > This line is error message of getopt().
+ > > 
+ > > So?  I still really don't see the problem.  It tells you to use -? to get
+ > > a list of options, -? gives you a list of options.
+ > 
+ > "-?" is NOT an illegal option as the manual says, so that httpd should
+ > not show such error message.
+ 
+ It is just a matter of semantics.
+ 
+ The docs say -? gives a list of options, and it does.  It was designed
+ this way so that -? is reserved as an "invalid option" that can be and has
+ been documented as the thing to use to end up with a list of options.
+ 
+ 
+Release-Changed-From-To: 1.3.1 and before-1.3.1
+Release-Changed-By: lars
+Release-Changed-When: Thu Jul 30 12:53:43 PDT 1998
+Class-Changed-From-To: sw-bug-change-request
+Class-Changed-By: lars
+Class-Changed-When: Thu Jul 30 12:53:43 PDT 1998
+Severity-Changed-From-To: serious-non-critical
+Severity-Changed-By: lars
+Severity-Changed-When: Thu Jul 30 12:53:43 PDT 1998
+State-Changed-From-To: open-closed
+State-Changed-By: rse
+State-Changed-When: Fri Dec 18 03:15:03 PST 1998
+State-Changed-Why:
+Command line is now cleaned up.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

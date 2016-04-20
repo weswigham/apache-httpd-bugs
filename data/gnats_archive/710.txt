@@ -1,0 +1,184 @@
+From nobody@hyperreal.com  Mon Jun  9 21:38:48 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id VAA17591;
+	Mon, 9 Jun 1997 21:38:48 -0700 (PDT)
+Message-Id: <199706100438.VAA17591@hyperreal.com>
+Date: Mon, 9 Jun 1997 21:38:48 -0700 (PDT)
+From: Lew Payne <lewiz@netcom.com>
+Reply-To: lewiz@netcom.com
+To: apbugs@hyperreal.com
+Subject: IP-based VirtualHosts Broken.
+X-Send-Pr-Version: 3.2
+
+>Number:         710
+>Category:       config
+>Synopsis:       IP-based VirtualHosts Broken.
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun  9 21:40:01 1997
+>Last-Modified:  Sun Jul 20 17:09:05 PDT 1997
+>Originator:     lewiz@netcom.com
+>Organization:
+>Release:        Apache/1.2.0
+>Environment:
+FreeBSD lppi.com 2.2.1-RELEASE FreeBSD 2.2.1-RELEASE #0: Fri Jun  6 19:20:41 PDT 1997
+        lewis@lppi.com:/usr/src/sys/compile/WWW  i386
+>Description:
+  Requests for a particular IP address, as defined in <VirtualHost>
+directives, are ignored if the ServerName within the directive does
+not match the browser's request!  That is, IP-based virtual hosts do
+not work properly -- They are matched according to non-IP host rules.
+This causes a big problem for browsers that do not supply the server
+name in their request, and for browsers reaching the site via one of
+its aliases, such as "site.com" in lieu of "www.site.com".
+
+DNS configuration:
+------------------
+persiankitty.com      A  209.81.0.2
+                      A  209.81.0.3
+
+www.persiankitty.com  A  209.81.0.2
+                      A  209.81.0.3
+
+www.pay4play.com      A  209.81.0.6
+pay4play.com          A  209.81.0.6
+
+  A request for 209.81.0.2, with a supplied matching servername of
+"www.persiankitty.com" gets set to the right VirtualHost.  The same
+IP request, with a non-matching name of "persiankitty.com" does not
+get processed by IP -- it goes to the default host.  A ServerAlias
+directive might help this, but that still leaves a problem:  An IP
+request, with NO servername specified by the browser, does not get
+processed by IP -- it goes to the default host also.  Enabling and
+monitoring logs proves my conclusion.
+  As a test, I removed the "ServerName" directive from <VirtualHost>.
+In that instance, requests with NO servername specified went to the
+correct VirtualHost.  However, requests with either name specified
+went to the default host.  Consistent with my theory.
+  This applies to any of the IP addresses my systems hosts.  This
+same behavior is seen on all three of my server machines!!!
+
+ifconfig fxp0
+-------------
+fxp0: flags=8843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST> mtu 1500
+        inet 209.81.0.2 netmask 0xffffff00 broadcast 209.81.0.255
+        inet 209.81.0.3 netmask 0xffffff00 broadcast 209.81.0.255
+        inet 209.81.0.6 netmask 0xffffff00 broadcast 209.81.0.255
+        ether 00:a0:c9:59:b5:e0
+
+Relevant httpd.conf items:
+-------------------------
+ServerName     www.persiankitty.com
+ServerAdmin    lewis@persiankitty.com
+ServerRoot     /usr/local/etc/httpd
+ErrorLog       logs/error_log
+TransferLog    logs/default_log
+LogFormat      "%{[%D-%T]}t %{host}i %h [%T] %b \"%r\" %>s"
+CustomLog      logs/refer_log "%{referer}i -> %U"
+PidFile        /var/run/httpd.pid
+
+<VirtualHost 209.81.0.2 209.81.0.3>
+  ServerAdmin   lewis@persiankitty.com
+  ServerName    www.persiankitty.com
+  DocumentRoot  /home/persian/public_html
+  #LogFormat    "%{%D %T}t [%T] %h %b \"%r\" %>s"
+  TransferLog   /dev/null
+  #ErrorLog     /home/persian/logs/error_log
+  AddType       application/x-httpd-php .html
+</VirtualHost>
+
+<VirtualHost 209.81.0.6>
+  ServerAdmin   lewis@persiankitty.com
+  ServerName    www.pay4play.com
+  DocumentRoot  /home/p4play/public_html
+  LogFormat     "%{%D %T}t [%T] %h %b \"%r\" %>s"
+  TransferLog   /home/p4play/logs/trans_log
+  ErrorLog      /home/p4play/logs/error_log
+  AddType       application/x-httpd-php .html
+</VirtualHost>
+>How-To-Repeat:
+Simple!!  Go to http://209.81.0.6/ and then to www.pay4play.com --
+both should send you to the same virtual host, but they don't !!
+>Fix:
+Clean up non-IP based virtual hosting code, which seems to have
+bled into IP-based virtual hosting code
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Mon Jun  9 22:19:21 PDT 1997
+State-Changed-Why:
+While the current virtual host code could be argued to
+be broken and it isn't pretty or easy to understand how
+it works, I think the problem you are having is a result
+of your configuration.
+
+You are telling Apache that _both_ the main server and
+a virtualhost are supposed to be www.persiankitty.com.
+That doesn't make any sense and confuses Apache.  You
+can not have both the main server and a virtual host
+answer to the same IP address, which is what you are doing
+by giving them both the same ServerName.
+
+See http://www.apache.org/docs/vhosts-in-depth.html for
+an explaination of some of your problems.  Fix that, and
+the rest may or may not work.  The pay4play one is the only
+one for which it isn't apparent why it is behaving how it
+is.  Clean up the others first and see if it starts working
+properly.
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Lew Payne <lewiz@netcom.com>
+Subject: Re: config/710: IP-based VirtualHosts Broken.
+Date: Mon, 9 Jun 1997 22:21:53 -0700 (PDT)
+
+ 
+ It goes to the "main server" because you've defined the main server to be
+ www.persiankitty.com, and so the VirtualHost is considered a name-based
+ (i.e. HTTP/1.1) virtualhost.  One option is to use <VirtualHost _default_>
+ for the persiankitty server.  Another option is to use "ServerName
+ localhost" as the global servername... since you don't want to serve hits
+ from the global server (at least it doesn't sound like you want to), then
+ you should probably just use _default_. 
+ 
+ Another option is to not use the ip address of the server itself (which
+ I'm assuming is 209.81.0.2). 
+ 
+ Dean
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sun Jul 20 17:09:04 PDT 1997
+State-Changed-Why:
+Virtualhosts are hopelessly broken (in my opinion) in 1.2 and 1.1
+for certain cases.  You seem to be tickling one of them.  But I've
+never seen a setup that couldn't be solved by using the following
+(non-inuitive) config:
+
+ServerName localhost
+<VirtualHost a.b.c.1>
+ServerName www.virtualhost1.com
+...
+</VirtualHost>
+<VirtualHost a.b.c.2>
+ServerName www.virtualhost2.com
+....
+</VirtualHost>
+
+In short, don't use the "global" or "main" server at all, stick
+everything in virtualhosts.  Then fool Apache into thinking that
+the main server's address is 127.0.0.1, which is an address you're
+quite unlikely to try serving as a virtualhost.
+
+If that doesn't do the job then tell me and I'll re-open the
+PR.
+
+Dean
+>Unformatted:
+
+
+

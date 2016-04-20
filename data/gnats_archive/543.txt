@@ -1,0 +1,168 @@
+From nobody@hyperreal.com  Sun May  4 11:37:21 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id LAA15486;
+	Sun, 4 May 1997 11:37:21 -0700 (PDT)
+Message-Id: <199705041837.LAA15486@hyperreal.com>
+Date: Sun, 4 May 1997 11:37:21 -0700 (PDT)
+From: Marc Slemko <marcs@znep.com>
+Reply-To: marcs@znep.com
+To: apbugs@hyperreal.com
+Subject: "%2F" not allowed in VGI script PATH_INFO
+X-Send-Pr-Version: 3.2
+
+>Number:         543
+>Category:       protocol
+>Synopsis:       "%2F" not allowed in VGI script PATH_INFO
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun May  4 11:40:00 1997
+>Closed-Date:    Fri Jun 13 14:59:02 PDT 2003
+>Last-Modified:  Fri Jun 13 14:59:02 PDT 2003
+>Originator:     marcs@znep.com
+>Release:        1.2
+>Organization:
+>Environment:
+N/A
+[entered from mail to make a formal PR]
+>Description:
+If foo is a script, and you try to access foo/bar/baz, it will run foo and
+pass /bar/baz as PATH_INFO.  If you try to access foo/bar%2fbaz, it will
+return NOT_FOUND because of unescape_url in util.c:
+
+                if (url[x] == '/' || url[x] == '\0') badpath = 1;
+
+Smells like a bug.  Once again (sigh) no time to look more deeply, would
+appreciate if someone familiar with that area take a look...
+>How-To-Repeat:
+
+>Fix:
+[paraphrase from Roy]
+If you reduce all %2f occurrences to '/' before doing any processing
+on the path, that should do it - at the expense of not being able to
+handle any filenames that actually include '/'
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: fielding
+State-Changed-When: Fri Sep 19 09:34:26 PDT 1997
+State-Changed-Why:
+=========================================================================
+It is to prevent a CGI security hole.  Say you had a CGI script that used
+the PATH_INFO to select other files (as is the most common use for path
+info), and I sent you
+
+      script/..%2F..%2F..%2Fetc%2Fpasswd
+
+(keeping in mind that a person can make multiple requests looking for
+just the right combination).  The NCSA server (when we last tested it)
+will perform its access checks before unescaping the %2F, and then provide
+the script with PATH_INFO="/../../../etc/passwd".
+
+The core Apache server protects against this for its own files, but CGI
+authors are, ummm, security-challenged.  Some happily take the PATH_INFO
+and open it relative to whatever their script's root document may be.
+
+      dir/../../../etc/passwd
+
+So, Apache does not allow %2F to be in PATH_INFO, which is a legitimate
+thing to do given that the server controls the path namespace.
+
+Now, I know that this causes problems with some scripts that depend on
+receiving encoded paths (as does a recent version of dienst, for
+example).  There are three solutions for such systems:
+
+    1) Don't use path info to pass arguments containing embedded "/"
+
+    2) Modify Apache so that it passes-on the %2F, which technically
+       violates the CGI spec and requires the script to be apache-dependent.
+
+    3) Modify Apache so that it doesn't reject %2F, which may make your
+       server a security problem.  In that case, I'd recommend continuing
+       to reject any occurrence of "..%2F", since that is the main culprit.
+
+=========================================================================
+
+We do intend to fix it using some other method, like replacing %2F with /
+before doing any path checks.  However, replacing one security plug with
+another is not an easy decision since it requires that someone trace how
+the path is being processed throughout Apache, and we simply have had
+too many other things to do.
+
+Release-Changed-From-To: 1.2b?-1.2
+Release-Changed-By: fielding
+Release-Changed-When: Fri Sep 19 09:34:26 PDT 1997
+
+From: Mohit Aron <aron@cs.rice.edu>
+To: apbugs@apache.org
+Cc:  Subject: Re: mod_cgi/543: "%2F" not allowed in VGI script PATH_INFO
+Date: Sun, 27 Dec 1998 18:21:58 -0600 (CST)
+
+ Hi,
+ 	I have already posted this as incident 3589. Please look that up
+ to see what I  want to say on this issue. 
+ 
+ I manage the Dienst software at Rice Univ. I'm willing to live with a
+ somewhat slower Apache that also performs access checks after unescaping
+ the URL. Can this be provided as a configuration option in the next release
+ of Apache. Of course the correct behavior would be to do all access checks
+ after unescaping the URL.
+ 
+ 
+ 
+ - Mohit
+ 
+
+From: sinck@ugive.com
+To: apbugs@apache.org
+Cc:  
+Subject: Re: mod_cgi/543: "%2F" not allowed in VGI script PATH_INFO
+Date: Wed, 4 Oct 2000 10:50:43 -0700
+
+ I ran into this with one of the typical offending URLs.  My problem is
+ that the script isn't even on my site.  My 404 Error Document/script isn't
+ being called.
+ 
+ eg:
+ 
+ http://127.0.0.1/blahblah%2f
+ 
+ Throws a vanilla 404 page rather than the custom 404 Handler (that
+ works).
+ 
+ Should the 404 handler: 
+ 
+        ErrorDocument 404 /perl/wtf.cgi
+ 
+ care that the lamer threw a %2f in the url?  I don't think so, at
+ least initially.
+ 
+ I think the security isn't immediately compromised by letting the
+ custom 404 fire, since the standard places for the variables
+ (QUERY_STRING, PATH_INFO, etc) aren't in the 'normal' places.  The 404
+ writer would have to deliberately be stupid.
+ 
+ Not that that doesn't happen, of course.
+ 
+ Thanks for your attention.
+ 
+ David Sinck
+State-Changed-From-To: analyzed-closed
+State-Changed-By: coar
+State-Changed-When: Fri Jun 13 14:59:02 PDT 2003
+State-Changed-Why:
+This has been addressed in Apache 2.0.46 through the AllowEncodedSlashes directive.
+Category-Changed-From-To: mod_cgi-protocol
+Category-Changed-By: coar
+Category-Changed-When: Fri Jun 13 14:59:02 PDT 2003
+
+>Unformatted:
+
+

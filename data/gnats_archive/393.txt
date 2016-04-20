@@ -1,0 +1,129 @@
+From nobody@hyperreal.com  Mon Apr 14 11:23:46 1997
+Received: (from nobody@localhost)
+          by hyperreal.com (8.8.4/8.8.4)
+	  id LAA18670; Mon, 14 Apr 1997 11:23:46 -0700 (PDT)
+Message-Id: <199704141823.LAA18670@hyperreal.com>
+Date: Mon, 14 Apr 1997 11:23:46 -0700 (PDT)
+From: Artur Skawina <skawina@usa.net>
+Reply-To: skawina@usa.net
+To: apbugs@hyperreal.com
+Subject: The implementation of fancy directory indexing is irritating
+X-Send-Pr-Version: 3.2
+
+>Number:         393
+>Category:       mod_dir
+>Synopsis:       FancyIndexing IMG tags should include HEIGHT and WIDTH attributes
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Apr 14 11:30:01 1997
+>Last-Modified:  Sun Jun 29 06:47:06 PDT 1997
+>Originator:     skawina@usa.net
+>Organization:
+>Release:        1.2b8
+>Environment:
+Linux 2.0.30
+GCC 2.7.2
+>Description:
+When FancyIndexing is turned on, the server outputs an <IMG...> tag before
+every directory item, but it doesn't specify the size of this icon.
+
+This is very irritating if the requested directory contains many (100+)
+different files and the fetching of one (or more) icon stalls.
+
+The current behavior causes:
+a) If the browser-server link is slow and/or the icon-fetch stalls
+   the browser does not display the index, it waits for the icons to load.
+b) If the user turns off the automatic loading of images in the browser,
+   the directory index is displayed while it's loaded, but the browser's
+   (builtin) default image is much bigger than necessary. This limits
+   the number of files displayed on one page significantly.
+>How-To-Repeat:
+Browse any directory with many files and no 'index.html' (eg. a site which gives 
+HTTP access to FTP space; like some sunsite mirrors).
+The site's icons should NOT be in the browsers cache initially.
+>Fix:
+The following patch adds a new parameter to IndexOptions - IconsHaveSize.
+When IconsHaveSize is set (eg. 'IndexOptions FancyIndexing IconsHaveSize')
+the server outputs:
+
+<IMG SRC="/icons/back.gif" ALT="[DIR]" WIDTH="20" HEIGHT="22"> <A HREF="/">Parent Directory</A>...
+
+instead of:
+
+<IMG SRC="/icons/back.gif" ALT="[DIR]"> <A HREF="/">Parent Directory</A>...
+
+The width and size values are currently hardwired as determining them in
+real time would be inefficient. However ICONSIZE could be a function, maybe
+taking the values from a configuration file.
+
+--- apache_1.2b8/src/mod_dir.c.dist     Mon Apr 14 18:08:54 1997
++++ apache_1.2b8/src/mod_dir.c  Mon Apr 14 18:19:42 1997
+@@ -81,6 +81,9 @@
+ #define SUPPRESS_LAST_MOD 8
+ #define SUPPRESS_SIZE 16
+ #define SUPPRESS_DESC 32
++#define ICONS_HAVE_SIZE 64
++
++#define ICONSIZE " WIDTH=\"20\" HEIGHT=\"22\""
+ 
+ struct item {
+     char *type;
+@@ -203,6 +206,8 @@
+             opts |= SUPPRESS_SIZE;
+         else if(!strcasecmp(w,"SuppressDescription"))
+             opts |= SUPPRESS_DESC;
++        else if(!strcasecmp(w,"IconsHaveSize"))
++            opts |= ICONS_HAVE_SIZE;
+         else if(!strcasecmp(w,"None"))
+             opts = 0;
+        else
+@@ -633,7 +638,12 @@
+                       escape_html(scratch, ar[x]->icon ?
+                                   ar[x]->icon : d->default_icon),
+                       "\" ALT=\"[", (ar[x]->alt ? ar[x]->alt : "   "),
+-                      "]\">", NULL);
++                      "]\"",
++                      ((dir_opts & ICONS_HAVE_SIZE) ?
++                          ICONSIZE
++                      :
++                          ""),
++                      ">", NULL);
+             }
+             if(dir_opts & ICONS_ARE_LINKS) 
+                 rputs("</A>", r);%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Apr 14 12:51:16 PDT 1997
+State-Changed-Why:
+Thanks for the patch, it looks good.  I'll put it on the
+list of "contrib" stuff that we're planning to assemble for
+1.2 release.  Unfortunately since 1.2 is in feature freeze
+right now we can't add it directly.
+
+Thanks
+Dean
+Comment-Added-By: coar
+Comment-Added-When: Sun Jun 29 06:47:05 PDT 1997
+Comment-Added:
+Two new keywords, IconHeight and IconWidth, have been added
+to the IndexOptions directive for a future release of
+Apache.  If not specified with values, the default Apache
+icon dimensions will be used in the HEIGHT and WIDTH
+attributes.  Specific values can be given, however, if
+a different icon set is in use.
+
+Thank you for using Apache!
+#ken	:-)}
+Synopsis-Changed-From: The implementation of fancy directory indexing is irritating
+Synopsis-Changed-To: FancyIndexing IMG tags should include HEIGHT and WIDTH attributes
+Synopsis-Changed-By: coar
+Synopsis-Changed-When: Sun Jun 29 06:47:05 PDT 1997
+>Unformatted:
+
+

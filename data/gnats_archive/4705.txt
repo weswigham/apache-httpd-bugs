@@ -1,0 +1,123 @@
+Received: (qmail 1927 invoked by uid 2012); 6 Jul 1999 20:03:49 -0000
+Message-Id: <19990706200349.1926.qmail@hyperreal.org>
+Date: 6 Jul 1999 20:03:49 -0000
+From: Paul Rubin <prubin@brodia.com>
+Reply-To: prubin@brodia.com
+To: apbugs@hyperreal.org
+Subject: mod_jserv crashes on startup
+X-Send-Pr-Version: 3.2
+
+>Number:         4705
+>Category:       mod_jserv
+>Synopsis:       mod_jserv crashes on startup
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jul  6 13:10:01 PDT 1999
+>Last-Modified:  Mon Jul 12 23:28:07 PDT 1999
+>Originator:     prubin@brodia.com
+>Organization:
+>Release:        Stronghold 2.4.2 (Apache 1.3.6); mod_jserv 1.0
+>Environment:
+Solaris 2.6, Sun java
+>Description:
+During Apache's module initialization phase, Apache crashes while running
+jserv_init the second time. Here is text from an earlier message which
+talin@brodia.com forwarded to the mod_jserv mailing list: 
+
+The problem is that jserv_init does something like
+	jserv_protocol_initall (...);
+	...
+	jserv_pool = ap_make_sub_pool (p);
+	...
+	return; }
+
+where jserv_protocol_initall does something with jserv_pool if jserv_pool
+is not NULL.  Since jserv_pool is initially NULL, this works ok.  But after
+jserv_init returns, ap_clear_pool destroys jserv_pool (at least under -X
+from standalone_main, and apparently also with multiple processes, though
+I haven't traced it).  Then later, jserv_init gets called again, so it can
+reinitialize jserv_pool.  Except before jserv_pool gets set, jserv_protocol_install
+tries to use the *old* value of jserv_pool, which now points to freed memory.
+
+This hadn't been causing any problems here til recently.  I think what has happened
+is this.  ap_clear_pool leaves the old jserv_pool on the alloc.c free list.  It also frees
+some other stuff which also goes on the free list.  Until recently, between the
+ap_clear_pool call and resetting jserv_pool, the memory pointed to by jserv_pool
+hadn't actually been allocated by anyone else, so its contents were undisturbed
+and jserv_protocol_initall didn't crash.  Recenty I changed my Stronghold configuration
+to have some more certificate info or something like that.  That meant that more stuff
+got allocated; in particular, the block still pointed to by jserv_pool got allocated and
+trashed.  I think turning on ALLOC_DEBUG would confirm this pretty quickly, though
+I didn't try running with ALLOC_DEBUG turned on.
+
+The idea of the jserv_pool = NULL patch is to make sure that jserv_protocol_initall
+doesn't try to use the now-freed jserv_pool.  But I'm not sure this is the right fix.
+I don't understand why it is that jserv_pool isn't allocated BEFORE calling the
+other stuff.  But I figured the implementers did it that way for a reason, so I 
+didn't change it.  Maybe someone who understands the logic of the program better
+than I do can answer this.
+
+Any help would be much appreciated.  Thanks.
+
+Paul Rubin
+Brodia
+>How-To-Repeat:
+I'm not sure how to suggest doing this with regular apache.  In my case, it's
+happening because subsequent module initializations are doing enough memory
+allocation *after* running jserv_init for the first time that new_block()
+has to be called in alloc.c.  I'm using Stronghold whose SSL security module
+in fact allocates enough memory to get the old jserv_pool and clobber it.
+However, SSL is not part of normal apache and that might be why this problem
+hasn't shown up--other modules just might not be palloc'ing so much.  It
+only started happening to me recently, when I started using SSL certificates
+with more stuff in them than my old certificates.  Prior to that, everything
+appeared to work fine.
+
+I've heard that other Stronghold users were having trouble with mod_jserv,
+though I don't know the reason.  This might have something to do with it.
+
+If you *really* want to reproduce the crash on your own system, 
+I guess I could assist in setting up a similar Stronghold configuration.
+I think someone more familiar with Apache internals than
+I am is likely to be able to see right away from what
+I've described (in the problem description and my fix
+description) what the right thing to do is, though.
+>Fix:
+I tried putting the line 
+
+	jserv_pool = NULL;
+
+at the beginning of the jserv_init function.  This stops the
+crashes (by making sure the old pointer isn't re-used) but I don't know if it
+has bugs of its own.  It's certainly an ugly fix.  Any advice from the
+maintainers would be appreciated.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: ed
+State-Changed-When: Mon Jul 12 23:28:03 PDT 1999
+State-Changed-Why:
+this was a bug in the initialization procedure, and
+has been updated in CVS.  the next release will contain
+the bugfix.
+
+thanks for the bug report!
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

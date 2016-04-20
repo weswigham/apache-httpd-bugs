@@ -1,0 +1,151 @@
+Received: (qmail 49862 invoked by uid 501); 6 Jan 2002 16:08:21 -0000
+Message-Id: <20020106160821.49861.qmail@apache.org>
+Date: 6 Jan 2002 16:08:21 -0000
+From: David Ong <david@postboy.net>
+Reply-To: david@postboy.net
+To: submit@bugz.apache.org
+Subject: ScriptAlias problem allows .exe's in the scriptaliased directory to be executed
+X-Send-Pr-Version: 3.110
+
+>Number:         9385
+>Category:       config
+>Synopsis:       ScriptAlias problem allows .exe's in the scriptaliased directory to be executed
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Jan 06 08:10:01 PST 2002
+>Closed-Date:    Sun Jan 06 10:01:33 PST 2002
+>Last-Modified:  Sun Jan  6 10:50:00 PST 2002
+>Originator:     david@postboy.net
+>Release:        1.3.22
+>Organization:
+>Environment:
+Apache 1.3.22 for Win32 on Win2000 SP2
+>Description:
+ From: http://www.securiteam.com/windowsntfocus/5ZP030U60U.html
+
+As advised in the installation text that comes with all versions of PHP, when installing PHP.EXE for use on a windows machine installed with Apache, the user should insert a few lines of code into the Apache "httpd.conf". These exact lines are shown here:
+   ScriptAlias /php/ "c:/php/"
+   AddType application/x-httpd-php .php
+   Action application/x-httpd-php "/php/php.exe"
+A security vulnerability arises when placing the ScriptAlias line above. This line effectively maps the alias /php/ to your web document root such that typing "http://www.example.com/php/" will actually try to access in this case "c:\php\". Please note that the last "/" on the end of the URL has to exist for this to work ("http://www.example.com/php" will not work). At this point your server will respond with "Access Denied", however if you now specify the URL "http://www.example.com/php/php.exe" , you will see the error "No input file specified". This error is actually returned by php.exe, which you have just executed on the server.
+There are many exploits that can happen with this setup (some very serious, which could be used to gain root access).
+
+ Details 
+Exploit 1: 
+It is possible to read any file remotely on the server, even across drives with the following URL construct:
+
+ "http://www.example.com/php/php.exe?c:\winnt\repair\sam"
+
+PHP.EXE will parse the sam file "c:\winnt\repair\sam" and return it to the browser for download (this is the Windows NT password file).
+
+ "http://www.example.com/php/php.exe?d:\winnt\repair\sam"
+
+PHP.EXE will return the same file on the D: drive.
+
+The above SAM file can then be used to decrypt all the Account Passwords for the Server.
+
+Exploit 2: 
+If you specify a file that exists in the php directory (different files exist depending on the version of PHP), the web server will try to execute this file and will throw back an error reporting the install directory of php. So in PHP4, for example, you would specify the following line:
+
+ "http://www.example.com/php/php4ts.dll"
+
+The error returned by the web server would be: " couldn't create child process: 22693: C:/php/php4ts.dll " showing the install path of PHP.
+>How-To-Repeat:
+http://www.example.com/php4/php.exe?c:\winnt\repair\sam
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Sun Jan  6 10:01:32 PST 2002
+State-Changed-Why:
+There is nothing Apache can do about this, it is a php bug.  If you tell Apache to allow execution of everything in /php/ as a script, then... that's what it will do.  
+
+From: Marc Slemko <marcs@znep.com>
+To: David Ong <david@postboy.net>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: config/9385: ScriptAlias problem allows .exe's in the scriptaliased
+ directory to be executed 
+Date: Sun, 6 Jan 2002 10:42:55 -0800 (PST)
+
+ The php docs have a description of various ways to setup the PHP module
+ with an Apache webserver, and some of the security implications of doing
+ it various ways.  I have no idea if these docs are accurate or if there
+ are bugs preventing things from working the way they should, but that is a
+ php issue.
+ 
+ On Mon, 7 Jan 2002, David Ong wrote:
+ 
+ > ok, i understand. but is there anything i can do to prevent this? 
+ > (now people can read any file on the server)
+ > 
+ > 
+ > Regards
+ > David
+ > 
+ > 
+ > 
+ > -----  &lt;marc@apache.org&gt; wrote:
+ > > [In order for any reply to be added to the PR 
+ > > database, you need]
+ > > [to include <apbugs@Apache.Org> in the Cc line and 
+ > > make sure the]
+ > > [subject line starts with the report component and 
+ > > number, with ]
+ > > [or without any 'Re:' prefixes (such as 
+ > > "general/1098:" or ]
+ > > ["Re: general/1098:"). If the subject doesn't match 
+ > > this ]
+ > > [pattern, your message will be misfiled and ignored. 
+ > > The ]
+ > > ["apbugs" address is not added to the Cc line of 
+ > > messages from ]
+ > > [the database automatically because of the potential 
+ > > for mail ]
+ > > [loops. If you do not include this Cc, your reply 
+ > > may be ig- ]
+ > > [nored unless you are responding to an explicit 
+ > > request from a ]
+ > > [developer. Reply only with text; DO NOT SEND 
+ > > ATTACHMENTS! ]
+ > > 
+ > > 
+ > > Synopsis: ScriptAlias problem allows .exe's in the 
+ > > scriptaliased directory to be executed
+ > > 
+ > > State-Changed-From-To: open-closed
+ > > State-Changed-By: marc
+ > > State-Changed-When: Sun Jan  6 10:01:32 PST 2002
+ > > State-Changed-Why:
+ > > There is nothing Apache can do about this, it is a 
+ > > php bug. If you tell Apache to allow execution of 
+ > > everything in /php/ as a script, then... that's what it 
+ > > will do.
+ > > 
+ > > 
+ > 
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

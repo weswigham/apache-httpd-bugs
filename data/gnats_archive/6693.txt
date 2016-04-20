@@ -1,0 +1,442 @@
+Received: (qmail 54982 invoked by uid 501); 16 Oct 2000 13:15:54 -0000
+Message-Id: <20001016131554.54977.qmail@locus.apache.org>
+Date: 16 Oct 2000 13:15:54 -0000
+From: Michael Long <mlong@infoave.net>
+Reply-To: mlong@infoave.net
+To: submit@bugz.apache.org
+Subject: [PATCH] Tru64 UNIX Enhancements Patch for Apache 1.3.14
+X-Send-Pr-Version: 3.110
+
+>Number:         6693
+>Category:       os-osf
+>Synopsis:       [PATCH] Tru64 UNIX Enhancements Patch for Apache 1.3.14
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Oct 16 06:20:00 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     mlong@infoave.net
+>Release:        1.3.14
+>Organization:
+apache
+>Environment:
+Compaq Tru64 UNIX/Digital UNIX/OSF - All Versions
+>Description:
+Tru64 UNIX Enhancements Patch for Apache  1.3.14
+
+Michael Long - mlong@mlong.org - October 2000
+
+Files affected:
+INSTALL
+src/Configure
+src/helpers/GuessOS
+src/include/ap-config.h
+src/main/alloc.c
+src/main/http_main.c
+
+Description:
+
+This patch is essentially a "PORT" patch, enhancing support for 
+Compaq Tru64 systems. It also provides one other change for all systems and
+includes two minor documentation changes.
+
+I'll be more than glad to do this patch for 2.0a if you can resolve PR#6678 for me
+
+Details:
+
+This patch provides the following changes for all systems:
+
+1. If NO_SLACK was defined, no warning was given when apache
+   ran out of file descriptors. Instead, apache would die
+   in silence.  Added a error message to http_main.c which
+   prints out an error if the FD cannot be obtained and directs
+   them to go read http://httpd.apache.org/docs/misc/descriptors.html
+
+2. Update INSTALL file to give "typical" arguments for DSO support
+   --enable-rule=SHARED_CORE --enable-module=so. I figured while
+   I was updating INSTALL to refer to the OS as "Tru64 UNIX" I 
+   might as well include this guy's change as well since he
+   has a point :) [PR#5540]
+
+
+This patch provides the following changes for Compaq Tru64 UNIX
+(formerly known as Digital UNIX and OSF/1):
+
+1. Redid helpers/GuessOS OSF portion. It now detects the version
+   variant (4.0B, 5.0A, etc.) and has been broken down into
+   logical sections according to apache functionality. See #2
+
+2. Configure now configures according to different Tru64 versions.
+   -4.0+ systems get -msym (see later)
+   -4.0D+ systems get SSI_FD_NEWMAX (see later)
+   -5.0/5.0A/5.1 systems get NO_SLACK (see later)
+   -Infrastructure for other "per version" changes
+   -"Digital UNIX" text changed to "Tru64 UNIX" when appropriate
+
+3. Configure sets NO_SLACK for 5.0, 5.0A, and 5.1 systems. I 
+   discovered that apache would run out of file descriptors
+   after 63 iterations. I traced it down to a bug in Tru64 UNIX
+   beginning with 5.0. When you close(FD) after the fcntl F_DUPED,
+   the problem arrises. It is no doubt worse on systems with
+   lots of vhosts.  The log will show "cannot open a file
+   descriptor above 15". I notified Compaq and they are working
+   on a patch to the OS but enabling NO_SLACK by default should fix the
+   problem anyway. So essentially slack works up to 4.0G, then
+   fails for 5.0/5.0A/5.1 and should work again in the next version
+   (5.1A or 5.2...whatever Compaq calls it).
+
+4. Update INSTALL file to rename Digital UNIX to Compaq Tru64 UNIX.
+
+5. Added LDFLAGS_SHLIB -mysm back for 4.0 and 5.0 systems. This
+   was removed in apache 1.3.2 (PR#2969) since Configure could not
+   distinguish between 4.0 and previous versions. Since it can now,
+   I added back. Supposedly it makes DSO a little faster (?) but
+   since I compile all modules in statically I have not tested or tried
+   this.
+
+6. Added SSI_FD_NEWMAX support. Essentially this removes the ~2000
+   virtual host limit and allows you to host a large number of
+   vhosts. I expect people to run out of memory before they run out
+   of file descriptors. Essentially this change raises the per-process
+   file descriptor limit from 4096 to 65536.  This feature is
+   enabled by using -DOSF_SSI (Configure adds that automatically)
+   I tested it with 4000 virtual hosts and had no problem.  The main
+   issue here is max_vnodes (see below). [PR#5503]
+
+7. Added a message when apache runs out of file descriptors telling
+   the user to check his max-vnodes setting. This is a system-wide
+   OS setting which controls the total number of FDs on the system.
+   It can be changed (in memory) by doing "sysconfig -r vfs
+   max-vnodes=500000" for example, and it can be changed permanently
+   by added the proper line to /etc/sysconfigtab:
+
+   vfs:
+	max-vnodes=500000
+
+   This is again limited to their amount of memory. The theoritical
+   top limit to max-vnodes is 1,717,986,918, but they'll run out
+   of RAM long before that.
+
+8. For Tru64 UNIX, the HARD_SERVER_LIMIT is now set to 1024 instead
+   of 256. 256 seemed a bit low for alpha servers...they should
+   be able to handle lots of simultaneous connections.
+
+
+*** Configure.old	Sat Oct 14 16:32:31 2000
+--- Configure	Sat Oct 14 16:31:47 2000
+***************
+*** 518,528 ****
+  	 CFLAGS="$CFLAGS -DDARWIN"
+  	 DEF_WANTHSREGEX=yes
+  	 ;;
+!     *-dec-osf*)
+! 	OS='DEC OSF/1'
+  	 CFLAGS="$CFLAGS -DOSF1"
+  	 LIBS="$LIBS -lm"
+  	 ;;
+       *-qnx)
+  	 OS='QNX'
+  	 CFLAGS="$CFLAGS -DQNX"
+--- 518,540 ----
+  	 CFLAGS="$CFLAGS -DDARWIN"
+  	 DEF_WANTHSREGEX=yes
+  	 ;;
+!     # // BEGIN MLONG OSF ENHANCEMENTS //
+!     *-dec-osf-early|*-dec-osf-4early)
+! 	OS='Digital UNIX 4 or Earlier'
+  	 CFLAGS="$CFLAGS -DOSF1"
+  	 LIBS="$LIBS -lm"
+  	 ;;
++     *-dec-osf-4modern|*-dec-osf-5modern)
++ 	OS='Compaq Tru64 UNIX'
++ 	CFLAGS="$CFLAGS -DOSF1 -DOSF_SSI"
++ 	LIBS="$LIBS -lm"
++ 	;;
++     *-dec-osf-5early)
++ 	OS='Compaq Tru64 UNIX 5.0/5.0A/5.1'
++ 	CFLAGS="$CFLAGS -DOSF1 -DOSF_SSI -DNO_SLACK"
++ 	LIBS="$LIBS -lm"
++ 	;;
++     # // END MLONG OSF ENHANCEMENTS //
+       *-qnx)
+  	 OS='QNX'
+  	 CFLAGS="$CFLAGS -DQNX"
+***************
+*** 1182,1188 ****
+  	     LDFLAGS_MOD_SHLIB=$LDFLAGS_SHLIB
+  	     LDFLAGS_SHLIB_EXPORT=""
+  	     ;;
+! 	*-dec-osf*)
+  	     case $CC in
+  		 */gcc|gcc ) CFLAGS_SHLIB="-fpic" ;;
+  		 */cc|cc   ) CFLAGS_SHLIB="" ;;
+--- 1194,1201 ----
+  	     LDFLAGS_MOD_SHLIB=$LDFLAGS_SHLIB
+  	     LDFLAGS_SHLIB_EXPORT=""
+  	     ;;
+! # // BEGIN MLONG OSF ENHANCEMENTS //
+! 	*-dec-osf-early)
+  	     case $CC in
+  		 */gcc|gcc ) CFLAGS_SHLIB="-fpic" ;;
+  		 */cc|cc   ) CFLAGS_SHLIB="" ;;
+***************
+*** 1191,1196 ****
+--- 1204,1219 ----
+  	     LDFLAGS_MOD_SHLIB=$LDFLAGS_SHLIB
+  	     LDFLAGS_SHLIB_EXPORT=""
+  	     ;;
++ 	*-dec-osf-4early|*-dec-osf-4modern|*-dec-osf-5early|*-dec-osf-5modern)
++ 	    case $CC in
++ 		*/gcc|gcc ) CFLAGS_SHLIB="-fpic" ;;
++ 		*/cc|cc   ) CFLAGS_SHLIB="" ;;
++ 	    esac
++ 	    LDFLAGS_SHLIB='-shared -expect_unresolved "*" -msym -s'
++ 	    LDFLAGS_MOD_SHLIB=$LDFLAGS_SHLIB
++ 	    LDFLAGS_SHLIB_EXPORT=""
++ 	    ;;
++ # // END MLONG OSF ENHANCEMENTS //
+  	 *-unixware*)
+  	     case $CC in
+  		 */gcc|gcc ) CFLAGS_SHLIB="-fpic" ;;
+*** GuessOS.old	Sat Oct 14 16:32:51 2000
+--- GuessOS	Sat Oct 14 16:31:54 2000
+***************
+*** 165,171 ****
+  	 ;;
+   
+       OSF1:*:*:*alpha*)
+! 	echo "${MACHINE}-dec-osf"; exit 0
+  	 ;;
+   
+  	 NONSTOP_KERNEL:*:*:*)
+--- 165,215 ----
+  	 ;;
+   
+       OSF1:*:*:*alpha*)
+! 
+! 	# // BEGIN MLONG OSF ENHANCEMENTS//
+! 	# Strip "V" from the RELEASE
+! 	OSFRELEASE=`echo $RELEASE|sed 's/V//g'`
+! 
+! 	if [ -f "/usr/sbin/sizer" ] ; then
+! 
+! 	 # Get VARIANT ver (4.0, 4.0A, 4.0G, 5.0A, etc.)
+!   	 OSFVARIANT=`/usr/sbin/sizer -v|sed 's/.* V//g'|sed 's/ .*//g'`  ||
+OSFVAR=$OSFRELEASE ! 
+!  	 # Three possibilities here:
+! 	 # dec-osf		normal
+! 	 # dec-osf-ssi		supports SSI_FD_NEWMAX (4097-65536 file descriptors)
+! 	 #			4.0D and later
+! 	 # dec-osf-ssi-noslack	supports SSI_FD_NEWMAX but needs NOSLACK
+! 	 #			5.0/5.0A/5.1 where close(FD)
+! 	 #			is broken after using fcntl F_DUPED on 64th iteration
+! 
+!  	 if [ "$OSFRELEASE" -lt "4.0" ] ; then
+! 	  echo "${MACHINE}-dec-osf-early"; exit 0
+! 	 fi
+! 
+! 	 if [ "$OSFRELEASE" -eq "4.0" ] ; then
+! 	  case "${OSFVARIANT}" in
+! 	   "4.0"|"4.0A"|"4.0B"|"4.0C")
+! 		echo "${MACHINE}-dec-osf-4early"; exit 0
+! 	   ;;
+! 	   *) 
+! 		echo "${MACHINE}-dec-osf-4modern"; exit 0
+! 	   ;;
+! 	  esac
+! 	 fi
+! 
+! 	 if [ "$OSFRELEASE" -ge "4.0" ]; then
+!  	  case "${OSFVARIANT}" in
+! 	   "5.0"|"5.0A"|"5.1")
+! 		echo "${MACHINE}-dec-osf-5early"; exit 0
+! 	   ;;
+!     	   *) 
+! 		echo "${MACHINE}-dec-osf-5modern"; exit 0
+!     	   ;;
+!     	  esac
+! 	 fi
+! 	fi
+! 	# // END MLONG OSF ENHANCEMENTS//
+  	 ;;
+   
+  	 NONSTOP_KERNEL:*:*:*)
+*** INSTALL.old	Sat Oct 14 16:32:22 2000
+--- INSTALL	Sun Oct 15 00:04:22 2000
+***************
+*** 83,89 ****
+              - FreeBSD   - Solaris       - AIX          - OpenStep/Mach
+              - OpenBSD   - IRIX          - SCO          - DYNIX/ptx
+              - NetBSD    - HPUX          - ReliantUNIX
+!            - BSDI      - Digital Unix  - DGUX
+   
+           o Entirely unsupported platforms are:
+              - Ultrix
+--- 83,89 ----
+              - FreeBSD   - Solaris       - AIX          - OpenStep/Mach
+              - OpenBSD   - IRIX          - SCO          - DYNIX/ptx
+              - NetBSD    - HPUX          - ReliantUNIX
+!            - BSDI      - Compaq Tru64  - DGUX
+   
+           o Entirely unsupported platforms are:
+              - Ultrix
+***************
+*** 93,98 ****
+--- 93,101 ----
+           linker flags (see CFLAGS_SHLIB, LDFLAGS_SHLIB and
+           LDFLAGS_SHLIB_EXPORT below) manually or at least make sure a
+           Perl 5 interpreter is installed from which Apache can guess the
+           options.
++ 
++         To enable DSO support, use --enable-rule=SHARED_CORE and
++         --enable-module=so
+   
+           For more in-depth information about DSO support in Apache 1.3
+           please read the document htdocs/manual/dso.html carefully.
+           Especially the *** alloc.c.old	Sat Oct 14 16:33:15 2000
+--- alloc.c	Sat Oct 14 19:47:45 2000
+***************
+*** 1787,1792 ****
+--- 1787,1812 ----
+  	 fd = ap_slack(fd, AP_SLACK_HIGH);
+  	 ap_note_cleanups_for_fd(a, fd);
+       }
++ /* BEGIN MLONG OSF OPTIMIZATION */
++     else
++     {
++         ap_log_error(APLOG_MARK, APLOG_CRIT, NULL, 
++                      "alloc: Out of file descriptors. "
++                      "See
+http://httpd.apache.org/docs/misc/descriptors.html"); +
+printf("alloc: Out of file descriptors\n");
++ 
++         #ifdef OSF_SSI
++             printf("Try increasing max-vnodes (4.x) or max_vnodes (5.x)
+or add more ram. " +                    "Use [sysconfig -q vfs max-vnodes]
+to check the value. " +                    "Do a man on sysconfig,
+sysconfigdb, and sysconfigtab for info.\n"); +
+ap_log_error(APLOG_MARK,APLOG_CRIT, NULL, 
++                    "Try increasing max-vnodes (4.x) or max_vnodes (5.x)
+or add more ram. " +                    "Use [sysconfig -q vfs max-vnodes]
+to check the value. " +                    "Do a man on sysconfig,
+sysconfigdb, and sysconfigtab for info."); +         #endif
++         exit(-1);
++     }
++ /* END MLONG OSF OPTIMIZATION */
+       ap_unblock_alarms();
+       errno = save_errno;
+       return fd;
+*** ap_config.h.old	Sat Oct 14 16:33:07 2000
+--- ap_config.h	Sat Oct 14 16:32:01 2000
+***************
+*** 312,317 ****
+--- 312,322 ----
+   #define HAVE_SYSLOG 1
+   #define USE_FLOCK_SERIALIZED_ACCEPT
+   #define SINGLE_LISTEN_UNSERIALIZED_ACCEPT
++ /* BEGIN MLONG OSF ENHANCEMENTS */
++ #define HARD_SERVER_LIMIT 1024
++ #include <sys/sysinfo.h>
++ #include <machine/hal_sysinfo.h>
++ /* END MLONG OSF ENHANCEMENTS */
+   
+   #elif defined(PARAGON)
+   #define HAVE_GMTOFF 1
+***************
+*** 1117,1122 ****
+--- 1122,1133 ----
+   #endif /* ndef WIN32 */
+   
+   #include <limits.h>
++ /* BEGIN MLONG OSF ENHANCEMENTS */
++ #ifdef OSF_SSI
++ #undef FD_SETSIZE
++ #define FD_SETSIZE 65536
++ #endif
++ /* END MLONG OSF ENHANCEMENTS */
+   #include <time.h>		/* for ctime */
+   #ifdef WIN32
+   #define strftime(s,max,format,tm)  os_strftime(s,max,format,tm)
+diff -u file-old.c file.c
+or
+diff -C3 file-old.c file.c
+*** http_main.c.old	Sat Oct 14 16:33:22 2000
+--- http_main.c	Sat Oct 14 16:32:13 2000
+***************
+*** 4857,4863 ****
+       int sock_in;
+       int sock_out;
+       char *s;
+!     
+   #ifdef SecureWare
+       if (set_auth_parameters(argc, argv) < 0)
+  	 perror("set_auth_parameters");
+--- 4857,4871 ----
+       int sock_in;
+       int sock_out;
+       char *s;
+! 
+! /* BEGIN MLONG OSF ENHANCEMENTS */
+! #ifdef OSF_SSI
+!     struct rlimit mlimits,mcurlimits;
+!     mlimits.rlim_cur = 65536ul;
+!     mlimits.rlim_max = 65536ul;
+! #endif
+! /* END MLONG OSF ENHANCEMENTS */    
+! 
+   #ifdef SecureWare
+       if (set_auth_parameters(argc, argv) < 0)
+  	 perror("set_auth_parameters");
+***************
+*** 4976,4981 ****
+--- 4984,5003 ----
+  	     usage(argv[0]);
+  	 }
+       }
++ 
++ /* BEGIN MLONG OSF ENHANCEMENTS */
++ #ifdef OSF_SSI
++     if (setsysinfo(SSI_FD_NEWMAX,NULL,NULL,NULL,1) < 0)
++     { 
++         perror("http_main.c Error setting SSI_FD_NEWMAX\n");
++     } 
++ 
++     if (setrlimit(RLIMIT_NOFILE,&mlimits) < 0)
++     { 
++         perror("Error setting RLIMIT_NOFILE\n"); 
++     }
++ #endif
++ /* END MLONG OSF ENHANCEMENTS */
+   
+       ap_suexec_enabled = init_suexec();
+       server_conf = ap_read_config(pconf, ptrans, ap_server_confname);
+
+>How-To-Repeat:
+--
+>Fix:
+--
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,273 @@
+Received: (qmail 4289 invoked by uid 2012); 2 Mar 1998 23:32:32 -0000
+Message-Id: <19980302233232.4288.qmail@hyperreal.org>
+Date: 2 Mar 1998 23:32:32 -0000
+From: Jason Riedy <ejr@cise.ufl.edu>
+Reply-To: ejr@cise.ufl.edu
+To: apbugs@hyperreal.org
+Subject: Allow modules to set user:group for execution.
+X-Send-Pr-Version: 3.2
+
+>Number:         1905
+>Category:       suexec
+>Synopsis:       Allow modules to set user:group for execution.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Mar  2 15:40:00 PST 1998
+>Last-Modified:  Sun Jul 12 20:40:01 PDT 1998
+>Originator:     ejr@cise.ufl.edu
+>Organization:
+>Release:        1.3b5
+>Environment:
+SunOS cave 5.6 Generic sun4u sparc SUNW,Ultra-2
+>Description:
+Rather than patch the core to provide finer control over 
+suid execution (PR 1769), why not allow modules to control
+by whom programs are run?
+
+The included patch should do just that, looking for
+information in suexec_module request_config data.  This
+could have gone in the notes table, but I wanted to pass
+the uid/gid.  Packing and unpacking numbers into notes 
+would have felt like more of a kludge than having an
+empty suexec_module (well, ok, I didn't think about it
+until after I wrote it), but it might be a good idea.
+Also, the default behavior is unchanged.
+
+I've tested this with a (not included) module that sends the 
+username/groupname of the cgi script (or including file for 
+exec cmds) to suexec.  It seems to work with my modified suexec 
+(which logs to syslog & uses slightly weaker restrictions).
+
+BTW, dealing with XBitHack and ScriptAlias is a pain.  My
+module acts as a handler for CGI & shtml types to avoid being
+called on every access.  I had to snarf the code from mod_cgi
+and mod_include.  Not pretty.  Some modules may want to export
+a few functions, perhaps with the modulename prepended.
+
+In case the patch doesn't come through, it'll be at
+http://www.cise.ufl.edu/~ejr/suexec_module.patch .  It's just
+a cvs diff -u, so it won't apply perfectly from the top level.
+
+Jason
+>How-To-Repeat:
+
+>Fix:
+Index: apache-1.3-code/include/suexec_module.h
+diff -u /dev/null apache-1.3-code/include/suexec_module.h:1.1
+--- /dev/null	Mon Mar  2 17:26:27 1998
++++ apache-1.3-code/include/suexec_module.h	Mon Mar  2 13:51:41 1998
+@@ -0,0 +1,9 @@
++typedef struct {
++    char *username;
++    uid_t uid;
++    char *groupname;
++    gid_t gid;
++    int paranoia;       /* if not 1, a notice will be issued */
++} suexec_req_data;
++
++extern module suexec_module;
+Index: apache-1.3-code/main/Makefile.tmpl
+diff -u apache-1.3-code/main/Makefile.tmpl:1.1.1.1 apache-1.3-code/main/Makefile.tmpl:1.2
+--- apache-1.3-code/main/Makefile.tmpl:1.1.1.1	Mon Mar  2 10:42:41 1998
++++ apache-1.3-code/main/Makefile.tmpl	Mon Mar  2 13:52:50 1998
+@@ -12,7 +12,7 @@
+ OBJS= alloc.o http_main.o http_core.o http_config.o http_request.o \
+   http_log.o http_protocol.o rfc1413.o util.o util_script.o buff.o \
+   md5c.o util_md5.o explain.o http_bprintf.o util_date.o \
+-  fnmatch.o http_vhost.o
++  fnmatch.o http_vhost.o suexec_module.o
+ 
+ .c.o:
+ 	$(CC) -c $(INCLUDES) $(CFLAGS) $(SPACER) $<
+Index: apache-1.3-code/main/suexec_module.c
+diff -u /dev/null apache-1.3-code/main/suexec_module.c:1.1
+--- /dev/null	Mon Mar  2 17:26:28 1998
++++ apache-1.3-code/main/suexec_module.c	Mon Mar  2 13:51:54 1998
+@@ -0,0 +1,30 @@
++#include "httpd.h"
++#include "http_config.h"
++#include "http_request.h"
++#include "http_core.h"
++#include "http_log.h"
++#include "http_protocol.h"
++#include "http_conf_globals.h"
++#include "suexec_module.h"
++
++module suexec_module = {
++    STANDARD_MODULE_STUFF,
++    NULL,			/* initializer */
++    NULL,			/* create per-directory config structure */
++    NULL,			/* merge per-directory config structures */
++    NULL,			/* create per-server config structure */
++    NULL,			/* merge per-server config structures */
++    NULL,			/* command table */
++    NULL,			/* handlers */
++    NULL,			/* translate_handler */
++    NULL,			/* check_user_id */
++    NULL,			/* check auth */
++    NULL,			/* check access */
++    NULL,			/* type_checker */
++    NULL,		        /* pre-run fixups */
++    NULL,			/* logger */
++    NULL,			/* header parser */
++    NULL,			/* child_init */
++    NULL,			/* child_exit */
++    NULL			/* post_read_request */
++};
+Index: apache-1.3-code/main/util_script.c
+diff -u apache-1.3-code/main/util_script.c:1.1.1.1 apache-1.3-code/main/util_script.c:1.2
+--- apache-1.3-code/main/util_script.c:1.1.1.1	Mon Mar  2 10:42:43 1998
++++ apache-1.3-code/main/util_script.c	Mon Mar  2 13:52:02 1998
+@@ -62,6 +62,7 @@
+ #include "http_request.h"	/* for sub_req_lookup_uri() */
+ #include "util_script.h"
+ #include "util_date.h"		/* For parseHTTPdate() */
++#include "suexec_module.h"
+ 
+ /*
+  * Various utility functions which are common to a whole lot of
+@@ -794,10 +795,40 @@
+ 	return (pid);
+     }
+ #else
+-    if (suexec_enabled &&
+-	((r->server->server_uid != user_id) ||
+-	 (r->server->server_gid != group_id) ||
+-	 (!strncmp("/~", r->uri, 2)))) {
++    if (suexec_enabled) {
++      suexec_req_data *req_data =
++	(suexec_req_data *) get_module_config(r->request_config,
++					      &suexec_module);
++
++      if (NULL != req_data) {
++	if (1 != req_data->paranoia) {
++	  aplog_error(APLOG_MARK, APLOG_NOERRNO|APLOG_NOTICE, r->server,
++		      "call_exec: %s:%s (set non-standard) executing "
++		      "%s", req_data->username, req_data->groupname,
++		      argv0);
++	}
++
++	if ((user_id != req_data->uid) || (group_id != req_data->gid)) {
++	  if (shellcmd) {
++	    execle(SUEXEC_BIN, SUEXEC_BIN, req_data->username,
++		   req_data->groupname, argv0, NULL, env);
++	  }
++	  else if ((!r->args) || (!r->args[0]) || (ind(r->args, '=') >= 0)) {
++	    execle(SUEXEC_BIN, SUEXEC_BIN, req_data->username,
++		   req_data->groupname, argv0, NULL, env);
++	  }
++	  else {
++	    execve(SUEXEC_BIN,
++		   create_argv(r->pool, SUEXEC_BIN, req_data->username,
++			       req_data->groupname,
++			       argv0, r->args),
++		   env);
++	  }
++	}
++      }
++      else if ((r->server->server_uid != user_id) ||
++	       (r->server->server_gid != group_id) ||
++	       (!strncmp("/~", r->uri, 2))) {
+ 
+ 	char *execuser, *grpname;
+ 	struct passwd *pw;
+@@ -858,6 +889,7 @@
+ 			       argv0, r->args),
+ 		   env);
+ 	}
++      }
+     }
+     else {
+ 	if (shellcmd)
+%0
+>Audit-Trail:
+
+From: Jason Riedy <ejr@cise.ufl.edu>
+To: apbugs@apache.org
+Cc:  Subject: Re: suexec/1905: Allow modules to set user:group for execution.
+Date: Mon, 02 Mar 1998 20:51:45 -0500
+
+ [my apologies if this is a duplicate; my mailer and i are
+ having a disagreement, and this doesn't appear in the
+ archives]
+ 
+ Whoops; I have a logic bug in that patch.  Here's an incremental
+ fix to util_script.c:
+ 
+ BEGIN patch
+ --- util_script.c       1998/03/02 18:52:02     1.2
+ +++ util_script.c       1998/03/03 01:33:07     1.3
+ @@ -891,7 +891,7 @@
+         }
+        }
+      }
+ -    else {
+ +
+         if (shellcmd)
+             execle(SHELL_PATH, SHELL_PATH, "-c", argv0, NULL, env);
+  
+ @@ -902,7 +902,7 @@
+             execve(r->filename,
+                    create_argv(r->pool, NULL, NULL, NULL, argv0, r->args),
+                    env);
+ -    }
+ +
+      return (pid);
+  #endif
+  }
+ END patch
+ 
+ Without this, it'll fall straight through without executing scripts
+ that are to be run as the server.
+ 
+ Jason
+
+From: Jason Riedy <ejr@cise.ufl.edu>
+To: apbugs@apache.org
+Cc:  Subject: Re: suexec/1905: Allow modules to set user:group for execution.
+Date: Sat, 28 Mar 1998 15:27:11 -0500
+
+ There's a design bug in what I've sent so far.  I've had to add a
+ exec_allowed field to the structure to handle SSIs robustly.
+ 
+ I'll pass along the current version whenever y'all get to respond
+ to this.  (Yeah, I know, 1.3's in a feature freeze.  sigh...)
+ 
+ Jason
+State-Changed-From-To: open-suspended
+State-Changed-By: coar
+State-Changed-When: Thu May 28 12:21:28 PDT 1998
+State-Changed-Why:
+[Suspending for future consideration]
+
+From: Jason Riedy <ejr@cise.ufl.edu>
+To: apbugs@hyperreal.org
+Cc:  Subject: Re: suexec/1905: Allow modules to set user:group for execution.
+Date: Sun, 12 Jul 1998 23:39:42 -0400
+
+ To lessen the changes between versions (if y'all aren't interested
+ at all, tell me, and I'll stop bugging you), I'm converting this to 
+ store the username and groupname in notes.  If both the notes are
+ there, they're used as suexec arguments.  It won't be tested for
+ a week or two, but it'd not a difficult change.
+ 
+ And I'd still like to see syslog logging in the official suexec
+ (suexec/921).  It's rather dangerous not to have it.
+ 
+ Now if I can just get around to adding an environment variable
+ to perl to trigger -T...
+ 
+ Jason
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

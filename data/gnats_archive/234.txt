@@ -1,0 +1,81 @@
+From nobody@hyperreal.com  Sat Mar 15 15:50:20 1997
+Received: by taz.hyperreal.com (8.8.4/V2.0) id PAA29070; Sat, 15 Mar 1997 15:50:20 -0800 (PST)
+Message-Id: <199703152350.PAA29070@taz.hyperreal.com>
+Date: Sat, 15 Mar 1997 15:50:20 -0800 (PST)
+From: Michael Fuhr <mfuhr@dimensional.com>
+Reply-To: mfuhr@dimensional.com
+To: apbugs@hyperreal.com
+Subject: REMOTE_IDENT not always available to mod_rewrite
+X-Send-Pr-Version: 3.2
+
+>Number:         234
+>Category:       config
+>Synopsis:       REMOTE_IDENT not always available to mod_rewrite
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Mar 15 16:00:01 1997
+>Last-Modified:  Sat Mar 22 15:13:07 PST 1997
+>Originator:     mfuhr@dimensional.com
+>Organization:
+>Release:        1.2b7
+>Environment:
+FreeBSD 2.1.7
+gcc 2.6.3
+>Description:
+REMOTE_IDENT isn't available to a virtual host's rewrite rules under
+the following conditions:
+
+    * IdentityCheck is "off" by default.
+    * IdentityCheck is turned "on" inside the <VirtualHost> directive.
+
+REMOTE_IDENT is available later for SSI and CGI, but not for the
+rewriting rules in a <VirtualHost> section.
+>How-To-Repeat:
+1. Set the default IdentityCheck to "off".
+2. Add the following lines inside some <VirtualHost> section:
+
+    RewriteEngine on
+    RewriteLogLevel 4
+    RewriteLog logs/virt-rewrite_log
+    RewriteCond %{REMOTE_ADDR} 1.2.3.4    # IP of some host running IDENT
+    RewriteCond %{REMOTE_IDENT} someuser  # name of some user on that host
+    RewriteRule ^/somefile.html /otherfile.html [R,L]
+
+3. Try to retrieve /somefile.html from the specified host as the specified
+user.  The rewrite will fail; that REMOTE_IDENT is set later can be verified
+by printing its value using SSI or CGI.
+
+4.  The rewrite log will show something like this for the RewriteCond in
+question:
+
+    RewriteCond: input='' pattern='someuser' => not-matched
+
+5. Set the default "IdentityCheck" to "on".
+6. Try to retrieve /somefile.html again.
+7. You should get /otherfile.html (a successful rewrite).
+    
+>Fix:
+The problem shows itself in get_remote_login(), http_core.c, line 396:
+
+    if (dir_conf->do_rfc1413 & 1)
+        return rfc1413(r->connection, r->server);
+    else
+        return NULL;
+
+When get_remote_login() is called from mod_rewrite.c, line 2532, it
+always returns NULL.  Apparently dir_conf->do_rfc1413 hasn't been set
+from the virtual host's IdentityCheck directive yet
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Mar 22 15:13:06 PST 1997
+State-Changed-Why:
+Corrected in 1.2b8-dev.
+>Unformatted:
+
+

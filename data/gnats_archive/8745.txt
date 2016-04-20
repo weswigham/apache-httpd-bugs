@@ -1,0 +1,108 @@
+Received: (qmail 7284 invoked by uid 501); 12 Nov 2001 19:19:48 -0000
+Message-Id: <20011112191948.7283.qmail@apache.org>
+Date: 12 Nov 2001 19:19:48 -0000
+From: Andrew Gilmartin <andrewgilmartin@pobox.com>
+Reply-To: andrewgilmartin@pobox.com
+To: submit@bugz.apache.org
+Subject: DirectoryIndex using absolute CGI does not get PATH_INFO or PATH_TRANSLATED
+X-Send-Pr-Version: 3.110
+
+>Number:         8745
+>Category:       mod_autoindex
+>Synopsis:       DirectoryIndex using absolute CGI does not get PATH_INFO or PATH_TRANSLATED
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Nov 12 11:20:00 PST 2001
+>Closed-Date:    
+>Last-Modified:  Wed Nov 14 08:50:00 PST 2001
+>Originator:     andrewgilmartin@pobox.com
+>Release:        1.3.20 (Unix)
+>Organization:
+apache
+>Environment:
+Linux cx21715-a.sking1.ri.home.com 2.2.19-4.1mdk
+>Description:
+When using DirectoryIndex with a CGI script at an absolute URI the script is called without PATH_INFO and PATH_TRANSLATED information. Without this it is impossible for the script to present a directory idex. (Note that no arguments with path informaton are passed to the script. Nor is the working directory set to the path.)
+>How-To-Repeat:
+Configure DirectoryIndex for a given location. Eg,
+
+<Location />
+Options Indexes
+DirectoryIndex /cgi-bin/index.pl
+</Location>
+
+Created index.pl with the code
+
+#!/usr/bin/perl
+use Data::Dumper;
+print "content-type: text/html\n\n<pre>", Dumper( \@ARGV, \%ENV ), "</pre>";
+
+Now use the URL
+
+http://localhost/
+
+and you will see that the environment variable dump does not include the PATH_INFO or PATH_TRANSLATED variables.
+>Fix:
+No. I am happy to look into fixing it if this would help. I assume the problem is in mod_autoindex, but I do not know enough about the Apache code base to debug this further without quite some effort.
+>Release-Note:
+>Audit-Trail:
+
+From: "Andrew Gilmartin" <andrew.gilmartin@ingenta.com>
+To: <apbugs@Apache.Org>
+Cc:  
+Subject: Re: mod_autoindex/8745
+Date: Wed, 14 Nov 2001 11:39:49 -0500
+
+ The problem is not with mod_autoindex, but with mod_dir's handling of the
+ internal redirect. Mod_dir knows nothing about the files listed in
+ DirectoryIndex: It just tries to do an internal redirect to each file
+ listed until one succeeds. The internal redirect looks different than
+ mod_include's, for example, in that mod_include knows when it is calling a
+ CGI script and so sets the redirect's environment by calling
+ 
+         ap_add_common_vars(r);
+         ap_add_cgi_vars(r);
+ 
+ Mod_dir's does not have this foreknowledge and so (ultimately) only calls
+ 
+         ap_add_common_vars(r);
+ 
+ which does not setup PATH_INFO, etc.
+ 
+ From what I can tell from reading the code so far is that mod_dir needs a
+ special internal redirect is more aware of the parent environment. That is
+ the directory's uri is the path info to the script at the given directory
+ index.
+ 
+ ---
+ Andrew Gilmartin
+ Senior Developer
+ Ingenta
+ andrew.gilmartin@ingenta.com
+ andrewgilmartin (aim)
+ 401-743-3713 (cell)
+ 
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

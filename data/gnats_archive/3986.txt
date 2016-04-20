@@ -1,0 +1,149 @@
+Received: (qmail 11858 invoked by uid 2012); 3 Mar 1999 00:23:27 -0000
+Message-Id: <19990303002327.11845.qmail@hyperreal.org>
+Date: 3 Mar 1999 00:23:27 -0000
+From: Richard Porter <richard@citizen1.com>
+Reply-To: richard@citizen1.com
+To: apbugs@hyperreal.org
+Subject: Premature end of script headers
+X-Send-Pr-Version: 3.2
+
+>Number:         3986
+>Category:       general
+>Synopsis:       Premature end of script headers
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Mar  2 16:30:00 PST 1999
+>Last-Modified:  Fri Mar 12 13:10:00 PST 1999
+>Originator:     richard@citizen1.com
+>Organization:
+>Release:        Server version: Apache/1.3.3 (Unix)
+>Environment:
+SunOS xxx 5.5.1 Generic_103640-21 sun4u sparc SUNW,Ultra-1
+
+I didn't build the distribution, our sysadmin did. If you'd like more information about the compiler and any compilation options, please let me know and I'll forward your request to him.
+>Description:
+I've seen a lot of coverage of this error, and the responses from most people seem to be dismissive. Both, "you can't program" and "this is a configuration error" are quite popular sentiments.
+
+Well, I certainly can program (though I'm no expert at CGI) and I doubt a configuration error would be intermittent in the fashion of this one.
+
+This is a production machine, so we're a bit reluctant to throw 1.3.4 at it until we've had a chance to test it out. If this is a bug in Apache that has been fixed in that version (and not reported in the release notes) please advise.
+>How-To-Repeat:
+Please run the following Java file with a command line parameter of
+http://www.citeline.com/cgi-bin/coyote
+
+import java.io.*;
+import java.net.*;
+
+public class load {
+  public static void main(String[] args) throws Exception {
+    if (args.length != 1) {
+      System.out.println("Usage: java load URL");
+      System.exit(0);
+    }
+
+    int i = 1;
+    int j = 1;
+    while (true) {
+      try {
+        URL url = new URL(args[0]);
+        HttpURLConnection http = (HttpURLConnection) url.openConnection();
+        http.setRequestMethod("GET");
+        http.connect();
+          
+        BufferedReader br = new BufferedReader(new InputStreamReader((InputStream)http.getInputStream()));
+      
+        for (String s = br.readLine();
+             s != null;
+             s = br.readLine())
+          System.out.println(s + i++);
+
+        http.disconnect();
+      }
+      catch (FileNotFoundException fnfe) {
+        System.out.println("\tfailure" + j++);
+      }
+    }
+  }
+}
+
+The script called by this file is the following:
+
+#!/usr/bin/perl
+
+$oldpipe = $|;
+$| = 1;
+print "Content-type: text/html\r\n\r\n";
+print "hello world";
+$| = $oldpipe;
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: jim
+State-Changed-When: Thu Mar 11 18:41:43 PST 1999
+State-Changed-Why:
+I don't quite see how this is an Apache bug. Is there something that leads you to believe that Apache is causing some error? Are you sure the code runs perfectly?
+
+From: Peter Bonney <peter@citizen1.com>
+To: jim@apache.org
+Cc: "Richard Porter" <richard@citizen1.com>, Neil Savasta <neil@citizen1.com>,
+        apache-bugdb@apache.org, apbugs@apache.org
+Subject: general/3986: Premature end of script headers
+Date: Fri, 12 Mar 1999 11:54:36 -0800
+
+ jim@apache.org wrote,
+ : I don't quite see how this is an Apache bug. Is there something
+ that 
+ : leads you to believe that Apache is causing some error? Are you
+ sure 
+ : the code runs perfectly?
+ 
+ I'll leave it to the reader to decide whether this problem reflects
+ an Apache bug, a mod_perl bug, a documentation bug, or just a
+ dumb-user bug... but we've at least got an answer on this one.
+ 
+ We were able to determine that our cgi-bin scripts ran fine if the
+ server was not executing any mod_perl scripts.  However, when we
+ invoked one of the scripts in our cgi-perl directory (configured,
+ unsurprisingly, to use mod_perl), the cgi-bin scripts would start to
+ fail (with 'Premature end of script headers').  At first, the
+ failures would be rare, but the more times we invoked the script in
+ cgi-perl, the more frequent the cgi-bin failures became.
+ 
+ This strongly indicated that something which the cgi-perl script was
+ doing was causing some sort of corruption in the httpd subprocess.
+ It took a fair amount of digging (the culprit turned out to be in a
+ secondary script which was being invoked as a side-effect of the
+ primary script), but we found the problem:  one of our scripts was
+ doing a 'close STDOUT;' towards the end.  This was added in the
+ distant past presumably with the intent of flushing the output to the
+ browser.  Removing this line made everything healthy again.
+ 
+ We presume that the filehandle/socket corresponding to STDOUT
+ subsequently continued to be used (by mod_perl or Apache).  Since the
+ handle is closed at this point, the write is apparently doing
+ unhealthy things to the webserver's process space.
+ 
+ I don't know if there are (or should be) any checks in place in the
+ server to prevent this sort of corruption; a simpler resolution might
+ be to add a warning note to the mod_perl_traps document.
+ --
+ Peter Bonney        Senior Software Engineer  (415) 882-9404 x814
+ peter@citizen1.com  Citizen 1 Software, Inc.  http://www.citeline.com/
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

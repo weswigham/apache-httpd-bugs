@@ -1,0 +1,151 @@
+Received: (qmail 23794 invoked by uid 2012); 23 Mar 1998 19:41:23 -0000
+Message-Id: <19980323194123.23793.qmail@hyperreal.org>
+Date: 23 Mar 1998 19:41:23 -0000
+From: Nic Benders <xac@slackworks.com>
+Reply-To: xac@slackworks.com
+To: apbugs@hyperreal.org
+Subject: Change of behavior for listings with SuppressDescription enabled
+X-Send-Pr-Version: 3.2
+
+>Number:         1979
+>Category:       mod_autoindex
+>Synopsis:       Change of behavior for listings with SuppressDescription enabled
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Mar 23 11:50:01 PST 1998
+>Last-Modified:  Wed Sep  2 14:19:41 PDT 1998
+>Originator:     xac@slackworks.com
+>Organization:
+>Release:        1.3b5
+>Environment:
+Linux 2.0.32, RedHat 5.0, i386 (P5/133), gcc 2.7.2.3
+>Description:
+When the description field is turned disabled, the space on the page from it is not reclaimed.  This can be a big problem in a situation where files with long names are being server ("SuperDuperBigPatch-0.." which version is it?).  I have provided a simplistic patch that allows for two states, one with SUPPRESS_DESC and one without.  I guess this is really more of a proof of concept patch, but I have been using it on my server for a few weeks, both on pages with and without SuppressDescription.
+
+Aaah, Opensource.  If you don't like the program, fix it.
+>How-To-Repeat:
+
+>Fix:
+--- mod_autoindex.c	Sat Feb 11 21:18:01 1998
++++ mod_autoindex.c.new	Sat Mar 14 22:21:27 1998
+@@ -58,6 +58,9 @@
+  * 3/23/93
+  * 
+  * Adapted to Apache by rst.
++ *
++ * Changed to use free space for longer filenames when SuppressDescription
++ * is turned on.  -Xac Slack (3/14/98)
+  */
+ 
+ #include "httpd.h"
+@@ -790,11 +793,18 @@
+ 			       autoindex_config_rec * d, request_rec *r,
+ 			     int autoindex_opts, char keyid, char direction)
+ {
+-    int x, len;
++    int x, y, len;
+     char *name = r->uri;
+     char *tp;
+     int static_columns = (autoindex_opts & SUPPRESS_COLSORT);
+     pool *scratch = make_sub_pool(r->pool);
++    int FileNameMaxLength;
++
++    if (autoindex_opts & SUPPRESS_DESC) {
++      FileNameMaxLength = 46;
++    } else {
++      FileNameMaxLength = 23;
++    }
+ 
+     if (name[0] == '\0')
+ 	name = "/";
+@@ -816,7 +826,12 @@
+ 	    rputs("> ", r);
+ 	}
+         emit_link(r, "Name", K_NAME, keyid, direction, static_columns);
+-	rputs("                   ", r);
++	if (autoindex_opts & SUPPRESS_DESC) {
++	  rputs("                                         ", r);
++	} else {
++	  rputs("                   ", r);
++	}
++
+ 	if (!(autoindex_opts & SUPPRESS_LAST_MOD)) {
+             emit_link(r, "Last modified", K_LAST_MOD, keyid, direction,
+                       static_columns);
+@@ -849,23 +864,27 @@
+ 	    anchor = pstrcat(scratch, "<A HREF=\"",
+ 			escape_html(scratch, os_escape_path(scratch, t, 0)),
+ 			     "\">", NULL);
+-	    t2 = "Parent Directory</A>       ";
++	    if (autoindex_opts & SUPPRESS_DESC) {
++	      t2 = "Parent Directory</A>                              ";
++	    } else {
++	      t2 = "Parent Directory</A>       ";
++	    }
+ 	}
+ 	else {
+ 	    t = ar[x]->name;
+ 	    len = strlen(t);
+-	    if (len > 23) {
++	    if (len > FileNameMaxLength) {
+ 		t2 = pstrdup(scratch, t);
+-		t2[21] = '.';
+-		t2[22] = '.';
+-		t2[23] = '\0';
++		t2[FileNameMaxLength-2] = '.';
++		t2[FileNameMaxLength-1] = '.';
++		t2[FileNameMaxLength] = '\0';
+ 		t2 = escape_html(scratch, t2);
+ 		t2 = pstrcat(scratch, t2, "</A>", NULL);
+ 	    }
+ 	    else {
+-		char buff[24] = "                       ";
++ 		char buff[47] = "                                              ";
+ 		t2 = escape_html(scratch, t);
+-		buff[23 - len] = '\0';
++		buff[FileNameMaxLength - len] = '\0';
+ 		t2 = pstrcat(scratch, t2, "</A>", buff, NULL);
+ 	    }
+ 	    anchor = pstrcat(scratch, "<A HREF=\""%2
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: brian
+State-Changed-When: Tue May 19 21:36:46 PDT 1998
+State-Changed-Why:
+A generic, preferable "printf" style way to specify field
+lengths is the right solution; any others are just half-
+steps.  Someone in the group is lazily working on something
+like that; of course if you're motivated (go! go!) it would
+be really cool to see.
+
+Thanks for the note.
+
+
+State-Changed-From-To: suspended-closed
+State-Changed-By: coar
+State-Changed-When: Wed Sep  2 14:19:40 PDT 1998
+State-Changed-Why:
+
+The column widths in the output from mod_autoindex are
+intended to be relatively fixed-width.  As of the next
+release after 1.3.1, you can use a combination of the
+SuppressDescription and NameLength keywords to size
+the filename column to take advantage of the space not
+used by the description.  This puts the sizing under the
+explicit control of the Webmaster, and violates the
+Principle of Least Astonishment less.  Thanks for the
+report, the patch, and for using Apache!
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

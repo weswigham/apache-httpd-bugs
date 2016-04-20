@@ -1,0 +1,186 @@
+From nobody@hyperreal.com  Mon Jun 30 19:13:12 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id TAA10873;
+	Mon, 30 Jun 1997 19:13:12 -0700 (PDT)
+Message-Id: <199707010213.TAA10873@hyperreal.com>
+Date: Mon, 30 Jun 1997 19:13:12 -0700 (PDT)
+From: Nick Allen <nallen@acm.org>
+Reply-To: nallen@acm.org
+To: apbugs@hyperreal.com
+Subject: multiple slashes before a ~user path are incorrectly handled
+X-Send-Pr-Version: 3.2
+
+>Number:         805
+>Category:       mod_userdir
+>Synopsis:       multiple slashes before a ~user path are incorrectly handled
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun 30 19:20:01 1997
+>Last-Modified:  Mon Jul  7 14:20:06 PDT 1997
+>Originator:     nallen@acm.org
+>Organization:
+>Release:        1.2.0
+>Environment:
+IRIX 5.3 02091401 IP22
+gcc version 2.7.2
+OPTIM=-O2
+>Description:
+Having multiple slashes immediately preceding a ~ causes the URL
+to be incorrectly evaluated (generating a 404).  Multiple slashes
+elsewhere in the URL are resolved properly.  This is mainly directed
+at http_request.c but might also apply to mod_rewrite.c as well.
+>How-To-Repeat:
+All of the following URL's should resolve to the same document:
+http://www.tjhsst.edu/~nallen/                (relative, works correctly)
+http://www.tjhsst.edu//~nallen/               (relative, gives a 404)
+http://www.tjhsst.edu/people/nallen/          (absolute, works correctly)
+http://www.tjhsst.edu//people//nallen/        (absolute, works correctly)
+
+Following multiple slashes work correctly:
+http://www.tjhsst.edu/~nallen//lunar/         (works fine)
+>Fix:
+Add a call to no2slash in http_request.c before ~user paths are
+evaluated, or check explicitly for beginning multiple slashes.
+%0
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Tue Jul  1 04:35:46 PDT 1997
+State-Changed-Why:
+Are you sure it's before ~name processing, or only
+when "name" is an actual user ID?  I can reproduce it
+for the latter, but if I use a valid URL which contains
+a ~name where it *isn't* an username, things work
+correctly.  This would seem to indicate that the
+problem is in mod_userdir, not http_request.  Please
+verify (perhaps by adding an "Alias /~foo/ /valid-dir").
+
+From: coar@decus.org (Rodent of Unusual Size)
+To: APbugs@apache.org, Coar@decus.org
+Subject: Re: general/805: multiple slashes before a ~user path are incorrectly
+ handled
+Date: Tue, 01 Jul 1997 10:17:28 -0400
+
+ 
+ [copy of mail from user -ken]
+ 
+ Date: Tue, 01 Jul 1997 07:04:26 -0400 (EDT)
+ From: Nick Allen <nallen@thor.tjhsst.edu>
+ 
+ I verified that it is only when "name" is an actual user ID and
+ traced the problem to mod_userdir.  The error is where translate_userdir
+ checks to see if there is any work to be done.  Currently we have:
+ 
+     char *name = r->uri;
+     const char *w, *dname, *redirect;
+     char *x = NULL;
+ 
+     if (userdirs == NULL || !strcasecmp(userdirs, "disabled") ||
+         (name[0] != '/') || (name[1] != '~')) {
+       return DECLINED;
+     }
+ 
+ which explicitly assumes that the first character is a '/' and the
+ second is a '~'.  The simplest way to fix this would be to add
+ 
+    no2slash (name);
+ 
+ before the if to get rid of the multiple slashes.  I built a copy of
+ httpd with this change and it seemed to handle the //~user references
+ correctly.
+ 
+ -- Nick Allen
+ nallen@acm.org
+ nallen@vt.edu
+ nallen@tjhsst.edu
+State-Changed-From-To: feedback-analyzed
+State-Changed-By: coar
+State-Changed-When: Tue Jul  1 07:22:57 PDT 1997
+State-Changed-Why:
+Thank you for the confirmation.  I'll see that this
+gets fixed in the development stream.
+Category-Changed-From-To: general-mod_userdir
+Category-Changed-By: coar
+Category-Changed-When: Tue Jul  1 07:22:57 PDT 1997
+
+Comment-Added-By: coar
+Comment-Added-When: Wed Jul  2 18:10:47 PDT 1997
+Comment-Added:
+Unfortunately, your solution cannot be used as-is; it would
+modify the r->uri field (which is sacred), and it would
+also collapse repeating slashes anywhere *following* the
+username.  Not good.  I'm working on a patch that won't
+have these effects; I'll send it to you when it's ready so
+you can test it.  Stay tuned..
+Responsible-Changed-From-To: apache-coar
+Responsible-Changed-By: coar
+Responsible-Changed-When: Wed Jul  2 18:10:47 PDT 1997
+Responsible-Changed-Why:
+Taking ownership whilst I work on the patch
+State-Changed-From-To: analyzed-feedback
+State-Changed-By: coar
+State-Changed-When: Wed Jul  2 20:47:16 PDT 1997
+State-Changed-Why:
+Patch supplied to user; awaiting results.
+Comment-Added-By: coar
+Comment-Added-When: Thu Jul  3 08:40:51 PDT 1997
+Comment-Added:
+The proposal that this behaviour be changed to treat
+"/~user" and "/////~user" as equivalent has been voted
+down.  You are welcome to keep the patch I sent ;-) - if it
+doesn't work (it should), let me know and I'll make the
+appropriate corrections.  However, this functionality
+will *not* be appearing in Apache for the forseeable
+future.
+
+#ken
+Class-Changed-From-To: sw-bug-change-request
+Class-Changed-By: coar
+Class-Changed-When: Thu Jul  3 08:40:51 PDT 1997
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Mon Jul  7 14:20:05 PDT 1997
+State-Changed-Why:
+The conclusion to which we've come is that the URLs are
+not automatically equivalent, and therefore the base code
+cannot automatically gobble initial slashes like this.
+It's done when the target resource is a file, but only
+then.  It could only be done as an external redirect.
+So this won't be going into Apache.
+
+However, you can accomplish the same end using the patch
+I supplied earlier.  Even better, you can use mod_rewrite
+to do it in a supported way that doesn't require you to
+alter the source.  Try adding the following lines to your
+configuration:
+
+  RewriteEngine on
+  RewriteCond ^//+~.*
+  RewriteRule ^//+(~.*) /$1 [R]
+
+This will cause mod_rewrite to elide the extra slashes and
+redirect the request to the /~user URL on the target host.
+You'll need to rebuild Apache with mod_rewrite included, of
+course, if it isn't already part of your Configuration.
+
+Thank you for using Apache, and posing such an interesting
+problem!
+
+#ken    :-)}
+Severity-Changed-From-To: serious-non-critical
+Severity-Changed-By: coar
+Severity-Changed-When: Mon Jul  7 14:20:05 PDT 1997
+Responsible-Changed-From-To: coar-apache
+Responsible-Changed-By: coar
+Responsible-Changed-When: Mon Jul  7 14:20:05 PDT 1997
+Responsible-Changed-Why:
+Putting back into the general pool.%0
+>Unformatted:
+
+
+

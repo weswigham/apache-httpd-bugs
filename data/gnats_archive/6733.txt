@@ -1,0 +1,172 @@
+Received: (qmail 95149 invoked by uid 501); 24 Oct 2000 09:40:09 -0000
+Message-Id: <20001024094009.95148.qmail@locus.apache.org>
+Date: 24 Oct 2000 09:40:09 -0000
+From: Kevin Murray <K.Murray@kingston.ac.uk>
+Reply-To: K.Murray@kingston.ac.uk
+To: submit@bugz.apache.org
+Subject: Misconfiguration of PHP4 module by Apache configuration procedure
+X-Send-Pr-Version: 3.110
+
+>Number:         6733
+>Category:       config
+>Synopsis:       Misconfiguration of PHP4 module by Apache configuration procedure
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 24 02:50:00 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     K.Murray@kingston.ac.uk
+>Release:        1.3.14
+>Organization:
+apache
+>Environment:
+SunOS wibble 5.7 Generic_106541-12 sun4u sparc SUNW,Ultra-5_10
+GNU C 2.8.1
+>Description:
+Initial sign is that Apache build fails to find include files for PHP during the
+build process.  Hacking the Makefile to add the includes then produces a linking
+error
+
+Undefined                       first referenced
+ symbol                             in file
+php_module                          modules.o
+ld: fatal: Symbol referencing errors. No output written to httpd
+
+Comparing the Makefile in the src/modules/php4 directory with that in an Apache
+1.3.6 build which included the same PHP 4.0.2 determined that the Apache config
+seemed to have entirely ignore the contents of the libphp4.module file
+
+Name: php4_module
+ConfigStart
+        RULE_WANTHSREGEX=no
+        LIBS=" -R/usr/ucblib -R/opt/oracle/product/8.0.4/lib  -L/usr/ucblib -L/o
+pt/oracle/product/8.0.4/lib -Lmodules/php4 -L../modules/php4 -L../../modules/php
+4 -lmodphp4  -lgdbm -lpam  -ldl -lclntsh -lpsa -lcore4 -lnlsrtl3 -ldl -lgen -lso
+cket -lnsl -lresolv -lresolv -lm -ldl -lcrypt -lnsl -lsocket  -lsocket $LIBS"
+        RULE_HIDE=yes
+        CFLAGS="$CFLAGS -I/queues/php-4.0.2 -I/queues/php-4.0.2/main -I/queues/p
+hp-4.0.2/main -I/queues/php-4.0.2/Zend -I/queues/php-4.0.2/Zend -I/queues/php-4.
+0.2"
+ConfigEnd
+
+which you can see lists the include files.  This information is nowhere to be
+seen in the Makefile where as under 1.3.6 it is.
+>How-To-Repeat:
+Use Apache 1.3.14 and PHP 4.0.2.
+First config Apache using 
+./configure  --prefix=/opt/apache \
+--enable-module=info \
+--enable-module=rewrite \
+--enable-shared=rewrite \
+--activate-module=src/modules/php4/libphp.a \
+--enable-suexec \
+--suexec-caller=httpd --suexec-docroot=/opt/apache/htdocs \
+--suexec-logfile=/var/adm/suexec.log \
+--suexec-userdir=www \
+--suexec-uidmin=100 \
+--suexec-gidmin=100 \
+--suexec-safepath="/usr/local/bin:/usr/bin:/bin:/usr/lib"
+
+Then configure and build PHP 4
+
+./configure --prefix=/opt/php \
+  --with-oci8 \
+  --with-ldap \
+  --with-apache=../apache_1.3.14 \
+  --enable-safe-mode \
+  --with-exec-dir=/opt/apache/bin \
+  --with-config-file-path=/opt/apache/conf/php.ini
+
+This requires a setting of ORACLE_HOME to /opt/oracle/product/8.0.4 and the
+installation of the Sun LDAP libraries.  I patched the file ext/ldap.c in PHP
+to use the Sun LDAP libraries using :-
+*** ldap.c~     Thu Oct 19 12:58:12 2000
+--- ldap.c      Thu Oct 19 13:00:05 2000
+***************
+*** 428,443 ****
+  static int _get_lderrno(LDAP *ldap)
+  {
+  #if !HAVE_NSLDAP
+- #if LDAP_API_VERSION > 2000
+        int lderr;
+  
+        /* New versions of OpenLDAP do it this way */
+        ldap_get_option(ldap, LDAP_OPT_ERROR_NUMBER, &lderr);
+-       return lderr;
+  #else
+-       return ldap->ld_errno;
+- #endif
+- #else
+        return ldap_get_lderrno(ldap,NULL,NULL);
+  #endif
+  }
+--- 428,438 ----
+***************
+*** 616,644 ****
+  
+        /* sizelimit */
+        if(ldap_sizelimit > -1) {
+- #if LDAP_API_VERSION < 2004
+-               ldap->ld_sizelimit = ldap_sizelimit; 
+- #else
+                ldap_set_option(ldap, LDAP_OPT_SIZELIMIT, &ldap_sizelimit);
+- #endif
+        }
+  
+        /* timelimit */
+        if(ldap_timelimit > -1) {
+- #if LDAP_API_VERSION < 2004
+-               ldap->ld_timelimit = ldap_timelimit; 
+- #else
+                ldap_set_option(ldap, LDAP_OPT_TIMELIMIT, &ldap_timelimit);
+- #endif
+        }
+  
+        /* deref */
+        if(ldap_deref > -1) {
+- #if LDAP_API_VERSION < 2004
+-               ldap->ld_deref = ldap_deref; 
+- #else
+                ldap_set_option(ldap, LDAP_OPT_DEREF, &ldap_deref);
+- #endif
+        }
+  
+        /* Run the actual search */     
+--- 611,627 ----
+
+make
+make install
+
+Now back to Apache 1.3.14 and reconfigure as above.
+Run the make on Apache and voila the problem surfaces.
+>Fix:
+Must be a change between 1.3.6 and 1.3.14 although I can't work out what.
+I tried copying the Makefile from the 1.3.6 configured directory but this
+doesn't completely solve the problem.
+Curious mod_perl seems to work to configure properly despite having a similar
+libperl.module file.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

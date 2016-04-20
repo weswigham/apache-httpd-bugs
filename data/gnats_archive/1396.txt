@@ -1,0 +1,333 @@
+Received: (qmail 4984 invoked by uid 2012); 11 Nov 1997 20:35:35 -0000
+Message-Id: <19971111203535.4983.qmail@hyperreal.org>
+Date: 11 Nov 1997 20:35:35 -0000
+From: Steve Resnick <steve@ducksfeet.com>
+Reply-To: steve@ducksfeet.com
+To: apbugs@hyperreal.org
+Subject: Logging to a pipe causes server to stop serving documents
+X-Send-Pr-Version: 3.2
+
+>Number:         1396
+>Category:       mod_log-any
+>Synopsis:       Logging to a pipe causes server to stop serving documents
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Nov 11 12:40:00 PST 1997
+>Last-Modified:  Sat Feb 14 05:27:35 PST 1998
+>Originator:     steve@ducksfeet.com
+>Organization:
+>Release:        1.2.4
+>Environment:
+Solaris SunOS genesis 5.5.1 Generic_103640-08 sun4u sparc SUNW,Ultra-Enterprise
+>Description:
+When logging to a pipe apache stops sending reasonable data (Netscape gripes
+document contains no data and IE responds with The server sent back a response which could not be understood.)
+
+>How-To-Repeat:
+Start a server with 80 virtual hosts logging to a program which 
+simply reads each line from stdin and writes to stdout.
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Tue Nov 11 12:45:20 PST 1997
+State-Changed-Why:
+Does anything show up in the error log?
+
+Are you just running one copy of the program, or one for
+each virtual host?  Do you have seperate logfiles for
+each virtual host?  ie. is it possible you are running
+into file descriptor limitations?
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: mod_log-any/1396
+Date: Tue, 11 Nov 1997 18:07:46 -0700 (MST)
+
+ ---------- Forwarded message ----------
+ Date: Tue, 11 Nov 1997 16:31:21 -0800
+ From: Steve Resnick <steve@ducksfeet.com>
+ To: marc@hyperreal.org, apbugs@hyperreal.org
+ Subject: Re: Logging to a pipe causes server to stop serving documents
+ 
+ Marc,
+ 
+ There is one transferlog statement which is outside any virtual host 
+ definition; There should only be one invocation of the program.
+ 
+ There is nothing in the error log. 
+ 
+ This is the same problem I posted to Usenet last week and mailed to you
+ twice. 
+ 
+ I never did receive any e-mail on this and had to go back to the Apache 
+ site to get the report below. 
+ 
+ I don't suspect problems with my e-mail (I receive tons of it daily)
+ however, if you have tried to respond to me, and that did not work,
+ steve@iptopia.net, steve@netlynx.com, and steve@iptopia.com also work. 
+ 
+ As a web hosting provider I need the ability to make log file data available
+ to my customers. I need to do this in a secure fashion. If this cannot be
+ done, then I need a different server solution.
+ 
+ Cheers,
+ Steve
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: mod_log-any/1396
+Date: Sat, 15 Nov 1997 18:09:51 -0700 (MST)
+
+ ---------- Forwarded message ----------
+ Date: Fri, 07 Nov 1997 09:02:29 -0800
+ From: Steve Resnick <steve@ducksfeet.com>
+ To: marcs@znep.com
+ 
+ 
+ I posted this to my news server but am not entirely confident it gets
+ propagated to the net very well. So, here goes: 
+ 
+ This is using Apache 1.2.4 with mod_log_config under Solaris 2.5.1:
+ 
+ 
+ I added/modified the following lines in my httpd.config file:
+ 
+ TransferLog "|/usr/local/bin/logpipe <args>"
+ LogFormat "%v %h %l %u %t \"%r\" %s %b"
+ 
+ Then wrote a program (logpipe_ which reads the log input on stdin, writes
+ all of it to a "master" file. Each record's first field (as the format above
+ specifies) is the ip address of the virtual server being logged.
+ 
+ At 5 minute intervals I write each virtual host's log data to a separate
+ file. Once this operation is completed I save the file position of the
+ master log, to be used to reposition the file at the next 5 minute write.
+ This allows me to provide timely log data to customers at the same time
+ allowing them to manipulate these files without breeching security or
+ disturbing the server (since each virtual hosts' log is only opened when
+ written to.)
+ 
+ I hope this is enough background :)
+ 
+ My problem, here, is that server does not seem to be able to serve pages
+ properly when logging to this program via pipe. Some servers seem OK,
+ others simply result in the browser griping about "Document contains no
+ data"
+ 
+ 
+ Is this, again, a resource limitation issue?
+ Do I need larger buffering on the pipe (and can setvbuf handle this or
+ do I need some sort of ioctl?)
+ 
+ Do I need to fork() when I go to write the virtual server logs (thereby
+ freeing up time for the pipe program.)
+ 
+ The logic to read the data from the pipe and store it in a file is fairly
+ simple:
+ 
+    while(fgets(buf,1024,stdin))  {
+       fputs(buf,s);
+       fflush(s);
+    }
+ 
+ The five minute event is fired via SIGALRM by calling alarm(300).
+ The problems I run in to are seen before the first SIGALARM signal is 
+ received.
+ 
+ When the SIGALARM *is* fired I do something like
+ 
+ fseek(s,last,SEEK_SET);
+ while(fgets(buf,size,s) 
+ 	writeLog(buf);
+ 
+ writeLog: 
+ 	vhost = getFileNameForVhost(buf)	// derive file name from 
+ 						// vhost id in log data
+ 	if((f=fopen(vhost,"a+")) != NULL) {
+ 		fputs(buf,f);
+ 		fclose(f);
+ 	}
+ 
+ This is somewhat simplified but covers the basics. 
+ 
+ If neccessary I can provide source to this beastie; My intent though is
+ not to throw mycode up to the net and say "Here, debug this for me" -- I
+ would rather have a firm(er?) understanding of what's going on. :)
+ 
+ One final note: This works with the same web server configuration on my
+ linux box, however, my linux box sits on a lan at my house with a 28.8k
+ connection to the net so I do not get the same sort of traffic to the
+ servers; It's not 
+ a good real world test case. 
+ 
+ Any thoughts are appreciated.
+ 
+ Cheers,
+ Steve
+ 
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Steve Resnick <steve@ducksfeet.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: mod_log-any/1396: Logging to a pipe causes server to stop serving documents
+Date: Sat, 15 Nov 1997 23:32:52 -0700 (MST)
+
+ Does this problem always happen right away after starting the 
+ server?
+ 
+ How many copies of your process does ps show running?
+ 
+ If you try the simplest possible setup (eg. a perl script that
+ does something like:
+ 
+ 	#!/usr/local/bin/perl
+ 	open (FILE, ">>/tmp/log.out") || die "blarg";
+ 	while (<>) {
+ 		print FILE;
+ 	}
+ 
+ ) does it still have problems?  We need to eliminate your code as 
+ being the problem.
+ 
+ If the above is still a problem, how about when you don't have any
+ virtual hosts?
+ 
+ What state does ps show your logging process to be in at that time?
+ If you compile it with debugging and try running gdb on it after
+ it starts having problems, does it show it blocking on anything?
+ 
+ You may want to try 1.3b3 when it comes out, because it has better piped
+ logging support.  I suspect, however, that there is something else
+ going on here.
+ 
+ Do you have any other logfiles for each vhost?  Grab lsof from somewhere
+ and see how many file descriptors each httpd process has open.
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Steve Resnick <steve@ducksfeet.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: mod_log-any/1396: Logging to a pipe causes server to stop  serving documents
+Date: Wed, 19 Nov 1997 21:10:33 -0700 (MST)
+
+ On Wed, 19 Nov 1997, Steve Resnick wrote:
+ 
+ > The above produces the same problems. Additionally the perl script above 
+ > does not actually write anything to /tmp/log.out -- The file is created,
+ > it is not written to. 
+ 
+ Are you really sure you aren't running into file descriptor problems?  
+ 
+ Have you tried reducing the number of virtual hosts?  Perhaps setup a test
+ server on another port to play with and see if it happens with no virtual
+ hosts, then add vhosts a bit at a time and see if it happens. 
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: mod_log-any/1396: Logging to a pipe causes server to stop  serving documents (fwd)
+Date: Wed, 19 Nov 1997 21:10:38 -0700 (MST)
+
+ ---------- Forwarded message ----------
+ Date: Wed, 19 Nov 1997 10:12:00 -0800
+ From: Steve Resnick <steve@ducksfeet.com>
+ To: Marc Slemko <marcs@znep.com>
+ Subject: Re: mod_log-any/1396: Logging to a pipe causes server to stop  serving documents
+ 
+ At 11:32 PM 11/15/97 -0700, you wrote:
+ >Does this problem always happen right away after starting the 
+ >server?
+ >
+ 
+ The problems start happening within a minute or so from starting the
+ server. The problems affect some virtual hosts in an unpredictable
+ fashion.  I.e., I cannot predict which server will show problems and 
+ cannot reliably get the same results with the same virtual host, although
+ it will show up with other virtual hosts. 
+ 
+ 
+ >How many copies of your process does ps show running?
+ >
+ 
+ ps shows one copy of my process. 
+ 
+ >If you try the simplest possible setup (eg. a perl script that
+ >does something like:
+ >
+ >	#!/usr/local/bin/perl
+ >	open (FILE, ">>/tmp/log.out") || die "blarg";
+ >	while (<>) {
+ >		print FILE;
+ >	}
+ >
+ >) does it still have problems?  We need to eliminate your code as 
+ >being the problem.
+ >
+ >If the above is still a problem, how about when you don't have any
+ >virtual hosts?
+ 
+ The above produces the same problems. Additionally the perl script above 
+ does not actually write anything to /tmp/log.out -- The file is created,
+ it is not written to. 
+ 
+ 
+ 
+ >
+ >What state does ps show your logging process to be in at that time?
+ >If you compile it with debugging and try running gdb on it after
+ >it starts having problems, does it show it blocking on anything?
+ >
+ 
+ ps shows the process as sleeping (state=S). GDB will not run as it does not
+ like some of Sun's shared libraries. 
+ 
+ 
+ 
+ >You may want to try 1.3b3 when it comes out, because it has better piped
+ >logging support.  I suspect, however, that there is something else
+ >going on here.
+ >
+ >Do you have any other logfiles for each vhost?  Grab lsof from somewhere
+ >and see how many file descriptors each httpd process has open.
+ >
+ 
+ Each vhost in the problematic configuration has an error log and a referer
+ log. 
+ 
+ I can send you my httpd.conf if needed. This is confidential, however, as
+ it, in effect, contains a list of our customers. 
+ 
+ Thanks 
+ 
+ Steve
+ 
+ >
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Feb 14 05:27:34 PST 1998
+State-Changed-Why:
+This is almost certainly a problem with whatever logging program
+you're using.  I've seen it before where the logging program will
+block, forever, in some cases... such as disk full.  Apache blocks
+when this happens.  There's nothing we can do about it.
+
+If you can produce a small reproduceable example which you can
+send to us, then please do.  But without that we can't really
+help, sorry!
+
+Thanks for using Apache!
+Dean
+>Unformatted:
+

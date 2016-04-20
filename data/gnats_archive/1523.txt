@@ -1,0 +1,96 @@
+Received: (qmail 4942 invoked by uid 2012); 6 Dec 1997 14:27:29 -0000
+Message-Id: <19971206142729.4941.qmail@hyperreal.org>
+Date: 6 Dec 1997 14:27:29 -0000
+From: Peter Tillemans <pti@net4all.be>
+Reply-To: pti@net4all.be
+To: apbugs@hyperreal.org
+Subject: CGI scripts fail after repeated requests (file handle leak?)
+X-Send-Pr-Version: 3.2
+
+>Number:         1523
+>Category:       os-windows
+>Synopsis:       CGI scripts fail after repeated requests (file handle leak?)
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Dec  6 06:30:00 PST 1997
+>Last-Modified:  Sun Dec  7 13:37:40 PST 1997
+>Originator:     pti@net4all.be
+>Organization:
+>Release:        1.3b3
+>Environment:
+NT4 Workstation SP 3, VC5, Perl 5.004_04
+>Description:
+After calling 680 times the following script, the server refuses to handle anymore CGI scripts. Another script does the same after 85 times. The error_log reports 
+
+[Sat Dec 06 15:05:42 1997] [error] (24)Too many open files: couldn't spawn child
+ process: c:/apache/cgi-bin/odbctest/select2.pl
+
+for each subsequent request. (The "too many open files" message comes from the perl interpreter).
+
+Stopping and restarting the server restores functionality.
+
+No difference was observed between 1.3b2 and 1.3b3, NT WS and NT server, Changing the number of threads, "Apache -s" or "Apache -X".
+>How-To-Repeat:
+Just run the following scripts 680 times
+
+
+#!/perl/bin/perl
+use CGI;
+use Win32::ODBC;
+
+$q = new CGI;
+print $q->header;
+print $q->start_html("ODBC test");
+$db = new Win32::ODBC("NorthWind") unless $db; 
+unless ($db) {
+	die "Unable to open ODBC : ".Win32::ODBC::Error;
+}
+print "<H2>Status after opening :</H2>";
+print $db->GetError();
+print "<BR>ok.<P>";
+
+&Select();
+#&Drivers();
+
+undef $db;
+
+print $q->end_html;
+
+
+sub Select()
+{
+	print $q->h1("Customers :");
+	print "<TABLE>\n";
+	$db->Sql("SELECT CustomerID, CompanyName, ContactName, Phone FROM Customers");
+
+	print "<TABLE>\n";
+	while ($db->FetchRow()) {
+		@_ = $db->Data();
+		print "<TR><TD>".join("</TD><TD>",@_)."</TD></TR>";
+	}
+	print "</TABLE>\n";
+
+}
+
+>Fix:
+Nope.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: ben
+State-Changed-When: Sun Dec  7 13:37:39 PST 1997
+State-Changed-Why:
+Fix committed for 1.3b4. Thanks.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

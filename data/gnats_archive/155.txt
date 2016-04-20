@@ -1,0 +1,86 @@
+From nobody@hyperreal.com  Wed Feb  5 13:13:58 1997
+Received: by taz.hyperreal.com (8.8.4/V2.0) id NAA01520; Wed, 5 Feb 1997 13:13:58 -0800 (PST)
+Message-Id: <199702052113.NAA01520@taz.hyperreal.com>
+Date: Wed, 5 Feb 1997 13:13:58 -0800 (PST)
+From: Petr Lampa <lampa@fee.vutbr.cz>
+Reply-To: lampa@fee.vutbr.cz
+To: apbugs@hyperreal.com
+Subject: Bad handling of lang_index == -1 in is_variant_better().
+X-Send-Pr-Version: 3.2
+
+>Number:         155
+>Category:       mod_negotiation
+>Synopsis:       Bad handling of lang_index == -1 in is_variant_better().
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Feb  5 13:20:01 1997
+>Last-Modified:  Thu Feb  6 22:36:41 PST 1997
+>Originator:     lampa@fee.vutbr.cz
+>Organization:
+>Release:        1.2b2, b3, b4, b6
+>Environment:
+FreeBSD-2.2BETA
+>Description:
+Problem reported for 1.2b2, still unresolved.
+
+lang_index is initialized to -1, but this value means better quality
+then any variant and this is wrong (see test at line 1487 in mod_negotiation.c)!
+This situation occurs under this condition:
+
+client header:
+Accept-Language:  en, *
+
+httpd.conf:
+LanguagePriority  en de
+
+documents:
+foo.html.en, and foo.html.de
+
+If exists any document in the language that is not specified in accept headers,
+then it has GREATER priority then any other in accept header.
+In the example above, foo.html.de is selected.
+
+
+>How-To-Repeat:
+any URL with language content negotiation and wild card
+Accept-Language: en, *
+>Fix:
+*** mod_negotiation.c.old       Mon Jan  6 17:21:50 1997
+--- mod_negotiation.c   Mon Jan  6 17:24:57 1997
+***************
+*** 1482,1490 ****
+
+      /* if language qualities were equal, try the LanguagePriority
+       * stuff */
+!     if (variant->lang_index > best->lang_index)
+          return 0;
+!     if (variant->lang_index < best->lang_index) {
+          *p_bestq = q;
+          return 1;
+      }
+--- 1482,1491 ----
+
+      /* if language qualities were equal, try the LanguagePriority
+       * stuff */
+!     if (best->lang_index != -1 && variant->lang_index > best->lang_index)
+          return 0;
+!     if (varieant->lang_index != -1 &&
+!         (variant->lang_index < best->lang_index | best->lang_index == -1)) {
+          *p_bestq = q;
+          return 1;
+      %7
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Thu Feb  6 22:36:41 PST 1997
+State-Changed-Why:
+Fixed in revision 1.31 of mod_negotiation.c, which will
+be included in the next beta.
+>Unformatted:
+
+

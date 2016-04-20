@@ -1,0 +1,212 @@
+Received: (qmail 8768 invoked by uid 2012); 11 Jan 1999 13:21:03 -0000
+Message-Id: <19990111132103.8767.qmail@hyperreal.org>
+Date: 11 Jan 1999 13:21:03 -0000
+From: Klaus Mueller <k.mueller@intershop.de>
+Reply-To: k.mueller@intershop.de
+To: apbugs@hyperreal.org
+Subject: Could not GC proxy directory; Permission denied
+X-Send-Pr-Version: 3.2
+
+>Number:         3640
+>Category:       os-windows
+>Synopsis:       Could not GC proxy directory; Permission denied
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jan 11 05:30:00 PST 1999
+>Closed-Date:    Wed Jun 14 20:49:54 PDT 2000
+>Last-Modified:  Wed Jun 14 20:49:54 PDT 2000
+>Originator:     k.mueller@intershop.de
+>Release:        Win32 1.3.3
+>Organization:
+>Environment:
+NT4 SP4 eng.
+Apache run as service
+Apache located on drive D
+proxy directory is d:/apache/proxy
+>Description:
+Apache reports messages like this in the error log file:
+[Fri Jan 08 12:44:48 1999] [error] (13)Permission denied: proxy gc: open(d:/apache/proxy/1)
+[Fri Jan 08 12:44:48 1999] [error] (13)Permission denied: proxy gc: open(d:/apache/proxy/2)
+[Fri Jan 08 12:44:48 1999] [error] (13)Permission denied: proxy gc: open(d:/apache/proxy/3)
+[Fri Jan 08 12:44:48 1999] [error] (13)Permission denied: proxy gc: open(d:/apache/proxy/4)
+[Fri Jan 08 12:44:48 1999] [error] (13)Permission denied: proxy gc: open(d:/apache/proxy/5)
+-----------------------
+The permissions are "Full Control" for everyone and "Full control" for compter administrators
+>How-To-Repeat:
+I don't know
+>Fix:
+No
+>Release-Note:
+>Audit-Trail:
+
+From: Klaus Mueller <K.Mueller@intershop.de>
+To: "'apbugs@hyperreal.org'" <apbugs@hyperreal.org>, 
+	"'apache-bugdb@apache.org'" <apache-bugdb@apache.org>
+Cc:  Subject: RE: mod_proxy/3640: Could not GC proxy directory; Permission deni
+	ed
+Date: Mon, 11 Jan 1999 15:16:23 +0100
+
+ > -----Original Message-----
+ > From: apbugs@hyperreal.org [mailto:apbugs@hyperreal.org]
+ > Sent: Monday, January 11, 1999 2:30 PM
+ > To: k.mueller@intershop.de
+ > Subject: Re: mod_proxy/3640: Could not GC proxy directory; Permission
+ > denied
+ > 
+ > 
+ > Thank you very much for your problem report.
+ > It has the internal identification `mod_proxy/3640'.
+ > The individual assigned to look at your
+ > report is: apache. 
+ > 
+ > >Category:       mod_proxy
+ > >Responsible:    apache
+ > >Synopsis:       Could not GC proxy directory; Permission denied
+ > >Arrival-Date:   Mon Jan 11 05:30:00 PST 1999
+ > 
+ 
+ Problem code seem's to be in proxy_cache.c in function sub_garbage_coll:
+ -----
+ /* read the file */
+ 	fd = open(filename, O_RDONLY | O_BINARY);
+ 	if (fd == -1) {
+ 	    if (errno != ENOENT)
+ 		ap_log_error(APLOG_MARK, APLOG_ERR, r->server,
+ 			     "proxy gc: open(%s)", filename);
+ 	    continue;
+ 	}
+ 	if (fstat(fd, &buf) == -1) {
+ 	    ap_log_error(APLOG_MARK, APLOG_ERR, r->server,
+ 			 "proxy gc: fstat(%s)", filename);
+ 	    close(fd);
+ 	    continue;
+ 	}
+ -----
+ 
+ open try to open a directory. I think this doesn't work.
+ 
+ Klaus
+
+From: Klaus Mueller <K.Mueller@intershop.de>
+To: "'apbugs@hyperreal.org'" <apbugs@hyperreal.org>, 
+	"'apache-bugdb@apache.org'" <apache-bugdb@apache.org>, Klaus Mueller
+	 <K.Mueller@intershop.de>
+Cc: "'Kummer, Ben'" <KUMMER@vdivde-it.de>
+Subject: RE: mod_proxy/3640: Could not GC proxy directory; Permission deni
+	ed
+Date: Mon, 1 Mar 1999 16:54:26 +0100 
+
+ With suggestions and support from Ben Kummer (KUMMER@vdivde-it.de) I made a
+ small bug fix.
+ 
+ Here is the diff command line I used:
+ 
+ diff proxy_cache.c.org proxy_cache.c >proxy_cache.c.diff
+ 
+ The result of the diff is:
+ 
+ ----------------------------------------------------
+ 403,406c403,405
+ < /* is it a temporary file? */
+ < 	if (strncmp(ent->d_name, "tmp", 3) == 0) {
+ < /* then stat it to see how old it is; delete temporary files > 1 day old
+ */
+ < 	    if (stat(filename, &buf) == -1) {
+ ---
+ > 
+ > 	/* stat the file to get type and date */
+ >     if (stat(filename, &buf) == -1) {
+ 410,411c409,412
+ < 	    }
+ < 	    else if (garbage_now != -1 && buf.st_atime < garbage_now -
+ SEC_ONE_DAY &&
+ ---
+ >     }
+ > /* is it a temporary file? */
+ > 	if (strncmp(ent->d_name, "tmp", 3) == 0) {
+ > 	    if (garbage_now != -1 && buf.st_atime < garbage_now -
+ SEC_ONE_DAY &&
+ 450,464d450
+ < /* read the file */
+ < 	fd = open(filename, O_RDONLY | O_BINARY);
+ < 	if (fd == -1) {
+ < 	    if (errno != ENOENT)
+ < 		ap_log_error(APLOG_MARK, APLOG_ERR, r->server,
+ < 			     "proxy gc: open(%s)", filename);
+ < 	    continue;
+ < 	}
+ < 	if (fstat(fd, &buf) == -1) {
+ < 	    ap_log_error(APLOG_MARK, APLOG_ERR, r->server,
+ < 			 "proxy gc: fstat(%s)", filename);
+ < 	    close(fd);
+ < 	    continue;
+ < 	}
+ < 
+ 466a453
+ > /* use stat from above */
+ 469d455
+ < 	    close(fd);
+ 487a474,484
+ > 
+ > 	/* read the file */
+ > 	fd = open(filename, O_RDONLY | O_BINARY);
+ > 	if (fd == -1) {
+ > 	    if (errno != ENOENT)
+ > 		ap_log_error(APLOG_MARK, APLOG_ERR, r->server,
+ > 			     "proxy gc: open(%s)", filename);
+ > 	    continue;
+ > 	}
+ > 
+ > 	/* stat already done */
+ ----------------------------------------------------
+ 
+ 
+ Problem description:
+ 
+ A stat was only made if the file is a .tmp file. Otherwise the file is
+ opened (failed for directory on WinNT) and the file desciptor is used to
+ call fstat().
+ 
+ I used only one stat() call for all types of files and removed the fstat().
+ The file is only opened if it's not a directory.
+ 
+ 
+ Please review the changes and add it to further Win32 releases
+ Thanks
+ Klaus Mueller
+Severity-Changed-From-To: critical-serious
+Severity-Changed-By: coar
+Severity-Changed-When: Wed Mar 24 10:56:20 PST 1999
+Category-Changed-From-To: mod_proxy-os-windows
+Category-Changed-By: coar
+Category-Changed-When: Wed Mar 24 10:56:20 PST 1999
+
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Wed Jun 14 20:49:54 PDT 2000
+State-Changed-Why:
+Thank you for your submission and interest in the Apache project!
+The correction you observe has been applied to the
+forthcoming release of Apache, version 1.3.13, so that
+Garbage collection will no longer fail due to 'stat()ing'
+directories.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

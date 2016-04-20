@@ -1,0 +1,98 @@
+Received: (qmail 23017 invoked by uid 2012); 21 May 1998 05:18:38 -0000
+Message-Id: <19980521051838.23016.qmail@hyperreal.org>
+Date: 21 May 1998 05:18:38 -0000
+From: Jay Soffian <jay@cimedia.com>
+Reply-To: jay@cimedia.com
+To: apbugs@hyperreal.org
+Subject: Apache logs errors on subreqs that it shouldn't.
+X-Send-Pr-Version: 3.2
+
+>Number:         2260
+>Category:       general
+>Synopsis:       Apache logs errors on subreqs that it shouldn't.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed May 20 22:20:01 PDT 1998
+>Last-Modified:  Thu May 21 13:08:07 PDT 1998
+>Originator:     jay@cimedia.com
+>Organization:
+>Release:        1.2.6, 1.3b5
+>Environment:
+SunOS web22 5.5.1 Generic_103640-19 sun4u sparc SUNW,Ultra-2
+(any environment should be affected)
+>Description:
+When calling a CGI with path_info, apache generates a subreq for the
+path_info. If access to the path_info is restricted, an error is ouput
+to the error log. I doesn't seem like this is proper behavior. I used
+mod_rewrite in assisting in diagnosing the problem.
+
+Here is the request:
+
+GET /cgi-bin/print-env/foo=bar
+
+This shows up in the error log under 1.2.6:
+[Thu May 21 01:09:46 1998] access to /home/httpd/htdocs/foo=bar failed for voyager.cimedia.com, reason: Client denied by server configuration
+
+Same error under 1.3b5:
+
+[Thu May 21 01:17:14 1998] [error] Client denied by server configuration: /home/httpd/htdocs/foo=bar
+
+Using mod_rewrite, I saw that the single GET generates two requests, the
+primary request from the GET string, then a subreq for /foo=bar. Since
+the document root has restricted access, and error is output. The
+restricted document root is because this server handles CGI requests
+only.
+>How-To-Repeat:
+Setup a configuration like so:
+
+DocumentRoot /home/httpd/htdocs
+<Directory />
+order deny,allow
+deny from all
+</Directory>
+ScriptAlias /cgi-bin/ /home/httpd/cgi-bin/
+<Directory            /home/httpd/cgi-bin>
+AllowOverride None
+Options None
+order allow,deny
+allow from all
+</Directory>
+
+Then just place a script in the cgi-bin and call it with path_info and
+see what shows up in the error log.
+>Fix:
+Check to see if an error is on a subreq and don't log it if it is. Hmm,
+that would probably affect loging of mod_include errors. Perhaps subreqs
+that shouldn't generate messages in the error log can have a 'don't log on
+error' flag attached?
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: brian
+State-Changed-When: Thu May 21 13:08:07 PDT 1998
+State-Changed-Why:
+Not logging errors for sub_req's is not
+the right thing to do.  Certainly SSI's, when including a
+file and getting an access error, should log an error.  
+We do have to go through the  whole sub_req process since 
+any module could affect the URI->pathname resolution 
+process.  sigh.  Special-casing the sub_req to not log 
+on PATH_INFO resolution is ugly too.
+
+My recommendation would be to increase your loglevel
+setting, or to simply put your CGI scripts in your
+document root.
+
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

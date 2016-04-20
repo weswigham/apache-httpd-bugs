@@ -1,0 +1,201 @@
+From nobody@hyperreal.com  Thu May  1 10:18:40 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id KAA04210;
+	Thu, 1 May 1997 10:18:40 -0700 (PDT)
+Message-Id: <199705011718.KAA04210@hyperreal.com>
+Date: Thu, 1 May 1997 10:18:40 -0700 (PDT)
+From: Edward Tilley <etilley@pentathalon.com>
+Reply-To: etilley@pentathalon.com
+To: apbugs@hyperreal.com
+Subject: Compile scripts fail on HPUX 10.20.
+X-Send-Pr-Version: 3.2
+
+>Number:         520
+>Category:       os-hpux
+>Synopsis:       Compile scripts fail on HPUX 10.20.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu May  1 10:20:01 1997
+>Last-Modified:  Wed May  7 08:26:42 PDT 1997
+>Originator:     etilley@pentathalon.com
+>Organization:
+>Release:        1.2b10
+>Environment:
+HPUX 10.20 with barebones, vendor supplied ANSI-C compiler - Compiler was 
+sufficient, however, to compile Perl 5.003 successfully so I so have confidence
+in it.
+>Description:
+I think I have found a bug in the most recent compile script.
+I can't compile Apache 1.2b10 on my HP-UX 10.20.
+
+During my "make" At line 544 of conf.h ...
+
+int ap_snprintf(char *buf, size_t len, const char *format,...);
+int ap_vsnprintf(char *buf, size_t len, const char *format, va_list ap);
+
+... I get the following errors:
+
+(Bundled) cc: "conf.h", line 544: error 1000: Unexpected symbol: "size_t".
+(Bundled) cc: "conf.h", line 544: warning 5: "const" will become a keyword.
+(Bundled) cc: "conf.h", line 544: error 1000: Unexpected symbol: "char".
+(Bundled) cc: "conf.h", line 544: error 1000: Unexpected symbol: "...".
+(Bundled) cc: "conf.h", line 545: warning 5: "const" will become a keyword.
+(Bundled) cc: "conf.h", line 545: error 1000: Unexpected symbol: "const".
+(Bundled) cc: "conf.h", line 545: error 1000: Unexpected symbol: "va_list".
+(Bundled) cc: "/usr/include/sys/dirent.h", line 32: error 1000: Unexpected symbo
+l: "ino_t".
+(Bundled) cc: "conf.h", line 646: error 1000: Unexpected symbol: "Sigfunc".
+(Bundled) cc: "alloc.h", line 77: error 1000: Unexpected symbol: "*".
+(Bundled) cc: error 2017: Cannot recover from earlier errors, terminating.
+*** Error exit code 1
+
+Here is a larger excerpt of conf.h surrounding the failing lines.
+
+#include <sys/types.h>
+#include <stdarg.h>
+/*
+ * We use snprintf() to avoid overflows, but we include
+ * our own version (ap_snprintf). Allow for people to use their
+ * snprintf() if they want
+ */
+#ifdef HAVE_SNPRINTF
+#define ap_snprintf     snprintf
+#define ap_vsnprintf    vsnprintf
+#else
+int ap_snprintf(char *buf, size_t len, const char *format,...);
+int ap_vsnprintf(char *buf, size_t len, const char *format, va_list ap);
+#endif
+
+
+I am running everything in Configuration by the defaults except that my ANSI-C compiler
+does not support optimization (wierd but cheap).
+
+I don't program in C but I have reviewed the PORTING guide and still can't figure
+out whether this is a legitimate bug in the INSTALL procs.
+
+Also from conf.h, here are the HP defaults.
+
+#elif defined(HPUX) || defined(HPUX10)
+#define HAVE_SYS_RESOURCE_H
+#undef HAVE_GMTOFF
+#define NO_KILLPG
+#undef NO_SETSID
+#ifndef _HPUX_SOURCE
+#define _HPUX_SOURCE
+#endif
+#define JMP_BUF sigjmp_buf
+#define HAVE_SHMGET
+#ifndef HPUX10
+#define SELECT_NEEDS_CAST
+typedef int rlim_t;
+#endif
+
+Any help would be greatly appreciated!
+>How-To-Repeat:
+Full description is pretty complete. email me at etilley@pentathalon.com if you 
+want to try a quick fix and I will let you know how it ran on this platform.
+>Fix:
+Minor C src alterations required I think. If I knew C better, I might have been
+able to hack out a solution but I can't easily follow the assumptions the 
+programmer made
+>Audit-Trail:
+
+From: coar@decus.org (Rodent of Unusual Size)
+To: apbugs@apache.org, etilley@pentathalon.com, Coar@decus.org
+Subject: Re: os-hpux/520: Compile scripts fail on HPUX 10.20.
+Date: Sun, 04 May 1997 09:08:39 -0400
+
+ 
+ [This information was added as a separate problem report; I am adding
+ it to the text of PR#520, where it belongs.]
+ 
+ From: drz@apache.att.com
+ 
+ I have played around with this release and try to make it build on
+ HP-UX. I had the same problem with what you submitted initially.
+ However, what I found out is there is something wroug with the script
+ that can't generate the right set of CFLAGS. To be brief, here is what
+ you can do:
+ 
+ Modify the Makefile after you run the Configure and set CFLAGS as:
+ 
+ CFLAGS1= -Aa -w -DHPUX -D_HPUX_SOURCE
+ 
+ or
+ 
+ CFLAGS1= -Aa -v -w -DHPUX10 -D_HPUX_SOURCE
+ 
+ If you use HP/UX 10. It should make it build.
+ 
+ David
+ -- 
+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ David Zhuang
+ Eml: drz@apache.mt.att.com
+ Web: http://apache.mt.att.com:8000/~drz
+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+From: coar@decus.org (Rodent of Unusual Size)
+To: apbugs@apache.org, etilley@pentathalon.com, Coar@decus.org
+Subject: Re: os-hpux/520: Compile scripts fail on HPUX 10.20.
+Date: Sun, 04 May 1997 09:20:04 -0400
+
+ 
+ [Another addition from improperly sent mail]
+ 
+ BTW: No -O2 flag, but you can set +O2 if you like.
+ 
+ David
+ --
+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ David Zhuang
+ Eml: drz@apache.mt.att.com
+ Web: http://apache.mt.att.com:8000/~drz
+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+From: coar@decus.org (Rodent of Unusual Size)
+To: apbugs@apache.org, etilley@pentathalon.com, Coar@decus.org
+Subject: Re: os-hpux/520: Compile scripts fail on HPUX 10.20.
+Date: Mon, 05 May 1997 20:25:22 -0400
+
+ 
+ [Additional information from the original submitter.  Please note
+ that *I* (Ken) am not the author of the reply; <drz@apache.att.com>
+ is.  I just attached his notes to the problem report.]
+ 
+ From the fingers of Edward Tilley flowed the following:
+ >
+ > Hi,
+ >
+ >Thanks for your response. Unfortunately, I did not purchase the HPUX
+ >addon C compiler for this system. Strange, because as I mentioned in my
+ >bug report, that the barebones compiler that I do have was sufficient to
+ >compile PERL 5.003.
+ >
+ >-Aa   nor  +O2  are supported and the Apache install script will not run
+ >whether I use your recommended changes or not.
+ >
+ >Thanks just the same.
+ >
+ >Cheers,
+ >
+ >Ed
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Wed May  7 08:26:41 PDT 1997
+State-Changed-Why:
+User reports they are using HPUX's free compiler (which is
+_NOT_ ANSI).  Although Larry may be able to avoid
+using ANSI features Apache does and isn't going to 
+change.  The best solution is gcc.
+>Unformatted:
+
+
+
+
+

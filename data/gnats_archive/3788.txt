@@ -1,0 +1,212 @@
+Received: (qmail 100 invoked by uid 2012); 27 Jan 1999 23:58:04 -0000
+Message-Id: <19990127235804.29999.qmail@hyperreal.org>
+Date: 27 Jan 1999 23:58:04 -0000
+From: Chris Knight <chris@knight.net>
+Reply-To: chris@knight.net
+To: apbugs@hyperreal.org
+Subject: StringIndexOutOfBoundsException thrown in JServConnection.getDateHeader()
+X-Send-Pr-Version: 3.2
+
+>Number:         3788
+>Category:       mod_jserv
+>Synopsis:       StringIndexOutOfBoundsException thrown in JServConnection.getDateHeader()
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan 27 19:10:01 PST 1999
+>Last-Modified:  Tue Mar 30 12:49:00 PST 1999
+>Originator:     chris@knight.net
+>Organization:
+>Release:        Apache 1.34, JServ 1.0b2
+>Environment:
+Running the above Apache and JServ version on a Linux server using the Blackdown JVM.
+>Description:
+A StringIndexOutOfBoundsException is thrown when JServConnection.getDateHeader() attempts to parse the date format (using SimpleDateFormat.parse()) -- I'm assuming because it's attempting to reference a location beyond the length of the string.
+
+(Perhaps this is an error with the blackdown SimpleDateFormat class??)
+
+Here is a sample stack trace:
+java.lang.StringIndexOutOfBoundsException: String index out of range: 29
+        at java.lang.String.charAt(String.java)
+        at java.text.SimpleDateFormat.subParse(SimpleDateFormat.java)
+        at java.text.SimpleDateFormat.parse(SimpleDateFormat.java)
+        at java.text.DateFormat.parse(DateFormat.java)
+        at org.apache.jserv.JServConnection.getDateHeader(JServConnection.java:1164)
+        at javax.servlet.http.HttpServlet.service(HttpServlet.java:480)
+        at javax.servlet.http.HttpServlet.service(HttpServlet.java:575)
+        at org.apache.jserv.JServConnection.run(JServConnection.java:349)
+
+>How-To-Repeat:
+http://qtpi.firstweb.com/ (although the bug has been fixed on our server using my 'patch' (below)).
+>Fix:
+I have 'patched' the JServConnection class by modifying the getDateHeader method (attached below).  I have enclosed the entire method in a 'try' clause and return '-1' if anything throws the StringIndexOutOfBoundsException.
+
+    public long getDateHeader(String name) 
+    {
+      try
+      {
+        String val = (String)headers_in.get(name.toLowerCase());
+        SimpleDateFormat sdf;
+
+        if (val == null)
+        {
+          return -1;
+        }
+
+        sdf = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz");
+        try 
+        {
+	        Date date = sdf.parse(val);
+	        return date.getTime();
+        }
+        catch(ParseException formatNotValid) 
+        {
+          // try another format
+        }
+
+        sdf = new SimpleDateFormat("EEEEEE, dd-MMM-yy HH:mm:ss zzz");
+        try 
+        {
+	        Date date = sdf.parse(val);
+	        return date.getTime();
+        } 
+        catch(ParseException formatNotValid)
+        {
+	        // Try another format
+        }
+
+        sdf = new SimpleDateFormat("EEE MMMM d HH:mm:ss yyyy");
+        try 
+        {
+	        Date date = sdf.parse(val);
+	        return date.getTime();
+        }
+        catch(ParseException formatStillNotValid)
+        {
+	        throw new IllegalArgumentException(val);
+        }
+			}       
+			catch (StringIndexOutOfBoundsException theException)
+			{
+			  // (!) It seems that SimpleDateFormat.parse() will throw a 
+			  //     StringIndexOutOfBoundsException.  For my purposes, I'd rather
+			  //     my servlet not die on account of an invalid date, so I'll just
+			  //     return a '-1' and let JServ go along its way...
+			
+			  return -1;
+			}
+    }
+>Audit-Trail:
+
+From: Jochen Schwarze <schwarze@orthogon.de>
+To: apbugs@hyperreal.org
+Cc: Chris Knight <chris@knight.net>
+Subject: Re: mod_jserv/3788: StringIndexOutOfBoundsException thrown in
+ JServConnection.getDateHeader()
+Date: Fri, 5 Feb 1999 17:42:54 +0100 (MET)
+
+ I also experience this problem on a Sparc Solaris 2.6 with bundled
+ Java 1.1.6 (so no Blackdown Linux Java problem), at line 1223 of
+ JServConnection.java, 1.0b2, so parsing the "EEE, dd MMM yyyy HH:mm:ss
+ zzz" format fails.  This is probably a problem in Sun's code.  A
+ sample date string is here:
+ 
+ 	Fri, 05 Feb 1999 16:27:34 GMT
+ 
+ I've tried to reproduce the problem with a small sample class like this:
+ 
+     import java.util.*;
+     import java.text.*;
+     
+     public class TryDate {
+       public static void main(String[] args) 
+       {
+ 	getDateHeader("Fri, 05 Feb 1999 14:11:33 GMT");
+       }
+     
+       static public long getDateHeader(String val) {
+ 	SimpleDateFormat sdf;
+ 	
+ 	if ( val == null ) {
+ 	  return -1;
+ 	}
+     
+ 	sdf = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz");
+ 	try {
+ 	  Date date = sdf.parse(val);
+ 	  return date.getTime();
+ 	} catch(ParseException formatNotValid) {
+ 	  // try another format
+ 	}
+ 	
+ 	sdf = new SimpleDateFormat("EEEEEE, dd-MMM-yy HH:mm:ss zzz");
+ 	try {
+ 	  Date date = sdf.parse(val);
+ 	  return date.getTime();
+ 	} catch(ParseException formatNotValid) {
+ 	  // Try another format
+ 	}
+ 	
+ 	sdf = new SimpleDateFormat("EEE MMMM d HH:mm:ss yyyy");
+ 	try {
+ 	  Date date = sdf.parse(val);
+ 	  return date.getTime();
+ 	} catch(ParseException formatStillNotValid) {
+ 	  throw new IllegalArgumentException(val);
+ 	}
+       }
+     }   
+ 
+ But suprisingly, it does _not_ reproduce the problem!
+ Any ideas?
+ 
+ Regards,
+ 
+ 	Jochen
+ --
+ 
+   Jochen Schwarze
+   <schwarze@orthogon.de>
+ 
+
+From: "jon *" <jon@clearink.com>
+To: Jochen Schwarze <schwarze@orthogon.de>
+Cc: apbugs@apache.org
+Subject: Re: mod_jserv/3788: StringIndexOutOfBoundsException thrown in
+	 JServConnection.getDateHeader()
+Date: Fri, 05 Feb 1999 10:37:02 -0800
+
+ >  But suprisingly, it does _not_ reproduce the problem!
+ >  Any ideas?
+ >  
+ 
+ please check out the latest cvs source code...this is a known bug in
+ SimpleDateFormat. the fix as described in BugParade is to append a " "
+ before the string to be parsed. this has already been fixed in cvs.
+ 
+ thanks,
+ 
+ -jon
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: jon@clearink.com
+State-Changed-When: Tue Mar 30 12:48:59 PST 1999
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

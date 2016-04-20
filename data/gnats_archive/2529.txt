@@ -1,0 +1,141 @@
+Received: (qmail 20025 invoked by uid 2012); 30 Jun 1998 06:04:12 -0000
+Message-Id: <19980630060412.20024.qmail@hyperreal.org>
+Date: 30 Jun 1998 06:04:12 -0000
+From: John Van Essen <jve@gamers.org>
+Reply-To: jve@gamers.org
+To: apbugs@hyperreal.org
+Subject: No 'Includes' in Options causes '[warn] handler "server-parsed" not found'
+X-Send-Pr-Version: 3.2
+
+>Number:         2529
+>Category:       general
+>Synopsis:       No 'Includes' in Options causes '[warn] handler "server-parsed" not found'
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun 29 23:10:00 PDT 1998
+>Last-Modified:  Mon Jul  6 21:06:38 PDT 1998
+>Originator:     jve@gamers.org
+>Organization:
+>Release:        1.3b7
+>Environment:
+Red Hat 4.2  Linux 2.0.32
+>Description:
+Starting with 1.3b7 (also in 1.3.0), this appears in the error log:
+
+ [warn] handler "server-parsed" not found, using default handler for: /home/jve/public_html/index.html
+
+In src/CHANGES for 1.3b7:
+
+  *) If a specific handler is set for a file yet the request still
+     ends up being handled by the default handler, log an error
+     message before handling it.  This catches things such as trying
+     to use SSIs without mod_include enabled.  [Marc Slemko]
+
+I have mod_include enabled and I have the SSI handler added in srm.conf:
+
+  AddHandler server-parsed .html
+
+I have Includes enabled in access.conf within a <Directory _documentroot_>:
+
+  Options Indexes Includes FollowSymLinks
+
+and the server-side parsing works just fine.
+
+In my personal .htaccess (ouside the _documentroot_ path) I have:
+
+  Options ExecCGI FollowSymLinks Indexes
+
+thus shutting off Includes for this directory.  The file is served just
+fine, but there's that seemingly bogus warning message mentioned above.
+
+I would have been under the impression that the server-parsed handler
+would still be called, but would recognize that the Includes option is
+off, and then just process it normally.  Certainly there's nothing wrong 
+with turning off Includes for certain directories without having to jump 
+through some hoop to avoid the warning.  So I did some investigating.
+
+In mod_includes.c:send_parsed_file(), DECLINED is returned if the
+Includes option is not set, assuming that the default handler will 
+service the request.  OK.
+
+In http_core.c:default_handler(), the warning is printed if r->handler
+is non-null (i.e. set to "server-parsed" in this case).  <sniff> <sniff>
+Smells like a kludge to me.  :)
+
+In http_config.c:ap_invoke_handler(), if a specified handler is not found, 
+*here* is where the error message should be printed, I would think.  
+>How-To-Repeat:
+Request a file with the defined "server-parsed" extension from a
+directory with Includes turned off.
+>Fix:
+Something like this (assuming the test is removed from default_handler):
+
+$ diff -b -U 5 http_config.c /tmp
+--- http_config.c       Wed May  6 11:18:01 1998
++++ /tmp/http_config.c  Tue Jun 30 00:05:19 1998
+@@ -476,10 +476,11 @@
+ int ap_invoke_handler(request_rec *r)
+ {
+     fast_handler_rec *handp;
+     char *handler, *p;
+     size_t handler_len;
++    int result = NOT_IMPLEMENTED;
+
+     if (r->handler) {
+        handler = r->handler;
+        handler_len = strlen(handler);
+     }
+@@ -498,23 +499,27 @@
+     /* Pass one --- direct matches */
+
+     for (handp = handlers; handp->hr.content_type; ++handp) {
+        if (handler_len == handp->len
+            && !strncmp(handler, handp->hr.content_type, handler_len)) {
+-            int result = (*handp->hr.handler) (r);
++            result = (*handp->hr.handler) (r);
+
+             if (result != DECLINED)
+                 return result;
+         }
+     }
++    if (result == NOT_IMPLEMENTED && r->handler) {
++        ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_WARNING, r->server,
++            "handler \"%s\" not found for: %s", r->handler, r->filename);
++    }
+
+     /* Pass two --- wildcard matches */
+
+     for (handp = wildhandlers; handp->hr.content_type; ++handp) {
+        if (handler_len >= handp->len
+            && !strncmp(handler, handp->hr.content_type, handp->len)) {
+-             int result = (*handp->hr.handler) (r);
++             result = (*handp->hr.handler) (r);
+
+              if (result != DECLINED)
+                  return result;
+          }
+     }
+
+
+Disclaimer: the above has not been tested.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Jul  6 21:06:38 PDT 1998
+State-Changed-Why:
+Thanks, committed to 1.3.1-dev.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

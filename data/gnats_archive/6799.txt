@@ -1,0 +1,118 @@
+Received: (qmail 17630 invoked by uid 501); 6 Nov 2000 13:27:13 -0000
+Message-Id: <20001106132713.17629.qmail@locus.apache.org>
+Date: 6 Nov 2000 13:27:13 -0000
+From: Mark Klein <Mark.Klein@db.com>
+Reply-To: Mark.Klein@db.com
+To: submit@bugz.apache.org
+Subject: mod_jserv sometimes doesn't start the Java VM
+X-Send-Pr-Version: 3.110
+
+>Number:         6799
+>Category:       general
+>Synopsis:       mod_jserv sometimes doesn't start the Java VM
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Nov 06 05:30:02 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     Mark.Klein@db.com
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Machine: SunOS <hostname> 5.7 Generic_XXXXXX-XX sun4u sparc SUNW,Ultra-Enterprise-10000
+Compiler: Sun WorkShop 6 2000/04/07 C 5.1
+JServ: 1.1.2, compiled into apache
+>Description:
+The mod_jserv part of apache sometimes doesn't start the Java VM.
+This does NOT mean that the VM sometimes doesn't come up properly but rather
+mod_jserv doesn't even try to start it.
+
+The mod_jserv.log contains in case of failure:
+-----------------------------------------------
+[06/11/2000 13:13:32:319] (INFO) Apache-JServ 1rst  initialization: JVM will be started later 1 29220 29218
+[06/11/2000 13:13:32:340] (INFO) Apache Module was cleaned-up
+[06/11/2000 13:13:32:369] (INFO) Apache-JServ 1rst  initialization: JVM will be started later 1 29232 29220
+-----------------------------------------------
+
+>How-To-Repeat:
+Try starting and stopping of apache 1.3.12 (with compiled in jserv 1.1.2)
+in a loop. After every start check the mod_jserv.log for the words "Java VM spawned".
+In the case of failure these words will not appear, see log in the Full Description.
+>Fix:
+The problem is that wrapper_spawn() (in jserv_wrapper_unix.c) uses getppid()
+to find out whether it runs the first step (configuration)
+or second step (when it has to start the Java VM).
+Unfortunatly this information is not reliable. This is because the initial
+httpd process is killed after fork by an asynchronous singal and it might
+take some time before the system removes the process and the new-born httpd
+process gets attached to the init pocess (with pid == 1).
+
+The first solution is to use a different method of recognizing whether it's
+the first or second step.
+
+The second solution is to wait for the parent process to die right after it has
+been sig-killed. This solves the problem in general and will prevent future
+problems.
+
+The "httpd_main.c" could be modified like:
+-----------------------------------------------
+	static void detach(void)
+	{
+		#if !defined(WIN32) && !defined(NETWARE)
+		int x;
+		struct timespec ____sleep;  		/* <<=== */
+
+		chdir("/");
+		#if !defined(MPE) && !defined(OS2) && !defined(TPF)
+		/* Don't detach for MPE because child processes can't survive the death of
+		the parent. */
+
+		if ((x = fork()) > 0)
+		exit(0);
+		else if (x == -1) {
+		perror("fork");
+		fprintf(stderr, "%s: unable to fork new process\n", ap_server_argv0);
+		exit(1);
+		}
+
+		RAISE_SIGSTOP(DETACH);
+
+		____sleep.tv_sec = 0;			/* <<=== */
+		____sleep.tv_nsec = 500;		/* <<=== */
+
+		while(getppid() != 1)			/* <<=== */
+		{					/* <<=== */
+			nanosleep(&____sleep, NULL);	/* <<=== */
+		}					/* <<=== */
+		......
+	}
+-----------------------------------------------
+
+This works on Solaris 2.6 and 2.7. Note, that you have use "-lposix4" or "-ltr"
+for "nanosleep()".
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

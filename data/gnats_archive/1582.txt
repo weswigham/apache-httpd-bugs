@@ -1,0 +1,278 @@
+Received: (qmail 729 invoked by uid 2012); 20 Dec 1997 03:16:31 -0000
+Message-Id: <19971220031631.728.qmail@hyperreal.org>
+Date: 20 Dec 1997 03:16:31 -0000
+From: Todd Vierling <tv@pobox.com>
+Reply-To: tv@pobox.com
+To: apbugs@hyperreal.org
+Subject: VirtualHosts no longer work as part of HTTP/0.9 request
+X-Send-Pr-Version: 3.2
+
+>Number:         1582
+>Category:       mod_rewrite
+>Synopsis:       mod_rewrite forms REQUEST_URI different than mod_cgi does
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Dec 19 19:20:00 PST 1997
+>Last-Modified:  Thu May 21 02:25:58 PDT 1998
+>Originator:     tv@pobox.com
+>Organization:
+>Release:        1.3
+>Environment:
+NetBSD 1.3A sparc
+>Description:
+In an HTTP/0.9 or HTTP/1.0 request, if the full absolute URL is
+provided (which must be acceptable as per HTTP/1.0), and in the case
+of HTTP/1.0, no Host: header is provided in the request, no virtual
+hosting is done.  This breaks some browsers and proxies that "just
+worked" on named virtual hosts but that used older style requests, and
+this functionality works on Apache 1.2.x.
+IMHO, re-adding this removed functionality will not break RFC's.
+>How-To-Repeat:
+telnet <servername> 80; type "GET http://somehost/someurl"
+Note that somehost (which should be a VirtualHost) isn't what you
+get, even though you expected it.
+I have some guesses about why this happens if a developer wishes to email me.
+>Fix:
+Re-add the removed functionality.  Since HTTP/1.1 declares an
+official method to do named virtual hosting, only do this on HTTP/0.9
+and HTTP/1.0 requests
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Todd Vierling <tv@pobox.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: protocol/1582: VirtualHosts no longer work as part of HTTP/0.9 request
+Date: Fri, 19 Dec 1997 23:06:59 -0800 (PST)
+
+ You've read the vhosts documentation, and you've updated your
+ configuration files appropriately, correct?  And the server generates no
+ error_log entries when you boot it?  If so can you provide a small example
+ config file that demonstrates this problem?
+ 
+ Thanks
+ Dean
+ 
+
+From: Todd Vierling <tv@pobox.com>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: protocol/1582: VirtualHosts no longer work as part of HTTP/0.9 request
+Date: Sat, 20 Dec 1997 08:52:35 -0500 (EST)
+
+ On Fri, 19 Dec 1997, Dean Gaudet wrote:
+ 
+ : You've read the vhosts documentation, and you've updated your
+ : configuration files appropriately, correct?  And the server generates no
+ : error_log entries when you boot it?  If so can you provide a small example
+ : config file that demonstrates this problem?
+ 
+ Yep.  vhosting with HTTP/1.1 style Host: headers works flawlessly (Lynx
+ 2.7.1 and Netscape 4.04, my two major browsers, use this).  However,
+ checking again this morning, I found part of the problem. 
+ 
+ Under 1.2.x, the "outside virtual hosts" directives managed to catch
+ requests without a virtual host, but under 1.3, the first vhost (not
+ _default_!) catches them.  So I had to find a way to make the first vhost
+ intercept such unqualified requests, and redirect them.  I used mod_rewrite.
+ 
+ I was checking for unqualified requests by looking at %{HTTP_HOST} and
+ comparing it to the null string in a RewriteCond in my first vhost:
+ 
+     RewriteRule ^/errors/(.*) /errors/$1 [L]
+     RewriteCond %{HTTP_HOST} ^$
+     RewriteRule ^.*$ http://www.duh.org/errors/upgrade.html [R,L]
+ 
+ The URL would then be redirected to an error page telling you that you
+ needed to upgrade your browser to one that supports vhosts.  Problem with
+ all this is, HTTP_HOST is only set when a Host: header is actually present,
+ in HTTP/1.1 style.  I was under the mistaken impression that it was set on
+ any virtual host request, under any version of the protocol.  I have now
+ tried doing a slightly different, and trickier, RewriteCond: 
+ 
+     RewriteRule ^/errors/(.*) /errors/$1 [L]
+     RewriteCond %{HTTP_HOST}%{REQUEST_URI} ^/
+     RewriteRule ^.*$ http://www.duh.org/errors/upgrade.html [R,L]
+ 
+ but it seems that the %{REQUEST_URI} only includes the fully qualified
+ request when a CGI such as env.cgi is run(!).  Here, it is stripped of the
+ http://host part. 
+ 
+ Basically, I have no way, by testing environment variables at rewrite time,
+ to see that a request had no virtual host information.  Perhaps HTTP_HOST
+ should always be set on a virtual host request, even an "old-style one"? 
+ 
+ =====
+ ===== Todd Vierling (Personal tv@pobox.com; Business tv@lucent.com) =====
+ == "There's a myth that there is a scarcity of justice to go around, so
+ == that if we extend justice to 'those people,' it will somehow erode the
+ == quality of justice everyone else receives."  -- Maria Price
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Todd Vierling <tv@pobox.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: protocol/1582: VirtualHosts no longer work as part of HTTP/0.9 request
+Date: Sat, 20 Dec 1997 12:22:18 -0800 (PST)
+
+ On Sat, 20 Dec 1997, Todd Vierling wrote:
+ 
+ > On Fri, 19 Dec 1997, Dean Gaudet wrote:
+ > 
+ > : You've read the vhosts documentation, and you've updated your
+ > : configuration files appropriately, correct?  And the server generates no
+ > : error_log entries when you boot it?  If so can you provide a small example
+ > : config file that demonstrates this problem?
+ > 
+ > Yep.  vhosting with HTTP/1.1 style Host: headers works flawlessly (Lynx
+ > 2.7.1 and Netscape 4.04, my two major browsers, use this).  However,
+ > checking again this morning, I found part of the problem. 
+ > 
+ > Under 1.2.x, the "outside virtual hosts" directives managed to catch
+ > requests without a virtual host, but under 1.3, the first vhost (not
+ > _default_!) catches them.  So I had to find a way to make the first vhost
+ > intercept such unqualified requests, and redirect them.  I used mod_rewrite.
+ 
+ What do you mean "outside virtual hosts"?  Under 1.3 the first vhost on a
+ NameVirtualHost address catches any request which does not match any of
+ the other name-vhosts on that address; that's how it is documented.
+ 
+ _default_ catches only IP addresses which are otherwise unmatched, not names.
+ 
+ > but it seems that the %{REQUEST_URI} only includes the fully qualified
+ > request when a CGI such as env.cgi is run(!).  Here, it is stripped of the
+ > http://host part.
+ 
+ This is a mod_rewrite problem, not a vhosting problem.
+ 
+ > Basically, I have no way, by testing environment variables at rewrite time,
+ > to see that a request had no virtual host information.  Perhaps HTTP_HOST
+ > should always be set on a virtual host request, even an "old-style one"? 
+ 
+ Any request that makes it to the first name-vhost did not match any of the
+ others.  There's no need to look at the URL or the Host: header, apache
+ has already done it.  You can do this:
+ 
+ NameVirtualHost a.b.c.d
+ <VirtualHost a.b.c.d>
+     ServerName some-arbitrary-name
+     RewriteEngine On
+     RewriteRule .* http://somewhereelse/upgrade.html [R]
+ </VirtualHost>
+ 
+ <VirtualHost a.b.c.d>
+     ServerName www.customer1.com
+     ...
+ </VirtualHost>
+ 
+ <VirtualHost a.b.c.d>
+     ServerName www.customer2.com
+     ...
+ </VirtualHost>
+ 
+ ...
+ 
+ Dean
+ 
+ 
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Dec 20 12:24:11 PST 1997
+State-Changed-Why:
+Workaround given to user.
+Synopsis-Changed-From: VirtualHosts no longer work as part of HTTP/0.9 request
+Synopsis-Changed-To: mod_rewrite forms REQUEST_URI different than mod_cgi does
+Synopsis-Changed-By: dgaudet
+Synopsis-Changed-When: Sat Dec 20 12:24:11 PST 1997
+Category-Changed-From-To: protocol-mod_rewrite
+Category-Changed-By: dgaudet
+Category-Changed-When: Sat Dec 20 12:24:11 PST 1997
+
+Comment-Added-By: dgaudet
+Comment-Added-When: Sat Dec 20 12:25:22 PST 1997
+Comment-Added:
+[Damnit, ran into a bug in the gnats CGI, I supplied this reason
+when I changed the category, it lost it.]
+
+The real bug is that the user is using mod_rewrite to do virtual
+hosting, and mod_rewrite doesn't construct %{REQUEST_URI} the
+same way as mod_cgi.  When the request is an absolute URI
+the http://host/ part is missing from %{REQUEST_URI}.
+
+Dean
+
+
+From: Todd Vierling <tv@pobox.com>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_rewrite/1582: VirtualHosts no longer work as part of HTTP/0.9 request
+Date: Sat, 20 Dec 1997 15:36:55 -0500 (EST)
+
+ On Sat, 20 Dec 1997, Dean Gaudet wrote:
+ 
+ : > Under 1.2.x, the "outside virtual hosts" directives managed to catch
+ : > requests without a virtual host, but under 1.3, the first vhost (not
+ : > _default_!) catches them.  So I had to find a way to make the first vhost
+ : > intercept such unqualified requests, and redirect them.  I used mod_rewrite.
+ : 
+ : What do you mean "outside virtual hosts"?
+ 
+ Those dirctives not encapsulated in <VirtualHost> sections.
+ 
+ :  Under 1.3 the first vhost on a
+ : NameVirtualHost address catches any request which does not match any of
+ : the other name-vhosts on that address; that's how it is documented.
+ 
+ : NameVirtualHost a.b.c.d
+ : <VirtualHost a.b.c.d>
+ :     ServerName some-arbitrary-name
+ :     RewriteEngine On
+ :     RewriteRule .* http://somewhereelse/upgrade.html [R]
+ : </VirtualHost>
+ : 
+ : <VirtualHost a.b.c.d>
+ :     ServerName www.customer1.com
+ :     ...
+ : </VirtualHost>
+ 
+ Odd; I did this before, and the second vhost was getting unqualified
+ requests, so I went to do the whole hackaround that I did.  Now it works.
+ <grumble>  I think it was because I was using names in the <VirtualHost>
+ lines instead of IPs for all but the first one... hrm.
+ 
+ But the new redocumenting of the bug (that mod_rewrite doesn't properly
+ reconstruct the URI) is correct.
+ 
+ =====
+ ===== Todd Vierling (Personal tv@pobox.com; Business tv@lucent.com) =====
+ == "There's a myth that there is a scarcity of justice to go around, so
+ == that if we extend justice to 'those people,' it will somehow erode the
+ == quality of justice everyone else receives."  -- Maria Price
+ 
+ 
+State-Changed-From-To: analyzed-suspended
+State-Changed-By: rse
+State-Changed-When: Thu May 21 02:25:57 PDT 1998
+State-Changed-Why:
+This problem now is suspended until Apache 1.3.0 because a timely
+solution is not possible or not cost-effective at the present time. For a
+later release we'll reconsider this report again.
+
+Release-Changed-From-To: 1.3b3-1.3
+Release-Changed-By: rse
+Release-Changed-When: Thu May 21 02:25:57 PDT 1998
+Severity-Changed-From-To: serious-non-critical
+Severity-Changed-By: rse
+Severity-Changed-When: Thu May 21 02:25:57 PDT 1998
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

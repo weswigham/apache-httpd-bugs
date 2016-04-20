@@ -1,0 +1,101 @@
+Received: (qmail 4632 invoked by uid 2012); 5 Oct 1998 15:53:16 -0000
+Message-Id: <19981005155316.4631.qmail@hyperreal.org>
+Date: 5 Oct 1998 15:53:16 -0000
+From: Bert Driehuis <bert_driehuis@nl.compuware.com>
+Reply-To: bert_driehuis@nl.compuware.com
+To: apbugs@hyperreal.org
+Subject: No module specific data hook for per-connection data
+X-Send-Pr-Version: 3.2
+
+>Number:         3143
+>Category:       apache-api
+>Synopsis:       No module specific data hook for per-connection data
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Oct  5 10:10:00 PDT 1998
+>Last-Modified:  Wed Mar 24 09:59:25 PST 1999
+>Originator:     bert_driehuis@nl.compuware.com
+>Organization:
+>Release:        1.3.1
+>Environment:
+BSD/OS 3.1, GCC 2.7.2.1 (irrelevant to issue)
+>Description:
+When writing a module which needs to add data to the per-connection conn_rec
+structure, one finds that it is necessary to add a field to the module
+independent src/include/httpd.h file. This is undesirable, because it is
+incompatible with the idea of modules being self-contained extensions
+>How-To-Repeat:
+Try modifying mod_ldap.c to retain both the username and the LDAP Distinguished
+Name in the conn_rec to avoid the overhead of an extra LDAP lookup.
+>Fix:
+Add a simple API to add extension specific data to conn_rec, retrieve a
+pointer to it, and clean up on connection closing. This API makes sense for
+other structs as well, e.g. the per vhost struct.
+
+E.g, in httpd.h:
+
+struct conn_rec {
+	...
+	struct extension_data *extdata;
+};
+
+struct extension_data {
+	struct extension_data *next;
+	char *module_name;
+	void *data;
+}
+
+In src/extensiondata.c:
+
+void *
+add_connrec_extensiondata(conn_rec *cr, char *module_name, void *data)
+{
+	/* link in new field */
+}
+
+void *
+get_connrec_extension(conn_rec *cr, char *module_name)
+{
+	/* Retrieve the struct from the linked list */
+	return extdatarec->data;
+}
+
+In modules/mod_example.c:
+
+	/* Extend conn_rec with our foobar data */
+	add_connrec_extension(cr, "mod_example", (void *)foobar);
+
+You get my drift :-)
+
+If there is an appropriate forum to discuss this, please let me know. I'm
+pretty new to Apache development. If this idea stands a fighting chance of
+being adopted, I'm prepared to do a proof-of-concept first, and then
+propose a set of patches to the source tree.
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: coar
+State-Changed-When: Wed Mar 24 09:59:24 PST 1999
+State-Changed-Why:
+
+Being suspended for future consideration.
+
+Severity-Changed-From-To: critical-non-critical
+Severity-Changed-By: coar
+Severity-Changed-When: Wed Mar 24 09:59:24 PST 1999
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

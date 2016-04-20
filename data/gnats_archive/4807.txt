@@ -1,0 +1,172 @@
+Received: (qmail 26613 invoked by uid 2012); 1 Aug 1999 20:12:17 -0000
+Message-Id: <19990801201217.26612.qmail@hyperreal.org>
+Date: 1 Aug 1999 20:12:17 -0000
+From: Peter Kazmier <pete-apache@kazmier.com>
+Reply-To: pete-apache@kazmier.com
+To: apbugs@hyperreal.org
+Subject: Action, SetHandler, and Location interaction. Trying to mimic SetHandler server-info with a different handler.
+X-Send-Pr-Version: 3.2
+
+>Number:         4807
+>Category:       general
+>Synopsis:       Action, SetHandler, and Location interaction. Trying to mimic SetHandler server-info with a different handler.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Aug  1 13:20:00 PDT 1999
+>Closed-Date:    Mon Oct 30 19:20:42 PST 2000
+>Last-Modified:  Mon Oct 30 19:20:42 PST 2000
+>Originator:     pete-apache@kazmier.com
+>Release:        1.3.3 and 1.3.6
+>Organization:
+>Environment:
+RH 5.2, apache rpm
+Linux view 2.0.36 #1 Tue Oct 13 22:17:11 EDT 1998 i486 unknown
+>Description:
+I am trying to mimic the following behavior:
+
+<Location /server-status>
+SetHandler server-status
+</Location>
+
+with my own handler, lets call it server-uptime.  As far as I can
+tell (based on the documentation), I think the config should look
+like this:
+
+Action server-uptime /cgi-bin/uptime.cgi
+<Location /server-uptime>
+SetHandler server-uptime
+</Location>
+
+Shouldn't that work?  Unfortunately, I have not been able to get this
+working UNLESS I actually have a file called "server-uptime" in the
+DocumentRoot.  Even so, I still get the error "Handler "server-uptime"
+not found.
+
+My questions are:
+
+1) Why does the file "server-uptime" have to exist when
+   "server-status" in the first example doesn't have to?
+
+2) Why do I get the "handler not found" message in my error log?
+
+Any info/help would be appreciated.
+
+Thanks,
+Pete
+>How-To-Repeat:
+http://www.kazmier.com/server-uptime
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+
+From: Dirk <dirkm@teleport.com>
+To: apbugs@apache.org
+Cc: pete-apache@kazmier.com, demyers@pscnet.com, asmorris@pscnet.com
+Subject: general/4807
+Date: Mon, 9 Aug 1999 21:18:52 -0700 (PDT)
+
+ Hi, I also ran into this bug today.  It looks like what's happening is
+ that the warning falls between pass one and pass two in the
+ handler-matching section of http_config.c
+ 
+ Moving the warning until after the second pass suppresses the
+ error unless the second pass also fails to match; I'm not sure that it's
+ the right fix, though, as at this point the program returns a server
+ error rather than just raising a warning.  Anyway, I'm using this locally
+ to quiet apache down as matching on the second pass doesn't seem to cause
+ any problems.   I figured I might as well submit the patch:
+ 
+ Dirk
+ dirkm@teleport.com
+ 
+ -----snip here-----
+ 
+ 
+ --- http_config_orig.c	Mon Aug  9 21:07:20 1999
+ +++ http_config.c	Mon Aug  9 21:08:01 1999
+ @@ -512,10 +512,7 @@
+          }
+      }
+  
+ -    if (result == HTTP_INTERNAL_SERVER_ERROR && r->handler) {
+ -        ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_WARNING, r,
+ -            "handler \"%s\" not found for: %s", r->handler, r->filename);
+ -    }
+ +  
+  
+      /* Pass two --- wildcard matches */
+  
+ @@ -527,6 +524,13 @@
+               if (result != DECLINED)
+                   return result;
+           }
+ +    }
+ +
+ +	/* if this is before pass two, we get spurious warnings */
+ +	
+ +  if (result == HTTP_INTERNAL_SERVER_ERROR && r->handler) {
+ +        ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_WARNING, r,
+ +            "handler \"%s\" not found for: %s", r->handler, r->filename);
+      }
+  
+      return HTTP_INTERNAL_SERVER_ERROR;
+ 
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: fielding
+State-Changed-When: Fri Aug 27 17:20:05 PDT 1999
+State-Changed-Why:
+
+For your first question, try putting the Action directive
+inside the Location container as well.
+
+The second question is fixed by Dirk's patch and will
+be included in the next version of Apache.
+
+.....Roy
+
+Comment-Added-By: coar
+Comment-Added-When: Thu May 25 15:10:03 PDT 2000
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: slive
+State-Changed-When: Mon Oct 30 19:20:41 PST 2000
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

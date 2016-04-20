@@ -1,0 +1,176 @@
+Received: (qmail 5059 invoked by uid 2012); 1 Apr 1999 14:33:56 -0000
+Message-Id: <19990401143356.5058.qmail@hyperreal.org>
+Date: 1 Apr 1999 14:33:56 -0000
+From: Jeff Heisz <heisz@swi.com>
+Reply-To: heisz@swi.com
+To: apbugs@hyperreal.org
+Subject: Problems with SessionID tracking
+X-Send-Pr-Version: 3.2
+
+>Number:         4183
+>Category:       mod_jserv
+>Synopsis:       Problems with SessionID tracking
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Apr  1 06:40:00 PST 1999
+>Last-Modified:
+>Originator:     heisz@swi.com
+>Organization:
+apache
+>Release:        1.3.4 + 1.0b3
+>Environment:
+Solaris 2.7, JDK 1.1.6
+>Description:
+I'm writing an application which uses a Session object to keep a server login handle.  If the session expires, the application notices the missing handle and gives the user a relogin screen.  As part of the relogin, the system uses the new session to archive the request information that led to the relogin and reconstructs the original URL using getRequestURI() and getQueryString() and then redirects the browser if the relogin is successful.
+
+I've found some problems with the encodeRedirectUrl() method and several other points in the JServ code related to session tracking.  I'm using cookies to track the session, but the encodeRedirectUrl() method still adds the JServSessionId to the main URL.  This is not a problem the first time, but if I reload that page after the session expires, the cookie ID and the URL ID don't match and I end up with a continously invalid session (my relogin never succeeds).
+>How-To-Repeat:
+Have a servlet that continually redirects to itself, while trying to use a session object (have a form button that points back to the servlet with the exact incoming URL, so that the button can be pressed to submit the redirect after the session expires).
+
+First time, the URL will be http://host:port/zone/servlet
+Second time, the URL will be http://host:port/zone/servlet?JServSessionID=XXX
+   (even though cookie tracking is enabled)
+Third time, the URL will be
+   http://host:port/zone/servlet?JServSessionID=XXX&JServSessionID=YYY
+
+For the third time, you will not see the previous session object.  It will have been created with ID YYY, but the JServ engine will try to use the XXX id to get
+the session (note that the cookie will also say YYY but is ignored).
+>Fix:
+I have three suggested code bites:
+
+In JServConnection, around line 293 (where that FIXME comment is), put the
+following to better handle the conflicting cookie and URL session identifiers:
+
+        // Handle the case where both are defined
+        if ((requestedSessionId != null) && (cookieSession != null)) {
+            if (requestedSessionId.equals(cookieSession)) {
+                // Defer to URL (doesn't really matter if both agree)
+                idCameAsCookie = false;
+                cookieSession = null;
+            } else {
+                // Does either have a valid session instance?
+                HttpSession us = mgr.getSession(requestedSessionId);
+                HttpSession cs = mgr.getSession(cookieSession);
+                if (us != null) {
+                    // Assume that the URL session is "more" valid
+                    idCameAsCookie = false;
+                    cookieSession = null;
+                } else {
+                    // No URL session, destroy indicator data
+                    requestedSessionId = null;
+                    idCameAsUrl = false;
+                }
+            }
+        }
+
+This fixes my relogin problem (the proper session is found), but I still have ever growing URL's and would have problems if cookies are disabled by the user.
+
+On a side note, the code could be made even more robust if it did the existence
+check with all of the session id values from the URL, where multiple definitions
+existed in a String array parameter (instead of just taking the first ID as the
+code does now).  This would cleanly handle the multiple definition problem I
+was running into (although the URL's would still get looooonnnnnng).
+
+Second fix would be in the same file (JServConnection.java), in the encodeRedirectUrl() method.  If I already have a cookie id, the URL rewriting
+shouldn't be necessary (I can't think of why this would be different from the
+encodeUrl() method).  So, it should appear as:
+
+    public String encodeRedirectUrl(String url) {
+        // Encode only if there is a session associated to the request
+        // And if the redirection will come back here and there is no cookie
+        if (session == null) {
+            return url;
+        } else if (idCameAsCookie) {
+            return url;
+        } else if (url.indexOf(hostname) == -1) {
+            return url;
+        } else {
+            return JServServletManager.encodeUrl(url, session.id);
+        }
+    }
+
+That fixes the cookie problem, but I still have a runaway URL if the client disables cookie management.  The last fix is to avoid the definition of multiple
+JServSessionId values in the URL.  In JServServletManager.java, handle the 
+replacement case in encodeUrl(), i.e.
+
+    public static String encodeUrl(String url, String id) {
+        // Is there a query string
+        if (url.indexOf( '?' ) == -1) {
+            return url + '?' + SESSION_IDENTIFIER + '=' + id;
+        } else {
+            // Only add if it isn't already there
+            if (url.indexOf(SESSION_IDENTIFIER) == -1) {
+                return url + '&' + SESSION_IDENTIFIER + '=' + id;
+            } else {
+                // Replace it - first split and parse arguments
+                int qIndex = url.indexOf('?');
+                String baseUrl = url.substring(0, qIndex + 1);
+                Hashtable args = 
+                    HttpUtils.parseQueryString(url.substring(qIndex + 1));
+
+                // Substitute session id value
+                args.put(SESSION_IDENTIFIER, new String[] { id } );
+
+                // Reassemble URL
+                boolean isFirst = true;
+                for (Enumeration e = args.keys(); e.hasMoreElements(); ) {
+                    String key = (String) e.nextElement();
+                    Object obj = args.get(key);
+                    if (obj == null) {
+                        // What is to be done with null arguments?
+                    } else if (obj instanceof String) {
+                        if (isFirst) {
+                            baseUrl += key + "=" + 
+                                       URLEncoder.encode((String) obj);
+                            isFirst = false;
+                        } else {
+                            baseUrl += "&" + key + "=" + 
+                                       URLEncoder.encode((String) obj);
+                        }
+                    } else {
+                        String[] vals = (String[]) obj;
+                        for (int i = 0; i < vals.length; i++) {
+                            String val = URLEncoder.encode(vals[i]);
+                            if (isFirst) {
+                                baseUrl += key + "=" + val;
+                                isFirst = false;
+                            } else {
+                                baseUrl += "&" + key + "=" + val;
+                            }
+                        }
+                    }
+                }
+                return baseUrl;
+            }
+        }
+    }
+
+Note that this last bit of code works for my environment, but I haven't
+extensively tested it with array arguments and I didn't know what to do with
+the null argument case.
+
+One thing I had thought of is the idea that the JServSessionId shouldn't appear
+in the query string, as it isn't directly related to my generated URL's (i.e.
+the servlet environment adds it outside of my code and should remove it before
+passing me information).  Then you can't have the multiple definition problem.
+But this is probably outside of your scope as the Java API specification doesn't
+clearly indicate if the getQueryString() method should include URL rewrite
+components.
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

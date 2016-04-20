@@ -1,0 +1,468 @@
+Received: (qmail 19013 invoked by uid 2012); 20 Jul 1999 06:57:23 -0000
+Message-Id: <19990720065723.19012.qmail@hyperreal.org>
+Date: 20 Jul 1999 06:57:23 -0000
+From: Jan Wedekind <jan@wede.de>
+Reply-To: jan@wede.de
+To: apbugs@hyperreal.org
+Subject: Transparent ProxyPass configuration
+X-Send-Pr-Version: 3.2
+
+>Number:         4741
+>Category:       mod_proxy
+>Synopsis:       Transparent ProxyPass configuration
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jul 20 01:10:00 PDT 1999
+>Last-Modified:
+>Originator:     jan@wede.de
+>Organization:
+apache
+>Release:        1.3.x
+>Environment:
+n/a (not important)
+>Description:
+change request to transparently map other servers contents into the namespace
+of an other by using ProxyPass, including WWW-Authentication.
+
+IMHO ProxyPass and Proxy-Authentication was misunderstood by many people; 
+so this patch might be a solution ('fix') 
+to PR# 1785,2879(?),2978,3002,3027,3188,3395,3538,4539,4693.
+At least I did the most stuff before I've seen, that PR# 4539
+from graham@vwv.com applies another patch to the same problem.
+So I joined them.
+
+For details: http://www.wede.de/sw/mod_proxy/proxy-transparent.html
+>How-To-Repeat:
+see http://www.wede.de/sw/mod_proxy/proxy-transparent.html
+>Fix:
+Add an optional (third) argument to ProxyPass, e.g. 'transparent',
+also an additional flag to RewriteRule (TP for TransparentProxy), but 
+not tested with rewrite.
+
+If given, Authorization will be done by WWW-Authenticate instead
+of Proxy-Authenticate.
+r->proxyreq will be set to 2 (instead of 1) for a transparent Proxy Request,
+which will be handled within http_protocol.c and http_request.c.
+(More transparent and straigthforward would be, that the Authentication 
+ would come from the real URL and not the faked one. But this goes deep
+ into the apache core like the frontpage apache patch does it with 
+ request->r_filename. So in the meanwhile (until 2.0) we have to use 
+ addtitional <Directory proxy:...> statements.)
+
+The patch (against 1.3.6 + EAPI) follows:
+
+*** ./include/httpd.h.orig	Wed Jul  7 09:19:30 1999
+--- ./include/httpd.h	Tue Jul 20 07:49:45 1999
+***************
+*** 631,636 ****
+--- 631,644 ----
+  #define REQUEST_CHUNKED_DECHUNK  2
+  #define REQUEST_CHUNKED_PASS     3
+  
++ /* Possible values of request_rec.proxyreq. A request could be normal,
++  * proxied or transparently proxied. There is only a difference between
++  * the two proxy requests concerning authentication.
++  */  
++ #define PROXYREQ_NONE		0
++ #define PROXYREQ_PROXYAUTH	1	/* requires Proxy-Authentication */
++ #define PROXYREQ_WWWAUTH	2	/* requires WWW-Authentication */
++ 
+  /* Things which may vary per file-lookup WITHIN a request ---
+   * e.g., state of MIME config.  Basically, the name of an object, info
+   * about the object, and any other info we may ahve which may need to
+*** ./main/http_protocol.c.orig	Wed Jul  7 09:19:30 1999
+--- ./main/http_protocol.c	Tue Jul 20 07:51:52 1999
+***************
+*** 1118,1124 ****
+          ap_note_auth_failure(r);
+      else
+          ap_table_setn(r->err_headers_out,
+!                   r->proxyreq ? "Proxy-Authenticate" : "WWW-Authenticate",
+                    ap_pstrcat(r->pool, "Basic realm=\"", ap_auth_name(r), "\"",
+                            NULL));
+  }
+--- 1118,1125 ----
+          ap_note_auth_failure(r);
+      else
+          ap_table_setn(r->err_headers_out,
+! 		  (r->proxyreq == PROXYREQ_PROXYAUTH) ?
+! 		      "Proxy-Authenticate" : "WWW-Authenticate",
+                    ap_pstrcat(r->pool, "Basic realm=\"", ap_auth_name(r), "\"",
+                            NULL));
+  }
+***************
+*** 1126,1132 ****
+  API_EXPORT(void) ap_note_digest_auth_failure(request_rec *r)
+  {
+      ap_table_setn(r->err_headers_out,
+! 	    r->proxyreq ? "Proxy-Authenticate" : "WWW-Authenticate",
+  	    ap_psprintf(r->pool, "Digest realm=\"%s\", nonce=\"%lu\"",
+  		ap_auth_name(r), r->request_time));
+  }
+--- 1127,1134 ----
+  API_EXPORT(void) ap_note_digest_auth_failure(request_rec *r)
+  {
+      ap_table_setn(r->err_headers_out,
+! 	    (r->proxyreq == PROXYREQ_PROXYAUTH) ?
+! 		"Proxy-Authenticate" : "WWW-Authenticate",
+  	    ap_psprintf(r->pool, "Digest realm=\"%s\", nonce=\"%lu\"",
+  		ap_auth_name(r), r->request_time));
+  }
+***************
+*** 1134,1141 ****
+  API_EXPORT(int) ap_get_basic_auth_pw(request_rec *r, const char **pw)
+  {
+      const char *auth_line = ap_table_get(r->headers_in,
+!                                       r->proxyreq ? "Proxy-Authorization"
+!                                                   : "Authorization");
+      const char *t;
+  
+      if (!(t = ap_auth_type(r)) || strcasecmp(t, "Basic"))
+--- 1136,1143 ----
+  API_EXPORT(int) ap_get_basic_auth_pw(request_rec *r, const char **pw)
+  {
+      const char *auth_line = ap_table_get(r->headers_in,
+! 				 (r->proxyreq == PROXYREQ_PROXYAUTH) ?
+! 				     "Proxy-Authorization" : "Authorization");
+      const char *t;
+  
+      if (!(t = ap_auth_type(r)) || strcasecmp(t, "Basic"))
+*** ./main/http_request.c.orig	Fri Jul 16 18:49:10 1999
+--- ./main/http_request.c	Tue Jul 20 07:53:47 1999
+***************
+*** 990,996 ****
+       * about proxy authentication.  They treat it like normal auth, and then
+       * we tweak the status.
+       */
+!     if (r->status == AUTH_REQUIRED && r->proxyreq) {
+          r->status = HTTP_PROXY_AUTHENTICATION_REQUIRED;
+      }
+  
+--- 990,996 ----
+       * about proxy authentication.  They treat it like normal auth, and then
+       * we tweak the status.
+       */
+!     if (r->status == AUTH_REQUIRED && (r->proxyreq == PROXYREQ_PROXYAUTH)) {
+          r->status = HTTP_PROXY_AUTHENTICATION_REQUIRED;
+      }
+  
+*** ./modules/proxy/mod_proxy.c.orig	Wed Jul  7 09:19:32 1999
+--- ./modules/proxy/mod_proxy.c	Tue Jul 20 07:56:32 1999
+***************
+*** 153,159 ****
+  	    && !strcasecmp(r->parsed_uri.scheme, ap_http_method(r))
+  	    && ap_matches_request_vhost(r, r->parsed_uri.hostname,
+                 r->parsed_uri.port_str ? r->parsed_uri.port : ap_default_port(r)))) {
+! 	    r->proxyreq = 1;
+  	    r->uri = r->unparsed_uri;
+  	    r->filename = ap_pstrcat(r->pool, "proxy:", r->uri, NULL);
+  	    r->handler = "proxy-server";
+--- 153,159 ----
+  	    && !strcasecmp(r->parsed_uri.scheme, ap_http_method(r))
+  	    && ap_matches_request_vhost(r, r->parsed_uri.hostname,
+                 r->parsed_uri.port_str ? r->parsed_uri.port : ap_default_port(r)))) {
+! 	    r->proxyreq = PROXYREQ_PROXYAUTH;
+  	    r->uri = r->unparsed_uri;
+  	    r->filename = ap_pstrcat(r->pool, "proxy:", r->uri, NULL);
+  	    r->handler = "proxy-server";
+***************
+*** 163,169 ****
+      else if (conf->req && r->method_number == M_CONNECT
+  	     && r->parsed_uri.hostname
+  	     && r->parsed_uri.port_str) {
+! 	    r->proxyreq = 1;
+  	    r->uri = r->unparsed_uri;
+  	    r->filename = ap_pstrcat(r->pool, "proxy:", r->uri, NULL);
+  	    r->handler = "proxy-server";
+--- 163,169 ----
+      else if (conf->req && r->method_number == M_CONNECT
+  	     && r->parsed_uri.hostname
+  	     && r->parsed_uri.port_str) {
+! 	    r->proxyreq = PROXYREQ_PROXYAUTH;
+  	    r->uri = r->unparsed_uri;
+  	    r->filename = ap_pstrcat(r->pool, "proxy:", r->uri, NULL);
+  	    r->handler = "proxy-server";
+***************
+*** 198,206 ****
+             r->filename = ap_pstrcat(r->pool, "proxy:", ent[i].real,
+                                   r->uri + len, NULL);
+             r->handler = "proxy-server";
+!            r->proxyreq = 1;
+!            return OK;
+! 	}
+      }
+      return DECLINED;
+  }
+--- 198,208 ----
+             r->filename = ap_pstrcat(r->pool, "proxy:", ent[i].real,
+                                   r->uri + len, NULL);
+             r->handler = "proxy-server";
+!            r->proxyreq = PROXYREQ_PROXYAUTH;
+! 	   if (ent[i].options & PROXY_ALIAS_TRANSPARENT != 0)
+! 	     r->proxyreq = PROXYREQ_WWWAUTH;
+! 	   return OK;
+!        }
+      }
+      return DECLINED;
+  }
+***************
+*** 346,352 ****
+  	int maxfwd = strtol(maxfwd_str, NULL, 10);
+  	if (maxfwd < 1) {
+  	    int access_status;
+! 	    r->proxyreq = 0;
+  	    if ((access_status = ap_send_http_trace(r)))
+  		ap_die(access_status, r);
+  	    else
+--- 348,354 ----
+  	int maxfwd = strtol(maxfwd_str, NULL, 10);
+  	if (maxfwd < 1) {
+  	    int access_status;
+! 	    r->proxyreq = PROXYREQ_NONE;
+  	    if ((access_status = ap_send_http_trace(r)))
+  		ap_die(access_status, r);
+  	    else
+***************
+*** 537,543 ****
+  }
+  
+  static const char *
+!      add_pass(cmd_parms *cmd, void *dummy, char *f, char *r)
+  {
+      server_rec *s = cmd->server;
+      proxy_server_conf *conf =
+--- 539,545 ----
+  }
+  
+  static const char *
+!      add_pass(cmd_parms *cmd, void *dummy, char *f, char *r, char *opt)
+  {
+      server_rec *s = cmd->server;
+      proxy_server_conf *conf =
+***************
+*** 547,552 ****
+--- 549,557 ----
+      new = ap_push_array(conf->aliases);
+      new->fake = f;
+      new->real = r;
++     new->options = 0;
++     if (opt && strstr(opt, "transparent") != NULL)
++       new->options = PROXY_ALIAS_TRANSPARENT;
+      return NULL;
+  }
+  
+***************
+*** 896,903 ****
+       "on if the true proxy requests should be accepted"},
+      {"ProxyRemote", add_proxy, NULL, RSRC_CONF, TAKE2,
+       "a scheme, partial URL or '*' and a proxy server"},
+!     {"ProxyPass", add_pass, NULL, RSRC_CONF, TAKE2,
+!      "a virtual path and a URL"},
+      {"ProxyPassReverse", add_pass_reverse, NULL, RSRC_CONF, TAKE2,
+       "a virtual path and a URL for reverse proxy behaviour"},
+      {"ProxyBlock", set_proxy_exclude, NULL, RSRC_CONF, ITERATE,
+--- 901,908 ----
+       "on if the true proxy requests should be accepted"},
+      {"ProxyRemote", add_proxy, NULL, RSRC_CONF, TAKE2,
+       "a scheme, partial URL or '*' and a proxy server"},
+!     {"ProxyPass", add_pass, NULL, RSRC_CONF, TAKE23,
+!      "a virtual path and a URL; optional third argument 'transparent'"},
+      {"ProxyPassReverse", add_pass_reverse, NULL, RSRC_CONF, TAKE2,
+       "a virtual path and a URL for reverse proxy behaviour"},
+      {"ProxyBlock", set_proxy_exclude, NULL, RSRC_CONF, ITERATE,
+*** ./modules/proxy/mod_proxy.h.orig	Sun Feb  7 21:48:31 1999
+--- ./modules/proxy/mod_proxy.h	Mon Jul 19 09:04:56 1999
+***************
+*** 161,169 ****
+--- 161,172 ----
+      int port;			/* the port for this proxy */
+  };
+  
++ #define PROXY_ALIAS_TRANSPARENT	0x01
++ 
+  struct proxy_alias {
+      char *real;
+      char *fake;
++     int  options;
+  };
+  
+  struct dirconn_entry {
+*** ./modules/proxy/proxy_ftp.c.orig	Wed Mar 10 18:42:46 1999
+--- ./modules/proxy/proxy_ftp.c	Tue Jul 20 07:58:13 1999
+***************
+*** 413,419 ****
+   */
+  static int ftp_unauthorized (request_rec *r, int log_it)
+  {
+!     r->proxyreq = 0;
+      /* Log failed requests if they supplied a password
+       * (log username/password guessing attempts)
+       */
+--- 413,419 ----
+   */
+  static int ftp_unauthorized (request_rec *r, int log_it)
+  {
+!     r->proxyreq = PROXYREQ_NONE;
+      /* Log failed requests if they supplied a password
+       * (log username/password guessing attempts)
+       */
+*** ./modules/standard/mod_rewrite.h.orig	Sun Mar  7 19:03:37 1999
+--- ./modules/standard/mod_rewrite.h	Tue Jul 20 08:14:15 1999
+***************
+*** 203,208 ****
+--- 203,209 ----
+  #define RULEFLAG_GONE               1<<10
+  #define RULEFLAG_QSAPPEND           1<<11
+  #define RULEFLAG_NOCASE             1<<12
++ #define RULEFLAG_TRANSPARENTPROXY   1<<13
+  
+  #define MAPTYPE_TXT                 1<<0
+  #define MAPTYPE_DBM                 1<<1
+*** ./modules/standard/mod_digest.c.orig	Fri Jan  1 20:05:08 1999
+--- ./modules/standard/mod_digest.c	Tue Jul 20 08:00:28 1999
+***************
+*** 137,144 ****
+  static int get_digest_rec(request_rec *r, digest_header_rec * response)
+  {
+      const char *auth_line = ap_table_get(r->headers_in,
+!                                     r->proxyreq ? "Proxy-Authorization"
+!                                     : "Authorization");
+      int l;
+      int s, vk = 0, vv = 0;
+      const char *t;
+--- 137,144 ----
+  static int get_digest_rec(request_rec *r, digest_header_rec * response)
+  {
+      const char *auth_line = ap_table_get(r->headers_in,
+! 				(r->proxyreq == PROXYREQ_PROXYAUTH) ?
+! 				    "Proxy-Authorization" : "Authorization");
+      int l;
+      int s, vk = 0, vv = 0;
+      const char *t;
+*** ./modules/standard/mod_rewrite.c.orig	Wed Jul  7 09:19:32 1999
+--- ./modules/standard/mod_rewrite.c	Tue Jul 20 08:23:29 1999
+***************
+*** 904,909 ****
+--- 904,912 ----
+               || strcasecmp(key, "P") == 0      ) {
+          cfg->flags |= RULEFLAG_PROXY;
+      }
++     else if (strcasecmp(key, "TP") == 0) {
++         cfg->flags |= RULEFLAG_PROXY + RULEFLAG_TRANSPARENTPROXY;
++     }
+      else if (   strcasecmp(key, "passthrough") == 0
+               || strcasecmp(key, "PT") == 0      ) {
+          cfg->flags |= RULEFLAG_PASSTHROUGH;
+***************
+*** 1094,1100 ****
+      /*
+       *  now apply the rules ...
+       */
+!     if (apply_rewrite_list(r, conf->rewriterules, NULL)) {
+  
+          if (strlen(r->filename) > 6 &&
+              strncmp(r->filename, "proxy:", 6) == 0) {
+--- 1097,1103 ----
+      /*
+       *  now apply the rules ...
+       */
+!     if (n = apply_rewrite_list(r, conf->rewriterules, NULL)) {
+  
+          if (strlen(r->filename) > 6 &&
+              strncmp(r->filename, "proxy:", 6) == 0) {
+***************
+*** 1125,1131 ****
+              }
+  
+              /* now make sure the request gets handled by the proxy handler */
+!             r->proxyreq = 1;
+              r->handler  = "proxy-server";
+  
+              rewritelog(r, 1, "go-ahead with proxy request %s [OK]",
+--- 1128,1135 ----
+              }
+  
+              /* now make sure the request gets handled by the proxy handler */
+!             r->proxyreq = PROXYREQ_PROXYAUTH;
+!             if (n==2) r->proxyreq = PROXYREQ_WWWAUTH;
+              r->handler  = "proxy-server";
+  
+              rewritelog(r, 1, "go-ahead with proxy request %s [OK]",
+***************
+*** 1366,1372 ****
+      /*
+       *  now apply the rules ...
+       */
+!     if (apply_rewrite_list(r, dconf->rewriterules, dconf->directory)) {
+  
+          if (strlen(r->filename) > 6 &&
+              strncmp(r->filename, "proxy:", 6) == 0) {
+--- 1370,1376 ----
+      /*
+       *  now apply the rules ...
+       */
+!     if (n = apply_rewrite_list(r, dconf->rewriterules, dconf->directory)) {
+  
+          if (strlen(r->filename) > 6 &&
+              strncmp(r->filename, "proxy:", 6) == 0) {
+***************
+*** 1385,1391 ****
+              }
+  
+              /* now make sure the request gets handled by the proxy handler */
+!             r->proxyreq = 1;
+              r->handler  = "proxy-server";
+  
+              rewritelog(r, 1, "[per-dir %s] go-ahead with proxy request "
+--- 1389,1396 ----
+              }
+  
+              /* now make sure the request gets handled by the proxy handler */
+!             r->proxyreq = PROXYREQ_PROXYAUTH;
+!             if (n==2) r->proxyreq = PROXYREQ_WWWAUTH;
+              r->handler  = "proxy-server";
+  
+              rewritelog(r, 1, "[per-dir %s] go-ahead with proxy request "
+***************
+*** 1685,1690 ****
+--- 1690,1697 ----
+               *  last-rule and new-round flags.
+               */
+              if (p->flags & RULEFLAG_PROXY) {
++ 	        if (p->flags & RULEFLAG_TRANSPARENTPROXY && rc == 3)
++ 		  changed = 2;
+                  break;
+              }
+              if (p->flags & RULEFLAG_LASTRULE) {
+***************
+*** 2034,2039 ****
+--- 2041,2048 ----
+                         perdir, r->filename);
+          }
+          r->filename = ap_pstrcat(r->pool, "proxy:", r->filename, NULL);
++ 	if (p->flags & RULEFLAG_TRANSPARENTPROXY)
++ 	  return 3; /* result handled in apply_rewrite_list */
+          return 1;
+      }
+  
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

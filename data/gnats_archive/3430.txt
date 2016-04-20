@@ -1,0 +1,340 @@
+Received: (qmail 27335 invoked by uid 2012); 20 Nov 1998 15:25:21 -0000
+Message-Id: <19981120152521.27334.qmail@hyperreal.org>
+Date: 20 Nov 1998 15:25:21 -0000
+From: Rainer Scherg <Rainer.Scherg@rexroth.de>
+Reply-To: Rainer.Scherg@rexroth.de
+To: apbugs@hyperreal.org
+Subject: Enhancement: MultiViews, Multi-Language Documents
+X-Send-Pr-Version: 3.2
+
+>Number:         3430
+>Category:       mod_negotiation
+>Synopsis:       Enhancement: MultiViews, Multi-Language Documents
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Nov 20 07:30:02 PST 1998
+>Closed-Date:    Tue Aug 07 06:43:39 PDT 2001
+>Last-Modified:  Tue Aug 07 06:43:39 PDT 2001
+>Originator:     Rainer.Scherg@rexroth.de
+>Release:        1.3.3
+>Organization:
+>Environment:
+Sun Solaris 2.5.1, gcc 2.7
+>Description:
+
+Enhancement-Request for MultiViews-Feature
+------------------------------------------
+
+
+ The situation (just to state the problem):
+
+ - Having a complete webserver providing documents
+   in several languages based on availibility and
+   content/topics.
+
+     - Document (MIME) types containing different language
+       information may be (e.g.):
+           .htm, .txt, .pdf, .doc, .xls, .gif
+
+
+ - the selection of the language should be done by
+   selection "preferred language" thru the browser.
+   (Accept header information?)
+
+ - The webserver selects the best matching document
+   (language) for the selected MIME-Type. (as today)
+
+
+ How should the documents be stored:
+   
+     test.htm            = doc in default language
+     test.en.htm         = doc in english
+     test.de.htm         = [etc.]
+     ...
+     test.pdf            = pdf doc in default language
+     test.en.pdf         = [etc.]
+     ...
+
+
+ Requesting the document:
+
+     http://...../test.htm   (returns best htm-match)
+     http://...../test.pdf   (returns best pdf-match)
+         
+
+ Advantage:
+     
+   - No add. navigation to the multilanguage docs
+     needed = easy to handle (e.g.: in an IntraNet docs
+     mostly will be provided and maintained by
+     "standard users" and not by webmasters)
+    
+     You just do the navigation between the default language
+     documents.
+
+
+ Why the enhancement request to the current MultiViews:
+  
+   - The current MultiViews handling is hard to understand & to
+     handle by "standard users" (we are already trying to use
+     MultiViews in our international IntraNet).
+
+   - e.g. "test.htm.en" will not be correctly recognized by
+     most programs (e.g. html editors).
+
+
+ 
+ The Enhancement Request (Proposal):
+ -----------------------------------
+
+ 1. Config-directive for standard language, handling
+    the language for e.g. "test.htm".
+
+      >> LanguageDefault       en          #  (test.htm = Lang. en)
+
+    [Right now, apache sometimes return wrong (lang.) docs.]
+    [see also: PR#1180]
+ 
+
+ 2. Telling Apache what MIME-types could have multilingual
+    content (minimize impact on server = don't guess).
+    
+      >> LanguageTypes   .htm .html .shtml .gif .jpg .cgi .pl
+
+
+ 3. Don't change the mime-type (file extension) of the document:
+    use "test.de.htm" instead "test.htm.de".
+
+
+
+Possible References:
+PR#1180, PR#2944, PR#3299
+
+
+Tnx for listening -- Rainer
+
+
+
+[sorry for the long text, but this topic is hard to understand, if you
+ didn't run into these problems.]
+>How-To-Repeat:
+
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+Release-Changed-From-To: -1.3.3
+Release-Changed-By: lars
+Release-Changed-When: Fri Nov 20 10:26:25 PST 1998
+State-Changed-From-To: open-suspended
+State-Changed-By: pcs
+State-Changed-When: Sun Nov 22 07:00:32 PST 1998
+State-Changed-Why:
+Thanks for the comments. Your main point is that you
+would like a request for (say) doc.htm to negotiate
+amongst files called doc.en.htm and doc.fr.htm. That
+would involve a significant change from the current
+behaviour, which will only negotiate amongst 
+documents matching doc.htm.*. Your suggestion does make
+sense, and would remove the artificial requirement that
+extensions appear in a particular order (which is
+not a requirement anywhere else in Apache). 
+
+This is certainly something worth considering for
+Apache 2.0. In the meantime I'll mark this PR as
+"suspended" so that we do not forget about it.
+
+For now, you could use the trick that you can repeat
+extensions without altering how Apache deals with a file.
+So you if called your files "doc.htm.en.htm" and 
+"doc.htm.fr.htm" you can content negotiate on a request
+for doc.htm and your editor would identify the file
+as HTML.
+
+
+From: Rainer Scherg <Rainer.Scherg@rexroth.de>
+To: "'pcs@apache.org'" <pcs@apache.org>
+Cc: "'apbugs@apache.org'" <apbugs@apache.org>
+Subject: RE: mod_negotiation/3430: Enhancement: MultiViews, Multi-Language Documents
+Date: Fri, 27 Nov 1998 17:09:58 +0100
+
+ Hi!
+ 
+ I've done some work on this #PR.
+ I've made enhancements to mod_mime.c to define a DefaultLanguage.
+ 
+    Syntax:   DefaultLanguage  <mime-language-type>
+    The context is the same as AddLanguage.
+ 
+    DefaultLanguage defines the MIME-language for all documents
+    not covered by the AddLanguage directive.
+ 
+ This should fix also the problem, that apache is returning a
+ wrong language (doc), when more than one language is requested
+ by the browser. This also should fix an old #PR1180.
+ 
+ The following source stuff is only roughly tested...
+ Please give a short feedback if there's any problem/question.
+ 
+ Still ToDO: HTML-Doc
+ 
+ Listing below is: gnudiff -u  cvs-file  orgfile
+ 
+ Regards Rainer
+ 
+   Rainer.Scherg@rexroth.de
+   Rainer.Scherg@t-online.de
+ 
+ 
+ ======= snip ======
+ 
+ 
+ --- mod_mime.org.c	Fri Nov 27 16:51:11 1998
+ +++ mod_mime.c	Fri Nov 27 16:49:16 1998
+ @@ -59,7 +59,11 @@
+   * http_mime.c: Sends/gets MIME headers for requests
+   *
+   * Rob McCool
+ - *
+ + *
+ + * 1998-11-27 (rasc)  Rainer.Scherg@t-online.de
+ + *          - DefaultLanguage  MIME-LANG
+ + *            define language for documents not fitting to definitions
+ + *            set by AddLanguage
+   */
+ 
+  #define MIME_PRIVATE
+ @@ -148,6 +152,13 @@
+      return NULL;
+  }
+ 
+ +static const char *add_default_language(cmd_parms *cmd, mime_dir_config * 
+ m,
+ +					char *lang)
+ +{
+ +    /* store default language as MIME with empty extension  (rasc) */
+ +    return add_language (cmd,m,lang,"");
+ +}
+ +
+  static const char *add_handler(cmd_parms *cmd, mime_dir_config * m, char 
+ *hdlr,
+                                 char *ext)
+  {
+ @@ -176,6 +187,8 @@
+       "an encoding (e.g., gzip), followed by one or more file extensions"},
+      {"AddLanguage", add_language, NULL, OR_FILEINFO, ITERATE2,
+       "a language (e.g., fr), followed by one or more file extensions"},
+ +    {"DefaultLanguage", add_default_language, NULL, OR_FILEINFO, TAKE1,
+ +     "the MIME type of the default language (documents not specified with 
+ AddLanguage)"},
+      {"AddHandler", add_handler, NULL, OR_FILEINFO, ITERATE2,
+       "a handler name followed by one or more file extensions"},
+      {"ForceType", ap_set_string_slot_lower,
+ @@ -248,6 +261,8 @@
+      char *ext;
+      const char *orighandler = r->handler;
+      const char *type;
+ +    int   valid_found = 0;
+ +
+ 
+      if (S_ISDIR(r->finfo.st_mode)) {
+          r->content_type = DIR_MAGIC_TYPE;
+ @@ -262,7 +277,12 @@
+      if (fn == NULL)
+          fn = r->filename;
+ 
+ -    /* Parse filename extensions, which can be in any order */
+ +
+ +    /* Parse filename extensions, which can be in any order
+ +       $$$ But left to right...
+ +       $$$ Unknown ext invalids all mimes up to this point.
+ +       $$$ e.g.  test.hello.en.unknown.fr.htm ==>  result: fr & htm
+ +    */
+      while ((ext = ap_getword(r->pool, &fn, '.')) && *ext) {
+          int found = 0;
+ 
+ @@ -308,13 +328,35 @@
+ 
+          if (!found) {
+              r->content_type = NULL;
+ -            r->content_language = NULL;
+ +            r->content_language = NULL;  /* back compat */
+              r->content_languages = NULL;
+              r->content_encoding = NULL;
+              r->handler = orighandler;
+ +            valid_found = 0;
+ +        } else {
+ +            valid_found = 1;
+          }
+ 
+      }
+ +
+ +    /*
+ +     * Check if MIME language found,
+ +     * else use Default-MIME-Language (== empty ext-key in table)
+ +     */
+ +
+ +    if (valid_found && !r->content_languages) {
+ +       if ((type = ap_table_get(conf->language_types, ""))) {
+ +          const char **new;
+ +
+ +          r->content_language = type;         /* back compat. only */
+ +          r->content_languages = ap_make_array(r->pool, 2, sizeof(char 
+ *));
+ +          new = (const char **) ap_push_array(r->content_languages);
+ +          *new = type;
+ +        }
+ +    }
+ +
+ +
+ +
+ 
+      /* Check for overrides with ForceType/SetHandler */
+ 
+ 
+State-Changed-From-To: suspended-closed
+State-Changed-By: wrowe
+State-Changed-When: Tue Aug  7 06:43:39 PDT 2001
+State-Changed-Why:
+> 1. Config-directive for standard language, handling
+>    the language for e.g. "test.htm".
+
+Language default properly provides the default language
+of a file without a recognized language extension.
+
+> 2. Telling Apache what MIME-types could have multilingual
+>    content (minimize impact on server = don't guess).
+    
+There is no impact on the server today, requests for a
+specific file always serve that file.  You *must* depricate
+the foo.html file and rename it foo.html.la for the other
+languages to be selectable.  This is the correct behavior.
+
+> 3. Don't change the mime-type (file extension) of the document:
+
+You are asking for alternate orderings.  As a win32 user
+myself, I sympathize.  You can name files foo.en.html today
+with no ill effects, however they will not match foo.html.
+That may change in Apache 2.0.
+
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

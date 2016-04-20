@@ -1,0 +1,369 @@
+Received: (qmail 26452 invoked from network); 26 Jul 1999 23:30:23 -0000
+Message-Id: <379CEF81.72807A29@pbryant.com>
+Date: Mon, 26 Jul 1999 16:30:09 -0700
+From: Patrick Bryant <pbryant@pbryant.com>
+To: apbugs@Apache.Org
+Subject: [Fwd: limitipconn.patch denies server to corporate users]
+
+>Number:         4775
+>Category:       pending
+>Synopsis:       [Fwd: limitipconn.patch denies server to corporate users]
+>Confidential:   yes
+>Severity:       serious
+>Priority:       medium
+>Responsible:    gnats-admin
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   unknown
+>Arrival-Date:   Mon Jul 26 16:40:01 PDT 1999
+>Last-Modified:  Wed Nov  3 07:38:04 PST 1999
+>Originator:     
+>Organization:
+>Release:        
+>Environment:
+>Description:
+>How-To-Repeat:
+>Fix:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Wed Nov  3 07:38:03 PST 1999
+State-Changed-Why:
+Misfiled PR.
+>Unformatted:
+This is a multi-part message in MIME format.
+--------------2D1FAAD16EFB37DFE1FD2E8A
+Content-Type: text/plain; charset=us-ascii
+Content-Transfer-Encoding: 7bit
+
+I am unable to email the author.  No such addess.
+
+FYI, this patch is a very bad concept...
+
+--------------2D1FAAD16EFB37DFE1FD2E8A
+Content-Type: message/rfc822
+Content-Transfer-Encoding: 7bit
+Content-Disposition: inline
+
+X-Mozilla-Status2: 00000000
+Message-ID: <379CEBFB.7F62AA28@pbryant.com>
+Date: Mon, 26 Jul 1999 16:15:07 -0700
+From: Patrick Bryant <pbryant@pbryant.com>
+X-Mailer: Mozilla 4.6 [en] (WinNT; I)
+X-Accept-Language: en
+MIME-Version: 1.0
+To: ed@organic.com
+Subject: limitipconn.patch denies server to corporate users
+Content-Type: multipart/mixed;
+ boundary="------------A35CC62C7AFBF7F4B3D189AB"
+
+This is a multi-part message in MIME format.
+--------------A35CC62C7AFBF7F4B3D189AB
+Content-Type: text/plain; charset=us-ascii
+Content-Transfer-Encoding: 7bit
+
+Please be advised that the patch below denies access to the server when
+access is attempted from behind any corporate firewall that employs
+'port address translation' (Cisco PIX in some configs, Checkpoint,
+etc.).  Most corporate firewalls send all of their users out on a
+**SINGLE** ORIGIN IP ADDRESS.
+
+There could be thousands of users, all legitimately trying to connect to
+a web server - all of whom would arrive from THE SAME IP address.  This
+is not a DoS attack, it is normal firewall behavior.
+
+
+http://www.apache.org/dist/contrib/patches/1.3/limitipconn.patch
+
+--------------A35CC62C7AFBF7F4B3D189AB
+Content-Type: text/plain; charset=us-ascii;
+ name="limitipconn.patch"
+Content-Transfer-Encoding: 7bit
+Content-Disposition: inline;
+ filename="limitipconn.patch"
+
+From: Ed Korthof <ed@organic.com>
+Date: Fri Feb  6 12:24:08 1998
+Purpose:
+
+This patch is provided thanks to Organic Online, Inc., which assumes no
+responsibility whatsoever for it, and makes no claims as to its
+usability or suitability for any particular task.  Use it at your own
+risk.
+
+This has never been tested for platforms other than Solaris, though
+it may work fine for them.
+
+If you're using Stronghold 2.2, one piece of http_protocol.c needs to
+be patched by hand -- but it's just include statements and declarations
+of external resources, contained at the top of the file.
+
+This patch introduces two new directives, "MaxServersPerIP" and
+"MaxServersPerIPRead", which limits the total number of connections
+from a given list of IP numbers, both in total and just counting those
+in "read" state.  This is a common type of denial-of-service attack,
+though some broken pieces of software accidentally launch this too.
+
+--- http_conf_globals.h.orig	Sun Jun 29 11:08:35 1997
++++ http_conf_globals.h	Fri Feb  6 12:24:08 1998
+@@ -84,3 +84,5 @@
+ extern char server_root[MAX_STRING_LEN];
+ extern char server_confname[MAX_STRING_LEN];
+ 
++extern int daemons_max_by_ip;
++extern int daemons_max_by_ip_read;
+--- http_config.c.orig	Mon Jan  5 12:46:12 1998
++++ http_config.c	Fri Feb  6 12:24:08 1998
+@@ -1045,6 +1045,8 @@
+     daemons_to_start = DEFAULT_START_DAEMON;
+     daemons_min_free = DEFAULT_MIN_FREE_DAEMON;
+     daemons_max_free = DEFAULT_MAX_FREE_DAEMON;
++    daemons_max_by_ip = DEFAULT_MAX_DAEMONS_BY_IP;
++    daemons_max_by_ip_read = DEFAULT_MAX_DAEMONS_BY_IP_READ;
+     daemons_limit = HARD_SERVER_LIMIT;
+     pid_fname = DEFAULT_PIDLOG;
+     scoreboard_fname = DEFAULT_SCOREBOARD;
+--- http_core.c.orig	Tue Aug  5 01:20:54 1997
++++ http_core.c	Fri Feb  6 12:24:08 1998
+@@ -994,6 +994,16 @@
+     return NULL;
+ }
+ 
++const char * set_max_servers_by_ip (cmd_parms *cmd, void *dummy, char *arg) {
++    daemons_max_by_ip = atoi (arg);
++    return NULL;
++}
++
++const char * set_max_servers_by_ip_read (cmd_parms *cmd,void *dummy,char *arg) {
++    daemons_max_by_ip_read = atoi (arg);
++    return NULL;
++}
++
+ const char *set_daemons_to_start (cmd_parms *cmd, void *dummy, char *arg) {
+     daemons_to_start = atoi (arg);
+     return NULL;
+@@ -1244,6 +1254,8 @@
+ { "StartServers", set_daemons_to_start, NULL, RSRC_CONF, TAKE1, "Number of child processes launched at server startup" },
+ { "MinSpareServers", set_min_free_servers, NULL, RSRC_CONF, TAKE1, "Minimum number of idle children, to handle request spikes" },
+ { "MaxSpareServers", set_max_free_servers, NULL, RSRC_CONF, TAKE1, "Maximum number of idle children" },
++{ "MaxServersPerIP", set_max_servers_by_ip, NULL, RSRC_CONF, TAKE1, "Maximum number of connections from a single IP address" },
++{ "MaxServersPerIPRead", set_max_servers_by_ip_read, NULL, RSRC_CONF, TAKE1, "Maximum number of connection from a single IP address in read state at any time." },
+ { "MaxServers", set_max_free_servers, NULL, RSRC_CONF, TAKE1, "Deprecated equivalent to MaxSpareServers" },
+ { "ServersSafetyLimit", set_server_limit, NULL, RSRC_CONF, TAKE1, "Deprecated equivalent to MaxClients" },
+ { "MaxClients", set_server_limit, NULL, RSRC_CONF, TAKE1, "Maximum number of children alive at the same time" },
+--- http_main.c.orig	Mon Sep 22 14:58:51 1997
++++ http_main.c	Fri Feb  6 14:13:17 1998
+@@ -145,6 +145,10 @@
+ int daemons_to_start;
+ int daemons_min_free;
+ int daemons_max_free;
++
++int daemons_max_by_ip;
++int daemons_max_by_ip_read;
++
+ int daemons_limit;
+ time_t restart_time;
+ int suexec_enabled = 0;
+@@ -1015,6 +1019,36 @@
+     return old_status;
+ }
+ 
++void update_child_status_remote_ip (int child_num, conn_rec * current_conn)
++{
++    int slot_size;
++    short_score new_score_rec;
++
++    if (child_num < 0) { return; }
++
++    sync_scoreboard_image();
++    new_score_rec = scoreboard_image->servers[child_num];
++
++    slot_size = sizeof(new_score_rec.remoteip) - 1;
++
++    if (current_conn)
++    {
++        new_score_rec.remoteip = current_conn->remote_addr.sin_addr.s_addr;
++    }
++    else
++    {
++        new_score_rec.remoteip = 0;
++    }
++#if defined(HAVE_MMAP) || defined(HAVE_SHMGET)
++    memcpy(&scoreboard_image->servers[child_num], &new_score_rec, sizeof new_score_rec);
++#else
++    lseek (scoreboard_fd, (long)child_num * sizeof(short_score), 0);
++    force_write (scoreboard_fd, (char*)&new_score_rec, sizeof(short_score));
++#endif
++
++    sync_scoreboard_image();
++}
++
+ void update_scoreboard_global()
+     {
+ #ifdef SCOREBOARD_FILE
+@@ -1106,6 +1140,26 @@
+     return res;
+ }
+ 
++int count_connections (conn_rec * current_conn, int state)
++{
++    unsigned long remote_ip = current_conn->remote_addr.sin_addr.s_addr;
++    int res = 0, i;
++
++    for (i = 0; i < HARD_SERVER_LIMIT; i++)
++    {
++        if ((scoreboard_image->servers[i].status == SERVER_DEAD) ||
++            (state > 0 && scoreboard_image->servers[i].status != state))
++        {
++            continue;
++        }
++        if (scoreboard_image->servers[i].remoteip == remote_ip)
++        {
++            res++;
++        }
++    }
++    return res;
++}
++
+ int find_free_child_num ()
+ {
+     int i;
+@@ -1880,6 +1934,10 @@
+          * until no requests are left or we decide to close.
+          */
+ 
++        /* if we care, note the client. */
++        if (daemons_max_by_ip || daemons_max_by_ip_read)
++            update_child_status_remote_ip (child_num, current_conn);
++
+         while ((r = read_request(current_conn)) != NULL) {
+ 
+ 	    /* ok we've read the request... it's a little too late
+@@ -1921,6 +1979,9 @@
+ 	     */
+ 	    signal (SIGUSR1, (void (*)())just_die);
+         }
++        /* if we care, note that the client has left. */
++        if (daemons_max_by_ip || daemons_max_by_ip_read)
++            update_child_status_remote_ip (child_num, (conn_rec *)NULL);
+ 
+         /*
+          * Close the connection, being careful to send out whatever is still
+--- http_main.h.orig	Sat Apr 26 13:20:06 1997
++++ http_main.h	Fri Feb  6 12:24:09 1998
+@@ -97,3 +97,6 @@
+ int count_busy_servers ();
+ int count_idle_servers ();
+ 
++void update_child_status_remote_ip (int, conn_rec *);
++int count_connections (conn_rec *, int);
++
+--- http_protocol.c.orig	Fri Aug 15 10:08:51 1997
++++ http_protocol.c	Fri Feb  6 15:44:35 1998
+@@ -67,6 +67,15 @@
+ 				 * common support code...
+ 				 */
+ #include "util_date.h"          /* For parseHTTPdate and BAD_DATE */
++
++#include "scoreboard.h"         /* for limiting connections by IP */
++#ifndef LONG_STRING_LEN
++#define LONG_STRING_LEN 2048
++#endif /* LONG_STRING_LEN */
++extern int daemons_max_by_ip;
++extern int daemons_max_by_ip_read;
++extern void die();
++
+ #include <stdarg.h>
+ 
+ #define SET_BYTES_SENT(r) \
+@@ -606,7 +615,7 @@
+     conn_rec *conn = r->connection;
+     int major = 1, minor = 0;	/* Assume HTTP/1.0 if non-"HTTP" protocol*/
+     int len;
+-    
++ 
+     /* Read past empty lines until we get a real request line,
+      * a read error, the connection closes (EOF), or we timeout.
+      *
+@@ -762,8 +771,10 @@
+ 
+ request_rec *read_request (conn_rec *conn)
+ {
++    char errstr[LONG_STRING_LEN]; int current_connections;
+     request_rec *r = (request_rec *)pcalloc (conn->pool, sizeof(request_rec));
+ 
++    errstr[0] = '\0';
+     r->connection = conn;
+     conn->server = conn->base_server;
+     r->server = conn->server;
+@@ -789,6 +800,39 @@
+     r->read_length  = 0;
+     r->read_body    = REQUEST_NO_BODY;
+     
++    if (daemons_max_by_ip && ((current_connections = count_connections(conn,0))
++                              > daemons_max_by_ip))
++    {
++        r->request_time=time(NULL);
++        ap_snprintf(errstr,LONG_STRING_LEN,
++            "client at %s rejected for %s with %d total current connections",
++            conn->remote_ip, conn->server->server_hostname,
++            current_connections);
++    }
++    else if (daemons_max_by_ip_read &&
++             ((current_connections = count_connections(conn,SERVER_BUSY_READ))
++              > daemons_max_by_ip_read))
++    {
++        ap_snprintf(errstr,LONG_STRING_LEN,
++            "client at %s rejected for %s with %d current connections in \
++            read state", conn->remote_ip,
++            conn->server->server_hostname, current_connections);
++    }
++    if (*errstr != '\0') {
++        r->status        = HTTP_OK;
++        r->request_time  = time(NULL);
++        r->proto_num     = 1000;       /* or something */
++        r->assbackwards  = 0;          /* who knows... */
++        r->protocol      = "HTTP/1.0"; /* just not empty */
++        r->the_request   = NULL;
++        r->method        = NULL;
++        r->method_number = M_INVALID;
++        die(LIMIT_CONNECTIONS_BY_IP_ERROR, r);
++        log_transaction(r);
++        log_error(errstr, conn->server);
++        /* return r; */ return NULL;
++    }
++
+     r->status = HTTP_REQUEST_TIME_OUT;	/* Until we get a request */
+ 
+     /* Get the request... */
+--- httpd.h.orig	Mon Jan  5 15:20:09 1998
++++ httpd.h	Fri Feb  6 13:48:24 1998
+@@ -216,6 +216,12 @@
+ 
+ #define DEFAULT_MIN_FREE_DAEMON 5
+ 
++/* Define default limits for MaxDaemons serving a single address */
++
++#define DEFAULT_MAX_DAEMONS_BY_IP 150
++#define DEFAULT_MAX_DAEMONS_BY_IP_READ 75
++#define LIMIT_CONNECTIONS_BY_IP_ERROR HTTP_SERVICE_UNAVAILABLE
++
+ /* Limit on the total --- clients will be locked out if more servers than
+  * this are needed.  It is intended solely to keep the server from crashing
+  * when things get out of hand.
+--- scoreboard.h.orig	Thu Jun 26 18:51:50 1997
++++ scoreboard.h	Fri Feb  6 12:24:10 1998
+@@ -89,6 +89,7 @@
+     char request[64];	/* We just want an idea... */
+     char vhost[32];     /* What virtual host is being accessed? */
+ #endif
++    unsigned long remoteip;
+ } short_score;
+ 
+ typedef struct
+
+--------------A35CC62C7AFBF7F4B3D189AB--
+
+
+--------------2D1FAAD16EFB37DFE1FD2E8A--
+

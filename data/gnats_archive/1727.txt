@@ -1,0 +1,153 @@
+Received: (qmail 29489 invoked by uid 2012); 23 Jan 1998 23:23:51 -0000
+Message-Id: <19980123232351.29488.qmail@hyperreal.org>
+Date: 23 Jan 1998 23:23:51 -0000
+From: Lars Slettjord <larss@cc.uit.no>
+Reply-To: larss@cc.uit.no
+To: apbugs@hyperreal.org
+Subject: I get 'accept_mutex_on: Permission denied' in the error_log
+X-Send-Pr-Version: 3.2
+
+>Number:         1727
+>Category:       os-irix
+>Synopsis:       I get 'accept_mutex_on: Permission denied' in the error_log
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jan 23 15:30:00 PST 1998
+>Last-Modified:  Wed May 20 19:54:44 PDT 1998
+>Originator:     larss@cc.uit.no
+>Organization:
+>Release:        1.3b3
+>Environment:
+IRIX 5.3 11091812 IP22 mips Challenger S server, apache 1.3b3 compiled with 
+the IRIX cc. The server runs in a chrooted environment.
+>Description:
+I tried to upgrade one of our web-servers from 1.2.5 to 1.3b3. The server
+runs in a chrooted environment. But when I started the 1.3b3 server it gave
+me these messages in the error_log:
+
+accept_mutex_on: Permission denied
+accept_mutex_on: Permission denied
+accept_mutex_on: Permission denied
+accept_mutex_on: Permission denied
+accept_mutex_on: Permission denied
+[Fri Jan 23 22:40:00 1998] [notice] Apache/1.3b3 configured -- resuming normal o
+perations
+accept_mutex_on: Permission denied
+accept_mutex_on: Permission denied
+accept_mutex_on: Permission denied
+accept_mutex_on: Permission denied
+accept_mutex_on: Permission denied
+accept_mutex_on: Permission denied
+accept_mutex_on: Permission denied
+accept_mutex_on: Permission denied
+accept_mutex_on: Permission denied
+accept_mutex_on: Permission denied
+accept_mutex_onaccept_mutex_onaccept_mutex_onaccept_mutex_on: : : : Permission d
+eniedPermission deniedPermission deniedPermission denied
+
+
+
+accept_mutex_on: Permission denied
+accept_mutex_on: Permission denied
+accept_mutex_on: Permission denied
+
+And so on forever...
+
+I suspected this had something to do with the various ways to do
+accept serialization code, so I recompiled with -DUSE_FCNTL_SERIALIZED_ACCEPT
+(which is used with the 1.2.5 version), and the new version has worked fine 
+(so far). But isn't this a suboptimal solution? My server don't have multiple 
+processors, so USE_USLOCK_SERIALIZED_ACCEPT is probably not a good idea. But
+will USE_SYSVSEM_SERIALIZED_ACCEPT be faster than USE_FCNTL_SERIALIZED_ACCEPT?
+
+I suspect that my problem with USE_SYSVSEM_SERIALIZED_ACCEPT is due to 
+the absence of some important system files in my chrootet environment, but
+so far I have not found any helpful hints in any of the logs, or in any
+of the man-pages I've been through (semop, semctl, semget, intro). 
+
+Could you possibly give me some hints on where to look? If you need to know
+more about my chroot-setup I'll be happy to provide all the details.
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Lars Slettjord <larss@cc.uit.no>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-irix/1727: I get 'accept_mutex_on: Permission denied' in the error_log
+Date: Fri, 23 Jan 1998 15:57:39 -0800 (PST)
+
+ You should probably ask in an irix specific newsgroup to find out what
+ magic file you need... some of us use irix but we don't really have irix
+ gurus.  If you find out please tell us! 
+ 
+ Dean
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Lars Slettjord <larss@cc.uit.no>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-irix/1727: I get 'accept_mutex_on: Permission denied' in the error_log
+Date: Fri, 23 Jan 1998 17:19:58 -0700 (MST)
+
+ On 23 Jan 1998, Lars Slettjord wrote:
+ 
+ > I suspected this had something to do with the various ways to do
+ > accept serialization code, so I recompiled with -DUSE_FCNTL_SERIALIZED_ACCEPT
+ > (which is used with the 1.2.5 version), and the new version has worked fine 
+ > (so far). But isn't this a suboptimal solution? My server don't have multiple 
+ > processors, so USE_USLOCK_SERIALIZED_ACCEPT is probably not a good idea. But
+ > will USE_SYSVSEM_SERIALIZED_ACCEPT be faster than USE_FCNTL_SERIALIZED_ACCEPT?
+ 
+ It is faster, but I normally wouldn't worry about it unless you get a lot
+ of traffic.
+ 
+ > 
+ > I suspect that my problem with USE_SYSVSEM_SERIALIZED_ACCEPT is due to 
+ > the absence of some important system files in my chrootet environment, but
+ > so far I have not found any helpful hints in any of the logs, or in any
+ > of the man-pages I've been through (semop, semctl, semget, intro). 
+ > 
+ > Could you possibly give me some hints on where to look? If you need to know
+ > more about my chroot-setup I'll be happy to provide all the details.
+ 
+ Try copying the whole /dev directory to the chrooted environment then if
+ it works removing things until it breaks.  
+ 
+ 
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Feb 14 02:07:06 PST 1998
+State-Changed-Why:
+Problem is caused by user running apache in chroot() environment.
+There is likely a device or other system file that needs to be
+created in the chroot() environment.  No solution yet.
+State-Changed-From-To: analyzed-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Sat Feb 21 03:38:33 PST 1998
+State-Changed-Why:
+Er, we're hoping the user will figure out what files need to
+be copied into the chroot environ since we generally don't
+have access to irix systems.
+State-Changed-From-To: feedback-closed
+State-Changed-By: brian
+State-Changed-When: Wed May 20 19:54:44 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

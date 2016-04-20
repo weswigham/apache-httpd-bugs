@@ -1,0 +1,139 @@
+Received: (qmail 11581 invoked by uid 2012); 28 Dec 1998 10:50:39 -0000
+Message-Id: <19981228105039.11580.qmail@hyperreal.org>
+Date: 28 Dec 1998 10:50:39 -0000
+From: Corrado B. <techinfo@tecnoconvert.it>
+Reply-To: techinfo@tecnoconvert.it
+To: apbugs@hyperreal.org
+Subject: GetExtensionVersion failed
+X-Send-Pr-Version: 3.2
+
+>Number:         3597
+>Category:       os-windows
+>Synopsis:       GetExtensionVersion failed
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Dec 28 04:10:01 PST 1998
+>Last-Modified:  Tue Aug 31 08:28:57 PDT 1999
+>Originator:     techinfo@tecnoconvert.it
+>Organization:
+>Release:        1.3.3 win32
+>Environment:
+WINDOWS NT WORKSTATION 4.0 SP3
+MICROSOFT I.E 4.0 SP1
+NETSCAPE 4.50
+Apache version 1.3.3 win32 binary dist.
+>Description:
+I wrote a simple DLL in order to test Isapi Extensions on Apache (mod_isapi) 
+-  The DLL is in the /cgi-bin/ directory
+-  "AddHandler isapi-isa dll" is in the configuration file
+-  "ExecCgi" is set for /cgi-bin/ directory
+When I try to open "http://mycomputer/cgi-bin/test.dll" I get
+an error : "ISAPI GetExtensionVersion failed: C:/mydir/cgi-bin/TEST.DLL"
+In order to test the DLL by itself I also wrote a simple program that loads the DLL , looks for the GetExtensionVersion function,
+call the GetExtensionVersion function and everything works fine.
+It seems that Apache loads the Dll (LoadLibrary), find the function(GetProcAddress) , but fails when it has to call the function.
+What's wrong ????
+
+Thanks
+(sorry for my english)
+
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: stoddard
+State-Changed-When: Tue Aug 31 08:28:57 PDT 1999
+State-Changed-Why:
+This will be fixed in the next release. See PRs 4333 and 4887 for details.
+>Unformatted:
+Additional information from user from misfiled PR3781:
+
+PR os-windows/3597
+
+I have tested my ISAPI Dll with a Borland C++ program and I figured out
+that the problem should be in the boolean value returned by the
+GetExtensionVersion function called from the Dll .
+Borland C++ (I think MS C does the same) expects 1 for TRUE
+and 0 for FALSE.
+ISAPI DLL written in Delphi 3 and 4 (what I used) return 
+0 for FALSE and -1 (0xFFFFFFFF) for TRUE.
+An expression of the type 
+
+    if ((*isapi_version)(pVer) != TRUE) { return ERROR ....
+  
+will always return an error because -1 is never equal to 1 (TRUE)
+so GetExtensionVersion will always fails when it returns non-zero
+for TRUE.	
+
+I tried with the code that follows :
+
+   if ((*isapi_version(pVer)))
+	printf("success !\n")
+   else 
+	printf("failed!\n")
+
+or :
+
+   if (!(*isapi_version(pVer)))
+	printf("failed!\n")
+   else 
+	printf("success !\n")
+
+and everything works fine.		      
+ 
+The code in mod_isapi.c should be changed from :   
+   
+      /* Run GetExtensionVersion() */
+    if ((*isapi_version)(pVer) !=
+TRUE) {
+	ap_log_rerror(APLOG_MARK, APLOG_ALERT, r,
+		    "ISAPI
+GetExtensionVersion() failed: %s", r->filename);
+
+FreeLibrary(isapi_handle);
+	return SERVER_ERROR;
+    }
+
+to :
+
+      /* Run GetExtensionVersion() */
+    if (!((*isapi_version)(pVer))) {
+
+ap_log_rerror(APLOG_MARK, APLOG_ALERT, r,
+		    "ISAPI
+GetExtensionVersion() failed: %s", r->filename);
+
+FreeLibrary(isapi_handle);
+	return SERVER_ERROR;
+    }
+
+In this way the program will return an error when the GetExtensionVersion
+function returns FALSE (0) and
+succeed when the GetExtensioVersion function
+returns TRUE (1 or -1 or non-zero)
+
+I hope that this is a good way to solve the matter, but
+please tell me if not so.
+Thanks & Bye
+Corrado
+
+
+
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

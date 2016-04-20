@@ -1,0 +1,90 @@
+Received: (qmail 82994 invoked by uid 65534); 1 Feb 2000 23:33:00 -0000
+Message-Id: <20000201233300.82993.qmail@locus.apache.org>
+Date: 1 Feb 2000 23:33:00 -0000
+From: David Borman <dab@bsdi.com>
+Reply-To: dab@bsdi.com
+To: submit@bugz.apache.org
+Subject: Setting TCP_NODELAY on BSD/OS hurts performance.
+X-Send-Pr-Version: 3.110
+
+>Number:         5684
+>Category:       os-bsdi
+>Synopsis:       Setting TCP_NODELAY on BSD/OS hurts performance.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Feb 01 15:40:00 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     dab@bsdi.com
+>Release:        1.3.9
+>Organization:
+apache
+>Environment:
+BSD/OS 4.1 (or BSD/OS 4.0.1)
+>Description:
+A customer of ours reported problems with throughput after
+upgrading their 4.0.1 BSD/OS system to Apache 1.3.9, a timing
+test that just kept getting the same ~100K page would get
+drops in throughput.  The same test didn't exhibit the same
+problem with an earlier version of Apache, or when using
+Linux.  The included a tcpdump, which showed a very strange
+thing: BSD/OS was sending out a lot of full size ethernet
+packet followed by a packet with only 600 bytes of user data.
+Turns out 1448+600 is 2K, so we were sending out 2K chunks of
+data in 2 ethernet packets.  I was mystified, because we had
+put a lot of work into TCP many years ago to make sure that
+we would only send out full sized ethernet packets if at all
+possible.  I even doubted that the trace was from BSD/OS.  I
+reproduced the customers test setup, and sure enough, I got the
+same results.  So, I started to look at the kernel code to figure
+out how the heck this could happen.  What I discovered was that
+if the TCP_NODELAY option was set it could cause this sort of
+odd behavior.  So, I went and looked at the Apache source, and
+sure enough, it now turns on the TCP_NODELAY option.  It has the
+comment about "we are not telnet", so you turn it off.  Sigh.
+For well behaved applications that do nice big writes to the
+socket (like Apache), you shouldn't have to turn on TCP_NODELAY,
+because that should only effect apps that do lots of *small* writes.
+Now, having said that, in the old days of BSD/OS there was some
+poor interaction between the Nagle algorithm and some applications.
+In BSD/OS we looked at and addressed all those issues way back in
+BSD/OS 2.1 in a performance patch.  I imagine that there are still
+OSes out there that have not addressed the issue, and on those
+systems it probably helps to turn on TCP_NODELAY.
+
+I have come up with a simple change to BSD/OS that can mitigate
+the negative aspects of a well behaved application (one that does
+nice large writes) setting TCP_NODELAY, and restores throughput.
+However, it still remains that Apache does not need to set
+TCP_NODELAY on BSD/OS.  (After putting in my change to the kernel,
+the throughput of the timing test doubled.  Not setting TCP_NODELAY
+should have the same effect.)
+>How-To-Repeat:
+Just look at a tcpdump trace of getting a file from BSD/OS 4.0.1
+or BSD/OS 4.1 running Apache 1.3.9.
+>Fix:
+Don't set the TCP_NODELAY option when building on BSD/OS.  You
+can add "&& !defined(__bsdi__)" to the decision to compile
+sock_disable_nagle() in http_main.c
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

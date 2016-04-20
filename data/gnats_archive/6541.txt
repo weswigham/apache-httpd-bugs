@@ -1,0 +1,143 @@
+Received: (qmail 88869 invoked by uid 501); 15 Sep 2000 15:57:40 -0000
+Message-Id: <20000915155740.88868.qmail@locus.apache.org>
+Date: 15 Sep 2000 15:57:40 -0000
+From: James Housley <jim@thehousleys.net>
+Reply-To: jim@thehousleys.net
+To: submit@bugz.apache.org
+Subject: add a -d option to apxs to allow deletion of module added by "-e -a"
+X-Send-Pr-Version: 3.110
+
+>Number:         6541
+>Category:       config
+>Synopsis:       add a -d option to apxs to allow deletion of module added by "-e -a"
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Sep 15 09:00:01 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     jim@thehousleys.net
+>Release:        1.2.13 and others
+>Organization:
+apache
+>Environment:
+FreeBSD 4.1
+>Description:
+There is no way with apxs to remove the module lines added by apxs.  This
+is desirable in FreeBSD and probably others with "package" systems.  apxs -e -A
+produces a functionally equivelant config file.  The the package system
+complains because the files are not the same.
+
+The attached diff add -d to the -e option to allow deleting the module lines.
+
+I am not a perl expert so I may have missed something, but it does work.
+>How-To-Repeat:
+
+>Fix:
+--- src/support/apxs.pl.orig    Fri Sep 15 10:49:11 2000
++++ src/support/apxs.pl Fri Sep 15 11:37:29 2000
+@@ -107,6 +107,7 @@
+ my $opt_i = 0;
+ my $opt_a = 0;
+ my $opt_A = 0;
++my $opt_d = 0;
+ my $opt_q = 0;
+ 
+ #   this subroutine is derived from Perl's getopts.pl with the enhancement of
+@@ -181,13 +182,13 @@
+     print STDERR "               [-I <incdir>] [-L <libdir>] [-l <libname>] [-Wc,<flags>]\n";
+     print STDERR "               [-Wl,<flags>] <files> ...\n";
+     print STDERR "       apxs -i [-S <var>=<val>] [-a] [-A] [-n <modname>] <dsofile> ...\n";
+-    print STDERR "       apxs -e [-S <var>=<val>] [-a] [-A] [-n <modname>] <dsofile> ...\n";
++    print STDERR "       apxs -e [-S <var>=<val>] [-a] [-A] [-d] [-n <modname>] <dsofile> ...\n";
+     exit(1);
+ }
+ 
+ #   option handling
+ my $rc;
+-($rc, @ARGV) = &Getopts("qn:gco:I+D+L+l+W+S+eiaA", @ARGV);
++($rc, @ARGV) = &Getopts("qn:gco:I+D+L+l+W+S+eiaAd", @ARGV);
+ &usage if ($rc == 0);
+ &usage if ($#ARGV == -1 and not $opt_g);
+ &usage if (not $opt_q and not ($opt_g and $opt_n) and not $opt_i and not $opt_c and not $opt_e);
+@@ -506,6 +507,56 @@
+                  $content =~ s|^(.*\n#?\s*AddModule\s+[^\n]+\n)|$1$c$amd\n|sg;
+             } else {
+                  $content =~ s|^(.*\n)#?\s*$amd[^\n]*\n|$1$c$amd\n|sg;
++            }
++        }
++        if (@lmd or @amd) {
++            if (open(FP, ">$CFG_SYSCONFDIR/$CFG_TARGET.conf.new")) {
++                print FP $content;
++                close(FP);
++                system("cp $CFG_SYSCONFDIR/$CFG_TARGET.conf $CFG_SYSCONFDIR/$CFG_TARGET.conf.bak && " .
++                       "cp $CFG_SYSCONFDIR/$CFG_TARGET.conf.new $CFG_SYSCONFDIR/$CFG_TARGET.conf && " .
++                       "rm $CFG_SYSCONFDIR/$CFG_TARGET.conf.new");
++            } else {
++                print STDERR "apxs:Error: unable to open configuration file\n";
++            }
++        }
++    }
++
++    #   delete a module LoadModule/AddModule directive
++    if ($opt_d) {
++        if (not -f "$CFG_SYSCONFDIR/$CFG_TARGET.conf") {
++            print STDERR "apxs:Error: Config file $CFG_SYSCONFDIR/$CFG_TARGET.conf not found\n";
++            exit(1);
++        }
++
++        open(FP, "<$CFG_SYSCONFDIR/$CFG_TARGET.conf") || die;
++        my $content = join('', <FP>);
++        close(FP);
++
++        if ($content !~ m|\n#?\s*LoadModule\s+|) {
++            print STDERR "apxs:Error: Activation failed for custom $CFG_SYSCONFDIR/$CFG_TARGET.conf file.\n";
++            print STDERR "apxs:Error: At least one `LoadModule' directive already has to exist.\n";
++            exit(1);
++        }
++
++        my $lmd;
++        my $c = '';
++        foreach $lmd (@lmd) {
++            my $what = "deleting";
++            if ($content !~ m|\n#?\s*$lmd|) {
++                 $content =~ s|^(.*\n#?\s*LoadModule\s+[^\n]+\n)|$1|sg;
++            } else {
++                 $content =~ s|^(.*\n)#?\s*$lmd[^\n]*\n|$1|sg;
++            }
++            $lmd =~ m|LoadModule\s+(.+?)_module.*|;
++            print STDERR "[$what module `$1' in $CFG_SYSCONFDIR/$CFG_TARGET.conf]\n";
++        }
++        my $amd;
++        foreach $amd (@amd) {
++            if ($content !~ m|\n#?\s*$amd|) {
++                 $content =~ s|^(.*\n#?\s*AddModule\s+[^\n]+\n)|$1|sg;
++            } else {
++                 $content =~ s|^(.*\n)#?\s*$amd[^\n]*\n|$1|sg;
+             }
+         }
+         if (@lmd or @amd) {
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

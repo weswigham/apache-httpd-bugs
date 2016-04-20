@@ -1,0 +1,122 @@
+Received: (qmail 58832 invoked by uid 501); 28 Sep 2001 10:17:25 -0000
+Message-Id: <20010928101725.58831.qmail@apache.org>
+Date: 28 Sep 2001 10:17:25 -0000
+From: Cyrille Giquello <cyrille@ktaland.com>
+Reply-To: cyrille@ktaland.com
+To: submit@bugz.apache.org
+Subject: mod_rewrite doesn't escape URI after processing a proxy rule
+X-Send-Pr-Version: 3.110
+
+>Number:         8424
+>Category:       mod_rewrite
+>Synopsis:       mod_rewrite doesn't escape URI after processing a proxy rule
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Sep 28 03:20:00 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     cyrille@ktaland.com
+>Release:        1.3.19
+>Organization:
+apache
+>Environment:
+[mad@kawa]$ uname -a
+Linux kawa 2.2.12-20smp #1 SMP Mon Sep 27 10:34:45 EDT 1999 i686 unknown
+[mad@kawa]$ httpd -V
+Server version: Apache/1.3.19 (Unix)
+Server built:   Sep 28 2001 11:44:47
+Server's Module Magic Number: 19990320:10
+Server compiled with....
+ -D HAVE_MMAP
+ -D HAVE_SHMGET
+ -D USE_SHMGET_SCOREBOARD
+ -D USE_MMAP_FILES
+ -D USE_SYSVSEM_SERIALIZED_ACCEPT
+ -D SINGLE_LISTEN_UNSERIALIZED_ACCEPT
+ -D HTTPD_ROOT="/usr/local/apache"
+ -D SUEXEC_BIN="/usr/local/apache/bin/suexec"
+ -D DEFAULT_PIDLOG="logs/httpd.pid"
+ -D DEFAULT_SCOREBOARD="logs/httpd.scoreboard"
+ -D DEFAULT_LOCKFILE="logs/httpd.lock"
+ -D DEFAULT_XFERLOG="logs/access_log"
+ -D DEFAULT_ERRORLOG="logs/error_log"
+ -D TYPES_CONFIG_FILE="conf/mime.types"
+ -D SERVER_CONFIG_FILE="conf/httpd.conf"
+ -D ACCESS_CONFIG_FILE="conf/access.conf"
+ -D RESOURCE_CONFIG_FILE="conf/srm.conf"
+>Description:
+we're passing a url to Apache,
+which mod_rewrite catch it for rewriting,
+then pass it to mod_proxy.
+Everything works fine, except if there is a space in the URL.
+In the access_log we can see that the URL is well encoded with the space encoded like %20.
+But in rewrite_log we can see that the URL is unecoded when passing to mod_proxy.
+So it generate a error !
+
+Here are files :
+.htacess = where we defined rewrite rules
+access_log = apache log file
+rewrite_log = mod_rewrite log file.
+
+-----------------------
+.htacess
+
+RewriteEngine On
+RewriteBase /
+RewriteRule  ^intra(.*)  http://pnr.ktaland:8080/$1 [P]
+
+-----------------------
+access_log
+
+192.168.0.35 - - [27/Sep/2001:18:20:01 +0200] "GET /intra/manage_addProduct/PNR%20Intranet/Intranet_factory HTTP/1.1" 200 272
+
+-----------------------
+rewrite_log
+
+192.168.0.35 - - [27/Sep/2001:18:20:01 +0200] [pnr.ktaland/sid#812a28c][rid#8152c4c/initial] (2) init rewrite engine with requested uri /intra/manage_addProduct/PNR Intranet/Intranet_factory
+192.168.0.35 - - [27/Sep/2001:18:20:01 +0200] [pnr.ktaland/sid#812a28c][rid#8152c4c/initial] (1) pass through /intra/manage_addProduct/PNR Intranet/Intranet_factory
+192.168.0.35 - - [27/Sep/2001:18:20:01 +0200] [pnr.ktaland/sid#812a28c][rid#8152c4c/initial] (3) [per-dir /home/www/pnr.tm.fr/] add path-info postfix: /home/www/pnr.tm.fr/intra/manage_addProduct -> /home/www/pnr.tm.fr/intra/manage_addProduct/PNR Intranet/Intranet_factory
+192.168.0.35 - - [27/Sep/2001:18:20:01 +0200] [pnr.ktaland/sid#812a28c][rid#8152c4c/initial] (3) [per-dir /home/www/pnr.tm.fr/] strip per-dir prefix: /home/www/pnr.tm.fr/intra/manage_addProduct/PNR Intranet/Intranet_factory -> intra/manage_addProduct/PNR Intranet/Intranet_factory
+192.168.0.35 - - [27/Sep/2001:18:20:01 +0200] [pnr.ktaland/sid#812a28c][rid#8152c4c/initial] (3) [per-dir /home/www/pnr.tm.fr/] applying pattern '^manage_page_style.css' to uri 'intra/manage_addProduct/PNR Intranet/Intranet_factory'
+192.168.0.35 - - [27/Sep/2001:18:20:01 +0200] [pnr.ktaland/sid#812a28c][rid#8152c4c/initial] (3) [per-dir /home/www/pnr.tm.fr/] add path-info postfix: /home/www/pnr.tm.fr/intra/manage_addProduct -> /home/www/pnr.tm.fr/intra/manage_addProduct/PNR Intranet/Intranet_factory
+192.168.0.35 - - [27/Sep/2001:18:20:01 +0200] [pnr.ktaland/sid#812a28c][rid#8152c4c/initial] (3) [per-dir /home/www/pnr.tm.fr/] strip per-dir prefix: /home/www/pnr.tm.fr/intra/manage_addProduct/PNR Intranet/Intranet_factory -> intra/manage_addProduct/PNR Intranet/Intranet_factory
+192.168.0.35 - - [27/Sep/2001:18:20:01 +0200] [pnr.ktaland/sid#812a28c][rid#8152c4c/initial] (3) [per-dir /home/www/pnr.tm.fr/] applying pattern '^intra(.*)' to uri 'intra/manage_addProduct/PNR Intranet/Intranet_factory'
+192.168.0.35 - - [27/Sep/2001:18:20:01 +0200] [pnr.ktaland/sid#812a28c][rid#8152c4c/initial] (2) [per-dir /home/www/pnr.tm.fr/] rewrite intra/manage_addProduct/PNR Intranet/Intranet_factory -> http://localhost:8080/VirtualHostBase/http/pnr.ktaland:80/parcs-naturels-regionaux.tm.fr/VirtualHostRoot/intra/manage_addProduct/PNR Intranet/Intranet_factory
+192.168.0.35 - - [27/Sep/2001:18:20:01 +0200] [pnr.ktaland/sid#812a28c][rid#8152c4c/initial] (2) [per-dir /home/www/pnr.tm.fr/] forcing proxy-throughput with http://localhost:8080/VirtualHostBase/http/pnr.ktaland:80/parcs-naturels-regionaux.tm.fr/VirtualHostRoot/intra/manage_addProduct/PNR Intranet/Intranet_factory
+192.168.0.35 - - [27/Sep/2001:18:20:01 +0200] [pnr.ktaland/sid#812a28c][rid#8152c4c/initial] (1) [per-dir /home/www/pnr.tm.fr/] go-ahead with proxy request proxy:http://localhost:8080/VirtualHostBase/http/pnr.ktaland:80/parcs-naturels-regionaux.tm.fr/VirtualHostRoot/intra/manage_addProduct/PNR Intranet/Intranet_factory [OK]
+>How-To-Repeat:
+try the same config and case
+>Fix:
+We just add a call to ap_escape_uri before mod_rewrite return to apache.
+near line 1368 of mod_rewrite.c
+
+[mad@kawa]$ diff src/modules/standard/mod_rewrite.c.back src/modules/standard/mod_rewrite.c
+1366a1367,1369
+>                       /* 2001-09-28 11:03 CEST - mAd@ktaland.com */
+>                       r->filename = ap_escape_uri(r->pool, r->filename );
+>
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,117 @@
+Received: (qmail 46032 invoked by uid 501); 17 May 2001 19:45:55 -0000
+Message-Id: <20010517194555.46014.qmail@apache.org>
+Date: 17 May 2001 19:45:55 -0000
+From: Marc M.Adkins <Marc.M.Adkins@Doorways.org>
+Reply-To: Marc.M.Adkins@Doorways.org
+To: submit@bugz.apache.org
+Subject: RewriteLog doesn't work properly on MS-network mounted drives
+X-Send-Pr-Version: 3.110
+
+>Number:         7738
+>Category:       mod_rewrite
+>Synopsis:       RewriteLog doesn't work properly on MS-network mounted drives
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu May 17 12:50:01 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     Marc.M.Adkins@Doorways.org
+>Release:        1.3.19
+>Organization:
+apache
+>Environment:
+Windows 2000 build 2195
+using mod_FastCGI, 2.10.0 (I think I've ruled this out),
+otherwise using Apache pre-built for Windows as is
+>Description:
+I moved my web directory to a server disk recently for reasons that shouldn't matter.  That is to say, I have a separate server box running Windows 2000 and I mounted a directory from that box on my local machine and put the web directory there.  All using standard Microsoft protocols.
+
+My basic pages (served by a FastCGI process) were coming up but no images.  Apache kept instantiating multiple copies of my FastCGI process.  The error log kept saying:
+
+  [Thu May 17 11:13:59 2001] [error] [client 127.0.0.1]
+    (36)Resource deadlock avoided: mod_rewrite:
+      failed to lock file descriptor
+
+When I finally moved the mod_rewrite log to a directory on my local machine everything started working correctly.  All the other logs seem to work fine on the mounted drive.  I would guess that mod_rewrite doesn't use the same logging mechanism that Apache proper does.
+
+Further testing shows that the problem is independent of FastCGI (though the error percolates, causing multiple copies of the FastCGI process, somehow).  In addition, it only happens when there are multiple images on the page.  A single image on a page works OK.  Simultaneous processing of multiple files?
+>How-To-Repeat:
+In a Windows environment, mount a drive from a remote machine (e.g. W: -> \\Nexus\Web).  Include the following in httpd.conf:
+
+LoadModule  rewrite_module  modules/mod_rewrite.so
+
+###########################################################################
+<VirtualHost localhost>
+#
+  ServerName        localhost
+
+  DocumentRoot      "W:/test"
+
+  RewriteEngine     on
+  RewriteLog		"W:/test/Rewrite.log"
+  RewriteLogLevel   9
+  
+  RewriteRule		^/$						/mungo.html
+
+  ErrorLog          "W:/test/Error.log"
+  TransferLog       "W:/test/Transfer.log"
+</VirtualHost>
+
+###########################################################################
+
+The file mungo.html is:
+
+<html>
+<head>
+  <title>Test</title>
+</head>
+
+<body>
+  <h1>&nbsp;Mungo!</h1>
+  <img src='bullet1.gif'>
+  <img src='bullet2.gif'>
+  <img src='bullet3.gif'>
+</body>
+</html>
+
+The files bullet?.gif are all the same -- I'm assuming that any image will do here.
+
+When I run this test I get:
+
+  [Thu May 17 12:48:40 2001] [error] [client 127.0.0.1]
+    (36)Resource deadlock avoided: mod_rewrite:
+      failed to lock file descriptor
+  [Thu May 17 12:48:49 2001] [error] [client 127.0.0.1]
+    (36)Resource deadlock avoided: mod_rewrite:
+      failed to lock file descriptor
+
+Note that the error and transfer logs work properly.
+
+I have NOT tested this on any other platform.  I DID, however, rename my mod_FastCGI DLL so it couldn't be loaded even by accident, so I'm pretty sure it isn't a part of the problem.  Other than that I'm using the pre-built Windows distribution.
+>Fix:
+I'm guessing that the Apache internal API provides logging functionality and that mod_rewrite doesn't use it properly.  Or it could be that mod_rewrite is doing simultaneous processing without locks and that doesn't come up in Apache proper (seems unlikely).
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

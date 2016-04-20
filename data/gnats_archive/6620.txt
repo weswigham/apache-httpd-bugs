@@ -1,0 +1,206 @@
+Received: (qmail 76909 invoked by uid 501); 3 Oct 2000 15:03:52 -0000
+Message-Id: <20001003150352.76907.qmail@locus.apache.org>
+Date: 3 Oct 2000 15:03:52 -0000
+From: Jim Patterson <Jim.Patterson@Cognos.COM>
+Reply-To: Jim.Patterson@Cognos.COM
+To: submit@bugz.apache.org
+Subject: -d root directory command line option ineffective
+X-Send-Pr-Version: 3.110
+
+>Number:         6620
+>Category:       os-windows
+>Synopsis:       -d root directory command line option ineffective
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 03 08:10:01 PDT 2000
+>Closed-Date:    Wed Nov 14 23:15:27 PST 2001
+>Last-Modified:  Wed Nov 14 23:15:27 PST 2001
+>Originator:     Jim.Patterson@Cognos.COM
+>Release:        2.0a6
+>Organization:
+>Environment:
+Windows 2000 SP1
+Microsoft Visual C++ 5.0 SP3
+>Description:
+When I try to run Apache from a different directory than the server root, it would exit with this message
+	apache: could not open document config file c:/temp/conf/httpd.conf
+even if I specify a default root directory using the -d flag.
+Some spelunking discovered that on Windows, Apache forces the default root directory to be the directory in which the program file resides. This basically makes the -d flag useless.
+>How-To-Repeat:
+Copy apache.exe to another directory e.g. C:/TEMP where Apache has not been installed.
+2. Run apache e.g. C:/TEMP/Apache
+
+You should see the message above.	
+>Fix:
+I can understand the rationale for setting a default root directory under Windows, but there should be a way to override it on the command line. The following patch modifies the default directory logic to permit this. Basically, it checks for a -d option on the command line. If not found, then it sets up the default as before. It might be reasonable to also allow a configuration file (-f) option to override -d but I haven't made that change.
+
+*** mpm_winnt.c-orig Mon Oct  2 15:19:56 2000
+--- mpm_winnt.c Mon Oct  2 20:28:54 2000
+***************
+*** 1853,1858 ****
+--- 1855,1861 ----
+       * strip out -k signal into signal_arg
+       * strip out -n servicename into service_name & display_name
+       * add default -d serverroot from the path of this executable
++      *    (only if there is no -d option on the commandline)
+       * 
+       * The end result will look like:
+       *
+***************
+*** 1862,1882 ****
+       *             The WinNT SCM's StartService() args
+       */
+  
+-     if (!GetModuleFileName(NULL, fnbuf, sizeof(fnbuf))) {
+-         /* WARNING: There is an implict assumption here that the
+-          * executable resides in the ServerRoot!
+-          */
+-         rv = GetLastError();
+-         ap_log_error(APLOG_MARK,APLOG_ERR, rv, NULL, 
+-                      "Failed to get the running module's file name");
+-         exit(1);
+-     }
+-     def_server_root = (char *) apr_filename_of_pathname(fnbuf);
+-     if (def_server_root > fnbuf) {
+-         *(def_server_root - 1) = '\0';
+-         def_server_root = ap_os_canonical_filename(process->pool, fnbuf);
+-     }
+- 
+      /* Use process->pool so that the rewritten argv
+       * lasts for the lifetime of the server process,
+       * because pconf will be destroyed after the 
+--- 1865,1870 ----
+***************
+*** 1887,1902 ****
+      new_arg = (char**) apr_push_array(mpm_new_argv);
+      *new_arg = (char *) process->argv[0];
+      
+-     new_arg = (char**) apr_push_array(mpm_new_argv);
+-     *new_arg = "-d";
+-     new_arg = (char**) apr_push_array(mpm_new_argv);
+-     *new_arg = def_server_root;
+- 
+      fixed_args = mpm_new_argv->nelts;
+  
+      optbuf[0] = '-'; optbuf[2] = '\0';
+      apr_initopt(&opt, process->pool, process->argc, (char**) process->argv);
+!     while (apr_getopt(opt, "n:k:iu" AP_SERVER_BASEARGS, 
+                        optbuf + 1, &optarg) == APR_SUCCESS) {
+          switch (optbuf[1]) {
+          case 'n':
+--- 1875,1885 ----
+      new_arg = (char**) apr_push_array(mpm_new_argv);
+      *new_arg = (char *) process->argv[0];
+      
+      fixed_args = mpm_new_argv->nelts;
+  
+      optbuf[0] = '-'; optbuf[2] = '\0';
+      apr_initopt(&opt, process->pool, process->argc, (char**) process->argv);
+!     while (apr_getopt(opt, "n:k:d:iu" AP_SERVER_BASEARGS, 
+                        optbuf + 1, &optarg) == APR_SUCCESS) {
+          switch (optbuf[1]) {
+          case 'n':
+***************
+*** 1913,1918 ****
+--- 1896,1904 ----
+              /* TODO: warn of depreciated syntax, "use -k uninstall instead" */
+              signal_arg = "uninstall";
+              break;
++         case 'd':
++             has_directory = 1;
++             break;
+          default:
+              optbuf[1] = (char) opt;
+              new_arg = (char**) apr_push_array(mpm_new_argv);
+***************
+*** 1925,1930 ****
+--- 1911,1939 ----
+          }
+      }
+      
++     if (!has_directory) {
++         /* No directory root (-d) option on command line, so set one up. */
++         if (!GetModuleFileName(NULL, fnbuf, sizeof(fnbuf))) {
++             /* WARNING: There is an implict assumption here that the
++              * executable resides in the ServerRoot!
++              */
++             rv = GetLastError();
++             ap_log_error(APLOG_MARK,APLOG_ERR, rv, NULL, 
++                          "Failed to get the running module's file name");
++             exit(1);
++         }
++         def_server_root = (char *) apr_filename_of_pathname(fnbuf);
++         if (def_server_root > fnbuf) {
++             *(def_server_root - 1) = '\0';
++             def_server_root = ap_os_canonical_filename(process->pool, fnbuf);
++         }
++ 
++         new_arg = (char**) apr_push_array(mpm_new_argv);
++         *new_arg = "-d";
++         new_arg = (char**) apr_push_array(mpm_new_argv);
++         *new_arg = def_server_root;
++     }
++ 
+      /* Track the number of args actually entered by the user */
+      inst_argc = mpm_new_argv->nelts - fixed_args;
+  
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: wrowe
+State-Changed-When: Sun Oct  8 17:55:05 PDT 2000
+State-Changed-Why:
+
+You are correct that Apache doesn't behave as expected or
+intended.  The correct priority of evaluation is:
+
+-d from command line 
+   (even from the syntax -k start -n servicename -d path
+    or indicated in the arguments text box at the bottom of
+    the Services window)
+-d from ConfigArgs (saved via -k install -n servicename)
+cwd
+
+However, I need to carefully review the patch.  I will do
+so and it will be committed this week. Unfortunately, this
+could not be addressed before 2.0a7 was rolled.
+
+Thanks for the report and patch, and thank you for your
+interest in the Apache 2.0 Alpha!
+
+
+Release-Changed-From-To: 2.0alpha6-2.0a6
+Release-Changed-By: wrowe
+Release-Changed-When: Sun Oct  8 17:55:05 PDT 2000
+State-Changed-From-To: analyzed-closed
+State-Changed-By: wrowe
+State-Changed-When: Wed Nov 14 23:15:27 PST 2001
+State-Changed-Why:
+
+This should be working correctly now, Jim.  Let us know if
+that isn't the case.
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

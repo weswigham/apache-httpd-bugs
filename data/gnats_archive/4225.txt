@@ -1,0 +1,203 @@
+Received: (qmail 20828 invoked from network); 11 Apr 1999 11:55:24 -0000
+Message-Id: <Pine.SV4.4.10.9904111344111.10642-100000@lappen>
+Date: Sun, 11 Apr 1999 13:55:21 +0200 (MET DST)
+From: Johan Hansen / Telenordia Internet <jhn@algonet.se>
+To: lars@apache.org
+Cc: apbugs@Apache.Org
+Subject: The httpd-dameons grows gigantic with VirtualHost:s.
+
+>Number:         4225
+>Category:       config
+>Synopsis:       The httpd-dameons grows gigantic with VirtualHost:s.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Apr 11 06:10:00 PDT 1999
+>Last-Modified:  Tue Apr 20 10:00:44 PDT 1999
+>Originator:     jhn@algonet.se
+>Organization:
+>Release:        1.3.3
+>Environment:
+SunOS temp2 5.6 Generic_105181-10 sun4u sparc SUNW,Ultra-1
+>Description:
+
+I'm not really sure if this is a bug but I haven't seen it described in
+any FAQ or newsgroup.
+
+I have upgraded a Sun-Ultra1 from Solaris 1.5.1/Apache 1.2.6 to Solaris
+2.6/Apache 1.3.3. The webserver has approxamately 1100 Virtu
+alHosts which worked just fine before the upgrade. (the machine has 512 MB
+memory and 400 MB swap)
+
+The problem, after the upgrade, is that each httpd-daemon grows to the
+size of 32 MB (!)
+Whith Apache 1.2.6 they got the size of 5,2 MB which was ok.
+
+The only difference I can see is the VirtualHost-format:
+
+* Apache 1.2.6:
+
+<VirtualHost www.some-domain.se>
+ServerAdmin webmaster@www.some-domain.se
+DocumentRoot /home/user7/domain/public_html
+ServerName www.some-domain.se
+LogFormat "@www.some-domain.se %h %{\"%Y%m%d%w%H%M%S\"}t %s %b %T
+\"%{Referer}i\">\"%r\""
+</VirtualHost>
+
+* Apache 1.3.3:
+
+NameVirtualHost 123.456.78.910
+
+<VirtualHost 123.456.78.910>  
+ServerAdmin webmaster@www.some-domain.se
+DocumentRoot /home/user7/domain/public_html
+ServerName www.some-domain.se
+LogFormat "@www.some-domain.se %h %{\"%Y%m%d%w%H%M%S\"}t %s %b %T
+\"%{Referer}i\">\"%r\""
+</VirtualHost>
+
+If I use the same VirtualHost-format as I did whith 1.2.6 I get this in my
+errorlog for each VirtualHost-entry:
+
+httpd: [Mon Feb  8 10:15:03 1999] [warn] VirtualHost www.selda.se:80
+overlaps with VirtualHost www.renvall.se:80, the first has precedence,
+perhaps you need a NameVirtualHost directive
+
+... and the httpd:s grows to 32 Megz.
+
+They still grow to 32 Megz if I use NameVirtualHost ...
+
+As I said, I don't know if this is a bug but I think You should know about
+it.
+
+Regards
+
+/Johan
+>How-To-Repeat:
+
+>Fix:
+I've tried but haven't been successful :/
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: lars
+State-Changed-When: Sat Feb 13 17:16:29 PST 1999
+State-Changed-Why:
+
+Can you show me your configuration files
+(please send it to lars@apache.org)?
+___________________________________________________
+
+990411
+
+We have solved the problem ourselves. A collegue found what was wrong and
+here's the fix and some comments from him (MTA@ALGONET:SE):
+
+There are some concerns with the ap_core_reorder_directories function in
+http_core.c. It leaks an unacceptable amount of memory, and it's even
+documented that it does (!?):
+
+    /* XXX: we are about to waste some ram ... we will build a new array
+     * and we need some scratch space to do it.  The old array and the
+     * scratch space are never freed.
+     */
+
+I cant seem to find any reason why the memory is not supposed to be freed?
+
+On a system with 1291 virtual hosts, the memory wasted is 26MB, which is
+not very good. I did a few changes to it (not knowing anything about the
+Apache APIs, I just used the UNIX malloc() directly). You'd most likely
+want to redo all the changes using your API's, but this did at least solve
+our problem, and allowed us to upgrade to 1.3.6 (finally).
+
+This is my version of the reorder_directories function:
+
+
+void ap_core_reorder_directories(pool *p, server_rec *s)
+{
+    core_server_config *sconf;
+    array_header *sec;
+    struct reorder_sort_rec *sortbin;
+    int nelts;
+    void **elts;
+    int i;
+
+
+    /* XXX: we are about to waste some ram ... we will build a new array
+     * and we need some scratch space to do it.  The old array and the
+     * scratch space are never freed.
+     */
+    sconf = ap_get_module_config(s->module_config, &core_module);
+    sec = sconf->sec;
+    nelts = sec->nelts;
+    elts = (void **)sec->elts;
+
+    /* build our sorting space */
+
+    /*sortbin = ap_palloc(p, sec->nelts * sizeof(*sortbin));*/
+
+    /* MTA: I replaced the pool alloc with malloc, and I also make sure to
+       free the scratch space after using it. */
+       
+    sortbin = malloc(sec->nelts * sizeof(*sortbin));
+    for (i = 0; i < nelts; ++i) {
+        sortbin[i].orig_index = i;
+        sortbin[i].elt = elts[i];
+    }
+
+ 
+    qsort(sortbin, nelts, sizeof(*sortbin), reorder_sorter);
+
+    /* and now build a new array */
+    /* XXX: uh I don't see why we can't reuse the old array, what
+     * was I thinking? -djg */
+/*    sec = ap_make_array(p, nelts, sizeof(void *)); */
+   /* MTA: instead of allocating a new array, I just reset the old array
+      by setting the nelts to 0.. I hope this is the right way to do it :)
+*/
+    sec->nelts = 0;
+    for (i = 0; i < nelts; ++i) {
+        *(void **)ap_push_array(sec) = sortbin[i].elt;
+    }
+
+    free(sortbin); /* added MTA */
+       
+/*    sconf->sec = sec; removed MTA */
+}
+
+
+Is this something Apache will fix in future releases ?
+
+
+Regards
+ 
+Johan - Telenordia Internet / Algonet Staff
+
+
+
+
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 10:00:44 PDT 1999
+State-Changed-Why:
+I've committed a similar fix to 1.3.7-dev ... I suspect
+something in your config exacerbated the problem, but it's
+worthwhile fixing it anyhow.  Thanks.
+
+Dean
+>Unformatted:
+Full text of PR number 3856:
+
+Received: (qmail 12583 invoked by uid 2012); 8 Feb 1999 13:55:26 -0000
+Message-Id: <19990208135526.12582.qmail@hyperreal.org>
+Date: 8 Feb 1999 13:55:26 -0000
+From: Johan Hansen <jhn@algonet.se>
+Reply-To: jhn@algonet.se
+To: apbugs@hyperreal.org
+Subject: The httpd-dameons grows gigantic with VirtualHost:s.
+X-Send-Pr-Version: 3.2
+

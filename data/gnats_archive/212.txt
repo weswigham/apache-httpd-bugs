@@ -1,0 +1,163 @@
+From nobody@hyperreal.com  Fri Feb 28 08:08:45 1997
+Received: by taz.hyperreal.com (8.8.4/V2.0) id IAA11490; Fri, 28 Feb 1997 08:08:45 -0800 (PST)
+Message-Id: <199702281608.IAA11490@taz.hyperreal.com>
+Date: Fri, 28 Feb 1997 08:08:45 -0800 (PST)
+From: James R Grinter <jrg@demon.net>
+Reply-To: jrg@demon.net
+To: apbugs@hyperreal.com
+Subject: Apache attempts to resolve ip addresses in virtualhost declarations
+X-Send-Pr-Version: 3.2
+
+>Number:         212
+>Category:       other
+>Synopsis:       Apache attempts to resolve ip addresses in virtualhost declarations
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Feb 28 08:10:01 1997
+>Last-Modified:  Sat Mar 22 15:11:56 PST 1997
+>Originator:     jrg@demon.net
+>Organization:
+>Release:        1.2b7
+>Environment:
+(irix 6.2/cc or gcc - probably irrlevent though...)
+>Description:
+http_main.c:1501 default_server_hostnames():
+
+This bit of code results in Apache attempting to resolve a declaration
+of the form <VirtualHost 10.0.0.1> into a hostname.
+
+                h = gethostbyaddr ((char *)&(s->addrs->host_addr),
+                                   sizeof (struct in_addr), AF_INET);
+                if (h != NULL)
+                    s->server_hostname = pstrdup (pconf, (char *)h->h_name);
+                else
+                    {
+                    fprintf(stderr,"Failed to resolve server name for %s (check
+DNS)\n",inet_ntoa(s->addrs->host_addr));
+                    exit(0);
+                    }
+
+This is a problem - firstly because the whole point of using an ip address
+is to workaround possible unavailability or removal of dns outside one's
+control. Also, it prevents another section of code (namely being able
+to use <VirtualHost 255.255.255.255> as a default section) from working
+because that doesn't typically have any dns- one can work around in /etc/hosts
+but that's not good for performance reasons.
+
+There's an additional issue with logging - %v in mod_log_config uses
+r->server->server_hostname rather than, say, r->hostname if there
+was no Host header. Possibly this should be dealt with by an alternative 
+value in LogFormat, as someone might want to choose which form they want.
+>How-To-Repeat:
+Define a virtualhost section with an IP address that has no reverse dns.
+Try and restart Apache (or reconfigure with a SIGHUP):
+
+<VirtualHost 127.0.0.2>
+DocumentRoot /docs
+</VirtualHost>
+
+gives "Failed to resolve server name for 127.0.0.2 (check DNS)"
+
+>Fix:
+Remove the lookup altogether. It's bogus. Get s->server_hostname from the
+ServerName declaration, if required.
+%0
+>Audit-Trail:
+
+From: coar@decus.org (Rodent of Unusual Size)
+To: apbugs@apache.org, jrg@demon.net, Coar@topaz.decus.org
+Subject: Re: other/212: name resolution of vhosts
+Date: Fri, 28 Feb 1997 20:35:56 -0500
+
+ 
+ This has also been reported as PR#105 in the Apache bug
+ database.
+
+From: Marc Slemko <marcs@znep.com>
+To: Rodent of Unusual Size <coar@decus.org>
+Subject: Re: other/212: name resolution of vhosts
+Date: Fri, 28 Feb 1997 18:49:24 -0700 (MST)
+
+ 
+ On Fri, 28 Feb 1997, Rodent of Unusual Size wrote:
+ 
+ >  This has also been reported as PR#105 in the Apache bug
+ >  database.
+ 
+ Not really.  That was about it not starting and saying it should skip
+ them; that is a valid request.  This one is mostly saying Apache doesn't
+ need the hostname, which is entirely false; HTTP/1.1 and non-IP virtual
+ hosts require that Apache know the hostname.  As I told the user on
+ c.i.w.s.u, if you don't want Apache to insist on reverse DNS use a
+ ServerName directive to tell it what to use.
+ 
+ Haven't had time to look at what is being said about the logging yet.  On
+ the surface, this just looks to be a feature request; I am unsure about if
+ that is a good idea because it obscures what configured virutal domain a
+ request was for, but may be ok as a seperate variable.  Not before 1.2 in
+ any case.
+ 
+
+From: jrg@demon.net (James R Grinter)
+To: Marc Slemko <marcs@znep.com>, Rodent of Unusual Size <coar@DECUS.Org>
+Subject: Re: other/212: name resolution of vhosts
+Date: Sat, 1 Mar 1997 12:45:18 +0000
+
+ 
+ On Sat 1 Mar, 1997, Marc Slemko <marcs@znep.com> wrote:
+ >On Fri, 28 Feb 1997, Rodent of Unusual Size wrote:
+ >>  This has also been reported as PR#105 in the Apache bug
+ >>  database.
+ >
+ >Not really.  That was about it not starting and saying it should skip
+ >them; that is a valid request.  This one is mostly saying Apache doesn't
+ 
+ pr#150 is talking about forward resolution of virtualhost declarations
+ (probably why i didn't find it in a search before submitting). His
+ suggestion is to ignore that declaration and log it in error_log.
+ 
+ my pr is about reverse lookups. The bit of code I quoted makes
+ apache lookup the forward name for the ip address: this seemed
+ like a bad idea to me.
+ 
+ >need the hostname, which is entirely false; HTTP/1.1 and non-IP virtual
+ >hosts require that Apache know the hostname.  As I told the user on
+ >c.i.w.s.u, if you don't want Apache to insist on reverse DNS use a
+ >ServerName directive to tell it what to use.
+ 
+ hm, you're saying that it won't enter that bit of code if I put
+ a ServerName directive? But that certainly isn't obvious, and as
+ I was experimenting with the <virtualhost 255.255.255.255> default
+ thing, a servername doesn't seem like something one needs.
+ 
+ >Haven't had time to look at what is being said about the logging yet.  On
+ >the surface, this just looks to be a feature request; I am unsure about if
+ >that is a good idea because it obscures what configured virutal domain a
+ >request was for, but may be ok as a seperate variable.  
+ 
+ That's what I shall do, for myself. (I'm actually trying to genericise
+ things, as holding many VirtualHost config entries and searching
+ through them when they're all practically identical doesn't seem)
+ 
+ It sounds like a good fix for the situation of no reverse dns lookup
+ would be to change the error message to suggest adding a ServerName
+ directive.
+ 
+ -- jrg.
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Mar 22 15:11:55 PST 1997
+State-Changed-Why:
+255.255.255.255 issue corrected in 1.2b8-dev.  The rest is
+dealt with by new documentation.
+>Unformatted:
+
+
+
+
+

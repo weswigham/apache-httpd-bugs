@@ -1,0 +1,68 @@
+Received: (qmail 3522 invoked from network); 24 Nov 1998 18:31:47 -0000
+Message-Id: <F090C78D353CD211B336006097DA69AB0273@as01.itw.de>
+Date: Tue, 24 Nov 1998 19:31:50 +0100
+From: Andreas Pflug <Pflug@IT-Warehouse.DE>
+To: "'sam@campbellsci.co.uk'" <sam@campbellsci.co.uk>
+Cc: "'apbugs@Apache.Org'" <apbugs@Apache.Org>
+Subject: FTP does not issue a PORT command, bad FTP servers may need this
+
+>Number:         3451
+>Category:       mod_proxy
+>Synopsis:       FTP does not issue a PORT command, bad FTP servers may need this
+>Confidential:   yes
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   unknown
+>Arrival-Date:   Tue Nov 24 10:40:01 PST 1998
+>Last-Modified:  Wed Nov 25 10:55:38 PST 1998
+>Originator:     
+>Organization:
+>Release:        
+>Environment:
+>Description:
+>How-To-Repeat:
+>Fix:
+>Audit-Trail:
+Responsible-Changed-From-To: gnats-admin-apache
+Responsible-Changed-By: marc
+Responsible-Changed-When: Wed Nov 25 10:55:38 PST 1998
+Responsible-Changed-Why:
+Moving misfiled PR.  Please _only_ use the form on the web
+to submit bug reports to apbugs@apache.org.
+Category-Changed-From-To: pending-mod_proxy
+Category-Changed-By: marc
+Category-Changed-When: Wed Nov 25 10:55:38 PST 1998
+
+>Unformatted:
+I fixed the problem Linux with the following code added to
+src/modules/proxy/proxy_ftp.c Line 924 (right after binding the non-PASV
+port):
+
+	{
+	  unsigned char *ptr=(unsigned char*)&server.sin_addr;
+	  sprintf(pasv, "%d,%d,%d,%d,%d,%d", 
+		  ptr[0], ptr[1], ptr[2], ptr[3],
+		  (server.sin_port)     & 255,
+		  (server.sin_port>>8)  & 255);
+	}
+                             
+	ap_bputs("PORT ", f);
+	ap_bputs(pasv, f);
+	ap_bputs(CRLF, f);
+	ap_bflush(f);
+
+	i = ftp_getrc_msg(f, resp, sizeof(resp));
+	if (i != 200)
+	{
+	    char buff[32];
+	    ap_snprintf(buff, sizeof(buff), "%d - %s:%d", i,
+			inet_ntoa(server.sin_addr), server.sin_port);
+	    ap_log_error(APLOG_MARK, APLOG_ERR, r->server,
+			 "proxy: error in PORT Command");
+	    ap_bclose(f);
+	    ap_pclosesocket(p, dsock);
+	    return SERVER_ERROR;
+	}

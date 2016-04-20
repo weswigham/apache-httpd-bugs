@@ -1,0 +1,93 @@
+Received: (qmail 549 invoked by uid 2012); 17 Feb 1998 21:10:46 -0000
+Message-Id: <19980217211046.548.qmail@hyperreal.org>
+Date: 17 Feb 1998 21:10:46 -0000
+From: Ronald Tschalaer <Ronald.Tschalaer@psi.ch>
+Reply-To: Ronald.Tschalaer@psi.ch
+To: apbugs@hyperreal.org
+Subject: BrowserMatch directive acts as if a quoted regex were not quoted
+X-Send-Pr-Version: 3.2
+
+>Number:         1825
+>Category:       mod_browser
+>Synopsis:       BrowserMatch directive acts as if a quoted regex were not quoted
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Feb 17 13:20:00 PST 1998
+>Last-Modified:  Tue Aug  4 18:41:48 PDT 1998
+>Originator:     Ronald.Tschalaer@psi.ch
+>Organization:
+>Release:        1.3b
+>Environment:
+All
+>Description:
+This actually pertains to mod_setenvif (but the bug database only has a
+category for mod_browser - this ought to be updated).
+
+The BrowserMatch directive handling function add_browser() forgets to quote
+the regex before passing it to add_setenvif(). This leads to a
+
+  BrowserMatch "MSIE 4\.0b2;" nokeepalive
+
+directive being treated as a
+ 
+  SetEnvIf User-Agent MSIE 4\.0b2; nokeepalive
+
+causing a match for all MSIE browsers because the 4\.0b2 part is being
+interpreted as an environment variable to set (this affects all other
+BrowserMatch directives which used a regex containing white space).
+>How-To-Repeat:
+Just telnet in by hand and give *any* User-Agent field containing the string
+MSIE - it'll always return an HTTP/1.0 response and close the connection
+(assuming the standard BrowserMatch directives in the srm.conf-dist).
+>Fix:
+Here's the patch:
+
+-------------------------------------------------------------------------
+*** mod_setenvif.c.orig Sat Jan 31 21:00:12 1998
+--- mod_setenvif.c      Tue Feb 17 02:12:19 1998
+***************
+*** 241,247 ****
+  {
+      const char *match_command;
+  
+!     match_command = pstrcat(cmd->pool, "User-Agent ", word1, " ", word2, NULL);
+      return add_setenvif(cmd, mconfig, match_command);
+  }
+  
+--- 241,247 ----
+  {
+      const char *match_command;
+  
+!     match_command = pstrcat(cmd->pool, "User-Agent \"", word1, "\" ", word2, NULL);
+      return add_setenvif(cmd, mconfig, match_command);
+  }
+  
+-------------------------------------------------------------------------
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Feb 23 02:54:02 PST 1998
+State-Changed-Why:
+I did it a different way... but still gave you credit.  The problem
+with your patch is it would have required stuff to be requoted
+like \" and such.
+
+Thanks
+Dean
+Release-Changed-From-To: CVS build apache_19980216200022.tar.gz-1.3b
+Release-Changed-By: coar
+Release-Changed-When: Tue Aug  4 18:41:48 PDT 1998
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,261 @@
+Received: (qmail 81805 invoked by uid 501); 29 May 2000 09:02:36 -0000
+Message-Id: <20000529090236.81804.qmail@locus.apache.org>
+Date: 29 May 2000 09:02:36 -0000
+From: Vasile Gaburici <gaburici@ss.pub.ro>
+Reply-To: gaburici@ss.pub.ro
+To: submit@bugz.apache.org
+Subject: AB gives fake failed connections
+X-Send-Pr-Version: 3.110
+
+>Number:         6129
+>Category:       general
+>Synopsis:       AB gives fake failed connections
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon May 29 02:10:02 PDT 2000
+>Closed-Date:    Tue Jun 13 12:18:48 PDT 2000
+>Last-Modified:  Tue Jun 13 12:18:48 PDT 2000
+>Originator:     gaburici@ss.pub.ro
+>Release:        2.0a3
+>Organization:
+>Environment:
+Linux 2.2.14-12-s1 i686
+>Description:
+        I was testing some stuff I wrote with ApacheBench 1.3c and found
+some bugs in ab. The problem was that ab started more connections than it
+was told. That is -n X, started more than X connections. This was a
+nuisance because the extra connections were bunk; ab didn't listen on them
+and the server got EPIPEs. ab also initiated phony request after it was
+through with the real ones. I was opening a connection to the server but
+closed it right away. All this trouble translated into fake failed
+requests reported by ab.
+
+        I fixed all this nastiness by adding proper accounting of
+connections started by ab. Now you can be sure -n X will launch exactly X
+connections, and ab is going to send proper requests and wait for
+responses an all X connections. Please find attached a patch to cure the
+problems mentioned herein. The patch is against the ab 1.3c that comes
+with Apache 2.0a3. I don't know if it will work or not on the ab that
+accompanies Apache 1.3.
+
+	If the 5 kb patch didn't make it through this form, I'd be happy to
+mail it to one of the developers.
+>How-To-Repeat:
+
+>Fix:
+--- ab.c.orig   Fri Apr 28 21:24:59 2000
++++ ab.c        Sun May 28 20:16:34 2000
+@@ -83,6 +83,7 @@
+    **    - POST and verbosity by Kurt Sussman <kls@merlot.com>, August 1998
+    **    - HTML table output added by David N. Welton <davidw@prosa.it>, January 1999
+    **    - Added Cookie, Arbitrary header and auth support. <dirkx@webweaving.org>, April 19
+9
++   **    - Accounting of initiated requests. Vasile Gaburici <gaburici@cs.pub.ro>, May 2000
+    **
+  */
+ 
+@@ -98,7 +99,7 @@
+  *   only an issue for loopback usage
+  */
+ 
+-#define VERSION "1.3c"
++#define VERSION "1.3d"
+ 
+ /*  -------------------------------------------------------------------- */
+ 
+@@ -135,7 +136,7 @@
+ #define STATE_CONNECTING  1
+ #define STATE_READ        2
+ 
+-#define CBUFFSIZE       512
++#define CBUFFSIZE      4096    /* allow the bloat that servlet engines send */
+ 
+ struct connection {
+     ap_socket_t *aprsock;
+@@ -158,8 +159,8 @@
+     int time;                  /* time in ms for connection */
+ };
+ 
+-#define ap_min(a,b) ((a)<(b))?(a):(b)
+-#define ap_max(a,b) ((a)>(b))?(a):(b)
++#define ap_min(a,b) (((a)<(b))?(a):(b))
++#define ap_max(a,b) (((a)>(b))?(a):(b))
+ 
+ /* --------------------- GLOBALS ---------------------------- */
+ 
+@@ -192,6 +193,7 @@
+ int totalread = 0;             /* total number of bytes read */
+ int totalbread = 0;            /* totoal amount of entity body read */
+ int totalposted = 0;           /* total number of bytes posted, inc. headers */
++int started = 0;               /* number of requests we have started */
+ int done = 0;                  /* number of requests we have done */
+ int doneka = 0;                        /* number of keep alive connections done */
+ int good = 0, bad = 0;         /* number of good and bad requests */
+@@ -278,6 +280,7 @@
+     printf("Concurrency Level:      %d\n", concurrency);
+     printf("Time taken for tests:   %d.%03d seconds\n",
+            timetaken / 1000, timetaken % 1000);
++    printf("Requests started:       %d\n", started);
+     printf("Complete requests:      %d\n", done);
+     printf("Failed requests:        %d\n", bad);
+     if (bad)
+@@ -482,19 +485,28 @@
+         if (ap_canonical_error(rv) == APR_EINPROGRESS) {
+             c->state = STATE_CONNECTING;
+             ap_add_poll_socket(readbits, c->aprsock, APR_POLLOUT);
++           if (verbosity >= 4) {
++               printf("LOG: Request didn't get through, still trying...\n", started);
++           }
+             return;
+         }
+         else {
+             ap_remove_poll_socket(readbits, c->aprsock);
+             ap_close_socket(c->aprsock);
+             err_conn++;
++           if (verbosity >= 4) {
++               printf("LOG: Request didn't get through, marked bad.\n", started);
++           }
+             if (bad++ > 10) {
+                 err("\nTest aborted after 10 failures\n\n");
+             }
+             start_connect(c);
+         }
+     }
+
+-
++    ++started;
++    if (verbosity >= 4) {
++        printf("LOG: Request %d got through\n", started);
++    }
+     /* connected first time */
+     write_request(c);
+ }
+@@ -515,6 +527,9 @@
+             doclen = c->bread;
+         }
+         else if (c->bread != doclen) {
++           if (verbosity >= 2) {
++               printf("LOG: Bad length: got %d, expected %d\n", c->bread, doclen);
++           }
+             bad ++;
+             err_length++;
+         }
+@@ -529,11 +544,14 @@
+         }
+     }
+ 
+-    ap_remove_poll_socket(readbits, c->aprsock);
++    if (APR_NOTFOUND == ap_remove_poll_socket(readbits, c->aprsock)) {
++       printf("FIXME: Error removing socket %p\n", c->aprsock);
++    }
+     ap_close_socket(c->aprsock);
+ 
+     /* connect again */
+-    start_connect(c);
++    if(started < requests)
++       start_connect(c);
+     return;
+ }
+ 
+@@ -551,8 +569,10 @@
+     r = sizeof(buffer);
+     ap_setsocketopt(c->aprsock, APR_SO_TIMEOUT, aprtimeout);
+     status = ap_recv(c->aprsock, buffer, &r);
+-    if (r == 0 || (status != 0 && ap_canonical_error(status) != APR_EAGAIN)) {
++    if (r == 0 || (status != APR_SUCCESS && ap_canonical_error(status) != APR_EAGAIN)) {
+         good++;
++       if ((status != APR_SUCCESS) && (verbosity >= 2))
++           perror("WARNING: Bad exit status from read");
+         close_connection(c);
+         return;
+     }
+@@ -679,6 +699,9 @@
+             doclen = c->bread;
+         }
+         else if (c->bread != doclen) {
++           if (verbosity >= 2) {
++               printf("LOG: Bad length[2]: got %d, expected %d\n", c->bread, doclen);
++           }
+             bad++;
+             err_length++;
+         }
+@@ -761,7 +784,7 @@
+     }
+ 
+     if (verbosity >= 2)
+-        printf("INFO: POST header == \n---\n%s\n---\n", request);
++        printf("\nINFO: POST header == \n---\n%s\n---\n", request);
+ 
+     reqlen = strlen(request);
+ 
+@@ -779,6 +802,8 @@
+     /* ok - lets start */
+     start = ap_now();
+ 
++    concurrency = ap_min(concurrency, requests);
++
+     /* initialise lots of requests */
+     for (i = 0; i < concurrency; i++) {
+         con[i].socknum = i;
+@@ -798,7 +823,7 @@
+         /* Timeout of 30 seconds. */
+         timeout = 30 * AP_USEC_PER_SEC;
+ 
+-        n = concurrency;
++       /* n need not be set, ap_poll will fill it */
+         ap_poll(readbits, &n, timeout);
+ 
+         if (!n) {
+@@ -808,8 +833,10 @@
+             err("ap_poll");
+ 
+         for (i = 0; i < concurrency; i++) {
+-            ap_get_revents(&rv, con[i].aprsock, readbits);
+-
++            int status = ap_get_revents(&rv, con[i].aprsock, readbits);
++           /* Not all sockets in con are in readbits */
++           if(APR_EINVALSOCK == status)
++              continue;
+             /* Note: APR_POLLHUP is set after FIN is received on some
+              * systems, so treat that like APR_POLLIN so that we try
+              * to read again.
+@@ -820,7 +847,7 @@
+                start_connect(&con[i]);
+                continue;
+             }
+-            if ((rv & APR_POLLIN) || (rv & APR_POLLPRI) || (rv & APR_POLLHUP))
++           if ((rv & APR_POLLIN) || (rv & APR_POLLPRI) || (rv & APR_POLLHUP))
+                read_connection(&con[i]);
+             if (rv & APR_POLLOUT)
+                write_request(&con[i]);
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rbbloom@us.ibm.com
+State-Changed-When: Tue Jun 13 12:18:47 PDT 2000
+State-Changed-Why:
+Please do not submit duplicate bug reports.  This report was opened
+as 6128 and 6129.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

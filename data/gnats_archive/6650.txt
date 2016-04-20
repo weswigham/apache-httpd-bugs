@@ -1,0 +1,127 @@
+Received: (qmail 62969 invoked by uid 501); 10 Oct 2000 15:48:21 -0000
+Message-Id: <20001010154820.62931.qmail@locus.apache.org>
+Date: 10 Oct 2000 15:48:20 -0000
+From: Jim Patterson <Jim.Patterson@Cognos.COM>
+Reply-To: Jim.Patterson@Cognos.COM
+To: submit@bugz.apache.org
+Subject: POST request puts server in hard loop
+X-Send-Pr-Version: 3.110
+
+>Number:         6650
+>Category:       general
+>Synopsis:       POST request puts server in hard loop
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 10 08:50:01 PDT 2000
+>Closed-Date:    Fri Feb 23 08:45:36 PST 2001
+>Last-Modified:  Fri Feb 23 08:45:36 PST 2001
+>Originator:     Jim.Patterson@Cognos.COM
+>Release:        2.0a7
+>Organization:
+>Environment:
+Windows 2000 Pro SP1
+Visual C++ 5.0 SP2
+>Description:
+When I run a CGI command triggered through a form using POST method, the Apache server goes into a hard loop and must be terminated.
+>How-To-Repeat:
+Create a page that has an embedded FORM specifying METHOD=POST and an ACTION that runs a CGI application on the server.
+Run the form and click on its SUBMIT button, so as to invoke the CGI application using POST method.
+The server will hang waiting for input.
+At this point click on STOP in the browser.
+Now, the server enters a different phaase in which it loops with all available CPU being utilized.
+
+Here is a sample document - I don't think the CGI program is relevant because it won't be called.
+<HTML>
+<HEAD>
+</HEAD>
+<BODY>
+Test POST problem
+<FORM NAME="Form1" METHOD="POST" ACTION="/cgi-bin/printenv.cgi">
+<INPUT NAME="Str" TYPE="HIDDEN" VALUE="Hello">
+<P>
+<INPUT TYPE="Submit" Name="Go" VALUE="Do it!">
+</BODY>
+</HTML>
+>Fix:
+The problem is in main/http_core.c . With a POST request, there usually isn't a trailing linefeed so the "while" loop won't end. The change here skips the follow-up reads if the buffer read so far already contains a linefeed as it will for a well formed POST request. It also checks the return status from apr_recv to detect a disconnect or other errors. It could be optimized better for the usual GET case.
+*** http_core.c-orig Tue Oct 10 11:10:56 2000
+--- http_core.c Tue Oct 10 11:23:20 2000
+***************
+*** 3309,3317 ****
+      if (rv == APR_SUCCESS) {
+          if (length > 0) {
+              templen = length - 1;
+!             while (buff[templen] != ASCII_LF) {
+!                 rv = apr_recv(csock, buff + templen + 1, &length);
+!                 templen += length;
+              }
+
+              /* This should probably be a pool bucket, but using a transient is
+--- 3309,3321 ----
+      if (rv == APR_SUCCESS) {
+          if (length > 0) {
+              templen = length - 1;
+!             if (memchr(buff, ASCII_LF, length) == NULL) {
+!                 while (buff[templen] != ASCII_LF) {
+!                     rv = apr_recv(csock, buff + templen + 1, &length);
+!                     if (rv != APR_SUCCESS)
+!                         break;
+!                     templen += length;
+!                 }
+              }
+
+              /* This should probably be a pool bucket, but using a transient is
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: rbb
+State-Changed-When: Wed Oct 18 09:07:14 PDT 2000
+State-Changed-Why:
+Input filtering has been completely re-written since 2.0a7
+and it is much more stable now.  Could you please retry this
+with either the version from CVS or with 2.0a8 when it is
+released and let us know if this problem still exists.
+Comment-Added-By: wrowe
+Comment-Added-When: Tue Dec 12 20:08:44 PST 2000
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: rbb@covalent.net
+State-Changed-When: Fri Feb 23 08:45:36 PST 2001
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

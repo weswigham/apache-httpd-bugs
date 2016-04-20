@@ -1,0 +1,75 @@
+Received: (qmail 23074 invoked by uid 2012); 7 Jun 1999 09:33:26 -0000
+Message-Id: <19990607093326.23073.qmail@hyperreal.org>
+Date: 7 Jun 1999 09:33:26 -0000
+From: Graham Leggett <graham@vwv.com>
+Reply-To: graham@vwv.com
+To: apbugs@hyperreal.org
+Subject: "Stuck" httpd children - graceful restart ineffective
+X-Send-Pr-Version: 3.2
+
+>Number:         4537
+>Category:       mod_proxy
+>Synopsis:       "Stuck" httpd children - graceful restart ineffective
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun  7 02:40:01 PDT 1999
+>Last-Modified:
+>Originator:     graham@vwv.com
+>Organization:
+apache
+>Release:        v1.3.7-dev
+>Environment:
+SunOS infobase 5.6 Generic_105181-13 sun4u sparc SUNW,Ultra-250
+gcc v2.8.1
+>Description:
+To trigger this bug, install an Apache server with the mod_proxy enabled. We
+use mod_proxy for reverse proxy, it is as yet unclear whether the bug is
+triggered by only mod_proxy or the use of reverse proxy features.
+
+Over time, children httpd processes get "stuck", in that they ignore requests to
+restart, both gracefully (USR1), firmly (HUP) or forcefully (TERM). These
+processes are "stuck" listening for new connections (as they should) but the
+screwed up signals mean that these processes never receive their new connection,
+and sit around for ever.
+
+If the Apache parent is asked to "restart" with -SIGHUP, Apache tries to USR1,
+TERM, then KILL the stuck processes. If the Apache parent is asked to
+"graceful"ly restart processes that are "stuck" are not cleaned up or killed.
+Over time more processes are spawned to do the job of the "stuck" clients until
+MaxClients is reached.
+
+A workaround to this problem is to downgrade the src/modules/proxy directory to
+the code in v1.3.6 of Apache.
+>How-To-Repeat:
+
+>Fix:
+An analysis of a diff between v1.3.6 and v1.3.7-dev of 19990604131214 indicates
+that the problem probably lies with the new improved garbage collection code.
+
+There is mention of code that fiddles with the signals to ensure that garbage
+collections, now done in a separate forked process, are not interrupted by
+signals.
+
+It's likely that this code is setting signal handling to ignore, which is then
+blocking that process off from the rest of the world.
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

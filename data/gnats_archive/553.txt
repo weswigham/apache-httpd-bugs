@@ -1,0 +1,192 @@
+From nobody@hyperreal.com  Tue May  6 15:27:56 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id PAA25729;
+	Tue, 6 May 1997 15:27:56 -0700 (PDT)
+Message-Id: <199705062227.PAA25729@hyperreal.com>
+Date: Tue, 6 May 1997 15:27:56 -0700 (PDT)
+From: Hannes Boehm <hannes@boehm.org>
+Reply-To: hannes@boehm.org
+To: apbugs@hyperreal.com
+Subject: access to a dir which is not r-x by all (only user/group) is not permited
+X-Send-Pr-Version: 3.2
+
+>Number:         553
+>Category:       general
+>Synopsis:       access to a dir which is not r-x by all (only user/group) is not permited
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue May  6 15:30:01 1997
+>Last-Modified:  Sun May 11 10:27:43 PDT 1997
+>Originator:     hannes@boehm.org
+>Organization:
+>Release:        1.2b10
+>Environment:
+Linux 2.0.30 i486
+gcc 2.7.2
+libc.so.5.2.18
+>Description:
+I have a directory with the following permissions set:
+
+drwxr-x---   4 wwwadm   www          1024 May  6 22:59 mirror/
+
+The server runs as
+
+User nobody
+Group www        
+
+-> I verified it by a CGI-script which runs id: uid=99(nobody) gid=60(www)
+
+I do not use suEXEC of CGIs -> so I believe that the uid/gid should be the 
+same as if I try a GET within the dir. BTW: the server is standalone 
+Port 80 and startet as root
+
+if I try to GET a document within the mirror directory (see above) the request 
+fails with the following Error:
+Forbidden
+You don't have permission to access /mirror/ on this server.
+
+I should mention, that the mirror dir is within the following Virtual Server
+configuration:
+<VirtualHost www.server.com>
+        ServerAdmin wwwadm@server.com
+        DocumentRoot /home/httpd/html/www.server.com
+        ServerName www.server.com
+        ErrorLog logs/www.server.com-error_log
+        TransferLog logs/www.server.com-access_log
+
+        UserDir /home/httpd/html/www.server.com/user
+
+        <Directory /home/httpd/cgi-bin>
+                AllowOverride None
+                Options None
+                AddType application/x-httpd-cgi sh
+        </Directory>
+</VirtualHost>
+
+So the absolut path to the mirror dir is /home/httpd/html/www.server.com/mirror
+If i change the permissions of the mirror directory to 755 (drwxr-xr-x) 
+it works.
+
+If you ask yourself why I need (rwxr-x---) for this directory, here is the 
+answer -> I want to hide certain parts of the "www-space" from local users 
+since this part is password protected by .htaccess (this works -> 
+with rwxr-xr-x) 
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sat May 10 16:17:07 PDT 1997
+State-Changed-Why:
+Please look in your errorlog file to see what specific error
+caused the access denied and report back.
+
+Thanks
+Dean
+
+From: Marc Slemko <marcs@znep.com>
+To: Hannes Boehm <hannes@boehm.org>
+Subject: Re: general/553: access to a dir which is not r-x by all (only user/group) is not permited
+Date: Sun, 11 May 1997 10:49:30 -0600 (MDT)
+
+ 
+ On Tue, 6 May 1997, Hannes Boehm wrote:
+ 
+ [...]
+ > >Description:
+ > I have a directory with the following permissions set:
+ > 
+ > drwxr-x---   4 wwwadm   www          1024 May  6 22:59 mirror/
+ > 
+ > The server runs as
+ > 
+ > User nobody
+ > Group www        
+ 
+ This really should work fine.  
+ 
+ What are the permissions of the files in the directory?  ie. if the
+ directory is world readable by the files are not, does it work?
+ 
+ Are you sure there are not two group www's in the /etc/group file?
+ 
+ Double check what group it is running as.  Do something like:
+ 
+ root@alive:~/archive/apache/apache/src# ps ax | grep httpd
+  4007  ??  Ss     0:25.11 ./httpd
+  7223  ??  I      0:00.01 ./httpd
+  7228  p2  R+     0:00.04 grep httpd
+ root@alive:~/archive/apache/apache/src# gdb httpd 4007
+ GDB is free software and you are welcome to distribute copies of it
+  under certain conditions; type "show copying" to see the conditions.
+ There is absolutely no warranty for GDB; type "show warranty" for details.
+ GDB 4.13 (i386-unknown-freebsd), 
+ Copyright 1994 Free Software Foundation, Inc...
+ 
+ /usr/home/marcs/archive/apache/apache/src/4007: No such file or directory.
+ Attaching to program `/usr/home/marcs/archive/apache/apache/src/httpd',
+ process 4007
+ Reading symbols from /usr/libexec/ld.so...done.
+ Reading symbols from /usr/lib/libcrypt.so.2.0...done.
+ Reading symbols from /usr/lib/libc.so.2.2...done.
+ 0x80a1636 in sigsuspend ()
+ (gdb) call getgid()
+ $1 = 65533
+ (gdb) quit
+ The program is running.  Quit anyway (and detach it)? (y or n) y
+ Detaching from program: /usr/home/marcs/archive/apache/apache/src/httpd
+ process 4007
+ root@alive:~/archive/apache/apache/src# 
+ 
+ Where 4007 is the pid of the _parent_ httpd process.  Be sure the gid
+ returned (65533, in this case) is the gid of www.
+ 
+ Are any of these directories NFS mounted?
+ 
+
+From: "Hannes R. Boehm" <hannes@boehm.priv.at>
+To: Marc Slemko <marcs@znep.com>
+Subject: Re: general/553: access to a dir which is not r-x by all (only user/group) is not permited
+Date: Sun, 11 May 1997 19:04:22 +0200 (MET DST)
+
+ 
+ 
+ > Are you sure there are not two group www's in the /etc/group file?
+ 
+ I have had two groups www in my /etc/group file... 
+ 
+ I am terribly sorry (I should have checked this before sending a bug
+ report) (but I didn't even think about that the misbehaviour could be a
+ result of a misconfiguration in my group file) 
+ 
+ 
+ Thank you very much for your help.
+ 
+ Hannes Boehm
+ 
+ 
+  /----------------------------------------------------------------\
+ |  Hannes R. Boehm           Student of Technical Physics (E-810)  |
+ |  University of Technology, Vienna, Austria                       |
+ |  email: hannes@boehm.priv.at                                     |
+ |         e9427404@student.tuwien.ac.at                            |
+ |  www  : http://www.boehm.priv.at/~hannes                         |
+  \----------------------------------------------------------------/
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: marc
+State-Changed-When: Sun May 11 10:27:43 PDT 1997
+State-Changed-Why:
+Cool problem: user had two www groups in /etc/group.
+>Unformatted:
+
+
+
+

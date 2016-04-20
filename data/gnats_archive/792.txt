@@ -1,0 +1,346 @@
+From nobody@hyperreal.com  Thu Jun 26 08:40:14 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id IAA18516;
+	Thu, 26 Jun 1997 08:40:14 -0700 (PDT)
+Message-Id: <199706261540.IAA18516@hyperreal.com>
+Date: Thu, 26 Jun 1997 08:40:14 -0700 (PDT)
+From: Nathan Kurz <nate@tripod.com>
+Reply-To: nate@tripod.com
+To: apbugs@hyperreal.com
+Subject: race condition with SIGUSR1 graceful restart
+X-Send-Pr-Version: 3.2
+
+>Number:         792
+>Category:       general
+>Synopsis:       race condition with SIGUSR1 graceful restart
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          analyzed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jun 26 08:50:01 1997
+>Last-Modified:  Mon Feb 23 03:48:42 PST 1998
+>Originator:     nate@tripod.com
+>Organization:
+>Release:        1.2.0
+>Environment:
+any
+>Description:
+There is a problem with the signal handling of SIGUSR1 in child_main()
+in http_main.c around line 1775.  If a SIGUSR1 comes too early in the 
+for loop it will be ignored and the process will wait in accept.  
+It's none too critical, but could be improved.
+>How-To-Repeat:
+This condition can be tested by putting a pause() or sleep in the 
+for loop just before the accept and then sending a SIGUSR1 to the 
+process.
+>Fix:
+It needs a long jump.  Something like:
+
+if (ap_setjmp(deferred_die_jump_buffer, 1) == 0) {
+	signal(SIGUSR1, deferred_die_and_jump_handler);
+}
+while (! deferred_die) {
+	clen = sizeof();	
+	csd = accept();	
+	if (csd >=0 || errno != EINTR) break;
+}
+signal(SIGUSR1, deferred_die_handler)%3
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Nathan Kurz <nate@tripod.com>
+Subject: Re: general/792: race condition with SIGUSR1 graceful restart
+Date: Thu, 26 Jun 1997 12:30:13 -0700 (PDT)
+
+ 
+ When it's doing deferred_die it doesn't want to take the signal
+ immediately because it's in a position where it will possibly receive a
+ request.  USR1 will break it out of accept() though with an EINTR and
+ it'll die out.  So everything is fine after it hits accept. 
+ 
+ Before it hits accept it's in the "die immediately" signal handler.  So
+ it's fine from the top of the loop through to the signal() that changes
+ the handlers.  In addition it checks the generation through there so it
+ catches anything that occured before the "die" signal was put on. 
+ 
+ So the only place where there's a problem is between the signal(deferred) 
+ call and the accept().  But if we do what you suggest then we run into a
+ problem *after* the accept call.  We may have accepted a connection, and
+ then get hit with a signal before we can disable the longjmp.  That is
+ something I deliberately tried to avoid.  We also can't trust the values
+ of any of the local variables, so it'd be hard to know if we accepted a
+ connection or if we're just supposed to die or what.
+ 
+ I've been able to run a "while 1; kill -USR1" loop against the server and
+ surf without a broken link with the current code.  But before I had the
+ deferred stuff in there I did have the slight race condition I talk about
+ above -- where an accept may succeed and then get signalled to death.  And
+ when that was in there I did get broken links while surfing. 
+ 
+ On architectures with serialization in that loop the current code lets one
+ child live for at most one more request.  On other architectures, where
+ everyone gets plopped into accept() and the OS gets to wake 'em up, it's
+ possible for some children to be stuck "gracefully exiting" if the OS
+ starves them at the accept(). 
+ 
+ We could protect that with a timer for 1.2... but I'm thinking of
+ serializing to solve PR#467 so it may be moot in the future.  Dunno.  Am I
+ on crack?
+ 
+ Your longjmp thing is clever though.  But I can't think of how to test if
+ we really got a connection after the loop exits due to deferred_die being
+ set.  For example, we could get the signal after accept() returns but
+ before csd is set.  race conditions rule. 
+ 
+ Dean
+ 
+ On Thu, 26 Jun 1997, Nathan Kurz wrote:
+ 
+ > 
+ > >Number:         792
+ > >Category:       general
+ > >Synopsis:       race condition with SIGUSR1 graceful restart
+ > >Confidential:   no
+ > >Severity:       non-critical
+ > >Priority:       medium
+ > >Responsible:    apache (Apache HTTP Project)
+ > >State:          open
+ > >Class:          sw-bug
+ > >Submitter-Id:   apache
+ > >Arrival-Date:   Thu Jun 26 08:50:01 1997
+ > >Originator:     nate@tripod.com
+ > >Organization:
+ > apache
+ > >Release:        1.2.0
+ > >Environment:
+ > any
+ > >Description:
+ > There is a problem with the signal handling of SIGUSR1 in child_main()
+ > in http_main.c around line 1775.  If a SIGUSR1 comes too early in the 
+ > for loop it will be ignored and the process will wait in accept.  
+ > It's none too critical, but could be improved.
+ > >How-To-Repeat:
+ > This condition can be tested by putting a pause() or sleep in the 
+ > for loop just before the accept and then sending a SIGUSR1 to the 
+ > process.
+ > >Fix:
+ > It needs a long jump.  Something like:
+ > 
+ > if (ap_setjmp(deferred_die_jump_buffer, 1) == 0) {
+ > 	signal(SIGUSR1, deferred_die_and_jump_handler);
+ > }
+ > while (! deferred_die) {
+ > 	clen = sizeof();	
+ > 	csd = accept();	
+ > 	if (csd >=0 || errno != EINTR) break;
+ > }
+ > signal(SIGUSR1, deferred_die_handler)%3
+ > >Audit-Trail:
+ > >Unformatted:
+ > 
+ > 
+ > 
+ 
+
+From: Nathan J Kurz <nate@tripod.tripod.com>
+To: dgaudet@arctic.org (Dean Gaudet)
+Subject: Re: general/792: race condition with SIGUSR1 graceful restart
+Date: Thu, 26 Jun 1997 17:50:32 -0400 (EDT)
+
+ 
+ > So the only place where there's a problem is between the signal(deferred) 
+ > call and the accept().  
+ 
+ Yes, that it the small place I am talking about.  If you put a pause()
+ in right before the accept I think SIGUSR1 will be ignored by the
+ child and it will run until the generation check catches it in the top
+ of the child_main() loop.  I think that multiple KeepAlive requests
+ would still be run, though.
+ 
+ > But if we do what you suggest then we run into a
+ > problem *after* the accept call.  We may have accepted a connection, and
+ > then get hit with a signal before we can disable the longjmp.  That is
+ > something I deliberately tried to avoid.  We also can't trust the values
+ > of any of the local variables, so it'd be hard to know if we accepted a
+ > connection or if we're just supposed to die or what.
+ 
+ That is the problem, and is why I didn't submit a real patch.  I wasn't
+ able to test it well now, so I didn't try.  I was actually doing this
+ in separate code, and only saw the problem in Apache after I caught it
+ in my own.
+ 
+ > Your longjmp thing is clever though.  But I can't think of how to test if
+ > we really got a connection after the loop exits due to deferred_die being
+ > set.  For example, we could get the signal after accept() returns but
+ > before csd is set.  race conditions rule. 
+ 
+ I thought I came up with a better solution using the long jump, but
+ now that you point it out it will fail if the signal comes between the
+ return of the accept() and the assignment to the socket variable.  The
+ way my while loop is done avoids problems if the signal comes later
+ than that though. (I think I avoid the clobbering of local variables
+ by making it into function that was passed a connection record, but
+ perhaps I'm wrong.)  In case it's useful, here's the code I currently
+ have for my other server:
+ 
+ int connection_accept(int server_socket, connection_rec *connection)
+ {
+   int address_length;
+ 
+   /* be certain that the socket is initially invalid */
+   connection->socket = -1;
+ 
+   /* make a SIGHUP set global_server_stop and then jump to here */
+   if (sigsetjmp(global_jump_buffer, 1) == 0) {
+     signal_set(SIGHUP, signal_stop_server_and_jump);
+   }
+ 
+   /* NOTE: a long jump is necessary to avoid the possibility of a signal
+      coming after the loop is started and before the accept.  Without
+      the jump we might wait an awful long time in accept (until another
+      signal arrives) */
+ 
+   while (! global_stop_server) {
+ 
+     /* a SIGHUP here sets global_stop_server and jumps to above */
+ 
+     address_length = sizeof(connection->address);
+     connection->socket = accept(server_socket, 
+                                 (struct sockaddr *)&(connection->address), 
+                                 &address_length);
+ 
+     /* don't loop if we sucessfully accepted */
+     if (connection->socket >= 0) break;
+ 
+     /* try again if we were interrupted */
+     if (errno == EINTR) {
+       continue;
+     }
+ 
+     /* return in ERROR if something bad happened */
+     signal_set(SIGHUP, signal_stop_server);
+     log_error("couldn't accept a new request");
+     log_unix_error("accept");
+     return ERROR;
+   }
+ 
+   /* reset the signal handler to simply set global_server_stop */
+   signal_set(SIGHUP, signal_stop_server);
+ 
+   /* socket will be -1 if a signal sets global_stop_server before the accept */
+   if (connection->socket < 0) {
+     return ERROR;
+   }
+ 
+   /* NOTE: global_stop_server was set if there was a SIGHUP after the accept */
+   return SUCCESS;
+ }
+ 
+ > I've been able to run a "while 1; kill -USR1" loop against the server and
+ > surf without a broken link with the current code.  But before I had the
+ > deferred stuff in there I did have the slight race condition I talk about
+ > above -- where an accept may succeed and then get signalled to death.  And
+ > when that was in there I did get broken links while surfing. 
+ 
+ That agrees with what I see, since the current code is conservative.
+ The only problem is that the child occasionally is allowed to live one
+ connection beyond when it should.  But it is a minor problem in that
+ it never kills things after the connection is accepted.
+ 
+ > On architectures with serialization in that loop the current code lets one
+ > child live for at most one more request.  On other architectures, where
+ > everyone gets plopped into accept() and the OS gets to wake 'em up, it's
+ > possible for some children to be stuck "gracefully exiting" if the OS
+ > starves them at the accept(). 
+ 
+ You're right -- if they are serialized there should be only one
+ process that is affected by this.  But it is one more connection, not
+ one more request.  Perhaps deferred_die could be checked as part of the
+ read_request() loop?
+ 
+ Good luck!
+ 
+ --nate
+ 
+ ps. I've got a Linux ThinkPad 560 program that might be worth putting
+ on your page if you are still maintaining it.  I'll send that
+ separately.
+ 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Nathan J Kurz <nate@tripod.tripod.com>
+Subject: Re: general/792: race condition with SIGUSR1 graceful restart
+Date: Fri, 27 Jun 1997 00:55:25 -0700 (PDT)
+
+ 
+ On Thu, 26 Jun 1997, Nathan J Kurz wrote:
+ >  > So the only place where there's a problem is between the signal(deferred) 
+ >  > call and the accept().  
+ >  
+ >  Yes, that it the small place I am talking about.  If you put a pause()
+ >  in right before the accept I think SIGUSR1 will be ignored by the
+ >  child and it will run until the generation check catches it in the top
+ >  of the child_main() loop.  I think that multiple KeepAlive requests
+ >  would still be run, though.
+ 
+ But sticking a pause() there makes the tiny race into a huge race :)
+ 
+ The main request loop has a generation check.  A maximum of one request
+ is served.
+ 
+ A 1 second alarm causing a deferred exit seems to solve this as well.
+ 
+ Dean
+ 
+
+From: Nathan J Kurz <nate@tripod.tripod.com>
+To: dgaudet@arctic.org (Dean Gaudet)
+Subject: Re: general/792: race condition with SIGUSR1 graceful restart
+Date: Fri, 27 Jun 1997 11:40:31 -0400 (EDT)
+
+ 
+ > >  Yes, that it the small place I am talking about.  If you put a pause()
+ > >  in right before the accept I think SIGUSR1 will be ignored by the
+ > >  child and it will run until the generation check catches it in the top
+ > >  of the child_main() loop.  I think that multiple KeepAlive requests
+ > >  would still be run, though.
+ > 
+ > But sticking a pause() there makes the tiny race into a huge race :)
+ > 
+ > The main request loop has a generation check.  A maximum of one request
+ > is served.
+ > 
+ > A 1 second alarm causing a deferred exit seems to solve this as well.
+ 
+ OK, it's pretty minor then.  Maybe there should be another option for
+ severity of bug: 'probably not worth mentioning, but...'
+ 
+ have 10 nice days,
+ 
+ --nate
+ 
+ 
+State-Changed-From-To: open-suspended
+State-Changed-By: dgaudet
+State-Changed-When: Sat Jul 19 02:49:16 PDT 1997
+State-Changed-Why:
+A fix is possible... just not high priority.
+
+Dean
+State-Changed-From-To: suspended-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Feb 23 03:48:42 PST 1998
+State-Changed-Why:
+still exists in 1.3, still not a huge problem, especially not one
+worth calling alarm() for ;)
+>Unformatted:
+
+
+
+
+
+

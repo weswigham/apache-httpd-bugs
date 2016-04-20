@@ -1,0 +1,224 @@
+Received: (qmail 39517 invoked by uid 501); 4 May 2001 10:58:20 -0000
+Message-Id: <20010504105820.39501.qmail@apache.org>
+Date: 4 May 2001 10:58:20 -0000
+From: Mike Varty <mike@bartec.demon.co.uk>
+Reply-To: mike@bartec.demon.co.uk
+To: submit@bugz.apache.org
+Subject: Apache reports 'cat: write error: Broken pipe' in error_log file
+X-Send-Pr-Version: 3.110
+
+>Number:         7673
+>Category:       general
+>Synopsis:       Apache reports 'cat: write error: Broken pipe' in error_log file
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri May 04 04:00:03 PDT 2001
+>Closed-Date:    
+>Last-Modified:  Mon May 21 04:30:03 PDT 2001
+>Originator:     mike@bartec.demon.co.uk
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Apache 3.1.12
+Apache Compiled on Solaris 2.5 (uname: SunOS 5.5.1 sun4m SPARCstation-4)
+Apache Binaries copied to Solaris 8 machine (uname: SunOS 5.8 sun4u Ultra-5_10)
+Apache Running on Solaris 8 (binary compatibility)
+Internet Explorer 5 on Windows 98
+>Description:
+1.  The offending page is a cgi script written in csh, which first sources a file to set environment variables, then calls an executable.  The 'C' exe uses printfs and system calls to 'cat' to generate html code to stdout, which apache sends out:
+
+        #!/usr/bin/csh
+        source $DOCUMENT_ROOT/setWebEnvironment
+        $ISIS_BIN/searchDB
+
+2.  The browser actually displays a blank page and Apache raises a 'cat: write error: Broken pipe' error in the error_log file.
+
+3.  I redirected the output from the exe to a file (temp_output) and viewed the file:
+
+        $ISIS_BIN/serachDB > temp_output
+
+It contained the complete HTML as it should.  The browser then told me it couldn't find the page, as expected because the html hadn't gone to apache.
+
+4.  I appended a line to the .cgi script: 'cat temp_output', so that the output might be sent through apache once again:
+
+        cat temp_output
+
+This time, the browser displayed an incomplete version of the page, and Apache raised the same Broken pipe error.
+
+5.  I viewed the resulting partial web page source from the browser, and it did indeed contain only part of the expected HTML, although the temp_output file  contained the entire HTML.
+
+6.  I typed in the URL of the temp_output file and it was displayed perfectly in the browser.
+
+7.  I reverted to a version of Apache, 1.3.2, compiled again on Solaris 2.5 and ported to my Solaris 8 machine, and it serves the offending page perfectly, with no error message.
+
+8.  I continued investigating Apache 1.3.12 by removing the source command from the cgi and commenting out the exe which generates temp_output, in case it was filling up the environment variable table (max variables etc).
+
+        #!/usr/bin/csh
+        #source $DOCUMENT_ROOT/setWebEnvironment
+        #$ISIS_BIN/searchDB > temp_output
+        cat temp_output
+
+This worked perfectly.
+
+8.  I then put the source statement back in and it failed to serve the whole page again, with the broken pipe error.  So, something to do with the setting of the environment variables
+
+9.  I removed a fair few superfluous variables from the setWebEnvironment script gradually to see if the page started working.  It did after removing quite a few.  The page was perfect in the browser.
+
+10. Having got temp_output being served correctly, I put back the running of the exe, and the page was served correctly.  So definitely something to do with the number or nature of the environment variables.
+
+11. Finally, with the page working, I removed the redirection of the output so that the exe sends the pages straight to apache.  This resulted in the blank web page again.
+
+10. So, I have a page that will work with redirection and less environment variables, but this doesn't really solve my problem really because the web page consists of a form with text boxes and option menus, then a table which is extracted from a database.  The table will be as long as there are entries in the database, so I'm left wondering what happens when the table grows.  I can test for this on my development system, but I cannot test on all versions of Solaris or SunOS (the SunOS release works OK at the moment).
+
+I'm working on a release, so for us, getting this sorted is important.  Any suggestions will be very welcome.
+
+If I have not supplied enough info, please ask for some more.
+>How-To-Repeat:
+I'm don't think you can easily, but you could try declaring a lot of environment variables then trying to cat an HTML page which contains a form and a long table.
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+
+From: Mike Varty <mike@bartec.demon.co.uk>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc:  
+Subject: Re: general/7673: Apache reports 'cat: write error: Broken pipe' in error_log file
+Date: Fri, 04 May 2001 16:42:58 +0100
+
+ Further to my last report, I have noticed a few things:
+ 
+ 1.  I rebuilt apache directly on the Solaris 8 Ultra, and the problem does not occur
+ 
+ 2.  I realised that the Solaris 2.5 build was originally configured on SunOS 4.1.3,
+ and copied over to the Solaris 2.5 machine for compilation and linking.  Thus, it is
+ a strange hybrid build.
+ 
+ 3.  So I configured, compiled and linked another build directly on the Solaris 2.5
+ machine.  This version now exhibits the broken pipe problem.
+ 
+ This effectively rules out any doubt over the cause being binary compatibility
+ issues.
+ 
+ Mike Varty.
+ 
+ 
+ submit@bugz.apache.org wrote:
+ 
+ > Thank you very much for your problem report.
+ > It has the internal identification `general/7673'.
+ > The individual assigned to look at your
+ > report is: apache.
+ >
+ > >Category:       general
+ > >Responsible:    apache
+ > >Synopsis:       Apache reports 'cat: write error: Broken pipe' in error_log file
+ > >Arrival-Date:   Fri May 04 04:00:03 PDT 2001
+ 
+
+From: "Varty, Mike" <mike@bartec.demon.co.uk>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc: apbugs@apache.org
+Subject: Re: general/7673: Apache reports 'cat: write error: Broken pipe' in error_log file
+Date: Fri, 11 May 2001 10:33:36 +0100
+
+ I'm still working on the 'cat' problem, with no resolution.  Just wondering if
+ there's anyone out there that can help?
+ 
+ Mike.
+ 
+ 
+ submit@bugz.apache.org wrote:
+ 
+ > Thank you very much for your problem report.
+ > It has the internal identification `general/7673'.
+ > The individual assigned to look at your
+ > report is: apache.
+ >
+ > >Category:       general
+ > >Responsible:    apache
+ > >Synopsis:       Apache reports 'cat: write error: Broken pipe' in error_log file
+ > >Arrival-Date:   Fri May 04 04:00:03 PDT 2001
+ 
+
+From: "Varty, Mike" <mike@bartec.demon.co.uk>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc: apbugs@apache.org
+Subject: Re: general/7673: Apache reports 'cat: write error: Broken pipe' in error_log file
+Date: Fri, 11 May 2001 10:33:36 +0100
+
+ I'm still working on the 'cat' problem, with no resolution.  Just wondering if
+ there's anyone out there that can help?
+ 
+ Mike.
+ 
+ 
+ submit@bugz.apache.org wrote:
+ 
+ > Thank you very much for your problem report.
+ > It has the internal identification `general/7673'.
+ > The individual assigned to look at your
+ > report is: apache.
+ >
+ > >Category:       general
+ > >Responsible:    apache
+ > >Synopsis:       Apache reports 'cat: write error: Broken pipe' in error_log file
+ > >Arrival-Date:   Fri May 04 04:00:03 PDT 2001
+ 
+
+From: "Varty, Mike" <mike@bartec.demon.co.uk>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc:  
+Subject: Re: general/7673: Apache reports 'cat: write error: Broken pipe' in error_log file
+Date: Mon, 21 May 2001 12:12:40 +0100
+
+ Further to my bug report, I have now tested using the Apache 1.3.19, and the problem
+ is no longer occurring.
+ 
+ All is now OK I think, the bug report can now be closed.
+ 
+ Mike.
+ 
+ -------------------------------
+ Mike Varty
+ Principal Systems Designer
+ Park Medical Systems (UK) Limited
+ 
+ 
+ 
+ submit@bugz.apache.org wrote:
+ 
+ > Thank you very much for your problem report.
+ > It has the internal identification `general/7673'.
+ > The individual assigned to look at your
+ > report is: apache.
+ >
+ > >Category:       general
+ > >Responsible:    apache
+ > >Synopsis:       Apache reports 'cat: write error: Broken pipe' in error_log file
+ > >Arrival-Date:   Fri May 04 04:00:03 PDT 2001
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

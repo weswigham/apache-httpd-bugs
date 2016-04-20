@@ -1,0 +1,175 @@
+Received: (qmail 3042 invoked by uid 2012); 26 Jun 1999 01:47:58 -0000
+Message-Id: <19990626014758.3041.qmail@hyperreal.org>
+Date: 26 Jun 1999 01:47:58 -0000
+From: Sampo Kellomaki <sampo@iki.fi>
+Reply-To: sampo@iki.fi
+To: apbugs@hyperreal.org
+Subject: ab mishandles URLs with colons in query string
+X-Send-Pr-Version: 3.2
+
+>Number:         4653
+>Category:       other
+>Synopsis:       ab mishandles URLs with colons in query string
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          support
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jun 25 18:50:00 PDT 1999
+>Last-Modified:
+>Originator:     sampo@iki.fi
+>Organization:
+apache
+>Release:        1.3.6
+>Environment:
+uname -a
+Linux rex.expresso.pt 2.0.33 #4 Fri Apr 3 17:44:20 GMT 1998 i686
+gcc -v
+Reading specs from /usr/lib/gcc-lib/i386-linux/2.7.2.1/specs
+gcc version 2.7.2.1
+>Description:
+Apache Bench (ab.c) misinterprets URLs containing colons in query string.
+
+Example:
+
+ab -v 1 -n 5000 -c 150 'http://rechts.expresso.pt/director.nsp?maurl=mediactor://expresso/jornal/tarja'
+This is ApacheBench, Version 1.3
+Copyright (c) 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/
+Copyright (c) 1998-1999 The Apache Group, http://www.apache.org/
+
+Benchmarking rechts.expresso.pt/director.nsp?maurl=mediactor (be patient)...
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The fact that this appears here is WRONG!
+
+Looking at parse_url() function (ab.c, around line 864) we see that
+first `http://' is chopped off and then colon is searched for (line 873).
+I believe the latter is supposed to look for port number after the host name,
+but this should only be done after chomping off at next slash. Here's
+a diff:
+
+ diff -c ab.c.orig ab.c
+*** ab.c.orig   Sat Jun 26 02:39:50 1999
+--- ab.c        Sat Jun 26 02:50:45 1999
+***************
+*** 865,887 ****
+  {
+      char *cp;
+      char *h;
+-     char *p = NULL;
+  
+      if (strlen(url) > 7 && strncmp(url, "http://", 7) == 0)
+        url += 7;
+      h = url;
+!     if ((cp = strchr(url, ':')) != NULL) {
+!       *cp++ = '\0';
+!       p = cp;
+!       url = cp;
+!     }
+      if ((cp = strchr(url, '/')) == NULL)
+        return 1;
+      strcpy(path, cp);
+      *cp = '\0';
+!     strcpy(hostname, h);
+!     if (p != NULL)
+!       port = atoi(p);
+      return 0;
+  }
+  
+--- 865,886 ----
+  {
+      char *cp;
+      char *h;
+  
+      if (strlen(url) > 7 && strncmp(url, "http://", 7) == 0)
+        url += 7;
+      h = url;
+! 
+      if ((cp = strchr(url, '/')) == NULL)
+        return 1;
+      strcpy(path, cp);
+      *cp = '\0';
+! 
+!     if ((cp = strchr(h, ':')) != NULL) {
+!         *cp++ = '\0';
+!         port = atoi(cp);
+!     }
+! 
+!     strcpy(hostname, host);
+      return 0;
+  }
+  
+>How-To-Repeat:
+ab -v 1 -n 5000 -c 150 'http://rechts.expresso.pt/director.nsp?maurl=mediactor://expresso/jornal/tarja'
+                                                                              ^
+                                                                              |
+Note this colon --------------------------------------------------------------'
+>Fix:
+diff -c ab.c.orig ab.c
+*** ab.c.orig   Sat Jun 26 02:39:50 1999
+--- ab.c        Sat Jun 26 02:50:45 1999
+***************
+*** 865,887 ****
+  {
+      char *cp;
+      char *h;
+-     char *p = NULL;
+  
+      if (strlen(url) > 7 && strncmp(url, "http://", 7) == 0)
+        url += 7;
+      h = url;
+!     if ((cp = strchr(url, ':')) != NULL) {
+!       *cp++ = '\0';
+!       p = cp;
+!       url = cp;
+!     }
+      if ((cp = strchr(url, '/')) == NULL)
+        return 1;
+      strcpy(path, cp);
+      *cp = '\0';
+!     strcpy(hostname, h);
+!     if (p != NULL)
+!       port = atoi(p);
+      return 0;
+  }
+  
+--- 865,886 ----
+  {
+      char *cp;
+      char *h;
+  
+      if (strlen(url) > 7 && strncmp(url, "http://", 7) == 0)
+        url += 7;
+      h = url;
+! 
+      if ((cp = strchr(url, '/')) == NULL)
+        return 1;
+      strcpy(path, cp);
+      *cp = '\0';
+! 
+!     if ((cp = strchr(h, ':')) != NULL) {
+!         *cp++ = '\0';
+!         port = atoi(cp);
+!     }
+! 
+!     strcpy(hostname, host);
+      return 0;
+  }
+  
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

@@ -1,0 +1,131 @@
+Received: (qmail 13475 invoked by uid 2012); 18 Jan 1999 19:40:38 -0000
+Message-Id: <19990118194038.13474.qmail@hyperreal.org>
+Date: 18 Jan 1999 19:40:38 -0000
+From: sam berman <sam.berman@att.com>
+Reply-To: sam.berman@att.com
+To: apbugs@hyperreal.org
+Subject: Piped Error Logs spawn extra process(es)
+X-Send-Pr-Version: 3.2
+
+>Number:         3713
+>Category:       other
+>Synopsis:       rotatelogs example does not handle SIGHUP, SIGUSR1, SIGTERM
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          analyzed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jan 18 11:50:03 PST 1999
+>Last-Modified:  Wed Apr 21 10:40:00 PDT 1999
+>Originator:     sam.berman@att.com
+>Organization:
+>Release:        1.3.4
+>Environment:
+SunOS hdpww02 5.5.1 Generic_103640-23 sun4m sparc SUNW,SPARCstation-20
+gcc
+>Description:
+With an error log directive
+    ErrorLog ErrorLog "| grep -v ABCDE >/home/sam/apache_1.3.4/logs/error_log"
+The following processes are spawned:
+    root 27313 27312  0 14:36:54 ?        0:00 /bin/sh -c  grep -v ABCDE >/home/
+sam/apache_1.3.4/logs/error_log
+    root 27314 27313  0 14:36:54 ?        0:00 grep -v ABCDE
+    root 27311     1  0 14:36:51 pts/10   0:00 grep -v ABCDE 
+
+    root 27312     1  0 14:36:51 ?        0:00 /home/sam/text/apache_1.3.4/bin/h
+ttpd
+     sam 27317 27312  0 14:36:54 ?        0:00 /home/sam/text/apache_1.3.4/bin/h
+ttpd
+     sam 27319 27312  0 14:36:54 ?        0:00 /home/sam/text/apache_1.3.4/bin/h
+ttpd
+     sam 27318 27312  0 14:36:54 ?        0:00 /home/sam/text/apache_1.3.4/bin/h
+ttpd
+     sam 27315 27312  0 14:36:54 ?        0:00 /home/sam/text/apache_1.3.4/bin/h
+ttpd
+     sam 27316 27312  0 14:36:54 ?        0:00 /home/sam/text/apache_1.3.4/bin/h
+ttpd
+===========
+Restarting the Apache process (kill -USR1 27312) spawns extra piped log programs
+running.
+>How-To-Repeat:
+See the description.
+>Fix:
+Sorry, no.
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 21:25:08 PDT 1999
+State-Changed-Why:
+Yeah, it's poorly documented, but the piped log child is
+also sent SIGUSR1, SIGHUP, and SIGTERM when you send the
+respective signals to the parent.  The child needs to handle
+them (essentially trap them and clean up properly).
+
+In your case if you just stick an "exec" in front of the grep
+I think everything will work just fine.
+
+Dean
+State-Changed-From-To: feedback-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Wed Apr 21 10:36:33 PDT 1999
+State-Changed-Why:
+It's poorly (or not) documented that the piped log handler
+has to handle SIGHUP, SIGUSR1, and SIGTERM.  All three are
+shutdown signals.  But if there's a shell involved, as there
+is when you do "| rotatelogs" you end up leaving orphans
+around... because the shell exits but the child doesn't.
+
+Dean
+Synopsis-Changed-From: Piped Error Logs spawn extra process(es)
+Synopsis-Changed-To: rotatelogs example does not handle SIGHUP, SIGUSR1, SIGTERM
+Synopsis-Changed-By: dgaudet
+Synopsis-Changed-When: Wed Apr 21 10:36:33 PDT 1999
+Category-Changed-From-To: mod_log-any-other
+Category-Changed-By: dgaudet
+Category-Changed-When: Wed Apr 21 10:36:33 PDT 1999
+
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: mod_log-any/3713: Piped Error Logs spawn extra process(es) (fwd)
+Date: Wed, 21 Apr 1999 10:32:46 -0700 (PDT)
+
+ ---------- Forwarded message ----------
+ From: sam@lynxhub.lz.att.com
+ Subject: Re: mod_log-any/3713: Piped Error Logs spawn extra process(es)
+ To: dgaudet@apache.org
+ Date: Wed, 21 Apr 1999 11:39:43 -0400 (EDT)
+ Cc: apache-bugdb@apache.org
+ 
+ Dean,
+ 
+     I was actually using a hacked version of rotatelogs--I just
+     sent the simple item as an example.
+ 
+     The rotatelogs.c file in the distribution should be updated to
+     handle this, or if exec would work for it as well, examples
+     of it with the ....Log directive should be updated to show
+     the exec.
+ 
+     Because we didn't understand this, we chose not to use piped
+     logging in our current release.  With this knowledge, we may
+     revisit this issue at a later time,
+ 
+ --
+ thanks very much for the info,
+ sam
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

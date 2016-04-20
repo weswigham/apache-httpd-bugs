@@ -1,0 +1,210 @@
+Received: (qmail 93417 invoked by uid 501); 30 Dec 2001 17:30:36 -0000
+Message-Id: <20011230173036.93416.qmail@apache.org>
+Date: 30 Dec 2001 17:30:36 -0000
+From: Fred Koschara <wfredk@L5Development.com>
+Reply-To: wfredk@L5Development.com
+To: submit@bugz.apache.org
+Subject: ErrorDocument 404 CGI Location: not handled correctly
+X-Send-Pr-Version: 3.110
+
+>Number:         9321
+>Category:       general
+>Synopsis:       ErrorDocument 404 CGI Location: not handled correctly
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Dec 30 09:40:00 PST 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     wfredk@L5Development.com
+>Release:        through 1.3.22
+>Organization:
+apache
+>Environment:
+These tests were performed on Apache 1.3.22 under FreeBSD 4.4
+
+uname -a
+FreeBSD Waltham.fkeinternet.com 4.4-RELEASE FreeBSD 4.4-RELEASE #0: Mon Nov 26 12:54:30 EST 2001     root@Waltham:/usr/src/sys/compile/WALTHAM  i386
+
+httpd -V
+Server version: Apache/1.3.22 (Unix)
+Server built:   Dec 23 2001 04:46:27
+Server's Module Magic Number: 19990320:10
+Server compiled with....
+ -D HAVE_MMAP
+ -D USE_MMAP_SCOREBOARD
+ -D USE_MMAP_FILES
+ -D HAVE_FLOCK_SERIALIZED_ACCEPT
+ -D SINGLE_LISTEN_UNSERIALIZED_ACCEPT
+ -D SO_ACCEPTFILTER
+ -D ACCEPT_FILTER_NAME="dataready"
+ -D HTTPD_ROOT="/usr/local/apache"
+ -D SUEXEC_BIN="/usr/local/apache/bin/suexec"
+ -D DEFAULT_PIDLOG="logs/httpd.pid"
+ -D DEFAULT_SCOREBOARD="logs/httpd.scoreboard"
+ -D DEFAULT_LOCKFILE="logs/httpd.lock"
+ -D DEFAULT_XFERLOG="logs/access_log"
+ -D DEFAULT_ERRORLOG="logs/error_log"
+ -D TYPES_CONFIG_FILE="conf/mime.types"
+ -D SERVER_CONFIG_FILE="conf/httpd.conf"
+ -D ACCESS_CONFIG_FILE="conf/access.conf"
+ -D RESOURCE_CONFIG_FILE="conf/srm.conf"
+>Description:
+A "Location:" header emitted by an ErrorDocument 404 handler is not handled
+correctly, as compared to one emitted by a normal document-space CGI script:
+When emitted by a document-space CGI script, the redirection is handled
+internally by the server.  However, when emitted by an ErrorDocument 404
+handler, the header is emitted to the client browser.  No mention is made in
+any normal user documents of a need for an additional "Status:" header.
+
+Background:
+=============================================================================
+I researched this problem by examining the FAQ, looking for any relevant
+entries, and did not find any.  I also searched the bug database using
+"ErrorDocument cgi" as a search string.  Of the 75 documents returned, only
+PR number 4008 appeared related to this problem, but it did not have a
+complete solution.  I also examined the apacheweek page at
+	http://www.apacheweek.com/issues/96-05-17#underdev
+(referenced in the PR) but it did not provide any useful information.
+
+These tests were performed on Apache 1.3.22 under FreeBSD 4.4.  They were done
+in response to the message thread originally started by a question from
+Sivakatirswami <katir@hindu.org> on Sun, 23 Dec 2001 19:30:09 -1000 entitled
+"CGI Handling ErrorDocument 404/Redirect to external URI" which I have been
+answering.
+(message thread is in the Apache Users List)
+>How-To-Repeat:
+From my httpd.conf:
+  -------------------------------------------------------------------------
+# DirectoryIndex: Name of the file or files to use as a pre-written HTML
+# directory index.  Separate multiple entries with spaces.
+<IfModule mod_dir.c>
+  DirectoryIndex index.php index.cgi index.shtml index.html index.htm
+</IfModule>
+  -------------------------------------------------------------------------
+
+(Simplified) index.cgi from L5Sofware.com:
+  -------------------------------------------------------------------------
+#!/usr/bin/perl
+print "Location: "/swframe.shtml\n\n";
+  -------------------------------------------------------------------------
+
+(Partial) telnet connection and resulting server output from index.cgi:
+  -------------------------------------------------------------------------
+ttyp0::/home/fkeinternet/cgibin > telnet l5software.com 80
+Trying 208.58.172.29...
+Connected to L5Software.com.
+Escape character is '^]'.
+GET / HTTP/1.1
+Host: l5software.com
+
+HTTP/1.1 200 OK
+Date: Wed, 26 Dec 2001 05:45:44 GMT
+Server: Apache/1.3.22 (Unix) PHP/4.1.0
+Transfer-Encoding: chunked
+Content-Type: text/html
+
+8d0
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN">
+  -------------------------------------------------------------------------
+
+****** NOTE: *********
+The httpd.conf entry and badurl.cgi file described below were made for testing
+this problem only:  The server has been returned to its production setup.
+However, anyone working on this problem should be able to do the same changes
+on _their_ system, and get the same results:
+
+From (test) httpd.conf:
+  -------------------------------------------------------------------------
+ErrorDocument 404 /cgibin/badurl.cgi
+  -------------------------------------------------------------------------
+
+***** Test # 1: ***********************************************************
+badurl.cgi:
+  -------------------------------------------------------------------------
+#!/usr/bin/perl
+print "Location: http://www.HimalayanAcademy.com/index.html\n\n";
+  -------------------------------------------------------------------------
+
+In the telnet session illustrated below, I entered the "GET" and "Host:"
+lines, followed by a blank line. This caused the server to emit the response
+that follows.
+
+Telnet connection and resulting server output:
+  -------------------------------------------------------------------------
+ttyp0::/home/fkeinternet/cgibin > telnet fkeinternet.com 80
+Trying 208.58.172.24...
+Connected to FKEinternet.com.
+Escape character is '^]'.
+GET /goober.htm HTTP/1.1
+Host: fkeinternet.com
+
+HTTP/1.1 404 Not Found
+Date: Wed, 26 Dec 2001 05:57:20 GMT
+Server: Apache/1.3.22 (Unix) PHP/4.1.0
+Location: http://www.HimalayanAcadamy.com/index.html
+Transfer-Encoding: chunked
+Content-Type: text/plain
+
+0
+
+Connection closed by foreign host.
+  -------------------------------------------------------------------------
+
+***** Test # 2: (illustrates the work-around) *****************************
+badurl.cgi:
+  -------------------------------------------------------------------------
+#!/usr/bin/perl
+print "Status: HTTP/1.1 301 Moved Permanently\n";
+print "Location: http://www.HimalayanAcademy.com/index.html\n\n";
+  -------------------------------------------------------------------------
+
+Telnet connection and resulting server output:
+  -------------------------------------------------------------------------
+ttyp0::/home/fkeinternet/cgibin > telnet fkeinternet.com 80
+Trying 208.58.172.24...
+Connected to FKEinternet.com.
+Escape character is '^]'.
+GET /goober.htm HTTP/1.1
+Host: fkeinternet.com
+
+HTTP/1.1 301 Moved Permanently
+Date: Wed, 26 Dec 2001 07:08:24 GMT
+Server: Apache/1.3.22 (Unix) PHP/4.1.0
+Location: http://www.HimalayanAcademy.com/index.html
+Transfer-Encoding: chunked
+Content-Type: text/plain
+
+0
+
+Connection closed by foreign host.
+  -------------------------------------------------------------------------
+>Fix:
+I believe the code should be modified to cause "Location:" headers to be handled
+the same way in all cases.  However, as a work-around, it is possible to add
+a redirection "Status:" header that will tell the client browser to perform the
+redirection.  This should at least be added to the documentation.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

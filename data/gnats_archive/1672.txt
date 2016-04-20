@@ -1,0 +1,329 @@
+Received: (qmail 7187 invoked by uid 2012); 14 Jan 1998 18:07:16 -0000
+Message-Id: <19980114180716.7186.qmail@hyperreal.org>
+Date: 14 Jan 1998 18:07:16 -0000
+From: Jan Wedekind <jan@wedekind.de>
+Reply-To: jan@wedekind.de
+To: apbugs@hyperreal.org
+Subject: Authentication / .htaccess DoS attack
+X-Send-Pr-Version: 3.2
+
+>Number:         1672
+>Category:       mod_auth-any
+>Synopsis:       Authentication / .htaccess DoS attack
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan 14 10:10:01 PST 1998
+>Last-Modified:  Mon Sep  7 05:58:56 PDT 1998
+>Originator:     jan@wedekind.de
+>Organization:
+>Release:        1.2.*
+>Environment:
+Solaris 2.x, Linux & any other Unix
+>Description:
+(same report will be sent to bugtraq; this is the same splitted text)
+
+At the beginning of the week (after the release of apache 1.2.5)
+we discoverd a DoS attack in apache and (eventually) other / all (?)
+httpd's. Many thanks to Bernard "sendmail" Steiner <bs@de.uu.net>,
+who got the important idea.
+
+For apache 1.2.x (and very sure all versions before), the
+DoS may be exploited if both of the following conditions are true:
+
+- the intruder has (at least FTP) write access to (at least)
+  one public HTML directory
+
+- per directory access (AccessFileName configuration directive)
+  is enabled and the filename is known to the intruder
+  (default is .htaccess)
+
+This configuration will be found very often at private homepages
+with FTP-Upload accounts.
+
+Now just put a new .htaccess file to the Server with the 
+following contents:
+
+AuthType Basic
+AuthName DoS Attack
+AuthUserFile /dev/zero
+<Limit GET POST>
+order deny,allow
+allow from all
+require valid-user
+</Limit>
+
+If you're now trying to open this directory (or any file within)
+and enter any user / password combination, you'll get a
+hanging (death running) client. This is, because it's reading
+/dev/zero and searches for a colon (':') to separate
+the user name from the password field (mod_auth.c, get_pw(), line 127).
+
+Now the intruder may stop this request in the browser (the server 
+client process will still continue) and start a new one. The next
+client will be forced to read /dev/zero.
+Repeat this, until 'MaxClient' will be reached. Not only this server
+will stop to work (e.g. the parent will wait for all further 
+requests for any of it's child), but also the machine will 
+going almost to hang with a CPU load of about MaxClient.
+>How-To-Repeat:
+see Description
+>Fix:
+possible fixes:
+
+a) workaround
+
+Disable .htaccess in srm.conf by commenting out AccessFileName:
+ (default is NULL in the apache distribution, e.g. disabled)
+
+#AccessFileName .htaccess
+
+b) patch to apache source
+
+Because also other authentication methods may be exploitable 
+I would prefer to patch it in a way that it's no longer be 
+available to open /dev/zero (or any other device) for reading, 
+so I patched fpopen() in alloc.c:
+
+kirk: ~/src/apache_1.2.4/src> gdiff -uw alloc.c.orig alloc.c
+--- alloc.c.orig        Thu Jan  8 14:14:13 1998
++++ alloc.c     Fri Jan  9 13:37:21 1998
+@@ -839,9 +839,14 @@
+ {
+   FILE *fd = NULL;
+   int baseFlag, desc;
++  struct stat buf;
+ 
+   block_alarms();
+ 
++  if (   *mode != 'r' 
++      || (strcmp(name,"/dev/null") == 0)
++      || stat(name, &buf) == 0 && ((buf.st_mode & S_IFMT) == S_IFREG))
++  {
+   if (*mode == 'a') {
+     /* Work around faulty implementations of fopen */
+     baseFlag = (*(mode+1) == '+') ? O_RDWR : O_WRONLY;
+@@ -854,6 +859,7 @@
+   } else {
+     fd = fopen(name, mode);
+   }
++  } 
+ 
+   if (fd != NULL) note_cleanups_for_file (a, fd);
+   unblock_alarms();
+%0
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Jan Wedekind <jan@wedekind.de>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_auth-any/1672: Authentication / .htaccess DoS attack
+Date: Wed, 14 Jan 1998 11:52:27 -0700 (MST)
+
+ On 14 Jan 1998, Jan Wedekind wrote:
+ 
+ > >Description:
+ > (same report will be sent to bugtraq; this is the same splitted text)
+ > 
+ > At the beginning of the week (after the release of apache 1.2.5)
+ > we discoverd a DoS attack in apache and (eventually) other / all (?)
+ > httpd's. Many thanks to Bernard "sendmail" Steiner <bs@de.uu.net>,
+ > who got the important idea.
+ > 
+ > For apache 1.2.x (and very sure all versions before), the
+ > DoS may be exploited if both of the following conditions are true:
+ 
+ Thanks for the report.  We will look at possible ways of fixing this;
+ unfortunately, stat()ing every file we try to open is very very expensive.  
+ 
+ If you have not yet posted to bugtraq, it would be appreciated if you
+ could avoid posting until we can look into this further so that we can
+ simply reduce the number of "solutions" flying around.
+ 
+ Your solution is reasonab, however there are performance implications that
+ make it somewhat undesirable...
+ 
+
+From: Jan Wedekind <Jan.Wedekind@de.uu.net>
+To: Marc Slemko <marcs@znep.com>
+Cc: Jan Wedekind <jan@wedekind.de>, apbugs@hyperreal.org
+Subject: Re: mod_auth-any/1672: Authentication / .htaccess DoS attack 
+Date: Thu, 15 Jan 1998 10:12:51 +0100
+
+ Hello apache users,
+ 
+ > On 14 Jan 1998, Jan Wedekind wrote:
+ > 
+ > > >Description:
+ > > (same report will be sent to bugtraq; this is the same splitted text)
+ > > 
+ > > At the beginning of the week (after the release of apache 1.2.5)
+ > > we discoverd a DoS attack in apache and (eventually) other / all (?)
+ > > httpd's. Many thanks to Bernard "sendmail" Steiner <bs@de.uu.net>,
+ > > who got the important idea.
+ > > 
+ > > For apache 1.2.x (and very sure all versions before), the
+ > > DoS may be exploited if both of the following conditions are true:
+ > 
+ > Thanks for the report.  We will look at possible ways of fixing this;
+ > unfortunately, stat()ing every file we try to open is very very expensive.  
+ > 
+ Argh ... of course.
+ Never thought about the fact, that fpopen may be used to open *every*
+ file.
+ 
+ > If you have not yet posted to bugtraq, it would be appreciated if you
+ > could avoid posting until we can look into this further so that we can
+ > simply reduce the number of "solutions" flying around.
+ 
+ I just tried to stop the confirmation from aleph by forwarding 
+ him this mail; partly I already got some replies, but I'm not 
+ sure wether they are from BUGTRAQ or apbugs mailing list.
+ I didn't got the BUGTRAQ mail till now.
+ 
+ > Your solution is reasonab, however there are performance implications that
+ > make it somewhat undesirable...
+ 
+ Of course. A more better solution would be to modify mod_auth 
+ and other Moduls where user edited filenames may be opened to 
+ use a modified fpopen call. (ndopen() for 'no device' for example)
+ 
+ 
+ Mit freundlichen Gruessen / best regards
+ 
+ 	Jan Wedekind
+ 
+ UUNET Deutschland GmbH            private: jan@wedekind.de
+ Web Competence Center
+ Jan.Wedekind@de.uu.net            URL: http://www.uunet.de
+ 
+ 
+
+From: Jan Wedekind <Jan.Wedekind@de.uu.net>
+To: Marc Slemko <marcs@znep.com>
+Cc: Jan Wedekind <jan@wedekind.de>, apbugs@hyperreal.org
+Subject: Re: mod_auth-any/1672: Authentication / .htaccess DoS attack 
+Date: Wed, 04 Mar 1998 12:07:51 +0100
+
+ Hello again,
+ 
+ well, because of another bug i just tried out 1.2.6 developer version
+ and modified util.c:cfg_getline() to avoid reading /dev/null, sparse
+ files or binaries containing the Null-character.
+ 
+ What about of this solution of fixing the problem ?
+ 
+ Jan
+ 
+ diff -c util.c.orig util.c
+ *** util.c.orig Tue Mar  3 12:10:17 1998
+ --- util.c      Wed Mar  4 11:34:20 1998
+ ***************
+ *** 567,573 ****
+           c = getc(f);
+       } while (c == '\t' || c == ' ');
+   
+ !     if(c == EOF)
+         return 1;
+   
+       if(n < 2) {
+ --- 567,573 ----
+           c = getc(f);
+       } while (c == '\t' || c == ' ');
+   
+ !     if(c == EOF || !c)                /* avoid reading sparse, binary or 
+ /dev/null */
+         return 1;
+   
+       if(n < 2) {
+ ***************
+ *** 576,581 ****
+ --- 576,583 ----
+       }
+   
+       while(1) {
+ +         if (!c) return 1;     /* avoid reading sparse, binary or /dev/null */
+ + 
+           if((c == '\t') || (c == ' ')) {
+               s[i++] = ' ';
+               while((c == '\t') || (c == ' ')) 
+ 
+ 
+ > On 14 Jan 1998, Jan Wedekind wrote:
+ > 
+ > > >Description:
+ > > (same report will be sent to bugtraq; this is the same splitted text)
+ > > 
+ > > At the beginning of the week (after the release of apache 1.2.5)
+ > > we discoverd a DoS attack in apache and (eventually) other / all (?)
+ > > httpd's. Many thanks to Bernard "sendmail" Steiner <bs@de.uu.net>,
+ > > who got the important idea.
+ > > 
+ > > For apache 1.2.x (and very sure all versions before), the
+ > > DoS may be exploited if both of the following conditions are true:
+ > 
+ 
+ Mit freundlichen Grüßen / best regards,
+ 
+ UUNET Deutschland GmbH
+ Jan Wedekind
+ (Dipl.-Informatiker)
+ 
+ Web Competence Center             UUNET Deutschland GmbH		
+ Tel. +49 231 972 2280             Emil-Figge-Straße 80		
+ Fax. +49 231 972 1180             44227 Dortmund, Germany		
+ Jan.Wedekind@de.uu.net            URL: http://www.uunet.de
+ 
+ 
+Comment-Added-By: brian
+Comment-Added-When: Wed May 20 02:48:52 PDT 1998
+Comment-Added:
+A change to this has been committed to the 1.3b7-dev tree:
+
+  *) When opening "configuration" files (like httpd.conf, htaccess
+     and htpasswd), Apache will not allow them to be non-/dev/null
+     device files. This closes a DoS hole. At the same time,
+     we use ap_pfopen to open these files to handle timeouts.
+     [Jim Jagielski, Martin Kraemer]
+
+Could you pull down a snapshot of 1.3b7-dev and let us know
+if this fixes your problem?  You can get snapshots at
+
+http://dev.apache.org/from-cvs/
+
+Thanks!  If this is good we'll possibly backport it to 1.2,
+though we really want to focus on 1.3 as our main stable,
+supported platform as soon as we can.
+
+
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Mon Jun 15 07:07:46 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Mon Sep  7 05:58:55 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

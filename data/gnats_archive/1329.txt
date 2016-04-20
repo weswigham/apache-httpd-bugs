@@ -1,0 +1,136 @@
+Received: (qmail 11617 invoked by uid 2012); 28 Oct 1997 23:10:24 -0000
+Message-Id: <19971028231024.11616.qmail@hyperreal.org>
+Date: 28 Oct 1997 23:10:24 -0000
+From: Ronald Tschalaer <Ronald.Tschalaer@psi.ch>
+Reply-To: Ronald.Tschalaer@psi.ch
+To: apbugs@hyperreal.org
+Subject: Apache will send wrong/invalid Content-length headers upon receipt of certain Range headers
+X-Send-Pr-Version: 3.2
+
+>Number:         1329
+>Category:       protocol
+>Synopsis:       Apache will send wrong/invalid Content-length headers upon receipt of certain Range headers
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 28 15:20:00 PST 1997
+>Last-Modified:  Sat Nov  1 15:07:16 PST 1997
+>Originator:     Ronald.Tschalaer@psi.ch
+>Organization:
+>Release:        1.2.4
+>Environment:
+Platform/compiler independent
+>Description:
+If a client sends Range headers with either a range with the beginning index
+larger than the actual length of the resource, or a range with a
+suffix-byte-range longer than the length of the resource then Apache will
+return a 206 response with wrong/invalid Content-length and Content-range
+headers. Examples (the resource is 1316 bytes long):
+
+mithrandir[test] telnet localhost 80
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+GET / HTTP/1.1
+Host: localhost
+Range: bytes=10000-20000
+ 
+HTTP/1.1 206 Partial Content
+Date: Tue, 28 Oct 1997 23:00:36 GMT
+Server: Apache/1.2.4
+Last-Modified: Mon, 30 Jun 1997 21:09:58 GMT
+ETag: "15385-524-33b820a6"
+Content-Length: -8684
+Content-Range: bytes 10000-1315/1316
+Content-Type: text/html
+ 
+GET / HTTP/1.1
+Host: localhost
+Range: bytes=-10000
+ 
+HTTP/1.1 206 Partial Content
+Date: Tue, 28 Oct 1997 23:00:48 GMT
+Server: Apache/1.2.4
+Last-Modified: Mon, 30 Jun 1997 21:09:58 GMT
+ETag: "15385-524-33b820a6"
+Content-Length: 10000
+Content-Range: bytes -8684-1315/1316
+Content-Type: text/html
+ 
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<HTML>
+ <HEAD>
+  <TITLE>Test Page for Apache Installation</TITLE>
+ </HEAD>
+[rest of body snipped]
+
+According to rfc-2068 (section 14.36) the first case should return a 200
+response, and the second case should be a 206 (the spec isn't totally clear
+here, so maybe a 200 would do too). The simple patch below will handle these
+cases correctly.
+
+
+  Cheers,
+
+  Ronald
+>How-To-Repeat:
+Send the Range request headers given above to any Apache 1.2.x server.
+>Fix:
+The problem is parse_byterange() in http_protocol.c . Here is my suggested
+patch:
+
+--------------------------------------------------------------------------
+*** http_protocol.c.orig        Fri Aug 15 19:08:51 1997
+--- http_protocol.c     Tue Oct 28 22:43:13 1997
+***************
+*** 97,108 ****
+            *end = clength -1;
+      }
+  
+!     if (*start > *end)
+!       return 0;
+  
+      if (*end >= clength)
+        *end = clength - 1;
+  
+      return 1;
+  }
+  
+--- 97,111 ----
+            *end = clength -1;
+      }
+  
+!     if (*start < 0)
+!       *start = 0;
+  
+      if (*end >= clength)
+        *end = clength - 1;
+  
++     if (*start > *end)
++       return 0;
++ 
+      return 1;
+  }
+  
+-------------------------------------------------------------------------
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Oct 28 16:14:42 PST 1997
+State-Changed-Why:
+Yup this looks right, thanks.  I've submitted it to the
+rest of the group for approval.
+
+Dean
+State-Changed-From-To: analyzed-closed
+State-Changed-By: marc
+State-Changed-When: Sat Nov  1 15:07:16 PST 1997
+State-Changed-Why:
+A slightly modified version of this patch has been applied
+to the 1.3 tree.  Thanks.
+>Unformatted:
+

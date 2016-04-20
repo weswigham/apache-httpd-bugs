@@ -1,0 +1,145 @@
+From apwww@hyperreal.org  Tue Sep 16 19:09:46 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id TAA14379;
+	Tue, 16 Sep 1997 19:09:46 -0700 (PDT)
+Message-Id: <199709170209.TAA14379@hyperreal.org>
+Date: Tue, 16 Sep 1997 19:09:46 -0700 (PDT)
+From: Brian Slesinsky <bslesins@wired.com>
+Reply-To: bslesins@wired.com
+To: apbugs@hyperreal.org
+Subject: parse_expr()  evaluates some expressions containing && or || incorrectly
+X-Send-Pr-Version: 3.2
+
+>Number:         1139
+>Category:       mod_include
+>Synopsis:       parse_expr()  evaluates some expressions containing && or || incorrectly
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Sep 16 19:10:01 1997
+>Last-Modified:  Wed Nov  5 03:54:31 PST 1997
+>Originator:     bslesins@wired.com
+>Organization:
+>Release:        1.2.0, 1.2.4
+>Environment:
+Apache 1.2.0 running on Linux 2.0.30
+>Description:
+Expressions such as "$x && $y" actually return a random value depending on
+previous contents of memory.  A workaround is to put parentheses around the
+variables:  "($x) && ($y)".
+
+I found the problem in 1.2.0 but from reading the code it looks like it's still
+there in 1.2.4.
+>How-To-Repeat:
+(The first #if is irrelevant but if it's deleted the bug
+stops working in my system.  Also, whether the bug occurs is
+very system-specific)
+
+<!--#if expr="($XXXXXXXXXXXXXx = /MSIE [3-9].*Win/) || ($HTTP_USER_AGENT = /Mozi
+lla/[3-4].*Win/)"-->
+<!--#endif -->
+<!--#if expr="((!$form_NUMMOD) && ${form_morekeywords.x}) || (($form_NUMMOD) &
+& !(($form_NUMMOD=0) || ($form_NUMMOD=1) || ($form_NUMMOD=2)))" -->
+If you can see this there's a bug.
+<!--#endif -->
+>Fix:
+It appears to be because the code to evaluate strings in lines 1327-1357 of
+mod_include.c never sets current->left->value or current->right->value.
+Perhaps replacing the switch() statements with the default case (so strings are
+always evaluated in the same place) would fix the problem.
+%0
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Brian Slesinsky <bslesins@wired.com>
+Subject: Re: mod_include/1139: parse_expr()  evaluates some expressions containing && or || incorrectly
+Date: Thu, 18 Sep 1997 01:42:37 -0700 (PDT)
+
+ 
+ On Tue, 16 Sep 1997, Brian Slesinsky wrote:
+ 
+ > It appears to be because the code to evaluate strings in lines 1327-1357 of
+ > mod_include.c never sets current->left->value or current->right->value.
+ > Perhaps replacing the switch() statements with the default case (so strings are
+ > always evaluated in the same place) would fix the problem.
+ 
+ Right ... this should fix it. 
+ 
+ Dean
+ 
+ --- mod_include.c.dist	Thu Sep 18 01:33:45 1997
+ +++ mod_include.c	Thu Sep 18 01:40:47 1997
+ @@ -1332,6 +1332,7 @@
+                      strncpy(current->left->token.value, buffer,
+                              MAX_STRING_LEN-1);
+  		    current->left->token.value[MAX_STRING_LEN-1] = '\0';
+ +		    current->left->value = (current->token.value[0] != '\0');
+                      current->left->done = 1;
+                      break;
+                    default:
+ @@ -1347,6 +1348,7 @@
+                      strncpy(current->right->token.value, buffer,
+                              MAX_STRING_LEN-1);
+  		    current->right->token.value[MAX_STRING_LEN-1] = '\0';
+ +		    current->right->value = (current->token.value[0] != '\0');
+                      current->right->done = 1;
+                      break;
+                    default:
+ 
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Thu Sep 18 12:23:50 PDT 1997
+State-Changed-Why:
+Waiting to see if the proposed patch does the job.
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Brian Slesinsky <bslesins@hotwired.com>
+Subject: Re: mod_include/1139: parse_expr()  evaluates some expressions containing && or || incorrectly
+Date: Wed, 24 Sep 1997 17:25:30 -0700 (PDT)
+
+ 
+ Uh I gave a bogus patch.  Here's a corrected one. 
+ 
+ Dean
+ 
+ On Thu, 18 Sep 1997, Dean Gaudet wrote:
+ 
+   --- mod_include.c.dist	Thu Sep 18 01:33:45 1997
+   +++ mod_include.c	Thu Sep 18 01:40:47 1997
+   @@ -1332,6 +1332,7 @@
+                        strncpy(current->left->token.value, buffer,
+                                MAX_STRING_LEN-1);
+    		    current->left->token.value[MAX_STRING_LEN-1] = '\0';
+   +		    current->left->value = (current->left->token.value[0] != '\0');
+                        current->left->done = 1;
+                        break;
+                      default:
+   @@ -1347,6 +1348,7 @@
+                        strncpy(current->right->token.value, buffer,
+                                MAX_STRING_LEN-1);
+    		    current->right->token.value[MAX_STRING_LEN-1] = '\0';
+   +		    current->right->value = (current->right->token.value[0] != '\0');
+                        current->right->done = 1;
+                        break;
+                      default:
+   
+   
+  
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Wed Nov  5 03:54:30 PST 1997
+State-Changed-Why:
+The supplied patch has been committed to 1.3 and to 1.2.5.
+
+Dean
+>Unformatted:
+
+
+
+

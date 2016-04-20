@@ -1,0 +1,98 @@
+Received: (qmail 18164 invoked by uid 2012); 24 Jul 1998 15:53:04 -0000
+Message-Id: <19980724155304.18163.qmail@hyperreal.org>
+Date: 24 Jul 1998 15:53:04 -0000
+From: dodge mumford <dodge@nfr.net>
+Reply-To: dodge@nfr.net
+To: apbugs@hyperreal.org
+Subject: "Moved Permanently" uses machine hostname, not hostname associated with HTTP request, to forward URLs.
+X-Send-Pr-Version: 3.2
+
+>Number:         2700
+>Category:       general
+>Synopsis:       "Moved Permanently" uses machine hostname, not hostname associated with HTTP request, to forward URLs.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jul 24 10:10:02 PDT 1998
+>Last-Modified:  Fri Jul 24 14:37:03 PDT 1998
+>Originator:     dodge@nfr.net
+>Organization:
+>Release:        1.3.0 & 1.3.1
+>Environment:
+FreeBSD pud.dmumford.com 2.2.6-RELEASE FreeBSD 2.2.6-RELEASE #0: Wed Mar 25 02:28:49 GMT 1998     jkh@time.cdrom.com:/usr/src/sys/compile/GENERIC  i386
+>Description:
+I have a FreeBSD box whose ifconfig is:
+ed0: flags=8843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST> mtu 1500
+        inet 208.239.113.131 netmask 0xfffffff8 broadcast 208.239.113.135
+        inet 208.239.113.166 netmask 0xffffffe0 broadcast 208.239.113.191
+        ether 00:00:c0:3c:a6:80 
+208.239.113.131 is www.dmumford.com
+208.239.113.166 is pud.dmumford.com
+
+This box straddles a firewall. `hostname` returns "pud.dmumford.com".
+
+There are no virtual servers running, so httpd is listening to both interfaces.
+
+
+The problem is that if you do a request like "GET /foo", but "foo" is a
+directory, the web server forwards the request to the machine's hostname, not
+the machine name used to get to the page.
+
+For example:
+dmumford@universe$ telnet www.dmumford.com 80
+Trying 208.239.113.131...
+Connected to www.dmumford.com.
+Escape character is '^]'.
+GET /test HTTP/1.0
+
+HTTP/1.1 301 Moved Permanently
+Date: Fri, 24 Jul 1998 11:46:06 GMT
+Server: Apache/1.3.1 (Unix)
+Location: http://pud.dmumford.com/test/
+Connection: close
+Content-Type: text/html
+
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<HTML><HEAD>
+<TITLE>301 Moved Permanently</TITLE>
+</HEAD><BODY>
+<H1>Moved Permanently</H1>
+The document has moved <A HREF="http://pud.dmumford.com/test/">here</A>.<P>
+</BODY></HTML>
+Connection closed by foreign host.
+dmumford@universe$
+
+
+
+In my opinion, it would be more correct if it forwarded this to 
+http://www.dmumford.com/test/ (rather than pud).
+
+>How-To-Repeat:
+
+>Fix:
+A workaround is probably to use virtual servers, but I haven't tried that yet.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Fri Jul 24 14:37:03 PDT 1998
+State-Changed-Why:
+No, what Apache does now is perfectly correct.  It uses
+the name you have configured for the machine, or the
+ServerName directive if one exists.  It can't magically
+know what hostname the client accessed in a request such
+as the one you list.
+
+If you want it to try, then set the UseCanonicalName directive
+to off; see the docs for details.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,143 @@
+From nobody@hyperreal.com  Sun Jun  8 19:18:16 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id TAA11252;
+	Sun, 8 Jun 1997 19:18:16 -0700 (PDT)
+Message-Id: <199706090218.TAA11252@hyperreal.com>
+Date: Sun, 8 Jun 1997 19:18:16 -0700 (PDT)
+From: Jon Lewis <jlewis@fdt.net>
+Reply-To: jlewis@fdt.net
+To: apbugs@hyperreal.com
+Subject: A security tweak I've been using for a few years for SSI
+X-Send-Pr-Version: 3.2
+
+>Number:         697
+>Category:       mod_include
+>Synopsis:       A security tweak I've been using for a few years for SSI
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Jun  8 19:20:01 1997
+>Closed-Date:    Fri Aug 10 12:17:05 PDT 2001
+>Last-Modified:  Fri Aug 10 12:17:05 PDT 2001
+>Originator:     jlewis@fdt.net
+>Release:        1.2.0
+>Organization:
+>Environment:
+Linux irc 2.0.30 #6 Mon May 19 12:52:30 EDT 1997 i586
+not that it matters
+>Description:
+Includes is useful for SSI CGI scripts...and IncludesNOEXEC is too restrictive.
+Thus I made a patch for IncludesNOCMD, which allows exec cgi, but does not
+allow exec cmd.  This way, users can exec cgi admin installed CGI scripts, but
+can't exec cmd arbitrary commadns.  
+
+If the patch doesn't make it intact, I can email another copy.
+I've been patching this in since Apache 0.6x.
+>How-To-Repeat:
+
+>Fix:
+--- http_core.c.orig    Thu May  8 09:09:24 1997
++++ http_core.c Fri Jun  6 14:28:02 1997
+@@ -506,7 +506,7 @@
+ 
+ const char *set_options (cmd_parms *cmd, core_dir_config *d, const char *l)
+ {
+-    char opt;
++    int opt;
+     int first = 1;
+     char action;
+ 
+@@ -527,6 +527,8 @@
+            opt = OPT_INCLUDES;
+        else if(!strcasecmp(w,"IncludesNOEXEC"))
+            opt = (OPT_INCLUDES | OPT_INCNOEXEC);
++       else if(!strcasecmp(w,"IncludesNOCMD"))
++           opt = (OPT_INCLUDES | OPT_INCNOCMD);
+        else if(!strcasecmp(w,"FollowSymLinks"))
+            opt = OPT_SYM_LINKS;
+        else if(!strcasecmp(w,"SymLinksIfOwnerMatch"))
+--- http_core.h.orig    Mon Feb 17 05:46:07 1997
++++ http_core.h Fri Jun  6 14:17:42 1997
+@@ -71,7 +71,8 @@
+ #define OPT_INCNOEXEC 32
+ #define OPT_SYM_OWNER 64
+ #define OPT_MULTI 128
+-#define OPT_ALL (OPT_INDEXES|OPT_INCLUDES|OPT_SYM_LINKS|OPT_EXECCGI)
++#define OPT_INCNOCMD 256
++#define OPT_ALL (OPT_INDEXES|OPT_INCLUDES|OPT_SYM_LINKS|OPT_EXECCGI|OPT_INCNOCM
+D)
+ 
+ /* options for get_remote_host() */
+ #define REMOTE_HOST (0)
+@@ -124,7 +125,7 @@
+ 
+ /* Per-directory configuration */
+ 
+-typedef char allow_options_t;
++typedef int allow_options_t;
+ typedef char overrides_t;
+ 
+ typedef struct {
+--- mod_include.c.orig  Wed Jun  4 20:57:45 1997
++++ mod_include.c       Fri Jun  6 14:22:53 1997
+@@ -676,13 +676,19 @@
+     char *tag_val;
+     char *file = r->filename;
+     char parsed_string[MAX_STRING_LEN];
+-
++    int nocmd = allow_options (r) & OPT_INCNOCMD;
++    
+     while(1) {
+         if(!(tag_val = get_tag (r->pool, in, tag, MAX_STRING_LEN, 1)))
+             return 1;
+         if(!strcmp(tag,"cmd")) {
+             parse_string(r, tag_val, parsed_string, MAX_STRING_LEN, 1);
+-            if(include_cmd(parsed_string, r) == -1) {
++            if(nocmd) {
++               log_printf(r->server, 
++                       "httpd: exec cmd used but not allowed in %s", file);
++               rputs(error,r);
++           } 
++           else if(include_cmd(parsed_string, r) == -1) {
+                 log_printf(r->server, "unknown parameter %s to tag include in %
+s",
+                            tag, r->filename);
+                 rputs(error, r);
+%0
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Sun Jun  8 22:26:33 PDT 1997
+State-Changed-Why:
+I _think_ the intent is for people to use include virtual
+instead of exec for that; even when IncludesNOEXEC is 
+enabled, include virutal can currently still include a
+script in a ScriptAliased CGI directory.  The documentation
+seems to be a bit odd though, and it doesn't work for
+scripts executed as CGIs outside ScriptAlised directories.
+
+I will look at that a bit further... adding a directive
+like you propose has been brought up several times and
+rejected in favor of include virtual.
+State-Changed-From-To: analyzed-suspended
+State-Changed-By: coar
+State-Changed-When: Thu May 28 03:50:01 PDT 1998
+State-Changed-Why:
+Marking this report as suspended so we can examine it
+during the next feature review cycle.  Stay tuned..
+State-Changed-From-To: suspended-closed
+State-Changed-By: slive
+State-Changed-When: Fri Aug 10 12:17:05 PDT 2001
+State-Changed-Why:
+include virtual is the recommended way of doing this.
+>Unformatted:
+
+

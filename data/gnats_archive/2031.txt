@@ -1,0 +1,237 @@
+Received: (qmail 29785 invoked by uid 2012); 3 Apr 1998 08:18:50 -0000
+Message-Id: <19980403081850.29784.qmail@hyperreal.org>
+Date: 3 Apr 1998 08:18:50 -0000
+From: Jon D Marburger <jdm@one.net>
+Reply-To: jdm@one.net
+To: apbugs@hyperreal.org
+Subject: logs incorrectly handled
+X-Send-Pr-Version: 3.2
+
+>Number:         2031
+>Category:       general
+>Synopsis:       logs incorrectly handled
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Apr  3 00:20:01 PST 1998
+>Last-Modified:  Wed Apr  8 11:45:46 PDT 1998
+>Originator:     jdm@one.net
+>Organization:
+>Release:        1.2.5
+>Environment:
+Redhat linux 4.2, 2.0.33, gcc 2.7.2.1
+>Description:
+From userspace with a virtual domain in your home directory:
+
+rm error.log ; touch error.log; chmod 606 error.log
+
+Go to http://whatever/thisurlcausesa404error.html
+
+Apache dumps binary data to error.log for the virt dom to the last size of the
+file, then appends data normally.
+
+For example:
+shell.one.net (deadlock,7668): touch error.log; chmod 606 error.log
+shell.one.net (deadlock,7668): ls -l
+total 40
+drwxr-xrwx   3 deadlock users        1024 Apr  3 03:11 .
+drwxr-xr-x   9 deadlock www          1024 Mar  9 13:26 ..
+drwx------   2 deadlock users        1024 Apr  3 02:25 archive
+-rw----rw-   1 deadlock users           0 Apr  3 03:11 error.log
+-rw----rw-   1 deadlock users       36212 Apr  3 02:19 transfer.log
+
+http://www.jihad.net/thisisa404urlbecauseitisnotontheserver.html
+
+shell.one.net (deadlock,7668): ls -l
+total 43
+drwxr-xrwx   3 deadlock users        1024 Apr  3 03:11 .
+drwxr-xr-x   9 deadlock www          1024 Mar  9 13:26 ..
+drwx------   2 deadlock users        1024 Apr  3 02:25 archive
+-rw----rw-   1 deadlock users      297526 Apr  3 03:12 error.log
+-rw----rw-   1 deadlock users       36212 Apr  3 02:19 transfer.log
+
+Error log is now the size it used to be before being removed.  error.log is
+binary data, selecting another 404 URL..
+
+With netscape: http://www.jihad.net/this_is_also_404.html
+
+Cut the binary, what is at the end of error.log:
+
+[Fri Apr  3 03:13:25 1998] File does not exist: /home/d/e/deadlock/web-public/Ji
+had//this_is_also_404.html
+
+This is more an annoyance bug than anything else, but could be a hassle if
+the site admin is concerns with tracking errors or eliminated error.log for
+disk space concerns.
+>How-To-Repeat:
+Yes, any 404 off www.jihad.net/
+>Fix:
+Allow apache to write to log files without needing a hup, or edit source to
+enforce no-writes until a hup
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Jon D Marburger <jdm@one.net>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/2031: logs incorrectly handled
+Date: Mon, 6 Apr 1998 10:34:43 -0700 (PDT)
+
+ On 3 Apr 1998, Jon D Marburger wrote:
+ 
+ > >From userspace with a virtual domain in your home directory:
+ > 
+ > rm error.log ; touch error.log; chmod 606 error.log
+ 
+ Um, unless you're restarting the server while doing this then you've just
+ deleted the error log and nothing else will be written.
+ 
+ > Apache dumps binary data to error.log for the virt dom to the last size of the
+ > file, then appends data normally.
+ 
+ This sounds like there is an external program managing the error.log
+ rather than apache.  Are the error logs piped through a program?  Is there
+ any cgiwrap or similar pogram involved? 
+ 
+ Is NFS involved?
+ 
+ > Allow apache to write to log files without needing a hup, or edit source to
+ > enforce no-writes until a hup
+ 
+ It is impossible to do this. 
+ 
+ Dean
+ 
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Mon Apr  6 23:43:20 PDT 1998
+State-Changed-Why:
+Waiting for response to message I sent earlier.
+
+From: "Jon D. Marburger" <jdm@one.net>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@Apache.Org, John Buswell <johnb@one.net>
+Subject: Re: general/2031: logs incorrectly handled
+Date: Tue, 7 Apr 1998 14:39:50 -0400 (EDT)
+
+ On Tue, 7 Apr 1998, Dean Gaudet wrote:
+ 
+ >>>From userspace with a virtual domain in your home directory:
+ 
+ >> rm error.log ; touch error.log; chmod 606 error.log
+  
+ > Um, unless you're restarting the server while doing this then you've just
+ > deleted the error log and nothing else will be written.
+ 
+ 	That's what should be the case.  As far as I know, httpd was not
+ restarted every time I performed this test.  To help answer your question
+ below, I cc'd the person who compile apache on w3.one.net.
+ 
+ >> Apache dumps binary data to error.log for the virt dom to the last size of
+ >> the file, then appends data normally.
+  
+ > This sounds like there is an external program managing the error.log
+ > rather than apache.  Are the error logs piped through a program?  Is there
+ > any cgiwrap or similar pogram involved? 
+ 
+ 	As far as I know, the answer to all of these questions is No.  John?
+ 
+ 	The one thing of possible interest is the inclusion of php with
+ apache.  The exact environment variable is:
+ 
+ 	SERVER_SOFTWARE: Apache/1.2.5 PHP/FI-2.0b12
+ 
+ > Is NFS involved?
+ 
+ 	Yes.  The central nfs server contains a raid5 array which allows /home
+ to be nfs-mounted on w3.one.net, shell.one.net, and other user servers.
+ (httpd runs on w3.one.net, I was logged in on shell.one.net.)  I do not know
+ which version of nfsd each machine is running as it has been awhile since
+ I administered them.
+  
+ >> Allow apache to write to log files without needing a hup, or edit source to
+ >> enforce no-writes until a hup
+  
+ > It is impossible to do this. 
+ 
+ 	Ok.  Consider the suggestion dead.  ;)
+  
+ > Dean
+ 
+ JDM
+ 
+
+From: John Buswell <johnb@one.net>
+To: "Jon D. Marburger" <jdm@one.net>
+Cc: Dean Gaudet <dgaudet@arctic.org>, apbugs@Apache.Org
+Subject: Re: general/2031: logs incorrectly handled
+Date: Tue, 7 Apr 1998 14:43:45 -0400 (EDT)
+
+ On Tue, 7 Apr 1998, Jon D. Marburger wrote:
+ 
+ > > rather than apache.  Are the error logs piped through a program?  Is there
+ > > any cgiwrap or similar pogram involved? 
+ > 
+ > 	As far as I know, the answer to all of these questions is No.  John?
+ 
+ umm apaches logs are all routed to /dev/null :)
+ 
+ note: cgi can only be executed from within web-public/cgi-bin/ unless
+ brent changed it back. 
+ 
+ John Buswell
+ Systems Engineer
+ OneNet Communications, Inc.
+ (513) 554-1NET - johnb@one.net
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: "Jon D. Marburger" <jdm@one.net>
+Cc: apbugs@Apache.Org, John Buswell <johnb@one.net>
+Subject: Re: general/2031: logs incorrectly handled
+Date: Tue, 7 Apr 1998 12:05:36 -0700 (PDT)
+
+ On Tue, 7 Apr 1998, Jon D. Marburger wrote:
+ 
+ > > Is NFS involved?
+ > 
+ > 	Yes.  The central nfs server contains a raid5 array which allows /home
+ > to be nfs-mounted on w3.one.net, shell.one.net, and other user servers.
+ > (httpd runs on w3.one.net, I was logged in on shell.one.net.)  I do not know
+ > which version of nfsd each machine is running as it has been awhile since
+ > I administered them.
+ 
+ This is the problem.  NFS doesn't preserve unix filesystem semantics,
+ especially regarding append files.  You'll either need to log locally, or
+ log via a network socket or something else to the server.  You shouldn't
+ be logging in user home directories anyhow, it's a security hazard... at
+ least that's what I think you're doing. 
+ 
+ It's better to log into a central location on the webserver, and NFS
+ export that.  This is both secure and reliable.  Users just can't rotate
+ their logs... I mean sure you could code up something so they could, but
+ we're not going to support it, it's far too much of a security problem. 
+ 
+ Dean
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Wed Apr  8 11:45:46 PDT 1998
+State-Changed-Why:
+It is a site-specific configuration problem.  The logs are
+being written via NFS, and given that NFS doesn't have unix
+file system semantics there's really not much Apache can do.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

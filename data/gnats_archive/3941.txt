@@ -1,0 +1,197 @@
+Received: (qmail 18070 invoked by uid 2012); 22 Feb 1999 15:19:41 -0000
+Message-Id: <19990222151941.18069.qmail@hyperreal.org>
+Date: 22 Feb 1999 15:19:41 -0000
+From: Oliver "Hönigsberger" <oh@culturall.com>
+Reply-To: oh@culturall.com
+To: apbugs@hyperreal.org
+Subject: Session in one Servlet-Zone get lost when creating a new Session in an other Servlet-Zone
+X-Send-Pr-Version: 3.2
+
+>Number:         3941
+>Category:       mod_jserv
+>Synopsis:       Session in one Servlet-Zone get lost when creating a new Session in an other Servlet-Zone
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    jserv
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Feb 22 07:20:01 PST 1999
+>Last-Modified:  Sun Sep 19 18:25:43 PDT 1999
+>Originator:     oh@culturall.com
+>Organization:
+>Release:        A134,JSERV10b3
+>Environment:
+jdk116,Solarisx86
+>Description:
+HttpServletRequest.getSession(true) in a Servlet-Zone let the other Servlet-Zones 
+HttpServletRequest.getSession(true).session.isNew() return true, but the session was well 
+started an filled with session data ..
+
+It works fine with JavaWebServer1.1.3
+>How-To-Repeat:
+
+>Fix:
+No, i haven't looked to the JSERv-source ..
+>Audit-Trail:
+Comment-Added-By: coar
+Comment-Added-When: Wed May 12 08:22:30 PDT 1999
+Comment-Added:
+[Comment from crabtree@omphale.pcbi.upenn.edu (Jonathan Crabtree),
+incorrectly mailed to the database {sigh}]
+
+Oliver-
+
+Pardon the e-mail.  I'm just trying to add a follow-up to your Apache 
+bug report (#3941): I downloaded Apache JServ 1.0b4 and it appears to 
+have the same problem.
+
+PREFACE
+
+The following is a more detailed description of the Apache JServ
+problem reported in PR #3941.  It includes details of a fix/workaround
+that I have been using successfully under both Apache JServ 1.0b3 and
+Apache JServ 1.0b4.  The disclaimer, of course, is that I'm not
+sufficiently familiar with either Apache JServ or the Servlet API to
+know whether the fix creates more problems than it solves.
+
+PROBLEM DESCRIPTION
+
+Part of the problem is a static final variable in 
+org.apache.jserv.JServServletManager:
+
+>    /**
+>     * The name of the session parameter.
+>     */
+>    static final String SESSION_IDENTIFIER = "JServSessionId";
+
+This is used as the session identifier (in creating cookies and doing
+URL rewriting) for ALL servlet zones.  But since each zone has its own
+instance of JServServletManager and each JServServletManager has its
+own Hashtable mapping session IDs to Sessions, the zones aren't aware
+of each other's sessions (which is probably correct--I don't know the
+Servlet spec. well enough to say for sure).  But since each zone is
+using the same cookie ID, and since browsers don't seem to distinguish
+between cookies with the same name from the same host, one servlet
+zone can effectively "overwrite" the cookie set by another, erasing
+its stored session ID (it doesn't check to see if the cookie already
+exists, because, as far as it is concerned, there is no current
+session.)
+
+POSSIBLE FIX/WORKAROUND
+
+My fix/workaround (which hasn't broken anything else as far as I can
+tell) is to append the zone name to SESSION_IDENTIFIER.  So "ZONE1"
+would use the session identifier "JServSessionIdZONE1" and "ZONE2"
+would use the session ID "JServSessionIdZONE2".  This requires
+changing a couple of the methods in JServServletManager from
+static->non-static and making parallel changes in JServConnection,
+where these methods are called.
+
+What this fix doesn't address is this: what if the same servlet zones
+are being run on two different web servers (or JServ engines) on the
+same host?  My guess is that the browsers probably just use the host
+IP address as the namespace within which cookie names must be unique.
+If this is the case, then the SESSION_IDENTIFIER should be the JServ
+identifier PLUS the servlet zone name PLUS some unique identifier for
+the JServ instance in question.  There is also the question of whether
+changing the static methods to non-static will have any substantive
+impact on performance.
+
+I have tested this workaround under both 1.0b3 and 1.0b4.  The diffs
+given below are for the 1.0b4 release of Apache JServ and pertain to 
+only two files: JServServletManager and JServConnection.
+
+JSERVSERVLETMANAGER DIFF
+
+diff JServServletManager.java JServServletManager.original:
+
+Warning: missing newline at end of file JServServletManager.original
+91c91
+<     static final String SESSION_IDENTIFIER_BASE = "JServSessionId";
+---
+>     static final String SESSION_IDENTIFIER = "JServSessionId";
+183,188d182
+<      * A (slightly more) unique session identifier derived from 
+<      * SESSION_IDENTIFIER_BASE and <code>name</code>.
+<      */
+<     protected String session_identifier;
+< 
+<     /**
+212d205
+<       this.session_identifier = SESSION_IDENTIFIER_BASE + name;
+660c653
+<      public final String getUrlSessionId(String queryStr) {
+---
+>      public static final String getUrlSessionId(String queryStr) {
+667c660
+<             Object o = params.get(session_identifier);
+---
+>             Object o = params.get(SESSION_IDENTIFIER);
+687c680
+<     public final String getCookieSessionId(Cookie[] cookies) {
+---
+>     public static final String getCookieSessionId(Cookie[] cookies) {
+693c686
+<             if (cookies[i].getName().equals(session_identifier)) {
+---
+>             if (cookies[i].getName().equals(SESSION_IDENTIFIER)) {
+707c700
+<     public String encodeUrl(String url, String id) {
+---
+>     public static String encodeUrl(String url, String id) {
+710c703
+<             return url + '?' + session_identifier + '=' + id;
+---
+>             return url + '?' + SESSION_IDENTIFIER + '=' + id;
+712c705
+<             return url + "&" + session_identifier + '=' + id;
+---
+>             return url + "&" + SESSION_IDENTIFIER + '=' + id;
+790c783
+<         Cookie c = new Cookie(session_identifier, s.id);
+---
+>         Cookie c = new Cookie(SESSION_IDENTIFIER, s.id);
+850c843
+< }
+---
+> }
+
+JSERVCONNECTION DIFF
+
+diff JServConnection.java JServConnection.original:
+250c250
+<         requestedSessionId = mgr.getUrlSessionId(getQueryString());
+---
+>         requestedSessionId = 
+JServServletManager.getUrlSessionId(getQueryString());
+253c253
+<         String cookieSession = mgr.getCookieSessionId(cookies_in);
+---
+>         String cookieSession = JServServletManager.getCookieSessionId(cookies_in);
+1609c1609
+<             return mgr.encodeUrl(url, session.id);
+---
+>             return JServServletManager.encodeUrl(url, session.id);
+1642c1642
+<             return mgr.encodeUrl(url, session.id);
+---
+>             return JServServletManager.encodeUrl(url, session.id);
+State-Changed-From-To: open-closed
+State-Changed-By: jon@clearink.com
+State-Changed-When: Sun Sep 19 18:25:43 PDT 1999
+State-Changed-Why:
+this has been checked into latest version in CVS and the bug fixed.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

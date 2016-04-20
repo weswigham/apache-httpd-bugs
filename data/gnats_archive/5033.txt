@@ -1,0 +1,71 @@
+Received: (qmail 3876 invoked by uid 2012); 17 Sep 1999 18:29:02 -0000
+Message-Id: <19990917182902.3875.qmail@hyperreal.org>
+Date: 17 Sep 1999 18:29:02 -0000
+From: Paul Henson <henson@acm.org>
+Reply-To: henson@acm.org
+To: apbugs@hyperreal.org
+Subject: if a CGI has an ACL giving Apache execute access, Apache might fail to run it
+X-Send-Pr-Version: 3.2
+
+>Number:         5033
+>Category:       mod_cgi
+>Synopsis:       if a CGI has an ACL giving Apache execute access, Apache might fail to run it
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Sep 17 11:30:06 PDT 1999
+>Last-Modified:
+>Originator:     henson@acm.org
+>Organization:
+apache
+>Release:        1.3.9
+>Environment:
+any OS that supports a filesystem with ACLs.
+>Description:
+the following code in mod_cgi:
+
+       if (!ap_can_exec(&r->finfo))
+           return log_scripterror(r, conf, FORBIDDEN, APLOG_NOERRNO,
+                                  "file permissions deny server execution");
+     }
+
+only checks Unix mode bits to determine whether or not Apache has
+permission to execute the CGI. On any filesystem that supports
+ACL's, if Apache does have execute permission via an ACL, but not via
+the Unix mode bits, it will fail.
+>How-To-Repeat:
+<NA>
+>Fix:
+I propose the following change:
+
+        if(access(r->filename, X_OK)) {
+          if (errno == EACCES)
+            return log_scripterror(r, conf, FORBIDDEN, APLOG_NOERRNO,
+                                   "file permissions deny server execution");
+          else
+          return log_scripterror(r, conf, SERVER_ERROR, APLOG_NOERRNO,
+                                 "system error checking execute access");
+        }
+
+the POSIX standard access() call will take into account both Unix
+mode bits and ACL's when checking for execute permission.
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

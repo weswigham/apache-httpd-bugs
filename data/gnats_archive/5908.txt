@@ -1,0 +1,129 @@
+Received: (qmail 85146 invoked by uid 65534); 21 Mar 2000 10:43:23 -0000
+Message-Id: <20000321104323.85145.qmail@locus.apache.org>
+Date: 21 Mar 2000 10:43:23 -0000
+From: Andras Kemeny <andras@izone.hu>
+Reply-To: andras@izone.hu
+To: submit@bugz.apache.org
+Subject: IE 5 hangs on a request or returns with an error -- caused by a incomplete request header
+X-Send-Pr-Version: 3.110
+
+>Number:         5908
+>Category:       general
+>Synopsis:       IE 5 hangs on a request or returns with an error -- caused by a incomplete request header
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Mar 21 02:50:00 PST 2000
+>Closed-Date:    
+>Last-Modified:  Tue Mar 21 07:30:00 PST 2000
+>Originator:     andras@izone.hu
+>Release:        1.3.9 with minimal patch
+>Organization:
+apache
+>Environment:
+server: Linux 2.2.14, running Apache 1.3.9 with a minor fix to enable Script GET statements to work on GETs without queries, too. (mod_actions, one line patched)
+client: Windows 98, behind an IPMASQ (Linux) firewall, running an Internet Explorer 5 (5.00.2314.build 1003), reporting itself as "MSIE 5.0; Windows 98; DigExt" as the browser
+>Description:
+The site where the problem occurs is a red hat 6.0 system with security patches, also using the SafeTP package (for safe FTP control connections), apart from this is nothing special. It runs Apache 1.3.9 with a minor fix to enable me to run all requests via a special CGI. The server config has been trimmed to accomodate only the most essential settings and services. The timeouts are set a bit higher than the usual to accomodate slow clients.
+
+This problem seems to affect only our Win98 machines with this particular IE version (5.00.2314.1003), other clients work fine. This IE submits "MSIE 5.0; Windows 98; DigExt;" as the browser information. All other IE browsers tested here send "MSIE 5.0; Win32;" instead.
+
+The problem manifests itself with either two of the following:
+- the client hangs, the server-status displays a R (reading request), the particular line shows no information of the request apart from the increasing SS and "reading request...". If you are patient enough, it times out after a while and logs the following message in error_log:
+[Mon Mar 20 21:53:16 2000] [error] [client 195.38.101.9] request failed: error reading the headers
+- or the request immediately fails, with various reasons, both caused by a very visible error: an incomplete header is received. It is logged with many different errors, to name a few:
+[Tue Mar 21 11:25:23 2000] [error] [client 195.38.101.9] File does not exist: /h
+ome/httpd/html/Spo (in this case, the Name Virtual Server did not recognize the correct VHost and also, the path was incomplete (should have ended with /Sport/)
+[Tue Mar 21 11:25:24 2000] [error] [client 195.38.101.9] File does not exist: /h
+ome/httpd/html/spcoimages/ (in this case the request didn't contain the server identification)
+[Tue Mar 21 11:46:45 2000] [error] [client 195.38.101.9] Invalid method in reque
+st
+Sometimes it also manifests like this (this is a browser output):
+=================================
+ad Request
+Your browser sent a request that this server could not understand.
+Request header field is missing colon separator.
+
+
+Accept-Enc
+
+
+-------------------------------------------------------------------------------
+
+Apache/1.3.9 Server at courage.centrumonline.hu Port 80
+=================================
+
+When checking the connection status (netstat-wise), I see most connections only in the TIME_WAIT state, whereas hanging connections like the above have ESTABLISHED state.
+
+I have tried setting up BrowserMatch restrictions but to no avail is it is evident that the request header doesn't arrive either in its entirety (that's when the server hangs) or only partially (error messages).
+
+I repeat, this error occurs only with that particular IE 5 version. It is the one included in the MSDN pack with Office 2000. And this problem occurs only under Win98, the same version of IE runs without a glitch on an NT. The culprit version runs flawlessly with other servers, though.
+
+The occurence of this problem is random (it does not make a particular distinction between VHosts or any files -- it may die on any of them), but is very persistent -- every 5th or 6th download fails.
+
+Any ideas what is wrong?
+
+>How-To-Repeat:
+Use Internet Explorer 5.00.2314.1003 under Windows 98, and check http://www.centrumonline.hu/Sport/ for example, and reload many times.
+>Fix:
+Not yet. I guess one should take a look around the reception of a request header, and see if there may be a chance of premature closing.
+>Release-Note:
+>Audit-Trail:
+
+From: -p- <andras@izone.hu>
+To: Marc Slemko <marcs@znep.com>
+Cc: apbugs@apache.org
+Subject: Re: general/5908: IE 5 hangs on a request or returns with an error-- 
+ caused by a incomplete request header
+Date: Tue, 21 Mar 2000 16:23:50 +0100
+
+ > What does this have to do with Apache?
+ > marcs@alive:~$ telnet www.centrumonline.hu 80
+ > Trying 212.92.3.19...
+ > Connected to www.centrumonline.hu.
+ > Escape character is '^]'.
+ > HEAD /Sport/ HTTP/1.0
+ > Host: www.centrumonline.hu
+ >
+ > HTTP/1.0 200 OK
+ > Server: Microsoft-IIS/4.0
+ > Don't you just hate it when people only tell half the story?
+ 
+ Sorry, I a part of the story is indeed missing, that's true (although I already figured out that the problem is not there, but see below). So here's
+ the whole picture:
+ - www.centrumonline.hu uses a ProxyPass (and ProxyPassReverse) to fetch data from an NT IIS server that is hidden from the outside world.
+ - still, the problem is not with its proxying, as there is a local server with local files running on http://pix.centrumonline.hu. You can test it with
+ http://pix.centrumonline.hu/coimages/banner.gif -- downloading that fails sometimes with the problem I described in the original, too.
+ 
+ If you go to the site (www.centrumonline.hu, that is) with an image-capable browser, the images will come off of the native Apache web server -- and
+ indeed, randomly the images fail to download, too, thus I think the problem lies in Apache receiving incorrect request headers, and not in the proxy
+ module (I originally suspected the NT IIS, but since the server is temporarily available under www.centrumonline.hu:8080 with a direct, kernel-level
+ forwarding, and browsing that produces no errors whatsoever, that option is out of the picture).
+ 
+ Also, as you can see from the attached error message (Bad method or whatever, see above), the error occurs at the Apache side even when there would
+ proxying -- but this request never even gets to the proxy module.
+ 
+ Sorry for inconvenience. Hope it helps to clear up the picture. If you need the config file, I can post it.
+ 
+ -p
+ 
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,93 @@
+Received: (qmail 93646 invoked by uid 501); 7 Dec 2001 03:28:30 -0000
+Message-Id: <20011207032830.93645.qmail@apache.org>
+Date: 7 Dec 2001 03:28:30 -0000
+From: David Edelsohn <dje@watson.ibm.com>
+Reply-To: dje@watson.ibm.com
+To: submit@bugz.apache.org
+Subject: signals.c sig_mask fix for AIX assumes 32-bit mode
+X-Send-Pr-Version: 3.110
+
+>Number:         8973
+>Category:       os-aix
+>Synopsis:       signals.c sig_mask fix for AIX assumes 32-bit mode
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Dec 06 19:30:00 PST 2001
+>Closed-Date:    Fri Dec 07 04:18:37 PST 2001
+>Last-Modified:  Fri Dec 07 04:18:37 PST 2001
+>Originator:     dje@watson.ibm.com
+>Release:        2.0.28
+>Organization:
+>Environment:
+AIX 5.1.0.0, GCC 3.0.2
+>Description:
+srclib/apr/threadproc/signals.c provides a workaround for sigwait() on AIX by
+explicitly masking sig_mask.hisigs.  That structure member only is present in
+32-bit mode, so signals.c fails to compile in 64-bit mode.
+
+One can test for 64-bit mode on AIX by testing the __64BIT__ macro.  I do not
+know if 64-bit AIX sigwait() has the same problem and if the same bit needs to
+be masked.  I naively modified the code to mask the equivalent high-order bit
+in the 64-bit structure to allow signals.c to compile, which allowed httpd to
+build and run.
+signals.c to compile.
+>How-To-Repeat:
+Compile srclib/apr/threadproc/signals.c in 64-bit mode.
+>Fix:
+*** signals.c.orig      Thu Dec  6 22:07:43 2001
+--- signals.c   Thu Dec  6 22:07:42 2001
+*************** APR_DECLARE(apr_status_t) apr_signal_thr
+*** 301,307 ****
+--- 301,311 ----
+       * off manually.
+       */
+  #ifdef _AIX
++ #ifdef __64BIT__
++     sig_mask.ss_set[3] &= 0x7FFFFFFFFFFFFFFFull;
++ #else
+      sig_mask.hisigs &= 0x7FFFFFFF;
++ #endif
+  #endif
+  
+      while (1) {
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: trawick
+State-Changed-When: Fri Dec  7 04:18:37 PST 2001
+State-Changed-Why:
+Thanks for your report.  This has already been fixed in CVS.
+
+You may be interested in 
+
+   http://www.apache.org/~trawick/aixstatus.html
+
+which tracks various outstanding issues with Apache 
+2.0 on AIX.  In particular, there is a 64-bit issue 
+with send_file() to avoid.
+
+Thanks for using Apache!
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

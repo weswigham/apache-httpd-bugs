@@ -1,0 +1,144 @@
+Received: (qmail 29001 invoked by uid 2012); 20 Oct 1997 18:45:21 -0000
+Message-Id: <19971020184521.29000.qmail@hyperreal.org>
+Date: 20 Oct 1997 18:45:21 -0000
+From: John Messenger <John.Messenger@york.proteon.com>
+Reply-To: John.Messenger@york.proteon.com
+To: apbugs@hyperreal.org
+Subject: Can's have DocumentRoot under an automounted partition with the BSD automounter
+X-Send-Pr-Version: 3.2
+
+>Number:         1275
+>Category:       config
+>Synopsis:       Can's have DocumentRoot under an automounted partition with the BSD automounter
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Oct 20 11:50:00 PDT 1997
+>Last-Modified:  Tue Oct 21 04:20:01 PDT 1997
+>Originator:     John.Messenger@york.proteon.com
+>Organization:
+>Release:        1.3b2
+>Environment:
+NetBSD bombay 1.2G NetBSD 1.2G (GENERIC_SCSI3) #2: Tue Sep  9 02:01:27 CEST 1997     pk@kwik:/usr/src/sys/arch/sparc/compile/GENERIC_SCSI3 sparc
+GCC 2.7.2.2
+Automounter information (relevant):
+bombay 7:04pm /usr/local/etc/apache> amd -v
+Copyright (c) 1997 Erez Zadok
+Copyright (c) 1990 Jan-Simon Pendry
+Copyright (c) 1990 Imperial College of Science, Technology & Medicine
+Copyright (c) 1990 The Regents of the University of California.
+am-utils version 6.0a8 (build 1).
+Built by pk@flambard on date Sat Sep  6 02:19:40 MEST 1997.
+cpu=sparc (big-endian), arch=sparc, karch=sparc.
+full_os=netbsd1.2G, os=netbsd1, osver=1.2G, vendor=unknown.
+Map support for: root, passwd, union, nis, ndbm, file, error.
+AMFS: nfs, link, nfsx, host, linkx, program, union, inherit, ufs, cdfs, 
+      pcfs, auto, direct, toplvl, error.
+FS: cdfs, mfs, nfs, nfs3, nullfs, pcfs, ufs, umapfs, unionfs.
+Primary network: primnetname="sn1-bcast0.york.proteon.com" (primnetnum=195.153.7.32).
+No Subsidiary network.
+>Description:
+PR#817 and PR#920's solutions, as implemented, mean that it no longer works 
+to have DocumentRoot on a partition automounted with the 4.4BSD automounter.
+
+The src/CHANGES file says:
+
+>    *) If a htaccess file can not be read due to bad permissions, deny
+>       access to the directory with a HTTP_FORBIDDEN.  The previous
+>       behavior was to ignore the htaccess file if it could not
+>       be read.  This change may make some setups with unreadable
+>       htaccess files stop working.  PR#817  [Marc Slemko]
+
+PR#920 advises searching for .htaccess files all the way down from the
+root directory, and it seems to have been implemented.
+
+I am using NetBSD-current, and I find that whereas v1.2b10
+worked for me, 1.3b2 doesn't.
+
+My setup has
+
+DocumentRoot /vol/www/
+/vol is the mount-point created by AMD, the automounter daemon.
+
+It's interesting that the .htaccess file that gives "Permission
+denied" error is /vol/.htaccess.  (One appears not to be able to access
+non-existant files directly in /vol/., and the error you get back is not
+ENOENT or ENOTDIR, but "Permission denied" (EACCES).)  One is not allowed
+to create files in the automount-point directory, so there's no obvious way
+round this without changing the code.
+
+
+>How-To-Repeat:
+On a system running the Berkeley automounter, such as NetBSD, create for example:
+/etc/amd/vol with the one line:
+www	rhost:=somehost;rfs:=/path/to/docroot/www
+referring to a host "somehost" that has that /path/to/docroot/www available.
+
+Start amd: "amd /vol /etc/amd/vol"
+
+Check you can see /vol/www by doing "ls /vol/www".
+Start Apache-1.3b2 with a file set that specifies DocumentRoot as /vol/www.
+Then try to access any file, for instance GET /, and you will see an error
+in error_log:
+[Mon Oct 20 17:52:21 1997] [crit] (13)Permission denied: /vol/.htaccess \
+	pfopen: unable to check htaccess file, ensure it is readable
+>Fix:
+Not easy, as this is caused by the conflict of two desirable features.
+Checking for the error occuring in an automounter mount point would be cludgy.
+Checking with stat(2) doesn't help; you still get Permission denied.  This 
+could be considered a bug in the automounter, because stat isn't supposed to
+require the existance or any permissions on the file, but the path has to be searchable.
+
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Mon Oct 20 13:28:14 PDT 1997
+State-Changed-Why:
+Automounting is annoying; I would probably agree that this
+is a bug in the automounter, however there may be other
+issues that force this bug or "feature" to be present.
+
+You should, however, be able to work around it by
+something like:
+
+<Directory />
+AllowOverride none
+</Directory>
+<Directory /vol/www>
+AllowOverride whateveryouwant
+</Directory>
+
+If you have AllowOverride None set, then Apache shouldn't
+be searching for .htaccess files.  It is a config related performance
+improvement that should fix your problem.  If not, let
+us know.
+
+From: John Messenger <John.Messenger@york.proteon.com>
+To: marc@hyperreal.org
+Cc: apache-bugdb@apache.org, apbugs@apache.org
+Subject: Re: config/1275: Can's have DocumentRoot under an automounted partition with the BSD automounter
+Date: Tue, 21 Oct 97 12:14:06 BST
+
+ Marc,
+ 
+ You suggested:
+ 
+ >  <Directory />
+ >  AllowOverride none
+ >  </Directory>
+ >  <Directory /vol/www>
+ >  AllowOverride whateveryouwant
+ >  </Directory>
+ 
+ This works for me, allowing me to have DocumentRoot on the automounted
+ partition.  Thanks so much for your quick and helpful response.
+ 
+ Regards,
+         -- John Messenger
+>Unformatted:
+

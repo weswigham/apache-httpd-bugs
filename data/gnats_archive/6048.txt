@@ -1,0 +1,73 @@
+Received: (qmail 19002 invoked by uid 501); 4 May 2000 01:07:56 -0000
+Message-Id: <20000504010756.19001.qmail@locus.apache.org>
+Date: 4 May 2000 01:07:56 -0000
+From: Chad Walters <chad@mail.idrive.com>
+Reply-To: chad@mail.idrive.com
+To: submit@bugz.apache.org
+Subject: URL is improperly unescaped when NOT a proxy request
+X-Send-Pr-Version: 3.110
+
+>Number:         6048
+>Category:       general
+>Synopsis:       URL is improperly unescaped when NOT a proxy request
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed May 03 18:10:00 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     chad@mail.idrive.com
+>Release:        1.3.9
+>Organization:
+apache
+>Environment:
+Win2K, VC++ 6
+>Description:
+In 1.3.9, function process_request_internal in http_request.c has the following code:
+    /* Ignore embedded %2F's in path for proxy requests */
+    if (!r->proxyreq && r->parsed_uri.path) {
+	access_status = ap_unescape_url(r->parsed_uri.path);
+	if (access_status) {
+	    ap_die(access_status, r);
+	    return;
+	}
+    }
+
+It seems that the check against r->proxyreq is reversed, since it only does the check for %2F if the r->proxyreq is 0. Worse yet, since ap_unescape_url operates on place_uri.path in place, the uri undergoes unescaping which should not happen. For example, uris containing "%2b" (which is the encoding of "+"), end up with a space instead, not "+" in the resulting uri. On top of all that, ap_unescape_url has a bug in that it does not unescape "+" to space (I'll be filing this as another different bug in a sec).
+
+In 1.3.12, function process_request_internal in http_request.c has the following code:
+    /* Ignore embedded %2F's in path for proxy requests */
+    if (r->proxyreq == NOT_PROXY && r->parsed_uri.path) {
+	access_status = ap_unescape_url(r->parsed_uri.path);
+	if (access_status) {
+	    ap_die(access_status, r);
+	    return;
+	}
+    }
+
+Certainly, comparing against the constant NOT_PROXY (which == 0) is better coding style, but does nothing the correct the bug.
+>How-To-Repeat:
+Any url with a %2f will result in a 404. Any other URL encodings in the path will end up decoded one extra level.
+>Fix:
+Reverse the sense of the comparison against r->proxyreq.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

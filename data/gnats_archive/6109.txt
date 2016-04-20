@@ -1,0 +1,111 @@
+Received: (qmail 68870 invoked by uid 501); 23 May 2000 13:48:16 -0000
+Message-Id: <20000523134816.68868.qmail@locus.apache.org>
+Date: 23 May 2000 13:48:16 -0000
+From: Chuck Conover <cconover@mmxi.com>
+Reply-To: cconover@mmxi.com
+To: submit@bugz.apache.org
+Subject: Apache dies, too many open files in error log
+X-Send-Pr-Version: 3.110
+
+>Number:         6109
+>Category:       mod_jserv
+>Synopsis:       Apache dies, too many open files in error log
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          feedback
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue May 23 06:50:00 PDT 2000
+>Closed-Date:
+>Last-Modified:  Tue Oct 16 17:20:46 PDT 2001
+>Originator:     cconover@mmxi.com
+>Release:        1.1.3
+>Organization:
+>Environment:
+SunOS etcs07.cold.mmxi.com 5.7 Generic_106541-10 sun4u sparc SUNW,UltraSPARC-IIi
+-cEngine
+>Description:
+I am running apache 1.3.12 on solaris 2.7
+Once every 4 hours (cron) I move the apache logs and then send a kill -USR1 <apache pid> command to apache to recycle them. I then archive the logs. After about a week apache stops responding and the message in the error log says too many open files Accept: (client socket)
+I tried raising the file descriptor limit but that just makes it last a bit longer. Sound like a leak maybe or something is wrong with the kill command. This wasnt posted on the news group, I tried but had problems with deja (sorry)
+>How-To-Repeat:
+Run apache 1.3.12 and send a kill -USR1 <apache pid> every minute. Should stop responding in about an hour
+>Fix:
+Maybe use a different signal in the kill command 
+>Release-Note:
+>Audit-Trail:
+
+From: CConover@mmxi.com
+To: submit@bugz.apache.org,
+	apache-bugdb@apache.org
+Cc:  
+Subject: Re: general/6109: Apache dies, too many open files in error log
+Date: Tue, 23 May 2000 14:43:05 -0400
+
+ I have some updated info. We had configured apache with Jserv support. Some
+ time in the future we expected to use some java servlets, so we thought
+ that it would be prudent to add the jserv to our present configuration.
+ However if you recompile apache and remove the jserv support. The open
+ files problem goes away. Even with the kill -USR1 <apache pid> command
+ running every minute. So it seems that somehow Jserv is either causing or
+ revealing this problem.
+ 
+ Thanks,
+ Chuck
+ 
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: ed
+State-Changed-When: Tue Oct 16 17:20:46 PDT 2001
+State-Changed-Why:
+mod_jserv (as of 1.1.3) does indeed have a file descriptor leak.
+It's related to the log files -- basically, the pool function
+wasn't being used, and so no cleanup was happening.  The
+following patch may resolve the issue:
+
+*****
+--- jserv_utils.c.orig  Tue Oct 16 17:00:42 2001
++++ jserv_utils.c       Tue Oct 16 17:00:57 2001
+@@ -212,7 +212,7 @@
+ #endif /* ifdef WIN32 */
+ 
+     /* Open file and check */
+-    filedesc=open(filename, flags, mode);
++    filedesc=ap_popenf(p, filename, flags, mode);
+     if (filedesc==-1) {
+         char *buf=ap_pstrcat(p,"file '",filename,"' can't be opened",NULL);
+         return buf;
+*****
+
+This may at some point be committed to the JServ CVS tree, but
+no further releases are planned.  I'm entering this information
+in case someone else has problems with apache leaking file
+descriptors during graceful restarts or ordinary restarts (
+via the HUP or USR1 signals).
+Release-Changed-From-To: 1.3.12-1.1.3
+Release-Changed-By: ed
+Release-Changed-When: Tue Oct 16 17:20:46 PDT 2001
+Category-Changed-From-To: general-mod_jserv
+Category-Changed-By: ed
+Category-Changed-When: Tue Oct 16 17:20:46 PDT 2001
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

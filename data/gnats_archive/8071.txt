@@ -1,0 +1,82 @@
+Received: (qmail 29576 invoked by uid 501); 24 Jul 2001 05:28:28 -0000
+Message-Id: <20010724052828.29575.qmail@apache.org>
+Date: 24 Jul 2001 05:28:28 -0000
+From: Daniel Chemko <dchemko@feelthegrey.com>
+Reply-To: dchemko@feelthegrey.com
+To: submit@bugz.apache.org
+Subject: It is way too hard to cross compile Apache, even with GNU autoconf
+X-Send-Pr-Version: 3.110
+
+>Number:         8071
+>Category:       build
+>Synopsis:       It is way too hard to cross compile Apache, even with GNU autoconf
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jul 23 22:30:01 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     dchemko@feelthegrey.com
+>Release:        2.0.16 but really all of them
+>Organization:
+apache
+>Environment:
+Redhat Linux 7.1, Compiler modified
+
+Native x86: GCC 2.95.3 Binutils 2.10.1 glibc 2.2.2
+Cross  ARM: GCC 2.95.3 Binutils 2.10.1 glibc 2.1.3
+>Description:
+*deep breath*
+
+I find it nearly impossible to compile apache using a cross compiler. I am using the standard ARM Linux cross compiler.
+
+The problem with the current system is that one does not discriminate simple boundaries between what programs are built during the build process, and what programs are built for the "host" platform.
+
+EG: pcre
+the srclib/pcre directory has rdtables, which needs to be a native system tools to run during build time, but it also needs libpcre.a which is built to be for the "host" system. This breaks, and requires a really bad hack to get the thing to compile:
+<make dies>rdtables cannot run because compiled for wrong architecture
+<edit>top_srcdir/config_vars.mk so that the system is natively compiling
+make
+mv rdtables rdtables.1
+make clean
+<edit>top_srcdir/config_vars.mk back so that the system is cross compiling
+make
+
+There are other parts as well that fall into this horrible situation, like top_srcdir/server/
+>How-To-Repeat:
+My original line was:
+CC=arm-linux-gcc ./configure --host=arm-linux \
+--target=arm-linux --build=i386-linux
+
+To get through the configure scripts, the line was:
+ac_cv_func_setpgrp_void=no ac_cv_maxsegsize=4096 CC=arm-linux-gcc \
+./configure --with-shm=MMFILE --with-sem=FNCTL --host=arm-linux \ --target=arm-linux --build=i386-linux
+When one runs make, all hell breaks loose.
+>Fix:
+1: The configure script options are fine, and do happen during many cross compiles, so ok.
+
+2: Seperate all during-build tools from the rest of the tree somewhat like XFree86 does, and build them on the criteria of the "build" machine, and build the rest according to the rules of the "host" machine.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

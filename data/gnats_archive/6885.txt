@@ -1,0 +1,181 @@
+Received: (qmail 65314 invoked by uid 501); 24 Nov 2000 13:03:31 -0000
+Message-Id: <20001124130331.65312.qmail@locus.apache.org>
+Date: 24 Nov 2000 13:03:31 -0000
+From: Philipp Rotmann <webmaster@link-m.de>
+Reply-To: webmaster@link-m.de
+To: submit@bugz.apache.org
+Subject: PATH_TRANSLATED generation produces garbage in error_log
+X-Send-Pr-Version: 3.110
+
+>Number:         6885
+>Category:       general
+>Synopsis:       PATH_TRANSLATED clutters error_log, don't build a sub-request
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Nov 24 05:10:02 PST 2000
+>Closed-Date:
+>Last-Modified:  Thu Dec 28 19:15:53 PST 2000
+>Originator:     webmaster@link-m.de
+>Release:        1.3.9 and above
+>Organization:
+>Environment:
+Linux 2.2.17 #1 Mit Nov 15 13:38:42 CET 2000 i586 unknown w/ apache 1.3.9 compiled by gcc; in newer apache releases' CHANGES files I couldn't find anything related to the bug as described below, so I haven't upgraded first.
+>Description:
+When apache encounters an URI such as /cgi-bin/myscript.cgi/path/to/template.html it issues a subrequest to itself in order to get PATH_TRANSLATED. In combination with access restrictions on the file "/path/to/template.html" (e.g. a FilesMatch block anywhere in the server configuration), this behaviour leads to lots of unwanted error_log messages, as every access to the script is logged as a failed access to the raw template file.
+
+The affected code seems to be in main/util_script.c:
+
+    if (r->path_info && r->path_info[0]) {
+        /*
+         * To get PATH_TRANSLATED, treat PATH_INFO as a URI path.
+         * Need to re-escape it for this, since the entire URI was
+         * un-escaped before we determined where the PATH_INFO began.
+         */
+        request_rec *pa_req;
+
+        pa_req = ap_sub_req_lookup_uri(ap_escape_uri(r->pool, r->path_info), r);
+>How-To-Repeat:
+Just set up a file inside your DocumentRoot, impose access restrictions on it (<Files test.html>\norder allow, deny\ndeny from all\n</Files>) and then access it via any cgi script that doesn't even need to use the file in any way (of course), with a request like http://my.server.com/cgi-bin/whatever/test.html -- then look into your error_log.
+>Fix:
+No -- too few knowledge of apache interna.
+>Release-Note:
+>Audit-Trail:
+
+From: Tony Finch <dot@dotat.at>
+To: apbugs@apache.org, webmaster@link-m.de
+Cc:  
+Subject: Re: apache-api/6885: PATH_TRANSLATED generation produces garbage in error_log
+Date: Fri, 1 Dec 2000 00:48:40 +0000
+
+ Philipp Rotmann <webmaster@link-m.de> wrote:
+ >
+ >Linux 2.2.17 #1 Mit Nov 15 13:38:42 CET 2000 i586 unknown w/ apache
+ >1.3.9 compiled by gcc; in newer apache releases' CHANGES files I
+ >couldn't find anything related to the bug as described below, so I
+ >haven't upgraded first.
+ 
+ Did you try with older versions to verify that this behaviour was
+ introduced in 1.3.9?
+ 
+ >When apache encounters an URI such as
+ >/cgi-bin/myscript.cgi/path/to/template.html it issues a subrequest to
+ >itself in order to get PATH_TRANSLATED. In combination with access
+ >restrictions on the file "/path/to/template.html" (e.g. a FilesMatch
+ >block anywhere in the server configuration), this behaviour leads to
+ >lots of unwanted error_log messages, as every access to the script is
+ >logged as a failed access to the raw template file.
+ 
+ I think this is a misfeature rather than a bug, since it would be hard
+ to fix -- there isn't a single location in the code where Apache could
+ decide not to log access control errors because this is a subrequest
+ or whatever; to the contrary, the logging is scattered all over the
+ place.
+ 
+ I'm also not convinced that this is a big problem in practice.
+ 
+ Tony.
+ -- 
+ f.a.n.finch     dot@dotat.at     fanf@covalent.net     Chad for President!
+
+From: Link-M Webmaster <webmaster@link-m.de>
+To: Tony Finch <dot@dotat.at>
+Cc: apbugs@apache.org, Michael Buschbeck <m.buschbeck@buero.link-m.de>
+Subject: Re: apache-api/6885: PATH_TRANSLATED generation produces garbage in error_log
+Date: Sat, 2 Dec 2000 17:19:38 +0100
+
+      Hi there!
+ 
+ On 01.12.00 (00:48), Tony Finch wrote:
+ > >Linux 2.2.17 #1 Mit Nov 15 13:38:42 CET 2000 i586 unknown w/
+ > >apache 1.3.9 compiled by gcc; in newer apache releases'
+ > >CHANGES files I couldn't find anything related to the bug as
+ > >described below, so I haven't upgraded first.
+ > 
+ > Did you try with older versions to verify that this behaviour
+ > was introduced in 1.3.9?
+ 
+ No. In fact, I'd expected to see the problem around for some
+ time.
+ 
+ > >When apache encounters an URI such as
+ > >/cgi-bin/myscript.cgi/path/to/template.html it issues a
+ > >subrequest to itself in order to get PATH_TRANSLATED. In
+ > >combination with access restrictions on the file
+ > >"/path/to/template.html" (e.g. a FilesMatch block anywhere in
+ > >the server configuration), this behaviour leads to lots of
+ > >unwanted error_log messages, as every access to the script is
+ > >logged as a failed access to the raw template file.
+ > 
+ > I think this is a misfeature rather than a bug,
+ 
+ Agreed.
+ 
+ > since it would be hard to fix -- there isn't a single location
+ > in the code where Apache could decide not to log access
+ > control errors because this is a subrequest or whatever; to
+ > the contrary, the logging is scattered all over the place.
+ 
+ On the other hand: Why is a 'real' subrequest necessary in order
+ to get PATH_TRANSLATED?  Innocent proposal: Why not use some
+ kind of 'request simulator' that might get used by other pieces
+ of the code as well?  Would this have a chance to make those
+ routines faster oder would it rather hurt apache's performance?
+ 
+ > I'm also not convinced that this is a big problem in practice.
+ 
+ Well, it clutters our error_log's with some hundreds of
+ kilobytes of garbage per month, thus making it harder to find
+ real error information when needed.
+ 
+      Best regards,
+      Philipp Rotmann
+ -- 
+ Linksystem Muenchen GmbH                     webmaster@link-m.de
+ Schloerstrasse 10                           http://www.link-m.de
+ 80634 Muenchen                              Tel. 089 / 890 518-0
+ We make the Net work.                       Fax 089 / 890 518-77
+State-Changed-From-To: open-suspended
+State-Changed-By: wrowe
+State-Changed-When: Thu Dec 28 19:15:52 PST 2000
+State-Changed-Why:
+
+Consideration of this misfeature suspended, perhaps it will
+be picked up for the 2.0 server development.  Such a major
+change to a parser is very unlikely in the 1.3 development
+branch.  Thanks for the report and your interest in the
+apache server!
+
+Synopsis-Changed-From: PATH_TRANSLATED generation produces garbage in error_log
+Synopsis-Changed-To: PATH_TRANSLATED clutters error_log, don't build a sub-request
+Synopsis-Changed-By: wrowe
+Synopsis-Changed-When: Thu Dec 28 19:15:52 PST 2000
+Class-Changed-From-To: sw-bug-change-request
+Class-Changed-By: wrowe
+Class-Changed-When: Thu Dec 28 19:15:52 PST 2000
+Category-Changed-From-To: apache-api-general
+Category-Changed-By: wrowe
+Category-Changed-When: Thu Dec 28 19:15:52 PST 2000
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

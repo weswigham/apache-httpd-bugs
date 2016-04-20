@@ -1,0 +1,482 @@
+Received: (qmail 12582 invoked by uid 2012); 20 Nov 1997 21:23:05 -0000
+Message-Id: <19971120212305.12581.qmail@hyperreal.org>
+Date: 20 Nov 1997 21:23:05 -0000
+From: Jim Patterson <Jim.Patterson@Cognos.COM>
+Reply-To: Jim.Patterson@Cognos.COM
+To: apbugs@hyperreal.org
+Subject: mod_info won't link under Windows NT/95
+X-Send-Pr-Version: 3.2
+
+>Number:         1442
+>Category:       os-windows
+>Synopsis:       mod_info won't link under Windows NT/95
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Nov 20 13:30:00 PST 1997
+>Closed-Date:    Wed Jun 14 23:04:33 PDT 2000
+>Last-Modified:  Wed Jun 14 23:04:33 PDT 2000
+>Originator:     Jim.Patterson@Cognos.COM
+>Release:        1.3b3
+>Organization:
+>Environment:
+Win32
+Visual C++ 5.0 SP 2
+>Description:
+Because of the DLL separation under Windows NT/95, the current mod_info module
+will not link because of a series of missing externals.
+>How-To-Repeat:
+Try to build it using Visual C++.
+>Fix:
+The following patch should do it. It also fixes up a link problem in ApacheCore
+(buildmark.c seems to have been missed in the ApacheCore project).
+
+diff -cr apache_1.3b3\src/ApacheCore.dsp d:\apache_1.3b3\src/ApacheCore.dsp
+*** apache_1.3b3\src/ApacheCore.dsp Mon Oct 20 16:19:10 1997
+--- d:\apache_1.3b3\src/ApacheCore.dsp Thu Nov 20 15:12:30 1997
+***************
+*** 105,110 ****
+--- 105,114 ----
+  # End Source File
+  # Begin Source File
+  
++ SOURCE=.\buildmark.c
++ # End Source File
++ # Begin Source File
++ 
+  SOURCE=.\main\explain.c
+  # End Source File
+  # Begin Source File
+diff -cr apache_1.3b3\src/buildmark.c d:\apache_1.3b3\src/buildmark.c
+*** apache_1.3b3\src/buildmark.c Thu Nov 13 17:25:44 1997
+--- d:\apache_1.3b3\src/buildmark.c Thu Nov 20 14:54:32 1997
+***************
+*** 1,5 ****
+  #if defined(__DATE__) && defined(__TIME__)
+! const char SERVER_BUILT[] = __DATE__ " " __TIME__;
+  #else
+! const char SERVER_BUILT[] = "unknown";
+  #endif
+--- 1,6 ----
++ #include "conf.h"
+  #if defined(__DATE__) && defined(__TIME__)
+! API_VAR_EXPORT const char SERVER_BUILT[] = __DATE__ " " __TIME__;
+  #else
+! API_VAR_EXPORT const char SERVER_BUILT[] = "unknown";
+  #endif
+diff -cr apache_1.3b3\src/main/httpd.h d:\apache_1.3b3\src/main/httpd.h
+*** apache_1.3b3\src/main/httpd.h Wed Nov 19 19:37:26 1997
+--- d:\apache_1.3b3\src/main/httpd.h Thu Nov 20 14:55:12 1997
+***************
+*** 354,360 ****
+  #else
+  #define SERVER_VERSION	SERVER_BASEVERSION
+  #endif
+! extern MODULE_VAR_EXPORT const char SERVER_BUILT[];
+  
+  /* Numeric release version identifier: major minor bugfix betaseq
+   * Always increases along the same track as the source branch.
+--- 354,360 ----
+  #else
+  #define SERVER_VERSION	SERVER_BASEVERSION
+  #endif
+! extern API_VAR_EXPORT const char SERVER_BUILT[];
+  
+  /* Numeric release version identifier: major minor bugfix betaseq
+   * Always increases along the same track as the source branch.
+diff -cr apache_1.3b3\src/main/http_config.c d:\apache_1.3b3\src/main/http_config.c
+*** apache_1.3b3\src/main/http_config.c Thu Nov  6 15:40:42 1997
+--- d:\apache_1.3b3\src/main/http_config.c Thu Nov 20 14:57:12 1997
+***************
+*** 94,100 ****
+   * than DYNAMIC_MODULE_LIMIT.
+   */
+  static int dynamic_modules = 0;
+! module *top_module = NULL;
+  
+  typedef int (*handler_func) (request_rec *);
+  typedef void *(*dir_maker_func) (pool *, char *);
+--- 94,100 ----
+   * than DYNAMIC_MODULE_LIMIT.
+   */
+  static int dynamic_modules = 0;
+! API_VAR_EXPORT module *top_module = NULL;
+  
+  typedef int (*handler_func) (request_rec *);
+  typedef void *(*dir_maker_func) (pool *, char *);
+diff -cr apache_1.3b3\src/main/http_conf_globals.h d:\apache_1.3b3\src/main/http_conf_globals.h
+*** apache_1.3b3\src/main/http_conf_globals.h Wed Oct 22 16:29:34 1997
+--- d:\apache_1.3b3\src/main/http_conf_globals.h Thu Nov 20 14:53:06 1997
+***************
+*** 55,82 ****
+   * Process config --- what the process ITSELF is doing
+   */
+  
+! extern int standalone;
+! extern uid_t user_id;
+! extern char *user_name;
+! extern gid_t group_id;
+  #ifdef MULTIPLE_GROUPS
+  extern gid_t group_id_list[NGROUPS_MAX];
+  #endif
+! extern int max_requests_per_child;
+! extern int threads_per_child;
+! extern int excess_requests_per_child;
+  extern struct in_addr bind_address;
+  extern listen_rec *listeners;
+! extern int daemons_to_start;
+! extern int daemons_min_free;
+! extern int daemons_max_free;
+! extern int daemons_limit;
+  extern MODULE_VAR_EXPORT int suexec_enabled;
+  extern int listenbacklog;
+  
+! extern char *pid_fname;
+! extern char *scoreboard_fname;
+! extern char *lock_fname;
+  extern MODULE_VAR_EXPORT char *server_argv0;
+  
+  /* Trying to allocate these in the config pool gets us into some *nasty*
+--- 55,82 ----
+   * Process config --- what the process ITSELF is doing
+   */
+  
+! extern API_VAR_EXPORT int standalone;
+! extern API_VAR_EXPORT uid_t user_id;
+! extern API_VAR_EXPORT char *user_name;
+! extern API_VAR_EXPORT gid_t group_id;
+  #ifdef MULTIPLE_GROUPS
+  extern gid_t group_id_list[NGROUPS_MAX];
+  #endif
+! extern API_VAR_EXPORT int max_requests_per_child;
+! extern API_VAR_EXPORT int threads_per_child;
+! extern API_VAR_EXPORT int excess_requests_per_child;
+  extern struct in_addr bind_address;
+  extern listen_rec *listeners;
+! extern API_VAR_EXPORT int daemons_to_start;
+! extern API_VAR_EXPORT int daemons_min_free;
+! extern API_VAR_EXPORT int daemons_max_free;
+! extern API_VAR_EXPORT int daemons_limit;
+  extern MODULE_VAR_EXPORT int suexec_enabled;
+  extern int listenbacklog;
+  
+! extern API_VAR_EXPORT char *pid_fname;
+! extern API_VAR_EXPORT char *scoreboard_fname;
+! extern API_VAR_EXPORT char *lock_fname;
+  extern MODULE_VAR_EXPORT char *server_argv0;
+  
+  /* Trying to allocate these in the config pool gets us into some *nasty*
+***************
+*** 85,92 ****
+   * statically...
+   */
+  
+! extern char server_root[MAX_STRING_LEN];
+! extern char server_confname[MAX_STRING_LEN];
+  
+  /* We want this to have the least chance of being correupted if there
+   * is some memory corruption, so we allocate it statically.
+--- 85,92 ----
+   * statically...
+   */
+  
+! extern API_VAR_EXPORT char server_root[MAX_STRING_LEN];
+! extern API_VAR_EXPORT char server_confname[MAX_STRING_LEN];
+  
+  /* We want this to have the least chance of being correupted if there
+   * is some memory corruption, so we allocate it statically.
+diff -cr apache_1.3b3\src/modules/standard/mod_info.c d:\apache_1.3b3\src/modules/standard/mod_info.c
+*** apache_1.3b3\src/modules/standard/mod_info.c Sun Oct 26 15:20:06 1997
+--- d:\apache_1.3b3\src/modules/standard/mod_info.c Thu Nov 20 14:56:44 1997
+***************
+*** 74,79 ****
+--- 74,81 ----
+   * 
+   */
+  
++ #define IS_MODULE
++ 
+  #include "httpd.h"
+  #include "http_config.h"
+  #include "http_core.h"
+***************
+*** 99,105 ****
+  } info_cfg_lines;
+  
+  module MODULE_VAR_EXPORT info_module;
+! extern module *top_module;
+  
+  static void *create_info_config(pool *p, server_rec *s)
+  {
+--- 101,107 ----
+  } info_cfg_lines;
+  
+  module MODULE_VAR_EXPORT info_module;
+! extern API_VAR_EXPORT module *top_module;
+  
+  static void *create_info_config(pool *p, server_rec *s)
+  {
+%0
+>Release-Note:
+>Audit-Trail:
+Category-Changed-From-To: mod_info-os-windows
+Category-Changed-By: coar
+Category-Changed-When: Sun Nov 23 12:50:24 PST 1997
+
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Thu May 28 12:15:35 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+State-Changed-From-To: feedback-analyzed
+State-Changed-By: coar
+State-Changed-When: Mon Jun  1 19:43:08 PDT 1998
+State-Changed-Why:
+[Feedback from submittor]
+I've confirmed that this bug still exists in the 1.3b7 version of
+Apache. However, the fix is quite simple; it's just a matter of
+exporting a few more variables from ApacheCore.dll (and also re-enabling
+the building of Mod_info in the makefile).
+
+Here is a patch - it may not be in standard format, but hopefully you
+can apply it without too much problem as it's not very big. (I've never
+been able to get these NT tools to work properly).
+
+*** src/Makefile.nt-orig Fri Apr 17 14:58:52 1998
+--- src/Makefile.nt Sun May 31 20:41:50 1998
+***************
+*** 65,71 ****
+        cd os\win32
+         set CFG=ApacheModuleStatus - Win32 %LONG%
+         nmake /nologo CFG="ApacheModuleStatus - Win32 %LONG%" -f
+ApacheModuleStatus.mak
+! #      nmake /nologo CFG ""/nologo -f
+ApacheModuleStatus.mak"=ApacheModuleInfo - Win32 %LONG%" -f
+ApacheModuleInfo.mak
+         nmake /nologo CFG="ApacheModuleAuthAnon - Win32 %LONG%" -f
+ApacheModuleAuthAnon.mak
+         nmake /nologo CFG="ApacheModuleDigest - Win32 %LONG%" -f
+ApacheModuleDigest.mak
+         nmake /nologo CFG="ApacheModuleCERNMeta - Win32 %LONG%" -f
+ApacheModuleCERNMeta.mak
+--- 65,71 ----
+        cd os\win32
+         set CFG=ApacheModuleStatus - Win32 %LONG%
+         nmake /nologo CFG="ApacheModuleStatus - Win32 %LONG%" -f
+ApacheModuleStatus.mak
+!        nmake /nologo CFG="ApacheModuleInfo - Win32 %LONG%" -f
+ApacheModuleInfo.mak
+         nmake /nologo CFG="ApacheModuleAuthAnon - Win32 %LONG%" -f
+ApacheModuleAuthAnon.mak
+         nmake /nologo CFG="ApacheModuleDigest - Win32 %LONG%" -f
+ApacheModuleDigest.mak
+         nmake /nologo CFG="ApacheModuleCERNMeta - Win32 %LONG%" -f
+ApacheModuleCERNMeta.mak
+***************
+*** 87,93 ****
+        copy Apache%SHORT%\Apache.exe $(INSTDIR)
+        copy Core%SHORT%\ApacheCore.dll $(INSTDIR)
+        copy os\win32\ApacheModuleStatus%SHORT%\ApacheModuleStatus.dll
+$(INSTDIR)\modules
+! #       copy os\win32\ApacheModuleInfo%SHORT%\ApacheModuleInfo.dll
+$(INSTDIR)\modules
+        copy
+os\win32\ApacheModuleAuthAnon%SHORT%\ApacheModuleAuthAnon.dll
+$(INSTDIR)\modules
+        copy os\win32\ApacheModuleDigest%SHORT%\ApacheModuleDigest.dll
+$(INSTDIR)\modules
+        copy
+os\win32\ApacheModuleCERNMeta%SHORT%\ApacheModuleCERNMeta.dll
+$(INSTDIR)\modules
+--- 87,93 ----
+        copy Apache%SHORT%\Apache.exe $(INSTDIR)
+        copy Core%SHORT%\ApacheCore.dll $(INSTDIR)
+        copy os\win32\ApacheModuleStatus%SHORT%\ApacheModuleStatus.dll
+$(INSTDIR)\modules
+!         copy os\win32\ApacheModuleInfo%SHORT%\ApacheModuleInfo.dll
+$(INSTDIR)\modules
+        copy
+os\win32\ApacheModuleAuthAnon%SHORT%\ApacheModuleAuthAnon.dll
+$(INSTDIR)\modules
+        copy os\win32\ApacheModuleDigest%SHORT%\ApacheModuleDigest.dll
+$(INSTDIR)\modules
+        copy
+os\win32\ApacheModuleCERNMeta%SHORT%\ApacheModuleCERNMeta.dll
+$(INSTDIR)\modules
+***************
+*** 118,124 ****
+         nmake /nologo CFG="Apache - Win32 %LONG%" -f Apache.mak clean
+        cd os\win32
+         nmake /nologo CFG="ApacheModuleStatus - Win32 %LONG%" -f
+ApacheModuleStatus.mak clean
+! #      nmake /nologo CFG="ApacheModuleInfo - Win32 %LONG%" -f
+ApacheModuleInfo.mak clean
+         nmake /nologo CFG="ApacheModuleAuthAnon - Win32 %LONG%" -f
+ApacheModuleAuthAnon.mak clean
+         nmake /nologo CFG="ApacheModuleDigest - Win32 %LONG%" -f
+ApacheModuleDigest.mak clean
+         nmake /nologo CFG="ApacheModuleCERNMeta - Win32 %LONG%" -f
+ApacheModuleCERNMeta.mak clean
+--- 118,124 ----
+         nmake /nologo CFG="Apache - Win32 %LONG%" -f Apache.mak clean
+        cd os\win32
+         nmake /nologo CFG="ApacheModuleStatus - Win32 %LONG%" -f
+ApacheModuleStatus.mak clean
+!        nmake /nologo CFG="ApacheModuleInfo - Win32 %LONG%" -f
+ApacheModuleInfo.mak clean
+         nmake /nologo CFG="ApacheModuleAuthAnon - Win32 %LONG%" -f
+ApacheModuleAuthAnon.mak clean
+         nmake /nologo CFG="ApacheModuleDigest - Win32 %LONG%" -f
+ApacheModuleDigest.mak clean
+         nmake /nologo CFG="ApacheModuleCERNMeta - Win32 %LONG%" -f
+ApacheModuleCERNMeta.mak clean
+*** src/include/http_conf_globals.h-orig Sun May 31 19:29:06 1998
+--- src/include/http_conf_globals.h Sun May 31 19:36:38 1998
+***************
+*** 66,93 ****
+   * Process config --- what the process ITSELF is doing
+   */
+  
+! extern int ap_standalone;
+! extern uid_t ap_user_id;
+! extern char *ap_user_name;
+! extern gid_t ap_group_id;
+  #ifdef MULTIPLE_GROUPS
+  extern gid_t group_id_list[NGROUPS_MAX];
+  #endif
+! extern int ap_max_requests_per_child;
+! extern int ap_threads_per_child;
+! extern int ap_excess_requests_per_child;
+  extern struct in_addr ap_bind_address;
+  extern listen_rec *ap_listeners;
+! extern int ap_daemons_to_start;
+! extern int ap_daemons_min_free;
+! extern int ap_daemons_max_free;
+! extern int ap_daemons_limit;
+  extern MODULE_VAR_EXPORT int ap_suexec_enabled;
+  extern int ap_listenbacklog;
+  extern int ap_dump_settings;
+  
+! extern char *ap_pid_fname;
+! extern char *ap_scoreboard_fname;
+  extern char *ap_lock_fname;
+  extern MODULE_VAR_EXPORT char *ap_server_argv0;
+  
+--- 66,93 ----
+   * Process config --- what the process ITSELF is doing
+   */
+  
+! extern API_VAR_EXPORT int ap_standalone;
+! extern API_VAR_EXPORT uid_t ap_user_id;
+! extern API_VAR_EXPORT char *ap_user_name;
+! extern API_VAR_EXPORT gid_t ap_group_id;
+  #ifdef MULTIPLE_GROUPS
+  extern gid_t group_id_list[NGROUPS_MAX];
+  #endif
+! extern API_VAR_EXPORT int ap_max_requests_per_child;
+! extern API_VAR_EXPORT int ap_threads_per_child;
+! extern API_VAR_EXPORT int ap_excess_requests_per_child;
+  extern struct in_addr ap_bind_address;
+  extern listen_rec *ap_listeners;
+! extern API_VAR_EXPORT int ap_daemons_to_start;
+! extern API_VAR_EXPORT int ap_daemons_min_free;
+! extern API_VAR_EXPORT int ap_daemons_max_free;
+! extern API_VAR_EXPORT int ap_daemons_limit;
+  extern MODULE_VAR_EXPORT int ap_suexec_enabled;
+  extern int ap_listenbacklog;
+  extern int ap_dump_settings;
+  
+! extern API_VAR_EXPORT char *ap_pid_fname;
+! extern API_VAR_EXPORT char *ap_scoreboard_fname;
+  extern char *ap_lock_fname;
+  extern MODULE_VAR_EXPORT char *ap_server_argv0;
+  
+***************
+*** 100,106 ****
+   */
+  
+  extern API_VAR_EXPORT char ap_server_root[MAX_STRING_LEN];
+! extern char ap_server_confname[MAX_STRING_LEN];
+  
+  /* for -C and -c switches */
+  extern array_header *ap_server_pre_read_config;
+--- 100,106 ----
+   */
+  
+  extern API_VAR_EXPORT char ap_server_root[MAX_STRING_LEN];
+! extern API_VAR_EXPORT char ap_server_confname[MAX_STRING_LEN];
+  
+  /* for -C and -c switches */
+  extern array_header *ap_server_pre_read_config;
+*** src/include/http_config.h-orig Sun May 31 19:40:06 1998
+--- src/include/http_config.h Sun May 31 19:39:20 1998
+***************
+*** 318,326 ****
+  /* for implementing subconfigs and customized config files */
+  API_EXPORT(const char *) ap_srm_command_loop(cmd_parms *parms, void
+*config);
+  
+- #ifdef CORE_PRIVATE
+- 
+  extern API_VAR_EXPORT module *top_module;
+  
+  extern module *ap_prelinked_modules[];
+  extern module *ap_preloaded_modules[];
+--- 318,326 ----
+  /* for implementing subconfigs and customized config files */
+  API_EXPORT(const char *) ap_srm_command_loop(cmd_parms *parms, void
+*config);
+  
+  extern API_VAR_EXPORT module *top_module;
++ 
++ #ifdef CORE_PRIVATE
+  
+  extern module *ap_prelinked_modules[];
+  extern module *ap_preloaded_modules[];
+*** src/modules/standard/mod_info.c-orig Sun May 31 19:42:56 1998
+--- src/modules/standard/mod_info.c Sun May 31 19:42:28 1998
+***************
+*** 103,109 ****
+  } info_cfg_lines;
+  
+  module MODULE_VAR_EXPORT info_module;
+- extern module *top_module;
+  
+  static void *create_info_config(pool *p, server_rec *s)
+  {
+--- 103,108 ----
+
+Comment-Added-By: wrowe
+Comment-Added-When: Wed Jun 14 22:54:49 PDT 2000
+Comment-Added:
+The forthcoming Apache 1.3.13 supports loading the mod_info
+under Win95/98.  Thank you for your report and interest
+in the Apache project!
+State-Changed-From-To: analyzed-closed
+State-Changed-By: wrowe
+State-Changed-When: Wed Jun 14 23:04:33 PDT 2000
+State-Changed-Why:
+As noted 1.3.13 will support loading mod_info.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

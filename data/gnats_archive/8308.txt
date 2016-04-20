@@ -1,0 +1,159 @@
+Received: (qmail 23564 invoked by uid 501); 7 Sep 2001 13:45:37 -0000
+Message-Id: <20010907134537.23563.qmail@apache.org>
+Date: 7 Sep 2001 13:45:37 -0000
+From: Chris Jordan <cwjordan@corp.earthlink.net>
+Reply-To: cwjordan@corp.earthlink.net
+To: submit@bugz.apache.org
+Subject: UseCanonicalName doesn't work in .htaccess (similar to PR #5970)
+X-Send-Pr-Version: 3.110
+
+>Number:         8308
+>Category:       config
+>Synopsis:       UseCanonicalName doesn't work in .htaccess (similar to PR #5970)
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Sep 07 06:50:00 PDT 2001
+>Closed-Date:    
+>Last-Modified:  Fri Sep  7 09:50:00 PDT 2001
+>Originator:     cwjordan@corp.earthlink.net
+>Release:        1.3.20 (Unix)
+>Organization:
+apache
+>Environment:
+cwjordan{tetricus}~$ uname -a
+OSF1 tetricus V4.0 1229 alpha
+
+Tru64 4.0F patch 5
+gcc version 2.8.1
+>Description:
+We recently upgraded from Apache/1.3.6 to Apache/1.3.20 and notice that we can 
+no longer use the "UseCanonicalName" directive in .htaccess files.  From PR #5970
+(as well as the docs) we are aware that "AllowOverride Options" ought to enable the
+use of that directive, that doesn't appear to work, as we have "AllowOverride All"
+set.
+
+A virtual host entry for a site where we've seen this problem looks like:
+**************************************************************
+Listen 64.82.21.202:80
+<VirtualHost 64.82.21.202>
+ServerName      www.dhs-seminars.com
+ServerAdmin     webmaster@dhs-seminars.com
+DocumentRoot    /web/u263/www35737/www
+SetEnv PHP_DOCUMENT_ROOT /web/u263/www35737/www
+User www35737
+Group users
+RLimitCPU 300 600
+Alias /stats /stats/263/www35737
+ScriptAlias /cgi-bin/ /web/u263/www35737/cgi-bin/
+<Directory /web/u263/www35737>
+AllowOverride All
+</Directory>
+</VirtualHost>
+************************************************************
+
+and the /web/u263/www35737/www/.htaccess file looks like:
+
+************************************************************
+# -FrontPage-
+    
+IndexIgnore .htaccess */.??* *~ *# */HEADER* */README* */_vti*
+        
+<Limit GET POST>
+order deny,allow
+deny from all
+allow from all
+</Limit>
+<Limit POST PUT DELETE>
+order deny,allow
+deny from all
+</Limit>
+AuthName www.dhs-seminars.com
+AuthUserFile  /web/u263/www35737/www/_vti_pvt/service.pwd
+AuthGroupFile /web/u263/www35737/www/_vti_pvt/service.grp  
+UseCanonicalName On
+*************************************************************
+
+And the error message we get looks like:
+
+*************************************************************
+[Fri Sep  7 09:23:28 2001] [alert] [client 199.174.117.22] /web/u263/www35737/www/.htaccess: UseCanonicalName not allowed here
+*************************************************************
+
+Does UseCanonicalName work in .htaccess files for you?  We're going to investigate 
+further, but we wanted to know if it was something peculiar to our setup or a
+general problem.
+
+Thanks,
+
+Chris Jordan
+Earthlink System Engineering
+cwjordan@corp.earthlink.net
+>How-To-Repeat:
+
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+
+From: Chris Jordan <cwjordan@corp.earthlink.net>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc:  
+Subject: Re: config/8308: UseCanonicalName doesn't work in .htaccess (similar to 
+ PR #5970)
+Date: Fri, 07 Sep 2001 12:44:40 -0400
+
+ Aha, found it.  There appears to be an error in http_core.c.  The
+ following change fixed it so that it behaves as documented:
+ 
+ diff http_core.c.orig http_core.c 
+ 3104c3104
+ <   RSRC_CONF|ACCESS_CONF, TAKE1,
+ ---
+ >   OR_OPTIONS, TAKE1,
+ 
+ This may not be the optimal fix, looking at an old post from
+ http://www.humanfactor.com/cgi-bin/cgi-delegate/apache-ML/nh/1998/Dec/0286.html
+ which describes the change made in apache 1.3.4, it would seem to be
+ correct, but there have been several changes to UseCanonicalName
+ mentioned in CHANGES_1.3 since then, I don't know really what all they
+ were supposed to do.  What I did seems to correctly do what we need
+ however.
+ 
+ Chris Jordan
+ Earthlink System Engineering
+ cwjordan@corp.earthlink.net
+ 
+ submit@bugz.apache.org wrote:
+ > 
+ > Thank you very much for your problem report.
+ > It has the internal identification `config/8308'.
+ > The individual assigned to look at your
+ > report is: apache.
+ > 
+ > >Category:       config
+ > >Responsible:    apache
+ > >Synopsis:       UseCanonicalName doesn't work in .htaccess (similar to PR #5970)
+ > >Arrival-Date:   Fri Sep 07 06:50:00 PDT 2001
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,196 @@
+From apwww@hyperreal.org  Tue Aug 19 04:20:07 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id EAA09432;
+	Tue, 19 Aug 1997 04:20:07 -0700 (PDT)
+Message-Id: <199708191120.EAA09432@hyperreal.org>
+Date: Tue, 19 Aug 1997 04:20:07 -0700 (PDT)
+From: Ka-Ping Yee <ping@parc.xerox.com>
+Reply-To: ping@parc.xerox.com
+To: apbugs@hyperreal.org
+Subject: Please, use Content-Location: header?
+X-Send-Pr-Version: 3.2
+
+>Number:         1014
+>Category:       protocol
+>Synopsis:       Please, use Content-Location: header?
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Aug 19 04:30:01 1997
+>Last-Modified:  Thu Sep 18 12:59:00 PDT 1997
+>Originator:     ping@parc.xerox.com
+>Organization:
+>Release:        1.2b10
+>Environment:
+I run Apache 1.2b10 on Linux 2.0.25, but this is a general suggestion.
+>Description:
+From draft-ietf-http-v11-spec-08, page 125, section 14.15 ("Content-Location"):
+
+    The Content-Location entity-header field MAY be used to
+    supply the resource location for the entity enclosed in the
+    message when that entity is accessible from a location
+    separate from the requested resource's URI.
+
+    ...a server SHOULD provide a Content-Location
+    for the resource corresponding to the response entity.
+
+I would very much like you to consider emitting a "Content-Location:"
+header to help identify documents uniquely.  In particular, when the
+server responds to a directory request (e.g. "/foo/") with a default page
+("/foo/index.html"), it should emit the new location:
+
+    GET /foo/ HTTP/1.0
+
+    HTTP/1.1 200 Okay
+    Content-Type: text/html
+    Content-Location: http://www.apache.org/foo/index.html
+    ...
+
+There is no way for the client to infer the true location from
+the response otherwise, because it cannot guess whether the
+default name is "default.htm", "index.html", "welcome.html", etc.
+
+This information can be very valuable to search engines, scripts
+that do indexing, and so on.  Thank you for considering it.
+
+(You could also provide this information when the file is a
+local symbolic link to another file within the document tree,
+though that would be harder.)
+
+
+Ping
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Ka-Ping Yee <ping@parc.xerox.com>
+Subject: Re: protocol/1014: Please, use Content-Location: header?
+Date: Tue, 19 Aug 1997 09:53:47 -0700 (PDT)
+
+ 
+ Emitting Content-Location for / -> /index.html is not desirable at all.
+ Neither is emitting it for /foobar -> /foobar.cgi.  Those are not
+ just time-saving internal redirects... those are methods of hiding
+ implementation of your website.  For example, if you never tack .html onto
+ your URLs and you use multiviews everywhere then you can later switch
+ selected files to .shtml (SSI), .phtml (mod_php), or .cgi and none of your
+ pages will need to be updated to reflect this chance.  None of your users
+ will notice the change.
+ 
+ Content-Location is not supported by at least Netscape because of the
+ hassles of verifying the validity of the header.  The possibility for
+ abuse is large.
+ 
+ So it's unlikely we'll support it.
+ 
+ You however are free to write a module that does it... it shouldn't be too
+ hard.  Use a fixup handler and test if r->main != NULL then strcmp
+ (r->uri, r->main->uri).  If they're different then a subrequest to a
+ different object happened.  But you'll quickly discover that sometimes a
+ subrequest does not have a URI.
+ 
+ Dean
+ 
+ 
+
+From: Ka-Ping Yee <ping@parc.xerox.com>
+To: Dean Gaudet <dgaudet@arctic.org>
+Subject: Re: protocol/1014: Please, use Content-Location: header?
+Date: Tue, 19 Aug 1997 12:25:08 PDT
+
+ 
+ Dean Gaudet wrote:
+ > 
+ > Emitting Content-Location for / -> /index.html is not desirable at all.
+ > Neither is emitting it for /foobar -> /foobar.cgi.  Those are not
+ > just time-saving internal redirects... those are methods of hiding
+ > implementation of your website.
+ 
+ I agree that it is not necessary to emit Content-Location for
+ new names produced by multiviews or for all subrequests in general.
+ 
+ I'm specifically requesting that Content-Location be given for
+ / -> /index.html, because it is by far the most common manner of
+ aliasing on the Web that cannot be automatically circumvented, 
+ and this header gives us a fairly easy way to fix that.  Reducing
+ aliasing is important for any application that wants to associate
+ information with remote documents (such as annotations, ratings, etc.).
+ 
+ In such cases /index.html is exposed to the world anyway, so i
+ don't think this is in conflict with hiding implementation.
+ Content-Location: is supposed to show a variant name to make
+ caching work, and my suggestion is an application of the same idea.
+ 
+ > For example, if you never tack .html onto
+ > your URLs and you use multiviews everywhere then you can later switch
+ > selected files to .shtml (SSI), .phtml (mod_php), or .cgi and none of your
+ > pages will need to be updated to reflect this chance.  None of your users
+ > will notice the change.
+ 
+ This header is not something that would affect the pages in any
+ event, i believe.  No URIs change; this is just a way of providing
+ extra information to aid caching and identification.  RFC 2068 says:
+ 
+     In the case where a resource has multiple entities associated
+     with it, and those entities actually have separate locations
+     by which they might be individually accessed, the server should
+     provide a Content-Location for the particular variant which is
+     returned. In addition, a server SHOULD provide a Content-Location
+     for the resource corresponding to the response entity.
+ 
+ Thanks for taking the time to consider this one.  Let me know if
+ this has convinced you at all... :)
+ 
+ 
+ Ping
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Ka-Ping Yee <ping@parc.xerox.com>
+Subject: Re: protocol/1014: Please, use Content-Location: header?
+Date: Tue, 19 Aug 1997 22:01:48 -0700 (PDT)
+
+ 
+ But index.html is really just an artifact of the implementation.  When you
+ ask for /foo/ you're asking for the directory object, not the
+ /foo/index.html object.  That the two are (sometimes) the same is really
+ just an implmentation detail.  That's why I don't agree with doing this. 
+ 
+ If in the unix file system you could have a file and directory with the
+ same name then index.html wouldn't be a special case... 
+ 
+ Some sites are "lazy" and refer to directories both by /foo/ and
+ /foo/index.html, they would benefit from your proposed feature.  But it
+ would hurt sites that deliberately hide these details from the user. 
+ 
+ I think caches using Content-Location would have the same problems with
+ reliability that Netscape didn't agree with.  For example, suppose I
+ access www.yadda.edu/~studenta/ and it includes Content-Location: 
+ http://www.yadda.edu/~studentb/ ... you've successfully poluted a cache. 
+ 
+ Dean
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Sep 18 12:58:59 PDT 1997
+State-Changed-Why:
+Apache may at some future time use Content-Location, but there
+does not seem to be any benefit to using it at the moment.  The
+main intention of Content-Location was to support browser/editor
+applications, so that they would know what URL to attempt to edit.
+But there is other work in this area at the moment which may
+supercede Content-Location.
+
+Dean
+>Unformatted:
+
+
+
+
+

@@ -1,0 +1,91 @@
+Received: (qmail 17416 invoked by uid 2012); 27 Mar 1998 17:05:24 -0000
+Message-Id: <19980327170524.17415.qmail@hyperreal.org>
+Date: 27 Mar 1998 17:05:24 -0000
+From: Rein Tollevik <reint@sys.sol.no>
+Reply-To: reint@sys.sol.no
+To: apbugs@hyperreal.org
+Subject: RLimitCPU directive not working due to SIGXCPU signal being ignored
+X-Send-Pr-Version: 3.2
+
+>Number:         2009
+>Category:       os-solaris
+>Synopsis:       RLimitCPU directive not working due to SIGXCPU signal being ignored
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Mar 27 09:10:00 PST 1998
+>Last-Modified:  Fri Mar 27 11:47:07 PST 1998
+>Originator:     reint@sys.sol.no
+>Organization:
+>Release:        1.3beta5
+>Environment:
+SunOS www-test1.sol.no 5.5.1 Generic_103640-12 sun4m sparc SUNW,SPARCstation-4
+>Description:
+On Solaris, the SIGXCPU signal is set to be ignored when Apache is started
+by init from a script in /etc/rc2.d.  As a result, cgi scripts are not killed
+when their CPU time limit has expired.  The fix is to reset the handling of
+SIGXCPU signals to SIG_DFL, as the patch does.
+>How-To-Repeat:
+
+>Fix:
+diff -c apache/src/main/http_main.c:1.1.1.9 apache/src/main/http_main.c:1.9
+*** apache/src/main/http_main.c:1.1.1.9	Wed Mar 11 10:58:12 1998
+--- apache/src/main/http_main.c	Fri Mar 27 14:44:14 1998
+***************
+*** 2259,2264 ****
+--- 2260,2275 ----
+      if (sigaction(SIGINT, &sa, NULL) < 0)
+          aplog_error(APLOG_MARK, APLOG_WARNING, server_conf, "sigaction(SIGINT)");
+  #endif
++ #ifdef SIGXCPU
++     sa.sa_handler = SIG_DFL;
++     if (sigaction(SIGXCPU, &sa, NULL) < 0)
++ 	aplog_error(APLOG_MARK, APLOG_WARNING, server_conf, "sigaction(SIGXCPU)");
++ #endif
++ #ifdef SIGXFSZ
++     sa.sa_handler = SIG_DFL;
++     if (sigaction(SIGXFSZ, &sa, NULL) < 0)
++ 	aplog_error(APLOG_MARK, APLOG_WARNING, server_conf, "sigaction(SIGXFSZ)");
++ #endif
+  
+      /* we want to ignore HUPs and USR1 while we're busy processing one */
+      sigaddset(&sa.sa_mask, SIGHUP);
+***************
+*** 2280,2285 ****
+--- 2291,2302 ----
+  #ifdef SIGABRT
+  	signal(SIGABRT, sig_coredump);
+  #endif /* SIGABRT */
++ #ifdef SIGXCPU
++ 	signal(SIGXCPU, SIG_DFL);
++ #endif /* SIGXCPU */
++ #ifdef SIGXFSZ
++ 	signal(SIGXFSZ, SIG_DFL);
++ #endif /* SIGXFSZ */
+      }
+  
+      signal(SIGTERM, sig_term);
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Mar 27 11:47:07 PST 1998
+State-Changed-Why:
+Oh yuck, I thought signals were all reset to default across
+exec()... but nope you're right, SIG_IGN is maintained across
+exec.  That seems wrong.  But oh well.  Thanks for the patch,
+I applied it to 1.3b6-dev.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,210 @@
+Received: (qmail 6456 invoked by uid 2012); 28 Jan 1999 00:04:50 -0000
+Message-Id: <19990128000450.6455.qmail@hyperreal.org>
+Date: 28 Jan 1999 00:04:50 -0000
+From: Vladimir Pastukhov <vol@escortcorp.com>
+Reply-To: vol@escortcorp.com
+To: apbugs@hyperreal.org
+Subject: SERVER_PORT is always 80 if client comes to any port and doesn't send 'Host:'
+X-Send-Pr-Version: 3.2
+
+>Number:         3787
+>Category:       general
+>Synopsis:       SERVER_PORT is always 80 if client comes to any port and doesn't send 'Host:'
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan 27 16:10:01 PST 1999
+>Last-Modified:
+>Originator:     vol@escortcorp.com
+>Organization:
+apache
+>Release:        1.3.4
+>Environment:
+Linux 2.0 (doesn't take sense)
+>Description:
+From http.conf:
+---
+#Port 80
+Listen 81
+Listen 82
+UseCanonicalName Off
+---
+If client comes to port 81 or 82 and doesn't send the Host: header,
+SERVER_PORT will be set to 80 (that is, ap_get_server_port(r) will
+always return ap_default_port(r) value). As a result, CGI scripts,
+mod_rewrite rules, etc. that depend on incoming port may work
+incorrectly. Server signatures look wrong too.
+
+If client sends 'Host:' (no matter if it is in form 'server:port' or
+just 'server'), SERVER_PORT will be set to the corresponding local
+port (81 or 82).
+
+This issue affects both 'main' server and virtualhosts.
+>How-To-Repeat:
+pvl ttyp0:~$ telnet localhost 81
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+GET /cgi-bin/printenv HTTP/1.0
+
+HTTP/1.1 200 OK
+Server: Apache/1.3.4
+....
+REQUEST_URI = /cgi-bin/printenv<BR>
+SERVER_PORT = 80<BR>
+....
+
+pvl ttyp0:~$ telnet localhost 81
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+GET /cgi-bin/printenv HTTP/1.0
+Host: localhost
+
+HTTP/1.1 200 OK
+....
+SERVER_PORT = 81<BR>
+HTTP_HOST = localhost<BR>
+....
+>Fix:
+The following patch against 1.3.4 fixes this. It also implements
+additional UseCanonicalName value - "NameOnly". In this case apache
+will construct self-referential URLs from ServerName, but new port
+will be the same as one where the request came to.
+
+**********
+--- ./src/include/http_core.h.orig	Sat Jan  2 00:04:20 1999
++++ ./src/include/http_core.h	Thu Jan 27 23:48:58 1999
+@@ -228,6 +228,9 @@
+      */
+     unsigned d_is_fnmatch : 1;
+ 
++    /* takes sense only if use_canonical_name is on */
++    unsigned use_canonical_port : 1;
++
+     /* System Resource Control */
+ #ifdef RLIMIT_CPU
+     struct rlimit *limit_cpu;
+--- ./src/main/http_core.c.orig	Fri Jan  8 01:46:38 1999
++++ ./src/main/http_core.c	Thu Jan 27 23:48:58 1999
+@@ -128,6 +128,7 @@
+     conf->content_md5 = 2;
+ 
+     conf->use_canonical_name = 1 | 2;	/* 2 = unset, default on */
++    conf->use_canonical_port = 1;
+ 
+     conf->hostname_lookups = HOSTNAME_LOOKUP_UNSET;
+     conf->do_rfc1413 = DEFAULT_RFC1413 | 2; /* set bit 1 to indicate default */
+@@ -236,6 +237,7 @@
+     }
+     if ((new->use_canonical_name & 2) == 0) {
+ 	conf->use_canonical_name = new->use_canonical_name;
++	conf->use_canonical_port = new->use_canonical_port;
+     }
+ 
+ #ifdef RLIMIT_CPU
+@@ -679,11 +681,10 @@
+     
+     port = r->server->port ? r->server->port : ap_default_port(r);
+ 
+-    if (d->use_canonical_name & 1) {
++    if (d->use_canonical_name & 1 && d->use_canonical_port & 1) {
+ 	return port;
+     }
+-    return r->hostname ? ntohs(r->connection->local_addr.sin_port)
+-		       : port;
++    return ntohs(r->connection->local_addr.sin_port);
+ }
+ 
+ API_EXPORT(char *) ap_construct_url(pool *p, const char *uri,
+@@ -694,23 +695,15 @@
+     core_dir_config *d =
+       (core_dir_config *)ap_get_module_config(r->per_dir_config, &core_module);
+ 
+-    if (d->use_canonical_name & 1) {
++    host = !(d->use_canonical_name & 1) && r->hostname ?
++		r->hostname : r->server->server_hostname;
++
++    if (d->use_canonical_name & 1 && d->use_canonical_port & 1) {
+ 	port = r->server->port ? r->server->port : ap_default_port(r);
+-	host = r->server->server_hostname;
++    } else {
++	port = ntohs(r->connection->local_addr.sin_port);
+     }
+-    else {
+-        if (r->hostname) {
+-            port = ntohs(r->connection->local_addr.sin_port);
+-	}
+-        else if (r->server->port) {
+-            port = r->server->port;
+-	}
+-        else {
+-            port = ap_default_port(r);
+-	}
+ 
+-	host = r->hostname ? r->hostname : r->server->server_hostname;
+-    }
+     if (ap_is_default_port(port, r)) {
+ 	return ap_pstrcat(p, ap_http_method(r), "://", host, uri, NULL);
+     }
+@@ -1923,15 +1916,27 @@
+ }
+ 
+ static const char *set_use_canonical_name(cmd_parms *cmd, core_dir_config *d, 
+-					  int arg)
++					  char *arg)
+ {
+     const char *err = ap_check_cmd_context(cmd, NOT_IN_LIMIT);
+ 
+     if (err != NULL) {
+ 	return err;
+     }
+-    
+-    d->use_canonical_name = arg != 0;
++
++    if (!strcasecmp(arg, "nameonly")) {
++	d->use_canonical_name = 1;
++	d->use_canonical_port = 0;
++    }
++    else if (!strcasecmp(arg, "on")) {
++	d->use_canonical_name = 1;
++    }
++    else if (!strcasecmp(arg, "off")) {
++	d->use_canonical_name = 0;
++    }
++    else {
++	return "parameter must be 'on', 'off', or 'nameonly'";
++    }
+     return NULL;
+ }
+ 
+@@ -2588,9 +2593,8 @@
+   "Enable identd (RFC 1413) user lookups - SLOW" },
+ { "ContentDigest", set_content_md5, NULL, OR_OPTIONS,
+   FLAG, "whether or not to send a Content-MD5 header with each request" },
+-{ "UseCanonicalName", set_use_canonical_name, NULL,
+-  OR_OPTIONS, FLAG,
+-  "Whether or not to always use the canonical ServerName : Port when "
++{ "UseCanonicalName", set_use_canonical_name, NULL, OR_OPTIONS, TAKE1,
++  "Whether or not to always use the canonical ServerName [: Port] when "
+   "constructing URLs" },
+ { "StartServers", set_daemons_to_start, NULL, RSRC_CONF, TAKE1,
+   "Number of child processes launched at server startup" },
+**********
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

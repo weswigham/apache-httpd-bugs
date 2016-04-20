@@ -1,0 +1,118 @@
+Received: (qmail 91743 invoked by uid 501); 27 Nov 2000 20:58:02 -0000
+Message-Id: <20001127205802.91741.qmail@locus.apache.org>
+Date: 27 Nov 2000 20:58:02 -0000
+From: Keith Warno <kw@valaran.com>
+Reply-To: kw@valaran.com
+To: submit@bugz.apache.org
+Subject: Possible DoS caused by local ErrorDocument w/ relative <link> tags (maybe other tags as well).
+X-Send-Pr-Version: 3.110
+
+>Number:         6898
+>Category:       general
+>Synopsis:       Possible DoS caused by local ErrorDocument w/ relative <link> tags (maybe other tags as well).
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Nov 27 13:20:14 PST 2000
+>Closed-Date:    Tue Nov 28 10:37:39 PST 2000
+>Last-Modified:  Tue Nov 28 10:37:39 PST 2000
+>Originator:     kw@valaran.com
+>Release:        1.3.14
+>Organization:
+>Environment:
+Linux www 2.2.17 #1 Tue Oct 3 18:59:16 EDT 2000 i586 unknown
+gcc version egcs-2.91.66 19990314/Linux (egcs-1.1.2 release)
+>Description:
+It appears that a DoS -- or at least a log flooding -- is possible if apache is
+configured to display an local, custom error document in response to say, error
+404.  The custom error document must contain a <link> tag that in turn contains
+a relative href attribute, ie, <link rel=stylesheet href=foo/bar.css>.  If a
+request is made for a *directory* that does not exist, an an attempt to access
+non-existant-dir/foo/bar.css, which in turn does not exist.  We then wind up with
+a request for non-existant-dir/foo/foo/bar.css, which doesn't exist, then
+non-existant-dir/foo/foo/foo/bar.css, etc etc until something blows up.
+
+From my access log:
+
+192.168.1.212 - - [27/Nov/2000:15:12:40 -0500] "GET /foo/images/styles.css HTTP/1.0" 404 859
+192.168.1.212 - - [27/Nov/2000:15:12:40 -0500] "GET /foo/images/images/styles.css HTTP/1.0" 404 859
+192.168.1.212 - - [27/Nov/2000:15:12:40 -0500] "GET /foo/images/images/images/styles.css HTTP/1.0" 404 859
+192.168.1.212 - - [27/Nov/2000:15:12:40 -0500] "GET /foo/images/images/images/images/styles.css HTTP/1.0" 404 859
+192.168.1.212 - - [27/Nov/2000:15:12:40 -0500] "GET /foo/images/images/images/images/images/styles.css HTTP/1.0" 404 859
+192.168.1.212 - - [27/Nov/2000:15:12:40 -0500] "GET /foo/images/images/images/images/images/images/styles.css HTTP/1.0" 404 859
+192.168.1.212 - - [27/Nov/2000:15:12:40 -0500] "GET /foo/images/images/images/images/images/images/images/styles.css HTTP/1.0" 404 859
+...
+
+(sorry for any wrapping)
+
+I was using Netscape 4.76 under Linux when I found this problem.  This appears
+to in fact be a Netscape flaw (or a combination of Netscape+apache) because
+this does not happen with IE 5.0+ wunder windows 2000 (but it does happen with
+Netscape under windows 2000).
+>How-To-Repeat:
+1) Configure apache to display a custom error 404 message:
+ErrorDocument 404 /error404.html
+2) Construct /error404.html such that it contains a <link> tag with a href
+attribute that is relative.  To see the staircase effect described above, be
+sure the href contains at least one directory component.
+3) From netscape, request a directory that does not exist on the web
+server.
+>Fix:
+The simplest way is not to use <link> in a custom error document.  Otherwise,
+the admin should ensure that all hrefs in a custom error document are absolute.
+The apache manual should mention somthing to this effect; it should explain to
+the user that a faulty custom error document could get apache caught in a loop.
+>Release-Note:
+>Audit-Trail:
+Comment-Added-By: fanf
+Comment-Added-When: Mon Nov 27 16:54:49 PST 2000
+Comment-Added:
+You can probably also work around this problem by turning off
+MultiViews.
+State-Changed-From-To: open-closed
+State-Changed-By: slive
+State-Changed-When: Tue Nov 28 10:37:38 PST 2000
+State-Changed-Why:
+
+This is not an Apache flaw.  It is a combination of two
+problems:
+
+1. You should never use relative references in 
+ErrorDocument's.  There is no way to know what
+base directory the client thinks it is originating from,
+so relative references will always be dangerous.
+
+2. Netscape has a bad habit of serving the 
+ErrorDocument when it can't locate a CSS page.
+It should be just ignoring the CSS page in
+this case and serving the original document.
+This is a client bug.
+
+In any case, this is not a real denial-of-service
+attack.  It is just a client going nuts.  You
+can avoid it, as you mentioned, by not
+using relative references in ErrorDocuments.
+
+Thanks for using Apache.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

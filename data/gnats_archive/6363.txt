@@ -1,0 +1,96 @@
+Received: (qmail 91604 invoked by uid 501); 2 Aug 2000 14:12:59 -0000
+Message-Id: <20000802141259.91603.qmail@locus.apache.org>
+Date: 2 Aug 2000 14:12:59 -0000
+From: Jesse Pelton <jsp@pkc.com>
+Reply-To: jsp@pkc.com
+To: submit@bugz.apache.org
+Subject: mod_isapi unnecessarily limits request data size to 48K
+X-Send-Pr-Version: 3.110
+
+>Number:         6363
+>Category:       mod_isapi
+>Synopsis:       mod_isapi unnecessarily limits request data size to 48K
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Aug 02 07:20:02 PDT 2000
+>Closed-Date:    Sun Aug 06 08:32:06 PDT 2000
+>Last-Modified:  Sun Aug 06 08:32:06 PDT 2000
+>Originator:     jsp@pkc.com
+>Release:        1.3.12
+>Organization:
+>Environment:
+Windows 2000, MSVC 6.0 SP3
+>Description:
+isapi_handler() in mod_isapi.c refuses requests that contain more than 48K of data.  I think it's time to raise the limit or remove it entirely.
+
+The following appears in the code (in Apache 2.0a4 as well as 1.3.12):
+
+	/* Unlike IIS, which limits this to 48k, we read the whole
+	 * sucker in. I suppose this could be bad for memory if someone
+	 * uploaded the complete works of Shakespeare. Well, WebSite
+	 * does the same thing.
+	 */
+	long to_read = atol(ap_table_get(e, "CONTENT_LENGTH"));
+	long read;
+
+	/* Actually, let's cap it at 48k, until we figure out what
+	 * to do with this... we don't want a Content-Length: 1000000000
+	 * taking out the machine.
+	 */
+
+The first comment no longer reflects reality.  I've tested with requests over 300K, and IIS 5.0 passes them along to my ISA intact.  If there's a limit, I don't know what it is.
+
+The second comment presumably could be applied to requests to CGI scripts as well, but cgi_handler() doesn't appear to limit the size of requests that it will handle.
+>How-To-Repeat:
+Create a form that submits over 48K of data to an ISA.  Any old ISA will do, since it won't actually receive the data.
+>Fix:
+In the interest of consistency and usefulness, I'd suggest removing the limit in mod_isapi.c by deleting the following lines (245-255):
+
+	/* Actually, let's cap it at 48k, until we figure out what
+	 * to do with this... we don't want a Content-Length: 1000000000
+	 * taking out the machine.
+	 */
+
+	if (to_read > 49152) {
+	    if (isapi_term) (*isapi_term)(HSE_TERM_MUST_UNLOAD);
+	    FreeLibrary(isapi_handle);
+	    return HTTP_REQUEST_ENTITY_TOO_LARGE;
+	}
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Sun Aug  6 08:32:06 PDT 2000
+State-Changed-Why:
+
+This behavior is by design.  Larger (or unlimited) immediate
+acceptance would subject the server to attack via memory
+flood.  Apache 2.0 may include the ReadClient support to
+retrieve the remaining transmision, perhaps a config param
+to change this default, but there are no promises yet.
+Please email (don't reply to this bug report) if you would
+be interested in testing such changes for 2.0.
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

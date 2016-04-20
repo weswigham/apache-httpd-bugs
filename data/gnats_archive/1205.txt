@@ -1,0 +1,102 @@
+From apwww@hyperreal.org  Mon Oct  6 21:58:28 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id VAA00169;
+	Mon, 6 Oct 1997 21:58:28 -0700 (PDT)
+Message-Id: <199710070458.VAA00169@hyperreal.org>
+Date: Mon, 6 Oct 1997 21:58:28 -0700 (PDT)
+From: Dean Gaudet <dgaudet@apache.org>
+Reply-To: dgaudet@apache.org
+To: apbugs@hyperreal.org
+Subject: more mod_mime_magic issues
+X-Send-Pr-Version: 3.2
+
+>Number:         1205
+>Category:       general
+>Synopsis:       more mod_mime_magic issues
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Oct  6 22:00:04 1997
+>Last-Modified:  Thu Jan 22 09:24:27 PST 1998
+>Originator:     dgaudet@apache.org
+>Organization:
+>Release:        1.3
+>Environment:
+n/a
+>Description:
+mod_mime_magic uses open() without alarm protection.  It should use popen().
+
+Look for aplog_error() lines followed by NOTREACHED -- there's at least one
+in magic_process() which is wrong.  It is definately reached, aplog_error
+doesn't abort anything.
+
+What's a "BOINK" error?  A bit more informative would be good.
+
+It should use the spawn functionality rather than fork()/exec() ... because
+it has potential resource leaks as it is right now.
+
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sun Oct 26 12:32:08 PST 1997
+State-Changed-Why:
+Fixing this now.
+Responsible-Changed-From-To: apache (Apache HTTP Project)-dgaudet
+Responsible-Changed-By: dgaudet
+Responsible-Changed-When: Sun Oct 26 12:32:08 PST 1997
+Responsible-Changed-Why:
+God GNATS is anal
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Oct 30 11:21:53 PST 1997
+State-Changed-Why:
+In 1.3b3:
+
+Bug Fixes:
+
+- gzip -cdq requires at least 4k of a partial gzipped file, we
+were sending it only 1k, and it wouldn't produce any output.  But raising
+HOWMANY to 4k has implications on the performance of the (lame) ascmagic()
+code.  So ascmagic() cheats and only looks at 1k (the previous HOWMANY
+setting)
+
+- use spawn_child() interface to avoid a resource leak (zombie
+child); I don't think even worked on WIN32 before, but it might now... I
+special case and use spawnvp() on WIN32.
+
+- use pfopen()/popenf() to avoid resource leaks
+
+Cleanups:
+
+- no need to test return from palloc since it never returns NULL
+
+- ensure all log messages include the module name
+
+- Some cases were assuming that aplog_error was a never returning
+    function.  Deal gracefully by propagating an error code back
+    up the call chain.
+
+- remove some useless code in fsmagic() -- we don't use lstat(), we
+    use stat() so the only possibility where we'll get S_IFLNK is
+    if it's a broken symlink.
+
+- for various errors just DECLINE rather than cause the phase to abort
+    early (a lesson we're learning from all the M_PUT changes we've
+    had recently)
+
+Responsible-Changed-From-To: dgaudet-apache
+Responsible-Changed-By: coar
+Responsible-Changed-When: Thu Jan 22 09:24:26 PST 1998
+Responsible-Changed-Why:
+Putting back into mainstream bugdb
+>Unformatted:
+
+

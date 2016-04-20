@@ -1,0 +1,102 @@
+Received: (qmail 1972 invoked by uid 2012); 25 Aug 1999 02:19:19 -0000
+Message-Id: <19990825021919.1971.qmail@hyperreal.org>
+Date: 25 Aug 1999 02:19:19 -0000
+From: Tim Zingelman <zingelman@fnal.gov>
+Reply-To: zingelman@fnal.gov
+To: apbugs@hyperreal.org
+Subject: ErrorDocument redirect to servlet causes crash
+X-Send-Pr-Version: 3.2
+
+>Number:         4901
+>Category:       mod_jserv
+>Synopsis:       ErrorDocument redirect to servlet causes crash
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Aug 24 19:20:00 PDT 1999
+>Last-Modified:  Wed Aug 25 12:43:59 PDT 1999
+>Originator:     zingelman@fnal.gov
+>Organization:
+>Release:        apache_1.3.6 + ApacheJServ-1.0
+>Environment:
+FreeBSD 3.2-STABLE, jdk1.1.8 (no jit)
+>Description:
+in mod_jserv.c:1495 if (strcasecmp(r->prev->handler,"jserv-action")==0),
+r->prev->handler is null if we are redirected here via an ErrorDocument
+directive (ie. ErrorDocument 404 /servlets/help) and this causes a crash.
+
+[Tue Aug 24 18:00:38 1999] [notice] child pid 13535 exit signal Segmentation fault (11)
+
+I'm not sure the full fix, but adding code to check r->prev->handler!=NULL but
+then still assigning r->path_info=r->prev->uri got me what I needed.
+>How-To-Repeat:
+ErrorDocument 404 /servlets/trivialservlet
+http://yourserver/non-existing-file.html
+>Fix:
+As above, yes at least in part.  I do need the path_info from the previous
+request, to write a reasonable error servlet, but I have not dug deep enough
+to know everything that is going on here... this is a diff -c
+
+*** mod_jserv.c_orig    Tue Aug 24 20:59:34 1999
+--- mod_jserv.c Tue Aug 24 21:10:40 1999
+***************
+*** 1491,1503 ****
+                }
+      /* If this was an internal redirection from Apache JServ then our path_info is
+         previous uri */
+!     if (r->prev!=NULL)
+        if (strcasecmp(r->prev->handler,"jserv-action")==0) {
+            /* Remove date header (FIX BUG: StringIndexOutOfBoundsException) */
+            ap_table_unset(r->headers_in,"If-Modified-Since");
+            r->path_info=r->prev->uri;
+            r->filename=NULL;
+        }
+
+  
+      /* Check if we have a per request or per server protocol and use it */
+      if (req->mount->protocol!=NULL) proto=req->mount->protocol;
+--- 1491,1509 ----
+                }
+      /* If this was an internal redirection from Apache JServ then our path_info is
+         previous uri */
+!     if (r->prev!=NULL) {
+!       if (r->prev->handler!=NULL) {
+        if (strcasecmp(r->prev->handler,"jserv-action")==0) {
+            /* Remove date header (FIX BUG: StringIndexOutOfBoundsException) */
+            ap_table_unset(r->headers_in,"If-Modified-Since");
+            r->path_info=r->prev->uri;
+            r->filename=NULL;
+        }
++       }
++       if (r->prev->status==404) {
++       r->path_info=r->prev->uri;
++       }
++     }
+  
+      /* Check if we have a per request or per server protocol and use it */
+      if (req->mount->protocol!=NULL) proto=req->mount->protocol;
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: jon@clearink.com
+State-Changed-When: Wed Aug 25 12:43:57 PDT 1999
+State-Changed-Why:
+your patch has been committed to cvs. thanks.
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

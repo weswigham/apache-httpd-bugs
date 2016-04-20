@@ -1,0 +1,64 @@
+Received: (qmail 16507 invoked by uid 2012); 25 Nov 1999 12:43:59 -0000
+Message-Id: <19991125124359.16506.qmail@hyperreal.org>
+Date: 25 Nov 1999 12:43:59 -0000
+From: Oren Ben-Kiki <oren@capella.co.il>
+Reply-To: oren@capella.co.il
+To: apbugs@hyperreal.org
+Subject: Default value for wrapper.env.copy is not useful; error logging is incomplete.
+X-Send-Pr-Version: 3.2
+
+>Number:         5364
+>Category:       mod_jserv
+>Synopsis:       Default value for wrapper.env.copy is not useful; error logging is incomplete.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    jserv
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Nov 25 04:50:00 PST 1999
+>Last-Modified:
+>Originator:     oren@capella.co.il
+>Organization:
+apache
+>Release:        apache-1.3.6-7.i386.rpm + ApacheJServ-1.1-b2_RH6x.i386.rpm
+>Environment:
+RedHat 6.0
+jdk-1.1.5-5.i386.rpm
+
+There are later versions of the jdk (and jserv, for that matter); the above were the most updated we could find which came in RPM format, and were "well behaved" - we found a jdk 1.1.7 RPM which did not provide /etc/profile.d/jdk.* files, and decided to stick with 1.1.5. Our goal was finding the easiest possible Apache/JServ installation for RedHat.
+>Description:
+Using the above combination, JServ refused to work unless we changed wrapper.env.copy to JAVA_HOME. It turns out (pretty reasonably) that without this environment variable, the java environment can not locate required files and fails.
+
+To complicate matters, the mod_jserv.log file did not contain the error report from running the 'java' program, even when reporting was set to the most detailed level. It therefore took us a while to pinpoint the problem.
+>How-To-Repeat:
+Install the following RPMs on a clean RedHat 6.0 machine:
+
+apache-1.3.6-7.i386.rpm
+jdk-1.1.5-5.i386.rpm
+ApacheJServ-1.1-b2_RH6x.i386.rpm
+
+Do not touch any configuration file. Try jserv, as in http://localhost/jserv/ or http://localhost/servlet/IsItWorking; it will not run. Try increasing the level of detail of the error messages - you'll not get the error message printed by the "java" program. The clue that it is the problematic point is that the JVM keeps getting respawned, and that Apache fails to connect to the jserv server;  (these are reported in the log file). Given this, it is easy to conclude that the 'java' command is failing, but not why. Running it manually works, since the default environment is correct (the jdk installation places it in /etc/profile.d/jdk.[c]sh). Adding wrapper.env.copy=JAVA_HOME in jserv.properties and restarting the server solves the problem.
+>Fix:
+The default wrapper.env.copy value for UNIX should be changed from "NONE" to "JAVA_HOME". It might be that other environment variables are used for other jdk/jre/java installations (e.g., JDK_HOME or JRE_HOME), in which case they should also be included.
+
+Additionally, the mod_jserv.log file should contain (at least at the "debug" level) the standard output/standard error of running the java command. If this data were available, we'd have located the problem in seconds; as it were it took us a few hours.
+
+Finally, a note in the documentation mentioning this problem would be helpful for platforms where there are other required environment variables.
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

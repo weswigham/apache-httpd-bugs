@@ -1,0 +1,113 @@
+From nobody@hyperreal.com  Thu Apr 24 03:50:41 1997
+Received: (from nobody@localhost)
+          by hyperreal.com (8.8.4/8.8.4)
+	  id DAA22850; Thu, 24 Apr 1997 03:50:41 -0700 (PDT)
+Message-Id: <199704241050.DAA22850@hyperreal.com>
+Date: Thu, 24 Apr 1997 03:50:41 -0700 (PDT)
+From: Dean Gaudet <dgaudet@apache.org>
+Reply-To: dgaudet@apache.org
+To: apbugs@hyperreal.com
+Subject: possible starved listening sockets -- httpd stops responding
+X-Send-Pr-Version: 3.2
+
+>Number:         467
+>Category:       config
+>Synopsis:       possible starved listening sockets -- httpd stops responding
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Apr 24 04:00:01 1997
+>Last-Modified:  Mon Oct 27 11:39:45 PST 1997
+>Originator:     dgaudet@apache.org
+>Organization:
+>Release:        1.2
+>Environment:
+All that do not USE_xxxxx_SERIALIZED_ACCEPT.
+>Description:
+It is possible on architectures that do not USE_xxxxx_SERIALIZED_ACCEPT
+to freeze out some listening sockets when multiple Listen directives
+are used.  The workaround is to add -DUSE_FLOCK_SERIALIZED_ACCEPT to
+the EXTRA_CFLAGS line in the Configuration file.
+
+See src/conf.h to determine if your architecture is affected.  This affects
+many architectures.
+>How-To-Repeat:
+
+>Fix:
+The permanent fix will likely involve using non-blocking listening sockets.
+But experimentation is needed to determine if it's faster to serialize
+accept()s than it is to deal with potentially many EAGAIN/EWOULDBLOCKs
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@apache.org>
+To: apbugs@apache.org
+Subject: Re: config/467: possible starved listening sockets -- httpd stops responding
+Date: Thu, 24 Apr 1997 04:02:16 -0700 (PDT)
+
+ 
+ Addendum:  If you have problems using -DUSE_FLOCK_SERIALIZED_ACCEPT then
+ you can also try -DUSE_FCNTL_SERIALIZED_ACCEPT.
+ 
+ Dean
+ 
+
+From: Dean Gaudet <dgaudet@apache.org>
+To: apbugs@apache.org
+Subject: Re: config/467: possible starved listening sockets -- httpd stops responding
+Date: Fri, 2 May 1997 15:43:26 -0700 (PDT)
+
+ 
+ Another addendum:  the current code requires you to have a /usr/tmp
+ directory (it can be a symlink to one of your other tmp directories).
+ 
+ Dean
+ 
+ 
+Comment-Added-By: dgaudet
+Comment-Added-When: Sat Jun 28 13:50:43 PDT 1997
+Comment-Added:
+Note that other symptoms that can indicate a need to use a
+serialized accept include periodic load spikes.  We are
+considering using serialized accept on more architectures
+in 1.2.1.
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Tue Oct 21 07:49:33 PDT 1997
+State-Changed-Why:
+Has this been resolved by 1.3b2?
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: coar@hyperreal.org
+Cc: apbugs@apache.org
+Subject: Re: config/467: possible starved listening sockets -- httpd stops responding
+Date: Tue, 21 Oct 1997 10:52:12 -0700 (PDT)
+
+ No, it's not resolved until every host has serialized accept, or we put in
+ a test for those without serialized accept... something like this: 
+ 
+ #if !defined(USE_xxx_SERIALIZED_ACCEPT) && !defined(USE_yyy_SERIA...
+     if (listeners->next != listeners) {
+ 	aplog_error(APLOG_MARK, APLOG_NOERRNO|APLOG_CRIT,
+ 	    "you cannot use multiple sockets safely on your system,"
+ 	    " proceeding anyway");
+     }
+ #endif
+ 
+ Dean
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Oct 27 11:39:44 PST 1997
+State-Changed-Why:
+As of 1.3b3 Apache will warn when this bug may manifest itself.
+The user then can either work around it by using only single
+Listens, or by supplying the appropriate serialization directive
+as documented in src/PORTING.
+
+Dean
+>Unformatted:
+

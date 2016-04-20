@@ -1,0 +1,105 @@
+Received: (qmail 26690 invoked by uid 2012); 17 May 1999 10:43:09 -0000
+Message-Id: <19990517104309.26689.qmail@hyperreal.org>
+Date: 17 May 1999 10:43:09 -0000
+From: "José" "María" "Fernández" "González" <jmfernandez@cnb.uam.es>
+Reply-To: jmfernandez@cnb.uam.es
+To: apbugs@hyperreal.org
+Subject: Apache reverse proxy and CGI's
+X-Send-Pr-Version: 3.2
+
+>Number:         4427
+>Category:       mod_proxy
+>Synopsis:       Apache reverse proxy and CGI's
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon May 17 03:50:01 PDT 1999
+>Last-Modified:
+>Originator:     jmfernandez@cnb.uam.es
+>Organization:
+apache
+>Release:        1.3.6
+>Environment:
+SunOS montblanc 5.7 Generic sun4u sparc SUNW,Ultra-60
+gcc version 2.8.1
+>Description:
+        I have a Apache server (called A) configured as a reverse proxy, and it passes
+some requests to a slave Apache server (called B) on another machine. My problem
+is that I have a CGI program on B and when you run against B there is no
+problem, but when you run the same CGI against A (the browser makes the request
+to A, A makes the request to B, B processes the requests, B returns the answer
+to A, and A returns the answer to the browser), it seems A is making some
+caching, because only when the CGI has finished you get the answer. I don't want
+this because the CGI program is using server push techniques to give the
+answers. I have deactivated the proxy caching, so, where is the problem? Is
+there a bug on Apache? I think the problem could be on the rewrite rule, when it
+passes what it made to the proxy module, but I'm not an Apache hacker.
+>How-To-Repeat:
+You must configure server A with two lines like these (with mod_rewrite and
+mod_proxy enabled, and proxy configuration enabled, too):
+
+RewriteRule    ^/(jmfernandez.*)$  http://A.B.C/$1 [P,L]
+ProxyPassReverse  /jmfernandez/ http://A.B.C/jmfernandez/
+
+and the server B with this configuration line:
+
+ScriptAliasMatch ^/(.*)/cgi-bin(.*)$	/usr/local/apache/htdocs/$1/cgi-bin$2
+
+On server B, at /usr/local/apache/htdocs/jmfernandez/cgi-bin, put this simple
+Perl program, and run calling through A or B, and you will be able to sense the
+differences:
+
+#!/usr/local/bin/perl -w
+
+use strict;
+&main;
+
+sub main {
+	my($dolar)=5;
+	$|=1;
+	print<<'EOF';
+Content-type: multipart/x-mixed-replace;boundary=appboundary
+
+--appboundary
+EOF
+	while($dolar--) {
+		print<<'EOF';
+Content-type: text/html
+
+<HTML>
+<META HTTP-EQUIV="Pragma" CONTENT="no-cache">
+<BODY><CENTER><H1>H O L A</H1></CENTER>
+</BODY></HTML>
+--appboundary
+EOF
+	sleep 3;
+	print<<'EOF';
+Content-type: text/html
+
+<HTML><BODY>
+<CENTER><H1>A D I O S</H1></CENTER>
+</BODY></HTML>
+--appboundary
+EOF
+	sleep 3;
+	}
+}
+>Fix:
+
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

@@ -1,0 +1,244 @@
+Received: (qmail 4077 invoked by uid 2012); 7 Aug 1998 12:29:07 -0000
+Message-Id: <19980807122907.4076.qmail@hyperreal.org>
+Date: 7 Aug 1998 12:29:07 -0000
+From: Malcolm Hutty <malcolm@ivision.co.uk>
+Reply-To: malcolm@ivision.co.uk
+To: apbugs@hyperreal.org
+Subject: Apache won't start with syntactically incorrect <virtual hosts> in httpd.conf
+X-Send-Pr-Version: 3.2
+
+>Number:         2805
+>Category:       other
+>Synopsis:       Apache won't start with syntactically incorrect <virtual hosts> in httpd.conf
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Aug  7 05:30:00 PDT 1998
+>Last-Modified:  Fri Aug  7 12:30:01 PDT 1998
+>Originator:     malcolm@ivision.co.uk
+>Organization:
+>Release:        1.3
+>Environment:
+FreeBSD flumps.ivision.co.uk 2.2.7-RELEASE FreeBSD 2.2.7-RELEASE #0: Wed Jul 22 08:48:29 GMT 1998
+  root@builder.cdrom.com:/usr/src/sys/compile/GENERIC  i386
+>Description:
+If httpd.conf has syntactically incorrect information Apache won't start.
+This applies even if the only error is for a single <virtual host>.
+Especially for ISPs running apache with many virtual servers it would be highly 
+preferable to start apache WITHOUT the erroneously formatted virtual host,
+but WITH all other virtual hosts running normally.
+>How-To-Repeat:
+
+>Fix:
+First check syntax on each virtual host individually. Then, ignore any incorrectly 
+formatted virtual hosts. Log that Apache is starting without without the virtual host to 
+STDERR and/or Syslog. Start apache with remaining virtual hosts.
+
+
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Fri Aug  7 10:37:07 PDT 1998
+State-Changed-Why:
+It is a very bad thing to magically ignore settings that
+are incorrect.  There is no way to tell if it is just
+an unimportant vhost that can be ignored or if it is
+a very important directive that will result in major
+problems (eg. huge security hole) if not done properly.
+
+You can't let just anyone edit your *.conf files anyway, so
+I really don't see the point of ignoring errors.  If you
+want, you can run "httpd -t" (or apachectl configtest) to
+test config files before restarting.
+
+From: Marc Slemko <marcs@znep.com>
+To: apbugs@apache.org
+Cc:  Subject: Re: other/2805: Apache won't start with syntactically incorrect
+ <virtual hosts>< (fwd)
+Date: Fri, 7 Aug 1998 12:19:50 -0700 (PDT)
+
+ ---------- Forwarded message ----------
+ Date: Fri, 7 Aug 1998 20:17:45 +0100
+ From: Malcolm Hutty <malcolm@ivision.co.uk>
+ To: apache-bugdb@apache.org,
+     marc@apache.org,
+     marc@hyperreal.org
+ Subject: Re: other/2805: Apache won't start with syntactically incorrect
+     <virtual hosts><
+ 
+ > Synopsis: Apache won't start with syntactically incorrect <virtual hosts>
+ > in httpd.conf
+ > It is a very bad thing to magically ignore settings that
+ > are incorrect.  There is no way to tell if it is just
+ > an unimportant vhost that can be ignored or if it is
+ > a very important directive that will result in major
+ > problems (eg. huge security hole) if not done properly.
+ 
+ My bug report is a serious ISP situation.
+ 
+ There is a big difference between ignoring an incorrect directive and not setting 
+ up one of the several virtual servers: Apache is commonly run with many 
+ independent IP based virtual servers. You cannot tell if a directive is important, 
+ but it is always true is that one less virtual server is better than none at all.
+ 
+ If a directive for a virtual host is malformed it could result in that server being 
+ compromised, and so that virtual host should not be started. However that 
+ malformed directive would only have affected a single virtual host if it had 
+ succeeded, so it should only affect that one if it fails. Of course, my bug report 
+ does not apply to global directives.
+ 
+ Example:
+ 
+ <virtualhost 10.1.1.1>
+ # This works
+ DocumentRoot /usr/httpd/htdocs1
+ RewriteRule  ^/private/(.*) /cgi-bin/private.cgi?$1
+ </virtualhost>
+ 
+ <virtualhost 10.1.1.2>
+ # This fails 
+ DocumentRoot /usr/httpd/htdocs2
+ ReriteRul  ^/private/(.*) /cgi-bin/private.cgi?$1
+ </virtualhost>
+ 
+ I can't see why 10.1.1.1 should not start, with 10.1.1.2 failing.
+  
+ > You can't let just anyone edit your *.conf files anyway, so
+ > I really don't see the point of ignoring errors.  If you
+ > want, you can run "httpd -t" (or apachectl configtest) to
+ > test config files before restarting.
+  
+ As an ISP we give each of our customers their own virtualhost.
+ We would like to be able to give them an interface to insert their own
+ directives, at their own risk. 
+ 
+ We can make our own interface so that they can only edit their own bit of 
+ httpd.conf. Obviously they won't get direct access, but figure:
+ 
+ ....
+ <virtualhost 10.1.1.1>
+ #### PERL MATCH ME
+ #### INSERT FILE : /home/10.1.1.1/Apache.conf
+ #### END PERL MATCH
+ </virtualhost>
+ 
+ Then Perl script generates a new httpd.conf and a Suid program simply restarts 
+ server.
+ 
+ However we can't give let our customers insert their own directives if screwing 
+ up their own server would also screw everyone else's.
+ 
+ --------------------------------------------------------------------------
+ Internet Vision          Internet Consultancy           Tel: 0171 589 4500 
+ 60 Albert Court            & Web development            Fax: 0171 589 4522 
+ Prince Consort Road                            E-mail:vision@ivision.co.uk
+ London SW7 2BE                               Web: http://www.ivision.co.uk
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Malcolm Hutty <malcolm@ivision.co.uk>
+Cc: apbugs@apache.org
+Subject: Re: other/2805: Apache won't start with syntactically incorrect
+ <virtual hosts><
+Date: Fri, 7 Aug 1998 12:22:57 -0700 (PDT)
+
+ On Fri, 7 Aug 1998, Malcolm Hutty wrote:
+ 
+ > > Synopsis: Apache won't start with syntactically incorrect <virtual hosts>
+ > > in httpd.conf
+ > > It is a very bad thing to magically ignore settings that
+ > > are incorrect.  There is no way to tell if it is just
+ > > an unimportant vhost that can be ignored or if it is
+ > > a very important directive that will result in major
+ > > problems (eg. huge security hole) if not done properly.
+ > 
+ > My bug report is a serious ISP situation.
+ > 
+ > There is a big difference between ignoring an incorrect directive and not setting 
+ > up one of the several virtual servers: Apache is commonly run with many 
+ > independent IP based virtual servers. You cannot tell if a directive is important, 
+ > but it is always true is that one less virtual server is better than none at all.
+ 
+ Perhaps it is always true for _YOU_, but that is a very dangerous
+ assumption to make in the general case.  It could lead to anything from
+ serious security holes to very embarassing situations if the wrong
+ documentroot is used for things.
+ 
+ > 
+ > If a directive for a virtual host is malformed it could result in that server being 
+ > compromised, and so that virtual host should not be started. However that 
+ > malformed directive would only have affected a single virtual host if it had 
+ > succeeded, so it should only affect that one if it fails. Of course, my bug report 
+ > does not apply to global directives.
+ > 
+ > Example:
+ > 
+ > <virtualhost 10.1.1.1>
+ > # This works
+ > DocumentRoot /usr/httpd/htdocs1
+ > RewriteRule  ^/private/(.*) /cgi-bin/private.cgi?$1
+ > </virtualhost>
+ > 
+ > <virtualhost 10.1.1.2>
+ > # This fails 
+ > DocumentRoot /usr/httpd/htdocs2
+ > ReriteRul  ^/private/(.*) /cgi-bin/private.cgi?$1
+ > </virtualhost>
+ > 
+ > I can't see why 10.1.1.1 should not start, with 10.1.1.2 failing.
+ 
+ There are many cases where it isn't that simple.  Apache shouldn't be
+ randomly guessing when ti ignore directives.
+ 
+ >  
+ > > You can't let just anyone edit your *.conf files anyway, so
+ > > I really don't see the point of ignoring errors.  If you
+ > > want, you can run "httpd -t" (or apachectl configtest) to
+ > > test config files before restarting.
+ >  
+ > As an ISP we give each of our customers their own virtualhost.
+ > We would like to be able to give them an interface to insert their own
+ > directives, at their own risk. 
+ > 
+ > We can make our own interface so that they can only edit their own bit of 
+ > httpd.conf. Obviously they won't get direct access, but figure:
+ > 
+ > ....
+ > <virtualhost 10.1.1.1>
+ > #### PERL MATCH ME
+ > #### INSERT FILE : /home/10.1.1.1/Apache.conf
+ > #### END PERL MATCH
+ > </virtualhost>
+ > 
+ > Then Perl script generates a new httpd.conf and a Suid program simply restarts 
+ > server.
+ 
+ And you just opened up your server to massive security holes.  We don't
+ support that either.  You can't just give untrusted users the ability to
+ make almost arbitrary modifications to your config file.
+ 
+ > However we can't give let our customers insert their own directives if screwing 
+ > up their own server would also screw everyone else's.
+ 
+ Checking that the config file is valid won't do much to stop that.
+ Regardless, as I already told you, you can just use the -t option to check
+ a config file to see if it has syntax errors before accepting their
+ changes.
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

@@ -1,0 +1,114 @@
+Received: (qmail 18424 invoked by uid 2012); 30 May 1999 03:01:47 -0000
+Message-Id: <19990530030147.18423.qmail@hyperreal.org>
+Date: 30 May 1999 03:01:47 -0000
+From: Matthew Braithwaite <mab@alink.net>
+Reply-To: mab@alink.net
+To: apbugs@hyperreal.org
+Subject: Apache doesn't know how to build DSO support for BSD/OS 3
+X-Send-Pr-Version: 3.2
+
+>Number:         4496
+>Category:       os-bsdi
+>Synopsis:       Apache doesn't know how to build DSO support for BSD/OS 3
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat May 29 20:10:00 PDT 1999
+>Last-Modified:
+>Originator:     mab@alink.net
+>Organization:
+apache
+>Release:        1.3.6
+>Environment:
+BSD/OS 3.1, fully patched or nearly so.
+BSD/OS lc.alink.net 3.1 BSDI BSD/OS 3.1 Kernel #16: Fri Jan 22 14:42:48 PST 1999     root@lc.alink.net:/usr/src/sys/compile/ALINK  i386
+>Description:
+There are two problems.  First, GuessOS doesn't distinguish between BSD/OS 3
+and BSD/OS 4.  It must, because the correct procedure for building DSOs under 
+BSD/OS 3 is different from under BSD/OS 4.
+
+Second, of course, src/Configure lacks knowledge of how to do DSOs under 
+BSD/OS 3, although what it has for *bsdi* is correct for BSD/OS 4.
+
+I don't know when dlopen() was introduced into BSD/OS.  It is possible that the
+instructions I give for BSD/OS 3 are also correct for 2.  However, I don't have
+a BSD/OS 2 machine available to me any more.
+>How-To-Repeat:
+
+>Fix:
+Yes, here are patches:
+
+For GuessOS:
+
+*** GuessOS     1999/04/01 05:36:20     1.1.1.4
+--- GuessOS     1999/05/30 02:58:40
+***************
+*** 114,119 ****
+--- 114,127 ----
+        echo "i486-whatever-bsdi"; exit 0
+        ;;
+  
++     BSD/386:*|BSD/OS:3.*:*)
++       echo "${MACHINE}-whatever-bsdi3"; exit 0
++       ;;
++ 
++     BSD/386:*|BSD/OS:4.*:*)
++       echo "${MACHINE}-whatever-bsdi4"; exit 0
++       ;;
++ 
+      BSD/386:*|BSD/OS:*)
+        echo "${MACHINE}-whatever-bsdi"; exit 0
+        ;;
+
+and for src/Configure (note, I do *not* supply a rule for *bsdi*):
+
+*** Configure   1999/05/26 03:17:17     1.1.1.5.4.1
+--- Configure   1999/05/30 03:00:24
+***************
+*** 985,991 ****
+            LDFLAGS_SHLIB_EXPORT=""
+            SHLIB_SUFFIX_DEPTH=2
+            ;;
+!       *-bsdi)
+            CFLAGS_SHLIB="-fPIC"
+            LDFLAGS_SHLIB="-shared"
+            LDFLAGS_SHLIB_EXPORT="-rdynamic"
+--- 985,998 ----
+            LDFLAGS_SHLIB_EXPORT=""
+            SHLIB_SUFFIX_DEPTH=2
+            ;;
+!       *-bsdi3*)
+!           CFLAGS_SHLIB="-r"
+!           LDFLAGS_SHLIB="-r"
+!           LD_SHLIB="shlicc2"
+!           CC="shlicc2"
+!           LDFLAGS_SHLIB_EXPORT=" "
+!           ;;
+!       *-bsdi4*)
+            CFLAGS_SHLIB="-fPIC"
+            LDFLAGS_SHLIB="-shared"
+            LDFLAGS_SHLIB_EXPORT="-rdynamic"
+
+Note that it's important, when building for dlopen() on BSD/OS 3, that the
+compiler for httpd itself be shlicc or shlicc2.  Will setting CC in the above
+location have the desired effect?
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

@@ -1,0 +1,80 @@
+Received: (qmail 7546 invoked by uid 501); 3 Nov 2000 17:11:03 -0000
+Message-Id: <20001103171103.7545.qmail@locus.apache.org>
+Date: 3 Nov 2000 17:11:03 -0000
+From: Paul Marquis <pmarquis@iname.com>
+Reply-To: pmarquis@iname.com
+To: submit@bugz.apache.org
+Subject: Apache unneccesarily respawns child pipe processes
+X-Send-Pr-Version: 3.110
+
+>Number:         6793
+>Category:       apache-api
+>Synopsis:       Apache unneccesarily respawns child pipe processes
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Nov 03 09:20:01 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     pmarquis@iname.com
+>Release:        <= 1.3.14
+>Organization:
+apache
+>Environment:
+Linux c194.clearway.com 2.2.15pre3 #3 Sat Jan 29 18:02:45 CET 2000 ppc unknown
+Linux c178.clearway.com 2.2.14-5.0 #1 Tue Mar 7 21:07:39 EST 2000 i686 unknown
+>Description:
+When Apache is compiled with Reliable Piped Logs on UNIX, which appears to
+be the default, the caretaker process polls child processes that are log
+handlers for writability using select() to determine if the process is dead.
+If it determines the process is dead, it kills and restarts it. Unfortunately,
+select() will return a failure simply when the pipe is full and the child
+just hasn't had a chance to read it.  Child log handlers will be unnecessarily
+terminated.
+
+This problem is exacerbated on Linux where select() will return failure on
+pipes well before the pipe is full -- a single byte will cause this situation.
+This is a "feature" of select() on Linux.
+>How-To-Repeat:
+
+>Fix:
+Dean Gaudet has suggested a fix, and I include the text of a message from the
+Apache Development mailing list below:
+
+-----
+
+the test for write in the other_child code is flawed logic... the pipe
+could be unwriteable just simply because it's full.  apache shouldn't nuke
+the logger for that...
+
+my suggestion is to just get rid of the writeable test.  if a server
+blocks up because the logger is blocked it'll be obvious from the
+scoreboard, and the fix will be to kill the logger manually.
+
+as it is currently, this feature is more a liability than a feature :)
+
+(i obviously never tested it well enough under load.)
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

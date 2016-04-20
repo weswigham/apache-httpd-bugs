@@ -1,0 +1,143 @@
+Received: (qmail 6601 invoked by uid 501); 18 Feb 2002 00:28:09 -0000
+Message-Id: <20020218002809.6598.qmail@apache.org>
+Date: 18 Feb 2002 00:28:09 -0000
+From: Michael Paesold <mpaesold@gmx.at>
+Reply-To: mpaesold@gmx.at
+To: submit@bugz.apache.org
+Subject: Download problems with Internet Explorer and mod_rewrite
+X-Send-Pr-Version: 3.110
+
+>Number:         9850
+>Category:       mod_rewrite
+>Synopsis:       Download problems with Internet Explorer and mod_rewrite
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Feb 17 16:30:00 PST 2002
+>Closed-Date:    
+>Last-Modified:  Sun Feb 17 17:20:00 PST 2002
+>Originator:     mpaesold@gmx.at
+>Release:        1.3.23
+>Organization:
+apache
+>Environment:
+$ uname -a
+Linux web01.[snip] 2.2.16-22smp #1 SMP Tue Aug 22 16:39:21 EDT 2000 i686 unknown
+
+$ gcc -v
+Reading specs from /usr/lib/gcc-lib/i386-redhat-linux/2.96/specs
+gcc version 2.96 20000731 (Red Hat Linux 7.0)
+
+$ cat /etc/redhat-release 
+Red Hat Linux release 7.0 (Guinness)
+>Description:
+setup:
+Internet Explorer (5.0 - 6.0 tested)
+apache webserver (1.3.20 and 1.3.23 tested)
+apache with mod_rewrite
+
+When downloading a file (e.g. a zip file, NOT html, jpeg etc.) from apache webserver WITH Internet Explorer BY entering the url MANUALLY, we get this:
+IE doesn't download the file, but waits for some seconds displaying
+("recieving file information...") and than aborts with: "filename.zip could
+not be downloaded from www.ourdomain.com. The page could not be opened....
+blablah".
+
+apache-error-log:
+(32)Broken pipe: client stopped connection before send mmap completed
+
+This problem does not exist with standard apache setup (tested), it does only exist with SOME mod_rewrite setup! (tested) With standard setup it downloads the files within a moment.
+
+This is the part of our rewrite rules, that cause the problems:
+
+  RewriteMap    lowercase    int:tolower
+  RewriteMap    vhost        txt:/web/conf/map_masshost
+
+  RewriteCond   ${lowercase:%{HTTP_HOST}}  ^(.+)$
+  RewriteCond   ${vhost:%1}  ^/(.*)$
+  RewriteRule   ^(.*)$  -  [E=MASS_ROOT:/web/WebSites/d/%1,E=LogCtrl:Y,S=1]
+  RewriteRule   ^(.*)$  /web/exec-bin/jump  [L,T=application/x-httpd-cgi]
+...
+...
+  RewriteRule   ^/(.*)$  %{ENV:MASS_ROOT}/$1  [L]
+
+We use the above to get the document root. It works all fine, even with the
+actual problem, there is no evidence in the logs of mod_rewrite
+(RewriteLogLevel 9), that something goes wrong. The log is fine as usual. I strongly believe, that it has got something to do either with the map lookup or with the environment variables. The problem does not occur with rewrite rules that don't include the above (has been tested).
+
+Hoping for help, Michael Paesold
+>How-To-Repeat:
+This is an example URL, where it doesn't work.
+http://www2.netring.cc/whitedownload.zip
+This is an URL on a Webserver with a similar setup, but with a normal host container:
+http://www.paesold.at/whitedownload.zip
+
+Repeatable by adding using the above rewrite rules (adjust for your paths, /web/exec-bin/jump should be redirected to some error page, this only occurs if we don't find the domain in the map file, map_masshost is a textfile with "domainname.com /part/of/path/to/docroot" lines)
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+
+From: "Michael Paesold" <mpaesold@gmx.at>
+To: <submit@bugz.apache.org>,
+	<apache-bugdb@apache.org>
+Cc:  
+Subject: Re: mod_rewrite/9850: Download problems with Internet Explorer and mod_rewrite
+Date: Mon, 18 Feb 2002 01:43:35 +0100
+
+ Could have something to do with Vary: host headers?
+ (See 7283 bug report)
+ 
+ 
+
+From: "Michael Paesold" <mpaesold@gmx.at>
+To: <submit@bugz.apache.org>,
+	<apache-bugdb@apache.org>
+Cc:  
+Subject: Re: mod_rewrite/9850: Download problems with Internet Explorer and mod_rewrite
+Date: Mon, 18 Feb 2002 01:51:24 +0100
+
+ seems to be the same problem in 4118
+ 
+ 
+
+From: "Michael Paesold" <mpaesold@gmx.at>
+To: <submit@bugz.apache.org>,
+	<apache-bugdb@apache.org>
+Cc:  
+Subject: Re: mod_rewrite/9850: Download problems with Internet Explorer and mod_rewrite
+Date: Mon, 18 Feb 2002 02:15:26 +0100
+
+ Sorry for all that junk: pr 7283, 4118, 6213, 1644 give an overview about
+ all the details. Got to do with Vary headers, so my first guess was not
+ right. I understand my problems now.
+ Suggestions:
+ - add [NV=...] to offical mod_rewrite (see pr 7283)
+ - change force-no-vary to not imply force-response-1.0
+ ( "Header unset Vary" is not very nice )
+ 
+ best regards, Michael Paesold
+ 
+ 
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,143 @@
+Received: (qmail 48572 invoked by uid 501); 7 Sep 2001 17:17:57 -0000
+Message-Id: <20010907171757.48571.qmail@apache.org>
+Date: 7 Sep 2001 17:17:57 -0000
+From: Stephen Uitti <suitti@yahoo.com>
+Reply-To: suitti@yahoo.com
+To: submit@bugz.apache.org
+Subject: 1.3.19 on AIX does not kill idle child processes down to MaxSpareServers
+X-Send-Pr-Version: 3.110
+
+>Number:         8310
+>Category:       os-aix
+>Synopsis:       1.3.19 on AIX does not kill idle child processes down to MaxSpareServers
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Sep 07 10:20:00 PDT 2001
+>Closed-Date:
+>Last-Modified:  Mon Dec 03 05:34:50 PST 2001
+>Originator:     suitti@yahoo.com
+>Release:        1.3.19
+>Organization:
+>Environment:
+I believe this is AIX 4.3.  It's a pretty big server - 4 CPUs and 8 GB RAM.
+I attempted to compile Apache with the IBM native compiler, but though it
+compiles, it doesn't run.  A little debugging seemed to indicate that C
+pointer aliases weren't handled correctly, as unlikely as that seems.
+So, I'm using gcc version 2.95.3.
+>Description:
+Apache 1.3.19 on AIX does not kill idle child processes down to MaxSpareServers.
+1.3.19 on Linux does.
+
+>How-To-Repeat:
+Build and install apache from source on AIX.
+Edit httpd.conf to allow server-status.
+Add "sleep 5" to the begining of cgi-bin/test-cgi, and run "chmod +x test-cgi".
+Launch a browser, and point to "http://127.0.0.1/server-status".
+
+Install wget, then run this script:
+#!/bin/sh
+for i in 1 2 3 4 5 6 7 8 9 0 a b c d e f g h i j; do
+ wget http://127.0.0.1/cgi-bin/test-cgi &
+done
+
+(or use "lynx -dump http://127.0.0.1/cgi-bin/test-cgi &"
+if wget is not available.)
+
+Refresh the browser pointing to "http://127.0.0.1/server-status".
+You should see 20 apache children.  Once the children become idle,
+one should move from a "." (idle) to a "_" (no process) each second.
+
+On Linux, (Red Hat 7), this is what you see.  On AIX, the idle processes
+hang around forever.
+
+I instrumented the code under AIX with fprintf's to a file.  
+The code in http_main.c to send the SIGUSR1 to kill an idle child does
+get executed.  It attempts to kill the same child once a second forever.
+The child PID shows up in "ps".
+
+The code to set the signal handler for the child is
+set to "just_die".  However, the signal handler, "just_die" never
+seems to be called.
+
+When the server is shut down (apache_ctl stop), all process are correctly
+killed.  There doesn't seem to be any significant delay in this process,
+leading me to believe that it doesn't resort to SIGTERM or SIGKILL, though
+I won't swear to it.  I instrumented all the calls to signal that set
+the signal to ignore, and didn't find any at run time.  This seems unlikely,
+but I'm not really sure what I should expect.
+
+
+>Fix:
+no.
+>Release-Note:
+>Audit-Trail:
+
+From: Stephen Uitti <suitti@yahoo.com>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc: apbugs@Apache.Org
+Subject: Re: os-aix/8310: 1.3.19 on AIX does not kill idle child processes down to MaxSpareServers
+Date: Fri, 7 Sep 2001 14:10:21 -0700 (PDT)
+
+ Additional information.  Bug 6919 describes how to
+ compile Apache with the native Aix C compiler.
+ I applied the patch, and tested for the child process
+ bug.  It persists.  That points the finger more
+ squarely at the OS, and less at the compiler.
+ 
+ 
+ __________________________________________________
+ Do You Yahoo!?
+ Get email alerts & NEW webcam video instant messaging with Yahoo! Messenger
+ http://im.yahoo.com
+
+From: Stephen Uitti <suitti@yahoo.com>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc: apbugs@Apache.Org
+Subject: Re: os-aix/8310: 1.3.19 on AIX does not kill idle child processes down to MaxSpareServers
+Date: Fri, 7 Sep 2001 14:10:21 -0700 (PDT)
+
+ Additional information.  Bug 6919 describes how to
+ compile Apache with the native Aix C compiler.
+ I applied the patch, and tested for the child process
+ bug.  It persists.  That points the finger more
+ squarely at the OS, and less at the compiler.
+ 
+ 
+ __________________________________________________
+ Do You Yahoo!?
+ Get email alerts & NEW webcam video instant messaging with Yahoo! Messenger
+ http://im.yahoo.com
+Comment-Added-By: trawick
+Comment-Added-When: Mon Dec  3 05:34:49 PST 2001
+Comment-Added:
+Actually, there is a problem in the pthread mutex code in
+recent levels of Apache 1.3 which can result in this situation (not being able to kill idle children).  I've only seen it occur on AIX but the problem is in the generic Apache code for pthread mutex handling, not in any AIX-specific area.  I don't believe that anybody is working on a fix for this.
+
+If it is a problem that idle children aren't being terminated, the work-around is to switch to fcntl serialization.  There are two ways to do this:
+
+1) upgrade to the latest Apache 1.3 and put "acceptmutex fcntl" in your config file
+2) for older Apache 1.3 on AIX, edit src/Configure, find the appropriate AIX stanza for your version, and remove "-DUSE_PTHREAD_SERIALIZED_ACCEPT" from CFLAGS and rebuild
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

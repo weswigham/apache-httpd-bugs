@@ -1,0 +1,86 @@
+Received: (qmail 21834 invoked by uid 2012); 30 Jul 1999 15:41:37 -0000
+Message-Id: <19990730154137.21830.qmail@hyperreal.org>
+Date: 30 Jul 1999 15:41:37 -0000
+From: Steffen Schweikhard <swigert@hrz.tu-darmstadt.de>
+Reply-To: swigert@hrz.tu-darmstadt.de
+To: apbugs@hyperreal.org
+Subject: mod_proxy configured as reverse proxy fails to submit the query part (if given) with the URL when accessing https servers (affects CGIs using GET method)
+X-Send-Pr-Version: 3.2
+
+>Number:         4803
+>Category:       mod_proxy
+>Synopsis:       mod_proxy configured as reverse proxy fails to submit the query part (if given) with the URL when accessing https servers (affects CGIs using GET method)
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jul 30 08:50:00 PDT 1999
+>Last-Modified:
+>Originator:     swigert@hrz.tu-darmstadt.de
+>Organization:
+apache
+>Release:        1.3.6
+>Environment:
+Linux castor 2.2.10 #1 Wed Jun 16 15:54:58 CEST 1999 i686 unknown
+gcc version egcs-2.91.66 19990314 (egcs-1.1.2 release)
+>Description:
+mod_proxy drops the query ("?option=value...") part of a request under the following conditions:
+
+Setup:
+
+A user agent (Netscape 4.61 for linux) is directly (no proxy in between) accessing a Apache (http://apache.some.domain/) with mod_proxy enabled and configured as a reverse proxy for https://host.some.domain/. (configs see below)
+Access from Apache to host.some.domain is handled via http://proxy.some.domain:8080/
+
+User agent
+--> sends request to get http://apache.some.domain/cgi-bin/whatever?option=value
+to 172.20.64.74 Apache installation (linux, as stated above)
+--> sends request to get https://host.some.domain/cgi-bin/whatever and drops (!) the "?option=value" part completely
+to proxy.some.domain:8080 (Netscape Proxy Server) via http
+--> sends malformed request "https://host.some.domain/cgi-bin/whatever"
+to host.some.domain:443
+where the malformed request triggers a server error (500) because no values have been submitted
+
+The problem seems to depend on at least one condition, namely that the request is done via https, not http. No dropping of the query part occurs when accessing any server via http (via proxy).
+The patch delivered eliminates this problem (in my setup, at least).
+
+Configuration data on the Apache machine (relevant lines):
+ProxyPass / https://daska.union-investment.de/
+ProxyPassReverse / https://daska.union-investment.de/
+ProxyRemote * http://192.0.2.30:8080
+NoCache *
+>How-To-Repeat:
+
+>Fix:
+a quick patch for src/modules/proxy/mod_proxy.c:
+
+--- mod_proxy.c.orig    Wed Mar 10 18:42:46 1999
++++ mod_proxy.c Thu Jul 29 23:53:21 1999
+@@ -223,6 +223,8 @@
+ /* canonicalise each specific scheme */
+     if (strncasecmp(url, "http:", 5) == 0)
+        return ap_proxy_http_canon(r, url + 5, "http", DEFAULT_HTTP_PORT);
++    else if (strncasecmp(url, "https:", 6) == 0)
++       return ap_proxy_http_canon(r, url + 6, "https", DEFAULT_HTTPS_PORT);
+     else if (strncasecmp(url, "ftp:", 4) == 0)
+        return ap_proxy_ftp_canon(r, url + 4);
+
+This patch seems to work great, but since I'm not an expert for the things happening within Apache, I do not know for sure whether this is the right place to fix the problem or not.
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

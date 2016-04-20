@@ -1,0 +1,81 @@
+Received: (qmail 1104 invoked by uid 2012); 27 Jan 1999 01:53:47 -0000
+Message-Id: <19990127015347.1103.qmail@hyperreal.org>
+Date: 27 Jan 1999 01:53:47 -0000
+From: Lance Ware <lance@ware.net>
+Reply-To: lance@ware.net
+To: apbugs@hyperreal.org
+Subject: Problems with ftp proxy.
+X-Send-Pr-Version: 3.2
+
+>Number:         3778
+>Category:       mod_proxy
+>Synopsis:       Problems with ftp proxy.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jan 26 19:10:01 PST 1999
+>Last-Modified:  Wed Apr 28 14:58:39 PDT 1999
+>Originator:     lance@ware.net
+>Organization:
+>Release:        1.3.4
+>Environment:
+
+Linux testware.warenet.com 2.0.18 #16 Wed Aug 13 18:18:36 PDT 1997 i686  
+>Description:
+Directory listings through the proxy are dropping the first character of the filename.
+>How-To-Repeat:
+ftp://rtfm.mit.edu/pub/usenet-by-group/sci.physics/
+>Fix:
+Not sure. Seems to work with most FTP servers.
+>Audit-Trail:
+Comment-Added-By: coar
+Comment-Added-When: Wed Apr 28 14:58:38 PDT 1999
+Comment-Added:
+[comment made by John Auer <jaa@aeronix.com>]
+RE: mod_proxy, PR number 3778
+
+This should fix it.  Hopefully it doesn't break anything else.  The
+problem is/was: due to the size of the uid/gid fields in the directory
+ls, the ".." filename starts one character to the right of all the
+other filenames.  Unfortunately, the code used the position of the
+".." as the starting position for the remaining filenames (to support
+filenames that start with a space).  I did some quick tests, and the
+patch seems to correctly handle spaces in filenames.
+
+
+*** apache_1.3.4.orig/src/modules/proxy/proxy_ftp.c     Fri Jan  1 14:05:03 1999
+--- apache_1.3.4/src/modules/proxy/proxy_ftp.c  Wed Feb 24 19:12:36 1999
+***************
+*** 361,367 ****
+                firstfile = 0;
+                searchidx = filename - buf;
+            }
+!           else if (searchidx != 0 && buf[searchidx] != 0) {
+                *(--filename) = ' ';
+                buf[searchidx - 1] = 0;
+                filename = &buf[searchidx];
+--- 361,367 ----
+                firstfile = 0;
+                searchidx = filename - buf;
+            }
+!           else if (searchidx != 0 && buf[searchidx] != 0 && *(filename-2) == ' ') {
+                *(--filename) = ' ';
+                buf[searchidx - 1] = 0;
+                filename = &buf[searchidx];
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

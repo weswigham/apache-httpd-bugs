@@ -1,0 +1,95 @@
+Received: (qmail 7837 invoked by uid 2012); 27 Aug 1999 02:31:55 -0000
+Message-Id: <19990827023155.7836.qmail@hyperreal.org>
+Date: 27 Aug 1999 02:31:55 -0000
+From: Anatole Shaw <ash+apache@bigwords.com>
+Reply-To: ash+apache@bigwords.com
+To: apbugs@hyperreal.org
+Subject: scoreboard connection count (conn_count) too small in some cases
+X-Send-Pr-Version: 3.2
+
+>Number:         4914
+>Category:       apache-api
+>Synopsis:       scoreboard connection count (conn_count) too small in some cases
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Aug 26 19:40:04 PDT 1999
+>Last-Modified:  Fri Aug 27 10:31:48 PDT 1999
+>Originator:     ash+apache@bigwords.com
+>Organization:
+>Release:        1.3.9
+>Environment:
+FreeBSD/i386 3.2-STABLE
+GCC 2.7.2.3
+
+$ uname -a
+FreeBSD ui1 3.2-STABLE FreeBSD 3.2-STABLE #0: Tue Aug 24 08:56:26 PDT 1999     ash@ui1:/usr/src/sys/compile/BIGUI  i386
+>Description:
+The scoreboard connection count (conn_count) is an 'unsigned short int',
+which generally translates to 8 bits, i.e., a range of 0..255.
+This is fine when HARD_SERVER_LIMIT is left at the default of 256,
+but necessarily causes some problems when it and MaxClients are larger.
+>How-To-Repeat:
+Raise HARD_SERVER_LIMIT and MaxClients above 256, and give Apache some
+appropriate traffic with ab.  Pour small glass of Cognac.  Enjoy.
+The problem is nicely evident when looking at the server status report.
+>Fix:
+--- include/scoreboard.h.orig   Tue Apr 27 13:36:29 1999
++++ include/scoreboard.h        Thu Aug 26 11:21:10 1999
+@@ -141,7 +141,7 @@
+     unsigned long my_access_count;
+     unsigned long my_bytes_served;
+     unsigned long conn_bytes;
+-    unsigned short conn_count;
++    unsigned long conn_count;
+ #if defined(NO_GETTIMEOFDAY)
+     clock_t start_time;
+     clock_t stop_time;
+
+--- main/http_main.c.orig       Tue Aug 10 06:54:48 1999
++++ main/http_main.c    Thu Aug 26 11:22:40 1999
+@@ -2145,7 +2145,7 @@
+                ss->my_access_count = 0L;
+                ss->my_bytes_served = 0L;
+            }
+-           ss->conn_count = (unsigned short) 0;
++           ss->conn_count = (unsigned long) 0;
+            ss->conn_bytes = (unsigned long) 0;
+        }
+        if (r) {
+
+--- modules/standard/mod_status.c.orig  Sat Jun  5 08:48:12 1999
++++ modules/standard/mod_status.c       Thu Aug 26 11:21:57 1999
+@@ -236,7 +236,7 @@
+     unsigned long count = 0;
+     unsigned long lres, bytes;
+     unsigned long my_lres, my_bytes, conn_bytes;
+-    unsigned short conn_lres;
++    unsigned long conn_lres;
+     unsigned long bcount = 0;
+     unsigned long kbcount = 0;
+     long req_time;
+>Audit-Trail:
+Category-Changed-From-To: general-apache-api
+Category-Changed-By: coar
+Category-Changed-When: Fri Aug 27 10:31:46 PDT 1999
+
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

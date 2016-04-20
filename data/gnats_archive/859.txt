@@ -1,0 +1,148 @@
+From nobody@hyperreal.org  Sat Jul 12 02:44:09 1997
+Received: (from nobody@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id CAA07225;
+	Sat, 12 Jul 1997 02:44:09 -0700 (PDT)
+Message-Id: <199707120944.CAA07225@hyperreal.org>
+Date: Sat, 12 Jul 1997 02:44:09 -0700 (PDT)
+From: Toni Mueller <support@oeko.net>
+Reply-To: support@oeko.net
+To: apbugs@hyperreal.org
+Subject: space in URL garbles script environment vars
+X-Send-Pr-Version: 3.2
+
+>Number:         859
+>Category:       config
+>Synopsis:       space in URL garbles script environment vars
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Jul 12 02:50:01 1997
+>Originator:     support@oeko.net
+>Organization:
+>Release:        1.2.0
+>Environment:
+$ uname -a
+BSD/OS maple.oeko.net 2.1 BSDI BSD/OS 2.1 Kernel #0: Sun Feb 16 20:09:06 MET 1997
+	root@maple.oeko.net:/usr/src/sys/compile/OEKONET.maple  i386
+
+almost fully patched
+
+client side: Netscape Navigator 3.0 Gold
+>Description:
+I have a setup with a vhost that defines
+
+ErrorDocument 404 /cgi-bin/notthere.cgi
+
+inside the vhost section. When asking this vhost for a nonexistend URL that
+contains a space, the first part up to the space is placed in REDIRECT_URL
+and the part after the space comes out in front of SERVER_PROTOCOL. I didn't
+test with variants that contain more spaces, more non-contiguous sections of
+spaces, or different kinds of spaces.
+
+I posted this to comp.infosystems.www.servers.unix
+
+message id <33C69ACE.E442F3@oeko.net>,
+
+and got back that this is likely an Apache bug. This could have security
+implications since smashing the stack by producing unpredicted environment
+contents and possibly executing it afterwards could therefore be embedded
+in the URL if properly designed, or so I read on bugtraq.
+
+Imho the right thing would be that all the illegal URL lands in the
+REDIRECT_URL variable and also that it be limited to some harmless size.
+
+The right thing must be known somewhere in Apache since the access log
+contains the correct URI (the one originally requested, together with a 404
+status code).
+
+
+
+
+>How-To-Repeat:
+If you have a mail address I can mail you a sample code section + server
+setup, but you should be able to repeat the problem with your stock CGI pieces.
+>Fix:
+Disallow spaces in URLs (if at all legal) and have them length checked if not
+already
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Sat Jul 12 11:38:59 PDT 1997
+State-Changed-Why:
+I have already responded to your post on the newsgroup.
+
+If the client makes a request such as:
+
+     GET /ab cd.html HTTP/1.0
+
+then Apache is perfectly justified in treating that as
+a request for /ab with a protocol of cd.html with some
+crap on the end or a protocol of "cd.html HTTP/1.0".
+Any spaces in URLs must be % escaped or else it is completely
+bogus.
+
+Apache is giving your ErrorDocument script what it gets.  If
+the client doesn't follow the rules and escape things properly,
+then it is completely impossible to guess what it wants; you
+will be wrong some of the time no matter how you guess.
+
+The "right thing" is not known anywhere in Apache; when it logs
+it in the access log, it logs the document (/ab) and protocol
+(cd.html HTTP/1.0).  There is no reason to think this has any security implications.
+
+From: Marc Slemko <marcs@znep.com>
+To: apbugs@apache.org
+Subject: Re: config/859: space in URL garbles script environment vars (fwd)
+Date: Sat, 12 Jul 1997 17:10:14 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Sat, 12 Jul 1997 22:19:08 +0200 (MET DST)
+ From: Toni Mueller <support@oeko.net>
+ To: Marc Slemko <marc@hyperreal.org>
+ Subject: Re: config/859: space in URL garbles script environment vars
+ 
+ 
+ Hello,
+ 
+ > I have already responded to your post on the newsgroup.
+ 
+ sorry, I didn't see that here.
+ 
+ > Any spaces in URLs must be % escaped or else it is completely
+ > bogus.
+ 
+ Accepted. I don't want spaces in URLs anyway, I only fear that someone
+ will crack our servers. That's because this problem arises no matter
+ what URI is actually called for.
+ 
+ 
+ > will be wrong some of the time no matter how you guess.
+ 
+ Ok.
+ 
+ > (cd.html HTTP/1.0).  There is no reason to think this has any security implications.
+ 
+ Ok. Phew...
+ 
+ 
+ Best Regards,
+ 
+ Toni.
+ 
+ --------					NIC: TM2155
+ Oeko.neT Mueller & Brandt GbR 			sales: info@oeko.net
+ v: +49 2261 979364 f: +49 2261 979366		http://www.oeko.net
+ Unix, networking, administration, consulting, programming, Internet services
+ 
+>Unformatted:
+
+>Last-Modified:  Sat Jul 12 11:38:59 PDT 1997
+
+

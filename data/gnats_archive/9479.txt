@@ -1,0 +1,99 @@
+Received: (qmail 86708 invoked by uid 501); 15 Jan 2002 00:07:16 -0000
+Message-Id: <20020115000716.86707.qmail@apache.org>
+Date: 15 Jan 2002 00:07:16 -0000
+From: George Mitchell <george+apache@m5p.com>
+Reply-To: george+apache@m5p.com
+To: submit@bugz.apache.org
+Subject: Failure to connect to listener leaks file descriptors
+X-Send-Pr-Version: 3.110
+
+>Number:         9479
+>Category:       general
+>Synopsis:       Failure to connect to listener leaks file descriptors
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jan 14 16:10:00 PST 2002
+>Closed-Date:    Mon Feb 18 08:21:30 PST 2002
+>Last-Modified:  Mon Feb 18 08:21:30 PST 2002
+>Originator:     george+apache@m5p.com
+>Release:        2.0.28
+>Organization:
+>Environment:
+FreeBSD 4.4-RELEASE
+>Description:
+In server/mpm_common.c, the subroutine ap_mpm_pod_signal does not close a
+socket when it fails to connect to a listener.  Repeated attempts to kill
+a listener through the "pipe-of-death" will eventually exhaust the number
+of open files allowed by the operating system kernel.  The attached fix
+causes the socket which is opened at the beginning of the subroutine to
+be closed when it is going to return an error.
+
+This may be masking a lower level error; i.e. I'm not sure why the server
+is repeatedly trying to kill a listener (which isn't there) once per second
+forever on an "apachectl graceful", but this at least prevents the server
+from logging a zillion messages to the system log and filling up partitions
+as a result of the problem.
+>How-To-Repeat:
+Do lots of "apachectl graceful"s.
+>Fix:
+*** server/mpm_common.c.orig    Tue Oct 23 10:30:07 2001
+--- server/mpm_common.c Mon Jan 14 15:48:33 2002
+***************
+*** 443,448 ****
+--- 443,450 ----
+      if (rv != APR_SUCCESS) {
+          ap_log_error(APLOG_MARK, APLOG_WARNING, rv, ap_server_conf,
+                       "set timeout on socket to connect to listener");
++       apr_socket_close(sock);
++       apr_pool_destroy(p);
+          return rv;
+      }
+      
+***************
+*** 460,465 ****
+--- 462,469 ----
+  
+          ap_log_error(APLOG_MARK, log_level, rv, ap_server_conf,
+                       "connect to listener");
++       apr_socket_close(sock);
++       apr_pool_destroy(p);
+          return rv;
+      }
+      apr_socket_close(sock);
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: trawick
+State-Changed-When: Mon Feb 18 08:21:30 PST 2002
+State-Changed-Why:
+the latest beta (2.0.32) has a fix for leaking a descriptor
+when the connect failed
+
+current CVS has a fix for a nearly impossible leak when
+setting the APR timeout fails
+
+Thanks for your report, and thanks for using Apache!
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

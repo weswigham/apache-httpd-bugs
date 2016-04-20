@@ -1,0 +1,242 @@
+Received: (qmail 6217 invoked by uid 2012); 10 Dec 1997 12:08:29 -0000
+Message-Id: <19971210120829.6216.qmail@hyperreal.org>
+Date: 10 Dec 1997 12:08:29 -0000
+From: Andreas Norman <andreas@dalnet.se>
+Reply-To: andreas@dalnet.se
+To: apbugs@hyperreal.org
+Subject: Apache stops to respond on virtual interfaces
+X-Send-Pr-Version: 3.2
+
+>Number:         1540
+>Category:       general
+>Synopsis:       Apache stops to respond on virtual interfaces
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Dec 10 04:10:00 PST 1997
+>Last-Modified:  Sun Apr 26 08:35:20 PDT 1998
+>Originator:     andreas@dalnet.se
+>Organization:
+>Release:        1.2.4
+>Environment:
+SunOS atlas 5.6 Generic sun4u sparc SUNW,Ultra-1
+>Description:
+Solaris 2.6 seems to have a bug in ifconfig so that one must do an extra
+ifconfig le0:0 x.x.x.x (machines REAL IP) after you have set the virtual interfaces.
+This is because it seems like solaris 2.6 assumes that the last ifconfig command made is 
+setting the machines real IP, which is not the case.
+
+Example, i now only have 1 virtual interface, ifconfig shows:
+le0: flags=863<UP,BROADCAST,NOTRAILERS,RUNNING,MULTICAST> mtu 1500
+        inet 194.18.134.14 netmask ffffff00 broadcast 194.18.134.255
+        ether 8:0:20:82:bd:d 
+le0:1: flags=843<UP,BROADCAST,RUNNING,MULTICAST> mtu 1500
+        inet 194.18.134.220 netmask ffffff00 broadcast 194.18.134.255
+
+this is how the machine looks after a reboot. And this makes the server to think that
+its real IP is 194.18.134.220 (which causes IP-checkers looking for 194.18.134.14 to refuse our connections).
+
+So what i discovered is that if i do ifconfig le0:0 194.18.134.14 up , the machine
+appears on it's real IP again. But after aprx. 5mins the webserver stop to respond
+to the virtual interfaces IP (194.18.134.220).  I can still ping all IP's fully, and telnet 
+to port 80 and the webserver responds.. but it will not load the pages that
+are supposed to show on 194.18.134.220, but on 194.18.134.14 the server still 
+responds as it should..
+>How-To-Repeat:
+the following are the only modifications on any services on our machine,
+ndd -set /dev/ip ip_enable_group_ifs 0
+ndd -set /dev/ip ip_forwarding 1
+
+so to reproduce the problem, do:
+ifconfig le0:1 x.x.x.x up
+ifconfig le0:0 x.x.x.x (machines REAL IP)
+and of course configure up a webserver to respond to both adresses. wait 3-10 mins
+and you should se that webpages under le0:1 will not load.
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: Lars.Eilebrecht@unix-ag.org
+State-Changed-When: Wed Dec 10 17:00:16 PST 1997
+State-Changed-Why:
+
+Are you 'plumbing' the physical interface before
+defining any virtual interfaces?
+e.g. 
+
+  ifconfig le0 x.x.x.x plumb
+  ifconfig le0:1 y.y.y.y
+
+
+And what about 'ip_enable_group_ifs'?
+Have you intentionally disabled this feature?
+Can you reproduce the problem when 
+'ip_enable_group_ifs' is set to '1'?
+
+
+From: Andreas Norman <andreas@dalnet.se>
+To: Lars.Eilebrecht@unix-ag.org
+Cc: apbugs@Apache.Org
+Subject: Re: general/1540: Apache stops to respond on virtual interfaces
+Date: Thu, 11 Dec 1997 10:01:17 +0100
+
+ >Synopsis: Apache stops to respond on virtual interfaces
+ >
+ >State-Changed-From-To: open-feedback
+ >State-Changed-By: Lars.Eilebrecht@unix-ag.org
+ >State-Changed-When: Wed Dec 10 17:00:16 PST 1997
+ >State-Changed-Why:
+ >
+ >Are you 'plumbing' the physical interface before
+ >defining any virtual interfaces?
+ >e.g. 
+ >
+ >  ifconfig le0 x.x.x.x plumb
+ >  ifconfig le0:1 y.y.y.y
+ 
+ No, I am not plumbing. Is that necessary, everything looks ok in ifconfig -a.
+ 
+ >
+ >And what about 'ip_enable_group_ifs'?
+ >Have you intentionally disabled this feature?
+ 
+ yes, to disable roundrobing on the interface.
+ 
+ >Can you reproduce the problem when 
+ >'ip_enable_group_ifs' is set to '1'?
+ 
+ Yes it is reproducable with that too.
+ 
+ /Andreas
+ 
+
+From: Lars Eilebrecht <Lars.Eilebrecht@unix-ag.org>
+To: Andreas Norman <andreas@dalnet.se>
+Cc: apbugs@apache.org
+Subject: Re: general/1540: Apache stops to respond on virtual interfaces
+Date: Thu, 11 Dec 1997 21:31:40 +0100 (CET)
+
+ According to Andreas Norman:
+ 
+ >   No, I am not plumbing. Is that necessary, everything looks ok in ifconfig
+ >  -a.
+ 
+ Well, the ifconfig man pages says mentions this.
+ 
+ But I think I was able to reproduce your problem...
+ On a Sparc 5 test machine running Solaris 2.6 I added a virtual interface
+ and in the beginning everything worked without problems.
+ 
+ After pinging both IPs for some time the machine stopped to respond on both
+ IPs I configured for the physical interface.
+ 
+ This looks like a Solaris bug to me (or we are both doing something
+ wrong ;-) and isn't caused by Apache, because Apache wasn't running when
+ I tested it.
+ 
+ Please ask in a Solaris newsgroup for help or talk to your vendor
+ (maybe there's a patch available).
+ 
+ Feedback welcome.
+ 
+ Regards...
+ -- 
+ Lars Eilebrecht
+ sfx@unix-ag.org
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Lars Eilebrecht <Lars.Eilebrecht@unix-ag.org>
+Cc: apbugs@apache.org, Andreas Norman <andreas@dalnet.se>
+Subject: Re: FW: Re: general/1540: Apache stops to respond on virtual interfa
+Date: Fri, 12 Dec 1997 10:52:50 -0800 (PST)
+
+ Is NFS involved in any way?  If yes, then try using the LockFile directive
+ like "LockFile /var/tmp/htlock" to move it away from NFS.
+ 
+ Does the /server-status page show there are idle children?  If not,
+ what are they doing?  If they're stuck in DNS lookup then either disable
+ HostnameLookups, or turn off the solaris name caching daemon... whose
+ name escapes me at the moment.
+ 
+ Are you using multiple Listen statements?
+ 
+ Can you reproduce this on a server which is running on a different port,
+ and using the -X option?  This will cause it to run only a single child.
+ If you can't reproduce it with -X then try setting MaxSpareServers
+ to 2, MinSpareServers to 1, and see if you can reproduce it that way.
+ Keep trying to increase MaxSpare until you can reproduce it.
+ 
+ Once you've got it to reproduce like this, use truss to find out what
+ system call each child is doing.  If they're all idle, then all but one
+ of them should be in fcntl(), the rest should be in select().
+ 
+ Dean
+ 
+Comment-Added-By: Lars.Eilebrecht@unix-ag.org
+Comment-Added-When: Thu Apr 16 13:40:41 PDT 1998
+Comment-Added:
+
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If we don't
+hear from you, this report will be closed.
+
+
+From: Andreas Norman <andreas@dalnet.se>
+To: Lars.Eilebrecht@unix-ag.org
+Cc: apbugs@Apache.Org
+Subject: Re: general/1540: Apache stops to respond on virtual interfaces
+Date: Fri, 17 Apr 1998 09:21:35 +0200
+
+ >Synopsis: Apache stops to respond on virtual interfaces
+ >
+ >Comment-Added-By: Lars.Eilebrecht@unix-ag.org
+ >Comment-Added-When: Thu Apr 16 13:40:41 PDT 1998
+ >Comment-Added:
+ >
+ >This Apache problem report has not been updated recently.
+ >Please reply to this message if you have any additional
+ >information about this issue, or if you have answers to
+ >any questions that have been posed to you.  If we don't
+ >hear from you, this report will be closed.
+ 
+ I did not manage to solve the actual problem. So I had to stop using virtual
+ interfaces. I did ask Sun about this too, but they only said it was a
+ problem within Apache causing this.
+ 
+ /Andreas
+ -------------------------------------------------
+ Dalnet Communications - Internet Service Provider
+     Fax +46-243-18575 - http://www.dalnet.se        
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: Lars.Eilebrecht@unix-ag.org
+State-Changed-When: Sun Apr 26 08:35:19 PDT 1998
+State-Changed-Why:
+
+I'm sorry, but we can't help you with your problem.
+In my opinion this is either a configuration error
+regarding your interface setup or it is a Solaris bug,
+because there isn't much Apache can do wrong when dealing
+with virtual interfaces.
+
+I know several people who use Apache on
+Solaris 2.5/6 boxes with hundreds of virtual interfaces
+without any problems (I'm using Solaris myself)
+and we have currently no similar reports from other
+Solaris users.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

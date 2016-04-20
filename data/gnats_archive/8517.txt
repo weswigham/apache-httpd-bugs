@@ -1,0 +1,65 @@
+Received: (qmail 69351 invoked by uid 501); 12 Oct 2001 12:30:37 -0000
+Message-Id: <20011012123037.69350.qmail@apache.org>
+Date: 12 Oct 2001 12:30:37 -0000
+From: Jeroen van den Horn <J.vandenHorn@marviq.com>
+Reply-To: J.vandenHorn@marviq.com
+To: submit@bugz.apache.org
+Subject: mod_proxy de-caniconalizes twice
+X-Send-Pr-Version: 3.110
+
+>Number:         8517
+>Category:       mod_proxy
+>Synopsis:       mod_proxy de-caniconalizes twice
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Oct 12 05:40:00 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     J.vandenHorn@marviq.com
+>Release:        1.3.9, 1.3.12, 1.3.20
+>Organization:
+apache
+>Environment:
+Solaris 7SunOS renault 5.7 Generic_106541-15 sun4u sparc SUNW,UltraSPARC-IIi-cEngine
+>Description:
+This is a dup of bug 5998, but for some obscure reason this bug is closed.
+
+When proxying a URL containing a canonicalized '%' (percent sign) apache returns 400 - Bad Request. Examining the mod_proxy source code reveals that in proxy_util.c in function ap_proxy_canonenc() the to-be-canonicalized string is *first* decoded if a percent-sign is present and the 'isenc' parameter not is NOT_PROXY. Any URL with a percent-sign in it is effectively decanonicalized twice, as can be observer by passing in a URL with '%2525' in the path (on first decode '%25'; then '%' remains. Any other URL is correctly decoded on the first pass, but second decode attempt fails because the '%' is probably not followed by two hex digits; or if there are two hex digits the entire URL now becomes invalid.
+
+PS. I've made the following patch: in proxy_util.c changed the  
+if (isenc != NOT_PROXY && ch == '%') into a more strict
+if (t!=enc_path && isenc != NOT_PROXY && ch == '%')
+This *seems* to work, but I cannot oversee the overall consequences of this change. Please advise.
+>How-To-Repeat:
+When using mod_proxy to pass '/' to another machine, go to:
+
+http://your.server.name/%25
+
+or anything with the escaped percent sign in it. 
+>Fix:
+See full description
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

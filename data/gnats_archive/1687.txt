@@ -1,0 +1,116 @@
+Received: (qmail 6609 invoked by uid 2012); 16 Jan 1998 19:20:23 -0000
+Message-Id: <19980116192023.6606.qmail@hyperreal.org>
+Date: 16 Jan 1998 19:20:23 -0000
+From: John Dickinson <johnd@fsr.com>
+Reply-To: johnd@fsr.com
+To: apbugs@hyperreal.org
+Subject: %{REMOTE_USER} returns empty string during RewriteCond/RewriteRules evaluation
+X-Send-Pr-Version: 3.2
+
+>Number:         1687
+>Category:       mod_rewrite
+>Synopsis:       %{REMOTE_USER} returns empty string during RewriteCond/RewriteRules evaluation
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jan 16 11:30:00 PST 1998
+>Last-Modified:  Wed Feb 25 07:47:01 PST 1998
+>Originator:     johnd@fsr.com
+>Organization:
+>Release:        1.2
+>Environment:
+Here is the result of uname -a:
+SunOS wwwserver 5.5.1 ISS_1.0 sun4d sparc SUNW,SPARCserver-1000
+>Description:
+I am trying to use %{REMOTE_USER} during the RewriteRule processing.
+But when I attempt this set of RewriteRules:
+
+RewriteCond     %{REMOTE_USER}  ^.*johnd
+RewriteRule     ^(.*)$  http://www.apache.org/       [P,L]
+
+This proxy is inside an AUTH_TYPE that does ask for my userid and
+password, but the rewrite.log file shows this:
+
+little.fsr.com - - [14/Jan/1998:15:30:58 -0800]
+[www.some.org/sid#736d8][rid#8a3d0/initial]
+(4) RewriteCond: input='' pattern='^.*johnd' => not-matched
+
+The part of this that is preventing me from doing what I want (that is,
+to make the RewriteRule based upon a userid obtained from a challenge)
+not possible, is that the input=''  so the result of %{REMOTE_USER} is
+empty.
+
+I am running Apache 1.2 and I have tried this on 1.2.5 as well.
+
+In case I have the modules compiled in the wrong order, here is the result 
+of apache-server -l:
+Compiled-in modules:
+  http_core.c
+  mod_env.c
+  mod_log_config.c
+  mod_mime.c
+  mod_negotiation.c
+  mod_status.c
+  mod_info.c
+  mod_include.c
+  mod_dir.c
+  mod_cgi.c
+  mod_asis.c
+  mod_imap.c
+  mod_actions.c
+  mod_userdir.c
+  mod_proxy.c
+  mod_alias.c
+  mod_rewrite.c
+  mod_access.c
+  mod_auth.c
+  mod_auth_anon.c
+  mod_expires.c
+  mod_headers.c
+  mod_usertrack.c
+  mod_browser.c
+>How-To-Repeat:
+
+>Fix:
+I have tried to follow the code for the setting of the value os
+r->connection->user and decided that it might be faster for you
+to check the code.  Sorry, I have no suggestions
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Feb 21 04:11:13 PST 1998
+State-Changed-Why:
+r->connection->user isn't set until a much later phase in processing.
+mod_rewrite runs during the name translation phase and the user
+isn't set until the auth phases.
+
+I don't think there's a clean workaround to this one.  Maybe we
+should just update the docs to remove REMOTE_USER as a value which
+can be conditionalized.
+
+Incidentally, apache 1.3 supports proxy authentication.
+
+Dean
+State-Changed-From-To: analyzed-closed
+State-Changed-By: rse
+State-Changed-When: Wed Feb 25 07:47:01 PST 1998
+State-Changed-Why:
+There _IS_ a clean and elegant workaround for this:
+Just use %{LA-U:REMOTE_USER} instead of %{REMOTE_USER}
+to look-ahead the variable via sub-request.
+
+No one has noticed this in the past (including myself)
+because this %{LA-X:yyy} syntax was totally mis-documented.
+The documentation now was corrected.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

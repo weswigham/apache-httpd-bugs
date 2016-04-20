@@ -1,0 +1,91 @@
+Received: (qmail 34306 invoked by uid 501); 23 Feb 2001 19:33:04 -0000
+Message-Id: <20010223193304.34305.qmail@apache.org>
+Date: 23 Feb 2001 19:33:04 -0000
+From: Tim Rorden <tim0f0f@hotmail.com>
+Reply-To: tim0f0f@hotmail.com
+To: submit@bugz.apache.org
+Subject: ioctlsocket returns INVALID_SOCKET and causes Apache child exit under load
+X-Send-Pr-Version: 3.110
+
+>Number:         7305
+>Category:       general
+>Synopsis:       ioctlsocket returns INVALID_SOCKET and causes Apache child exit under load
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Feb 23 11:40:01 PST 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     tim0f0f@hotmail.com
+>Release:        1.3.17
+>Organization:
+apache
+>Environment:
+Windows 2000 Professional or Server. With or without Service Pack 1.
+>Description:
+When making concurrent requests to JServ (e.g. IsItWorking servet), Apache child exits after it gets error 10038 from ioctlsocket. In buff.c, the first ioctlsocket fails in recvwithtimeout. After it calls ap_log_assert, it calls exit(1). Here is the error.log in debug level:
+
+[Fri Feb 23 11:17:02 2001] [info] Parent: Created child process 1656
+[Fri Feb 23 11:17:02 2001] [info] Parent: Duplicating socket 400 and sending it to child process 1656
+[Fri Feb 23 11:17:02 2001] [info] BytesRead = 372 WSAProtocolInfo = 2006620
+[Fri Feb 23 11:17:16 2001] [error] (22)Invalid argument: accept: (client socket) failed with WSA error = 10038
+[Fri Feb 23 11:17:16 2001] [error] (22)Invalid argument: accept: (client socket) failed with errno = 10038
+[Fri Feb 23 11:17:16 2001] [warn] getsockname
+[Fri Feb 23 11:17:17 2001] [warn] getsockname
+[Fri Feb 23 11:17:17 2001] [warn] getsockname
+[Fri Feb 23 11:17:18 2001] [warn] getsockname
+[Fri Feb 23 11:17:18 2001] [warn] getsockname
+[Fri Feb 23 11:17:18 2001] [debug] d:\source\apache\apache_1.3.12\src\main\http_main.c(6397): main process: wait finished, cld=0 handle 448 (max=1)
+[Fri Feb 23 11:17:18 2001] [info] master_main: Child processed exited (due to MaxRequestsPerChild?). Restarting the child process.
+
+The problem only happens on W2K and only relate to request making to Jserv through mod_jserv. If changing buff.c and return INVALID_SOCKET to the caller in recvwithtimout after the 1st ioctlsocket fails, it consistenly reports a crash in MS's wshtcpip.dll after the test runs for awhile. Here is a stack trace:
+
+WSHTCPIP! WSHGetSocketInformation@32 + 79 bytes
+MSAFD! SockSetHandleContext@4 + 228 bytes
+MSAFD! SockCoreAccept@8 + 316 bytes
+MSAFD! WSPAccept@24 + 2642 bytes
+WS2_32! WSAAccept@20 + 114 bytes
+WS2_32! accept@12 + 21 bytes
+worker_main() line 5992 + 17 bytes
+apache_main(int 4, char * * 0x00352e18) line 6889
+main(int 4, char * * 0x00352e18) line 15 + 13 bytes
+mainCRTStartup() line 338 + 17 bytes
+KERNEL32! 77e992a6()
+
+Although the symtoms are different, the base problem looks like the same. For some reasons in W2K, a WIN32 handler becomes invalid. Something are not synchronized as expected on W2K. It either causes recv or accept fails.
+
+If it does not execute the apj12 handler, the problem will not occur. Not sure how the additional buffer stream in mod_jserv affect the timing condition.
+>How-To-Repeat:
+1.  Use the 1.3.17 distributed binaries or 1.3.12 build
+2.  Use JServ-1.1.2
+3.  Use default configuration for both Apache and JServ
+4.  Make at least 30 concurrent HTTP requests to /servlets/IsItWorking which comes with JServ by default.
+5.  Keep the test running for 10 minutes.
+
+On a dual-PIII system with 512MB RAM, the problem should occur within 2 minutes.
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

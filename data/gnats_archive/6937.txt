@@ -1,0 +1,106 @@
+Received: (qmail 47600 invoked by uid 501); 6 Dec 2000 15:15:58 -0000
+Message-Id: <20001206151555.47544.qmail@locus.apache.org>
+Date: 6 Dec 2000 15:15:55 -0000
+From: Steve Kosciolek <steve@ei.org>
+Reply-To: steve@ei.org
+To: submit@bugz.apache.org
+Subject: .htaccess ignored if a limit section exists within a location section
+X-Send-Pr-Version: 3.110
+
+>Number:         6937
+>Category:       config
+>Synopsis:       .htaccess ignored if a limit section exists within a location section
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Dec 06 07:20:05 PST 2000
+>Closed-Date:    Fri Dec 08 20:19:57 PST 2000
+>Last-Modified:  Fri Dec 08 20:19:57 PST 2000
+>Originator:     steve@ei.org
+>Release:        1.3.14
+>Organization:
+>Environment:
+Solaris 2.6 Generic_105181-17
+gcc version 2.95.1 19990816 (release) 
+>Description:
+While trying to set up mod_dav with authenticated subdirectories, I came across
+this problem.  It seems that if a Location section contains a limit section,
+then and .htaccess file under the location is completely ignored.
+
+By playing with permissions, I determined that the .htaccess file is at least
+read by apache (or at least I get an error if it can't be read), even though it
+ignores the contents.
+>How-To-Repeat:
+Put the following in httpd.conf:
+Alias /test "/tmp/test/"
+<directory /tmp/test>
+    Options Indexes FollowSymLinks
+    AllowOverride All
+    Order allow,deny
+    Allow from all
+</Directory>
+<location /test/1>
+  AllowOverride All
+  <Limit PUT POST DELETE PROPFIND PROPPATCH MKCOL COPY MOVE LOCK UNLOCK>
+#  <LimitExcept GET HEAD OPTIONS>
+      AuthType Basic
+      Require user steve
+      AuthUserFile /tmp/test/.htusers
+  </Limit>
+#  </LimitExcept>
+</location>
+ 
+Create the /tmp/test/1/2 and all parent directories.  Put the following
+.htaccess file in /tmp/test/1/2:
+AuthType Basic
+AuthName "Restricted Directory"
+AuthUserFile /tmp/test/.htusers
+Require user tech
+ 
+Create the /tmp/test/.htusers file with at least the tech and steve
+users.  As long as the limit (or limitexcept) section is in the location
+directive, the .htaccess is ignored.
+>Fix:
+Sorry, I have no idea.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: slive
+State-Changed-When: Fri Dec  8 20:19:57 PST 2000
+State-Changed-Why:
+
+I haven't looked in detail at the processing here,
+but this doesn't surprise me.  Please see
+http://httpd.apache.org/docs/sections.html
+which shows that <Location> sections are
+always applied AFTER .htaccess files,
+and will therefore override the .htaccess
+files.  
+
+In general, you should avoid using <location>
+in places where <directory> will work.
+
+Thanks for using Apache!
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

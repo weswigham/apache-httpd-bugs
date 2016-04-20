@@ -1,0 +1,122 @@
+Received: (qmail 70705 invoked by uid 501); 9 Feb 2002 23:53:49 -0000
+Message-Id: <20020209235349.70704.qmail@apache.org>
+Date: 9 Feb 2002 23:53:49 -0000
+From: Scott Lamb <slamb@slamb.org>
+Reply-To: slamb@slamb.org
+To: submit@bugz.apache.org
+Subject: perchild's ChildPerUID and AssignUserID input uid/gids badly
+X-Send-Pr-Version: 3.110
+
+>Number:         9784
+>Category:       general
+>Synopsis:       perchild's ChildPerUID and AssignUserID input uid/gids badly
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Feb 09 16:00:00 PST 2002
+>Closed-Date:    Sun Mar 31 19:42:07 PST 2002
+>Last-Modified:  Sun Mar 31 19:42:07 PST 2002
+>Originator:     slamb@slamb.org
+>Release:        2.0.28 beta
+>Organization:
+>Environment:
+any (I used RedHat Linux 7.2)
+>Description:
+The ChildPerUID and AssignUserID directives assume the user/group are specified with numeric uid/gid. This is confusingly different than the User/Group directives. 
+
+Since these use atoi() blindly, using an alphabetic username results in the virtual host running as root!
+
+It should not be possible to run servers as root without defining BIG_SECURITY_HOLE as with the User directive.
+>How-To-Repeat:
+Use the perchild module. Add to the main configuration "ChildPerUID user group 1" (alphabetic user/group). Add to a virtual host "AssignUserID user group". It will not do what you'd expect.
+>Fix:
+I've got a patch that makes the behavior more like the User directive.
+
+--- server/mpm/perchild/perchild.c.stock        Sat Feb  9 17:32:41 2002
++++ server/mpm/perchild/perchild.c      Sat Feb  9 17:25:31 2002
+@@ -1091,7 +1091,7 @@
+ static void server_main_loop(int remaining_children_to_start)
+ {
+     int child_slot;
+-    apr_exit_why exitwhy;
++    apr_exit_why_e exitwhy;
+     int status;
+     apr_proc_t pid;
+     int i;
+@@ -1704,8 +1704,15 @@
+                    "NumServers in your config file.";
+         }
+
+-        ug->uid = atoi(u);
+-        ug->gid = atoi(g);
++        ug->uid = ap_uname2id(u);
++        ug->gid = ap_uname2id(g);
++
++#ifndef BIG_SECURITY_HOLE
++       if (ug->uid == 0 || ug->gid == 0) {
++           return "Assigning root user/group to a child.";
++       }
++#endif
++
+     }
+     return NULL;
+ }
+@@ -1714,8 +1721,9 @@
+                                    const char *gid)
+ {
+     int i;
+-    int u = atoi(uid);
+-    int g = atoi(gid);
++    int u = ap_uname2id(uid);
++    int matching = 0;
+     const char *errstr;
+     int socks[2];
+     perchild_server_conf *sconf = (perchild_server_conf *)
+@@ -1733,10 +1741,15 @@
+
+     for (i = 0; i < num_daemons; i++) {
+         if (u == child_info_table[i].uid && g == child_info_table[i].gid) {
++           matching ++;
+             child_info_table[i].sd = sconf->sd;
+         }
+     }
+
++    if (matching == 0) {
++       return "Unable to find process with matching uid/gid.";
++    }
++
+     return NULL;
+ }
+
+(Sorry, tabs are wrong. Can't cut'n'paste them into this form correctly.)
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rbb
+State-Changed-When: Sun Mar 31 19:42:07 PST 2002
+State-Changed-Why:
+These changes have been committed to the Perchild MPM.
+
+Thank you for using Apache.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

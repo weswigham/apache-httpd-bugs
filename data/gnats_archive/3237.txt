@@ -1,0 +1,94 @@
+Received: (qmail 1266 invoked by uid 2012); 19 Oct 1998 05:43:28 -0000
+Message-Id: <19981019054328.1265.qmail@hyperreal.org>
+Date: 19 Oct 1998 05:43:28 -0000
+From: Adam Costello <amc@cs.berkeley.edu>
+Reply-To: amc@cs.berkeley.edu
+To: apbugs@hyperreal.org
+Subject: I want HTML pages gzip'd for browsers that handle it, otherwise not.
+X-Send-Pr-Version: 3.2
+
+>Number:         3237
+>Category:       mod_negotiation
+>Synopsis:       I want HTML pages gzip'd for browsers that handle it, otherwise not.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Oct 18 22:50:00 PDT 1998
+>Last-Modified:  Sat Feb  6 01:11:51 PST 1999
+>Originator:     amc@cs.berkeley.edu
+>Organization:
+>Release:        1.3.3
+>Environment:
+I don't have access to the server machine.  All I know is that it runs Unix.
+>Description:
+I would like my HTML pages to be gzip'd for browsers that can handle it, and
+unencoded for other browsers, to reduce transfer time (because fewer packets
+have fewer chances to be dropped).  When I discovered the type-map handler, I
+thought that should do it, but it doesn't quite do the job.
+
+If I give the .html and .html.gz versions equal qs values, then the choice does
+not depend in any way on the request header, so that won't work.
+
+If I give the .html.gz version a higher qs value than the .html version, it
+comes closer:  A browser that sends Accept-Encoding: gzip will get the .html.gz
+version, and a browser that sends Accept-Encoding without listing gzip will
+get the .html version.  Unfortunately, a browser that sends no Accept-Encoding
+field will get the .html.gz version.  If that browser is MSIE 3 (and probably
+others), it will choke on the gzip'd content.
+
+I haven't been able to think of a way to do what I want within the present
+framework.
+>How-To-Repeat:
+
+>Fix:
+One possibility is to change the interpretation of the absence of
+Accept-Encoding.  The HTTP 1.1 draft spec says that the server "may" interpret
+this as meaning that all encodings are acceptable, but maybe that's not the
+best guess.  More likely, no encodings are acceptable.  But I don't know if
+making this change would break things in other situations.
+
+Another possibility is to change rule 5 of step 2 of the negotiation algorithm.
+It currently reads:
+
+5. Select only unencoded variants, if there is a mix of encoded and non-encoded
+   variants.  If either all variants are encoded or all variants are not encoded,
+   select all.
+
+Perhaps this rule should be applied only when the Accept-Encoding field is
+absent.  When it is present, all variants that survived step 1 must have
+acceptable content encodings, so I see no reason to prefer unencoded variants.
+
+If rule 5 were changed this way, I could accomplish my goal by giving .html
+and .html.gz files equal qs values.  For requests with Accept-Encoding but no
+gzip, step 1 would insure that the .html version is sent.  For requests with
+no Accept-Encoding, step 2 rule 5 would ensure that the .html version is sent.
+For requests with Accept-Encoding: gzip, rule 5 would not apply, and step 2
+rule 7 (smallest content-length) would ensure that the .html.gz version is
+sent.
+>Audit-Trail:
+Release-Changed-From-To: 3.0.0-1.3.3
+Release-Changed-By: lars
+Release-Changed-When: Wed Oct 28 20:07:23 PST 1998
+State-Changed-From-To: open-closed
+State-Changed-By: fielding
+State-Changed-When: Sat Feb  6 01:11:50 PST 1999
+State-Changed-Why:
+
+Fixed in 1.3.4
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

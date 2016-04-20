@@ -1,0 +1,157 @@
+From nobody@hyperreal.org  Mon Jul 28 04:46:27 1997
+Received: (from nobody@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id EAA13379;
+	Mon, 28 Jul 1997 04:46:27 -0700 (PDT)
+Message-Id: <199707281146.EAA13379@hyperreal.org>
+Date: Mon, 28 Jul 1997 04:46:27 -0700 (PDT)
+From: Thomas Omerzu <omerzu@quantum.de>
+Reply-To: omerzu@quantum.de
+To: apbugs@hyperreal.org
+Subject: PR#832
+X-Send-Pr-Version: 3.2
+
+>Number:         926
+>Category:       os-solaris
+>Synopsis:       httpd dies on Solaris after HUP (ref PR #832)
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jul 28 04:50:01 1997
+>Last-Modified:  Sat Aug  2 04:46:13 PDT 1997
+>Originator:     omerzu@quantum.de
+>Organization:
+>Release:        1.2.1
+>Environment:
+SunOS krokodil 5.5.1 Generic sun4m sparc SUNW,SPARCstation-10
+gcc version 2.7.2
+
+>Description:
+
+We observed the problem of a dying httpd described in PR#832 and installed
+the patch mentioned in the known bugs page.
+
+From that time, everything got worse:
+- apache still dies on SIGHUP
+- apache cannot be restarted because of a "bind: socket in use"
+
+This error is reproducible.
+
+
+
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Thomas Omerzu <omerzu@quantum.de>
+Subject: Re: os-solaris/926: PR#832
+Date: Mon, 28 Jul 1997 11:46:02 -0700 (PDT)
+
+ 
+ Thomas, please reverse the old patch (use patch -R or unpack apache_1.2.1
+ again and retrieve the original http_main.c) and try this patch below.
+ 
+ Dean
+ 
+ --- apache_1.2.1-dist/src/http_main.c	Sun Jun 29 11:08:37 1997
+ +++ apache_1.2.1/src/http_main.c	Mon Jul 28 11:35:36 1997
+ @@ -1982,7 +1982,27 @@
+          exit(1);
+      }
+  
+ +    /* Solaris, at least versions 2.4, 2.5 and 2.5.1, even with various
+ +     * levels of tcp/ip patches available as of July 28, 1997, completely
+ +     * botches up if you do any form of dup() on a socket.  If that dupped
+ +     * socket is then put into listen() and accept()s at least one
+ +     * connection, then Bad Things happen.  Things work fine until the
+ +     * socket is close()d.  At that point, no matter what SO_REUSEADDR was
+ +     * set to, nothing can rebind the same address/port, you'll get
+ +     * "Address in use" errors.  This takes about 5 minutes to timeout.
+ +     *
+ +     * So we do no slacking on solaris sockets.  If you can live with those
+ +     * restrictions (which essentially means you have to use SIGUSR1 and
+ +     * not SIGHUP to restart the server, and should you ever need to stop
+ +     * the server you'll have at least a 5 minute wait before you can
+ +     * restart it) then you can remove this #ifndef.  You'll get yourself
+ +     * another 120ish virtual hosts (assuming you're using Listen for each
+ +     * of them) before you run into another Solaris problem:  the 256
+ +     * FILE * limitation.
+ +     */
+ +#ifndef SOLARIS2
+      s = ap_slack(s, AP_SLACK_HIGH);
+ +#endif
+  
+      note_cleanups_for_fd(pconf, s); /* arrange to close on exec or restart */
+      
+ 
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Mon Jul 28 14:58:57 PDT 1997
+State-Changed-Why:
+[Actually awaiting feedback, no longer "open"]
+Synopsis-Changed-From: PR#832
+Synopsis-Changed-To: httpd dies on Solaris after HUP (ref PR #832)
+Synopsis-Changed-By: coar
+Synopsis-Changed-When: Mon Jul 28 14:58:57 PDT 1997
+
+From: "Thomas Omerzu" <omerzu@quantum.de>
+To: dgaudet@arctic.org (Dean Gaudet)
+Subject: Re: os-solaris/926: PR#832
+Date: Tue, 29 Jul 1997 11:25:07 +0200 (MET DST)
+
+ 
+ 
+ Hello Dean Gaudet,
+ 
+ > Date: Mon, 28 Jul 1997 11:46:02 -0700 (PDT)
+ > From: Dean Gaudet <dgaudet@arctic.org>
+ > To: Thomas Omerzu <omerzu@quantum.de>
+ > cc: apbugs@apache.org
+ > Subject: Re: os-solaris/926: PR#832
+ > Message-ID: <Pine.LNX.3.95dg3.970728114510.31489K-100000@twinlark.arctic.org>
+ [...]
+ > 
+ > Thomas, please reverse the old patch (use patch -R or unpack apache_1.2.1
+ > again and retrieve the original http_main.c) and try this patch below.
+ > 
+ > Dean
+ > 
+ > --- apache_1.2.1-dist/src/http_main.c	Sun Jun 29 11:08:37 1997
+ > +++ apache_1.2.1/src/http_main.c	Mon Jul 28 11:35:36 1997
+ [...]
+ 
+ 
+ This patch seems to solve the problem.... 
+ 
+ 
+ -- 
+ MfG
+     Thomas Omerzu
+ 
+ *----------------------------------------------------------------------------*
+       Thomas Omerzu        Internet:     omerzu@quantum.de
+   Quantum Software GmbH    Web:          http://www.quantum.de/~to/
+    Emil-Figge-Str. 83      Telefon:      +49-231-9749-233   Fax:  -3
+  44227 Dortmund, Germany   PGP Fingerpr: 3852EB51 9F2DB1FB  0785CE2F 8CD9C6CB 
+ 
+ Verrückt, aber weise. Gefangen, aber frei. Physiker, aber unschuldig.
+         -- Dürrenmatt, "Die Physiker"
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Aug  2 04:46:13 PDT 1997
+State-Changed-Why:
+I'll be tracking this problem via PR#832.
+
+Dean
+>Unformatted:
+
+
+
+

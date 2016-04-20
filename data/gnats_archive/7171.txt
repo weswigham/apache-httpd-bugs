@@ -1,0 +1,201 @@
+Received: (qmail 50371 invoked by uid 501); 1 Feb 2001 00:31:20 -0000
+Message-Id: <20010201003120.50370.qmail@apache.org>
+Date: 1 Feb 2001 00:31:20 -0000
+From: Paul Ashton <paul@tca.co.nz>
+Reply-To: paul@tca.co.nz
+To: submit@bugz.apache.org
+Subject: (Win32) mod_jserv is not sending the SHUTDOWN message to the JServ Java process
+X-Send-Pr-Version: 3.110
+
+>Number:         7171
+>Category:       mod_jserv
+>Synopsis:       (Win32) mod_jserv is not sending the SHUTDOWN message to the JServ Java process
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan 31 16:40:01 PST 2001
+>Closed-Date:    Mon Apr 02 14:26:19 PDT 2001
+>Last-Modified:  Mon Apr 02 14:26:19 PDT 2001
+>Originator:     paul@tca.co.nz
+>Release:        1.3.14
+>Organization:
+>Environment:
+Windows NT 4 Server, SP5, JServ 1.1.2
+>Description:
+The most obvious consequence is that when Apache is shutdown, none of the servlets running under JServ have their destroy() method called.
+>How-To-Repeat:
+Write a simple servlet that performs some observable action in
+its destroy method (creates a file, for example).  Install it in JServ,
+and add it to the servlets.startup list in the default zone.  Start
+Apache, wait until all the servlets have started, then shutdown apache.
+Note that the action performed by the destroy method hasn't been performed,
+because destroy hasn't been called!
+>Fix:
+I've gleaned some information that might help in coming up with a fix.
+
+In jserv.conf I've got:
+
+ApJServLogLevel info
+
+and in jserv.properties
+
+log.channel.info=true
+log.channel.servletException=true
+log.channel.jservException=true
+log.channel.warning=true
+log.channel.servletLog=true
+log.channel.critical=true
+log.channel.debug=true
+
+When I shutdown Apache, the following messages appear in mod_jserv.log:
+
+[30/01/2001 21:40:33:276] (INFO) wrapper: controller started (PID=363)
+[31/01/2001 04:00:34:092] (INFO) wrapper: Shutdown done (PID=394)
+[31/01/2001 04:00:34:112] (INFO) Apache Module was cleaned-up
+[31/01/2001 04:00:39:490] (INFO) wrapper: thread did not end, terminating it
+[31/01/2001 04:00:39:490] (INFO) wrapper: controller thread stopped
+[31/01/2001 04:00:39:490] (INFO) wrapper: Java Virtual Machine still alive after controller kill
+[31/01/2001 04:00:39:490] (INFO) wrapper: Java Virtual Machine stopped
+[31/01/2001 04:00:39:490] (INFO) wrapper: Shutdown done (PID=363)
+[31/01/2001 04:00:39:490] (INFO) Apache Module was cleaned-up
+
+There are no (INFO) messages from wrapper_controller (in jserv_wrapper_win.c),
+which is the only place that actually forwards a JSERV_SHUTDOWN control message 
+to the Java process acting as the servlet engine.  Also, there are no messages
+at all in the jserv.log file relating to the shutdown (which also indicates)
+that the shutdown message doesn't get through to the Java process.
+Most of the messages in the above extract are generated in wrapper_destroy,
+which starts with:
+
+int wrapper_destroy (wrapper_config *cfg) {
+    int ret;
+
+    /* Check our thread status and terminate it */
+    if (wrapper_thread!=NULL) {
+        if (wrapper_event!=NULL) {
+            /* Post the quit message */
+            SetEvent(wrapper_event);
+
+            /* Wait 5 second for thread and process to terminate */
+            ret=WaitForSingleObject(wrapper_thread,5000);
+
+            /* Wait did not go thru... terminate the thread */
+            if (ret!=WAIT_OBJECT_0) {
+                TerminateThread(wrapper_thread,0);
+                jserv_error(JSERV_LOG_INFO,cfg->config,"wrapper: %s",
+                            "thread did not end, terminating it");
+            }
+
+So it seems that the SetEvent(wrapper_event) call is the one intended
+to cause the JSERV_SHUTDOWN message to be sent, but it's not happening.
+I guess that SetEvent is a call back into Apache proper---perhaps the
+event loop has been disabled at this point in the shutdown process
+which is why nothing happens as a result to the call to SetEvent.
+
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: wrowe
+State-Changed-When: Thu Feb 15 13:35:16 PST 2001
+State-Changed-Why:
+
+Can you repeat this problem with Apache version 1.3.17?
+
+I specifically ask because Apache 1.3.14 'lost' it's console
+window when running as a service.  This caused havoc due
+to Microsoft bugs in the child process mechanics that a
+child not launched in the context of the parent's console
+window is prone to bugs with it's standard handles, e.g.
+stdin/stdout.  The pipes used for stdin/stdout communication
+would not close properly or notify the parent that they had
+been closed.
+
+Please try 1.3.17 and report back.
+
+
+
+From: Paul Ashton <paul@tca.co.nz>
+To: wrowe@apache.org
+Cc: apbugs@Apache.Org, peter@tca.co.nz
+Subject: Re: mod_jserv/7171: (Win32) mod_jserv is not sending the SHUTDOWN 
+ message to the JServ Java process
+Date: Fri, 16 Feb 2001 11:10:24 +1300
+
+ wrowe@apache.org wrote:
+ > 
+ > [In order for any reply to be added to the PR database, you need]
+ > [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ > [subject line starts with the report component and number, with ]
+ > [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ > ["Re: general/1098:").  If the subject doesn't match this       ]
+ > [pattern, your message will be misfiled and ignored.  The       ]
+ > ["apbugs" address is not added to the Cc line of messages from  ]
+ > [the database automatically because of the potential for mail   ]
+ > [loops.  If you do not include this Cc, your reply may be ig-   ]
+ > [nored unless you are responding to an explicit request from a  ]
+ > [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ > 
+ > Synopsis: (Win32) mod_jserv is not sending the SHUTDOWN message to the JServ Java process
+ > 
+ > State-Changed-From-To: open-feedback
+ > State-Changed-By: wrowe
+ > State-Changed-When: Thu Feb 15 13:35:16 PST 2001
+ > State-Changed-Why:
+ > 
+ > Can you repeat this problem with Apache version 1.3.17?
+ > 
+ > I specifically ask because Apache 1.3.14 'lost' it's console
+ > window when running as a service.  This caused havoc due
+ > to Microsoft bugs in the child process mechanics that a
+ > child not launched in the context of the parent's console
+ > window is prone to bugs with it's standard handles, e.g.
+ > stdin/stdout.  The pipes used for stdin/stdout communication
+ > would not close properly or notify the parent that they had
+ > been closed.
+ >
+ > Please try 1.3.17 and report back.
+ 
+ I installed 1.3.17 as soon as it was available in case it fixed the
+ problem, but it didn't---behaviour is as for 1.3.14.
+ 
+ Cheers, Paul.
+ -- 
+ Paul Ashton
+ Tourplan Pacific
+ Christchurch, New Zealand
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: wrowe
+State-Changed-When: Mon Apr  2 14:26:17 PDT 2001
+State-Changed-Why:
+
+This bug is corrected and will be gone in 1.3.20.
+
+The server sent the correct messages from the wrong thread,
+causing several modules shutdown issues.
+
+Thank you for your report and interest in the Apache httpd
+project!
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

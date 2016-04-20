@@ -1,0 +1,203 @@
+Received: (qmail 22717 invoked by uid 2012); 11 Aug 1998 03:35:53 -0000
+Message-Id: <19980811033553.22716.qmail@hyperreal.org>
+Date: 11 Aug 1998 03:35:53 -0000
+From: Kevin Goddard <draddog@draddog.com>
+Reply-To: draddog@draddog.com
+To: apbugs@hyperreal.org
+Subject: Httpd spawned process consume memory
+X-Send-Pr-Version: 3.2
+
+>Number:         2823
+>Category:       general
+>Synopsis:       Httpd spawned process consume memory
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Aug 10 20:40:00 PDT 1998
+>Last-Modified:  Sat Feb 20 18:02:05 PST 1999
+>Originator:     draddog@draddog.com
+>Organization:
+>Release:        1.2.0
+>Environment:
+Linux dragon.*.com 2.0.31 #1 Sun Nov 9 21:45:23 EST 1997 i586 unknown
+Server version: Apache/1.3.0 (Unix)
+Server built:   Aug 10 1998 12:56:17
+
+>Description:
+I have been running 1.3.0 for about two months without a problem, now all of a sudden, it is acting funny.  I have tried everything I know, and am out of ideas.  The httpd server runs fine, but one or two of the httpd spawn processes will start to consume memory.  This causes the load on the server to sky rocket.  I have some safe guards set to shut httpd when the load gets to high, and then turn it back on when the load gets low enough, but this is happening every 5 minutes.  I have been able to confirm that it has something to do with one virtual site on the server.  I have turned everything off (mSQLd, sendmail, perl) and still it happens. Another guy I know showed me a latest apache exploit that had something to do with the httpd_protocol.c file, but he applied the patch for it, and the problem still exists.  Because the site is so busy, I was using some of the settings from the High Performance file:
+MaxClients 25
+StartServers 5
+MinSpareServers 5
+MaxSpareServers 10
+MaxRequestsPerChild 10000000
+Here is a line from top that shows the problem:
+10023 nobody     8 -20 19084  11M   352 R <     0  6.8 12.6   1:46 httpd
+I have it niced to -20 so I can still use the server while it is over flowing the system and shut it down
+Any ideas?
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Kevin Goddard <draddog@draddog.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/2823: Httpd spawned process consume memory
+Date: Tue, 11 Aug 1998 00:55:16 -0700 (PDT)
+
+ On 11 Aug 1998, Kevin Goddard wrote:
+ 
+ > >Description: I have been running 1.3.0 for about two months without a
+ > problem, now all of a sudden, it is acting funny.  I have tried
+ > everything I know, and am out of ideas.  The httpd server runs fine,
+ > but one or two of the httpd spawn processes will start to consume
+ > memory.  This causes the load on the server to sky rocket.  I have
+ 
+ Is there anything in the error log?
+ 
+ Do you have any extra modules compiled in?
+ 
+ Can you find anything in the access log that looks unusual?
+ 
+ > some safe guards set to shut httpd when the load gets to high, and
+ > then turn it back on when the load gets low enough, but this is
+ > happening every 5 minutes.  I have been able to confirm that it has
+ > something to do with one virtual site on the server.  I have turned
+ > everything off (mSQLd, sendmail, perl) and still it happens. Another
+ > guy I know showed me a latest apache exploit that had something to do
+ > with the httpd_protocol.c file, but he applied the patch for it, and
+ 
+ Exactly what patch is this?  Are you sure it was applied
+ correctly and you are running the new binary?
+ 
+ 
+ > Here is a line from top that shows the problem:
+ > 10023 nobody     8 -20 19084  11M   352 R <     0  6.8 12.6   1:46 httpd
+ 
+ Does it continue to grow, or does it stabalize at a particular
+ size?
+ 
+ 
+
+From: Kevin Goddard <draddog@draddog.com>
+To: Marc Slemko <marcs@znep.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/2823: Httpd spawned process consume memory
+Date: Tue, 11 Aug 1998 07:45:53 -0400 (EDT)
+
+ > 
+ > Is there anything in the error log?
+ Nothing unusual.  A lot of:
+ " [error] request failed for *.*.*.*: error reading the headers"
+ Where the *.*.*.* seems to be different IP Addresses.
+ 
+ > 
+ > Do you have any extra modules compiled in?
+ Just rewrite, which did remind me that I did add some new rewrite stuff
+ the day this started happening.  I have had problems with rewrite before,
+ so I have removed the new code to see what happens.
+ 
+  
+ > Can you find anything in the access log that looks unusual?
+ A lot of 400 return codes, but they are spread out over other IP space.
+ 
+ > 
+ > Exactly what patch is this?  Are you sure it was applied
+ > correctly and you are running the new binary?
+ To be honest I am not sure, my friend put it in.  Here is some of the code
+ I know he implemented:
+         if(++nheaders >=10) {
+             r->status = HTTP_BAD_REQUEST;
+             return;
+         }
+ He said something about a "bug" that was found in all versions of apache
+ where you could cause httpd to get really huge be sending it a bunch of
+ headers.
+ 
+  
+ > Does it continue to grow, or does it stabalize at a particular
+ > size?
+ They continue to grow until my safe guard kicks in and shuts httpd off.  I
+ can also kill the offending process with no problem.
+ 
+ Thanks for you help, if you have any ideas I would appreciate it.  I will
+ keep an eye on the processes now that I have removed the rewrite code and
+ I will let you know if that seems to fix it.
+ Thanks
+ Kevin
+ 
+
+From: Kevin Goddard <draddog@draddog.com>
+To: Marc Slemko <marcs@znep.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/2823: Httpd spawned process consume memory
+Date: Tue, 11 Aug 1998 16:01:12 -0400 (EDT)
+
+ It looks like it was the ReWrite causing the problems.  I had code in a
+ linked .htaccess file that I have sprinkled in each directory (I know this
+ could be done a better way, just have not got their yet).  Anyway that
+ seemed to cause the problem.
+ Thanks!
+ Kevin Goddard
+ 
+ On Tue, 11 Aug 1998, Marc Slemko wrote:
+ 
+ > On 11 Aug 1998, Kevin Goddard wrote:
+ > 
+ > > >Description: I have been running 1.3.0 for about two months without a
+ > > problem, now all of a sudden, it is acting funny.  I have tried
+ > > everything I know, and am out of ideas.  The httpd server runs fine,
+ > > but one or two of the httpd spawn processes will start to consume
+ > > memory.  This causes the load on the server to sky rocket.  I have
+ > 
+ > Is there anything in the error log?
+ > 
+ > Do you have any extra modules compiled in?
+ > 
+ > Can you find anything in the access log that looks unusual?
+ > 
+ > > some safe guards set to shut httpd when the load gets to high, and
+ > > then turn it back on when the load gets low enough, but this is
+ > > happening every 5 minutes.  I have been able to confirm that it has
+ > > something to do with one virtual site on the server.  I have turned
+ > > everything off (mSQLd, sendmail, perl) and still it happens. Another
+ > > guy I know showed me a latest apache exploit that had something to do
+ > > with the httpd_protocol.c file, but he applied the patch for it, and
+ > 
+ > Exactly what patch is this?  Are you sure it was applied
+ > correctly and you are running the new binary?
+ > 
+ > 
+ > > Here is a line from top that shows the problem:
+ > > 10023 nobody     8 -20 19084  11M   352 R <     0  6.8 12.6   1:46 httpd
+ > 
+ > Does it continue to grow, or does it stabalize at a particular
+ > size?
+ > 
+ > 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: lars
+State-Changed-When: Sat Feb 20 18:02:05 PST 1999
+State-Changed-Why:
+Configuration problem.
+Severity-Changed-From-To: critical-non-critical
+Severity-Changed-By: lars
+Severity-Changed-When: Sat Feb 20 18:02:05 PST 1999
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

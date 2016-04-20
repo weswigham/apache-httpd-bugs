@@ -1,0 +1,221 @@
+From apwww@hyperreal.org  Wed Aug 20 23:48:27 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id XAA02888;
+	Wed, 20 Aug 1997 23:48:27 -0700 (PDT)
+Message-Id: <199708210648.XAA02888@hyperreal.org>
+Date: Wed, 20 Aug 1997 23:48:27 -0700 (PDT)
+From: Tetsuya Furukawa <tetsuya@secom-sis.co.jp>
+Reply-To: tetsuya@secom-sis.co.jp
+To: apbugs@hyperreal.org
+Subject: RewriteMap programs don't work on FreeBSD
+X-Send-Pr-Version: 3.2
+
+>Number:         1029
+>Category:       mod_rewrite
+>Synopsis:       RewriteMap programs don't work on FreeBSD
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Aug 20 23:50:00 1997
+>Last-Modified:  Tue Feb 24 05:40:59 PST 1998
+>Originator:     tetsuya@secom-sis.co.jp
+>Organization:
+>Release:        1.3b3
+>Environment:
+FreeBSD 2.1.7.1-RELEASE and 2.2-STABLE
+>Description:
+On the FreeBSD operating system, flock() always fails in fd_lock() called by
+lookup_map_program(), because flock() doesn't support pipes on the system.
+Fcntl(fd, F_SETLKW, ...) doesn't too.
+
+Additionally, the usage of flock() in fd_lock() seems improper.
+The file descriptor given to flock() should be opened after fork().
+So I think the locking for RewriteLogFile doesn't work if USE_FLOCK is defined.
+Actually, there isn't any problem at RewriteLogFile, because the locking
+is currently no use.
+>How-To-Repeat:
+In the configuration file on the FreeBSD machine, write
+----
+RewriteEngine on
+RewriteMap testmap prg:/path/testmap
+RewriteRule ^/test1/(.*) /test2/${testmap:$1|}
+----
+where the /path/testmap is a proper map program.
+
+Then, if you access http://host/test1/foo, the accepted child process will print
+----
+flock: Operation not supported
+Error getting lock. Exiting!
+----
+and die.
+>Fix:
+1. Create a temporary file for each map program.
+2. Open the files after fork().
+3. Give the file descriptors to fd_lock().
+%0
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Thu Dec 18 08:17:57 PST 1997
+State-Changed-Why:
+Is this still a problem with 1.2.4?  How about 1.3b3?
+
+From: tetsuya@secom-sis.co.jp (Tetsuya Furukawa)
+To: coar@hyperreal.org
+Cc: apache-bugdb@Apache.Org, coar@Apache.Org, apbugs@Apache.Org
+Subject: Re: mod_rewrite/1029: RewriteMap programs don't work on FreeBSD
+Date: Mon, 22 Dec 1997 20:14:21 +0900
+
+ coar wrote:
+ >Synopsis: RewriteMap programs don't work on FreeBSD
+ >
+ >State-Changed-From-To: open-feedback
+ >State-Changed-By: coar
+ >State-Changed-When: Thu Dec 18 08:17:57 PST 1997
+ >State-Changed-Why:
+ >Is this still a problem with 1.2.4?  How about 1.3b3?
+ >
+ 
+ Apache 1.3b3 still has the problem on FreeBSD.
+ 
+ I have made a simple fix, which is dirty and inefficient.
+ Maybe it fixes the similar problem on SunOS 4.1.x also.
+ 
+ ----------------------------------------------------------
+ --- src/main/http_main.c.orig	Mon Nov 17 00:43:16 1997
+ +++ src/main/http_main.c	Mon Dec 22 19:23:07 1997
+ @@ -602,10 +602,13 @@
+  #elif defined(USE_FLOCK_SERIALIZED_ACCEPT)
+  
+  static int lock_fd = -1;
+ +int rewrite_lock_fd = -1;
+ +static char *rewrite_lock_fname;
+  
+  static void accept_mutex_cleanup(void *foo)
+  {
+      unlink(lock_fname);
+ +    unlink(rewrite_lock_fname);
+  }
+  
+  /*
+ @@ -616,7 +619,8 @@
+  {
+  
+      lock_fd = popenf(p, lock_fname, O_WRONLY, 0600);
+ -    if (lock_fd == -1) {
+ +    rewrite_lock_fd = popenf(p, rewrite_lock_fname, O_WRONLY, 0600);
+ +    if (lock_fd == -1 || rewrite_lock_fd == -1) {
+  	aplog_error(APLOG_MARK, APLOG_EMERG, server_conf,
+  		    "Child cannot open lock file: %s\n", lock_fname);
+  	exit(1);
+ @@ -632,7 +636,10 @@
+      expand_lock_fname(p);
+      unlink(lock_fname);
+      lock_fd = popenf(p, lock_fname, O_CREAT | O_WRONLY | O_EXCL, 0600);
+ -    if (lock_fd == -1) {
+ +    rewrite_lock_fname = pstrcat(p, lock_fname, ".rewrite", NULL);
+ +    unlink(rewrite_lock_fname);
+ +    rewrite_lock_fd = popenf(p, rewrite_lock_fname, O_CREAT | O_WRONLY | O_EXCL, 0600);
+ +    if (lock_fd == -1 || rewrite_lock_fd == -1) {
+  	aplog_error(APLOG_MARK, APLOG_EMERG, server_conf,
+  		    "Parent cannot open lock file: %s\n", lock_fname);
+  	exit(1);
+ --- src/modules/standard/mod_rewrite.c.orig	Wed Nov 12 20:21:52 1997
+ +++ src/modules/standard/mod_rewrite.c	Mon Dec 22 19:32:53 1997
+ @@ -115,6 +115,10 @@
+  #include <sys/locking.h>
+  #endif 
+  
+ +#ifdef USE_FLOCK
+ +extern int rewrite_lock_fd;
+ +#endif
+ +
+  
+  /*
+  ** +-------------------------------------------------------+
+ @@ -2613,9 +2617,7 @@
+      int i;
+  
+      /* lock the channel */
+ -#ifdef USE_PIPE_LOCKING
+      fd_lock(fpin);
+ -#endif
+  
+      /* write out the request key */
+      write(fpin, key, strlen(key));
+ @@ -2631,9 +2633,7 @@
+      buf[i] = '\0';
+  
+      /* unlock the channel */
+ -#ifdef USE_PIPE_LOCKING
+      fd_unlock(fpin);
+ -#endif
+  
+      if (strcasecmp(buf, "NULL") == 0)
+          return NULL;
+ @@ -3688,7 +3688,7 @@
+          continue;
+  #endif
+  #ifdef USE_FLOCK
+ -    while (   ((rc = flock(fd, LOCK_EX)) < 0) 
+ +    while (   ((rc = flock(rewrite_lock_fd, LOCK_EX)) < 0) 
+             && (errno == EINTR)               )
+          continue;
+  #endif
+ @@ -3726,7 +3726,7 @@
+      rc = fcntl(fd, F_SETLKW, &unlock_it);
+  #endif
+  #ifdef USE_FLOCK 
+ -    rc = flock(fd, LOCK_UN);
+ +    rc = flock(rewrite_lock_fd, LOCK_UN);
+  #endif 
+  #ifdef USE_LOCKING
+      lseek(fd,0,SEEK_SET);
+ --- src/modules/standard/mod_rewrite.h.orig	Wed Nov 12 19:46:56 1997
+ +++ src/modules/standard/mod_rewrite.h	Mon Dec 22 19:16:11 1997
+ @@ -138,15 +138,6 @@
+  #define USE_LOCKING
+  #endif
+  
+ -    /* The locking support for the RewriteMap programs:
+ -     * Locking a pipe to the child works fine under most
+ -     * Unix derivates, but braindead SunOS 4.1.x has 
+ -     * problems with this approach...
+ -     */
+ -#define USE_PIPE_LOCKING 1
+ -#ifdef SUNOS4
+ -#undef USE_PIPE_LOCKING
+ -#endif
+  
+  /*
+  **
+ ----------------------------------------------------------
+ 
+ --
+ Tetsuya FURUKAWA
+Release-Changed-From-To: 1.2.1, 1.2.3-1.2.3
+Release-Changed-By: coar
+Release-Changed-When: Thu Jan 22 08:54:51 PST 1998
+State-Changed-From-To: feedback-open
+State-Changed-By: coar
+State-Changed-When: Thu Feb 12 09:40:57 PST 1998
+State-Changed-Why:
+Changing to "open" so one of the FreeBSD/rewrite developers
+can work on it.
+Release-Changed-From-To: 1.2.3-1.3b3
+Release-Changed-By: coar
+Release-Changed-When: Thu Feb 12 09:40:57 PST 1998
+State-Changed-From-To: open-closed
+State-Changed-By: rse
+State-Changed-When: Tue Feb 24 05:40:59 PST 1998
+State-Changed-Why:
+This is now fixed in 1.3b6-dev by introducing a
+RewriteLock directive for explicitly locking a 
+file instead of the pipe.
+>Unformatted:
+
+

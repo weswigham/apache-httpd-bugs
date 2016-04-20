@@ -1,0 +1,247 @@
+Received: (qmail 22301 invoked by uid 2012); 16 Aug 1999 23:10:00 -0000
+Message-Id: <19990816231000.22300.qmail@hyperreal.org>
+Date: 16 Aug 1999 23:10:00 -0000
+From: Sam Ziegler <sam@ziegler.org>
+Reply-To: sam@ziegler.org
+To: apbugs@hyperreal.org
+Subject: Patch for using syslog with CustomLog
+X-Send-Pr-Version: 3.2
+
+>Number:         4868
+>Category:       mod_log-any
+>Synopsis:       Patch for using syslog with CustomLog
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Aug 16 16:20:00 PDT 1999
+>Last-Modified:
+>Originator:     sam@ziegler.org
+>Organization:
+apache
+>Release:        1.3.6
+>Environment:
+Linux 2.2.11, but should work on any UNIX with syslog
+>Description:
+Adds the ErrorLog syslog functionality to CustomLog.  It's a functional, but
+quick and dirty patch.
+>How-To-Repeat:
+
+>Fix:
+*** mod_log_config.c.old	Mon Aug 16 16:05:15 1999
+--- mod_log_config.c	Mon Aug 16 15:57:06 1999
+***************
+*** 172,177 ****
+--- 172,178 ----
+  #include "http_config.h"
+  #include "http_core.h"          /* For REMOTE_NAME */
+  #include "http_log.h"
++ #include "http_conf_globals.h"
+  #include <limits.h>
+  
+  module MODULE_VAR_EXPORT config_log_module;
+***************
+*** 715,721 ****
+  #ifdef BUFFERED_LOGS
+  static void flush_log(config_log_state *cls)
+  {
+!     if (cls->outcnt && cls->log_fd != -1) {
+          write(cls->log_fd, cls->outbuf, cls->outcnt);
+          cls->outcnt = 0;
+      }
+--- 716,722 ----
+  #ifdef BUFFERED_LOGS
+  static void flush_log(config_log_state *cls)
+  {
+!     if (cls->outcnt && cls->log_fd != -1 && cls->log_fd) {
+          write(cls->log_fd, cls->outbuf, cls->outcnt);
+          cls->outcnt = 0;
+      }
+***************
+*** 789,795 ****
+              memcpy(s, strs[i], strl[i]);
+              s += strl[i];
+          }
+!         write(cls->log_fd, str, len);
+      }
+      else {
+          for (i = 0, s = &cls->outbuf[cls->outcnt]; i < format->nelts; ++i) {
+--- 790,804 ----
+              memcpy(s, strs[i], strl[i]);
+              s += strl[i];
+          }
+! 	if (cls->log_fd) {
+! 	  write(cls->log_fd, str, len);
+! 	}
+! #ifdef HAVE_SYSLOG
+! 	else {
+! 	  str[len] = '\0';
+! 	  syslog(6,"%s",str);
+! 	}
+! #endif
+      }
+      else {
+          for (i = 0, s = &cls->outbuf[cls->outcnt]; i < format->nelts; ++i) {
+***************
+*** 806,812 ****
+          s += strl[i];
+      }
+  
+!     write(cls->log_fd, str, len);
+  #endif
+  
+      return OK;
+--- 815,829 ----
+          s += strl[i];
+      }
+  
+!     if (cls->log_fd) {
+!       write(cls->log_fd, str, len);
+!     }
+! #ifdef HAVE_SYSLOG
+!      else {
+! 	  str[len] = '\0';
+!        syslog(6,"%s",str);
+!      }
+! #endif
+  #endif
+  
+      return OK;
+***************
+*** 970,975 ****
+--- 987,1059 ----
+      {NULL}
+  };
+  
++ typedef struct {
++         char    *t_name;
++         int     t_val;
++ } TRANS;
++ 
++ static const TRANS facilities[] = {
++     {"auth",    LOG_AUTH},
++ #ifdef LOG_AUTHPRIV
++     {"authpriv",LOG_AUTHPRIV},
++ #endif
++ #ifdef LOG_CRON
++     {"cron",    LOG_CRON},
++ #endif
++ #ifdef LOG_DAEMON
++     {"daemon",  LOG_DAEMON},
++ #endif
++ #ifdef LOG_FTP
++     {"ftp",     LOG_FTP},
++ #endif
++ #ifdef LOG_KERN
++     {"kern",    LOG_KERN},
++ #endif
++ #ifdef LOG_LPR
++     {"lpr",     LOG_LPR},
++ #endif
++ #ifdef LOG_MAIL
++     {"mail",    LOG_MAIL},
++ #endif
++ #ifdef LOG_NEWS
++     {"news",    LOG_NEWS},
++ #endif
++ #ifdef LOG_SYSLOG
++     {"syslog",  LOG_SYSLOG},
++     {"syslog",  LOG_SYSLOG},
++ #endif
++ #ifdef LOG_USER
++     {"user",    LOG_USER},
++ #endif
++ #ifdef LOG_UUCP
++     {"uucp",    LOG_UUCP},
++ #endif
++ #ifdef LOG_LOCAL0
++     {"local0",  LOG_LOCAL0},
++ #endif
++ #ifdef LOG_LOCAL1
++     {"local1",  LOG_LOCAL1},
++ #endif
++ #ifdef LOG_LOCAL2
++     {"local2",  LOG_LOCAL2},
++ #endif
++ #ifdef LOG_LOCAL3
++     {"local3",  LOG_LOCAL3},
++ #endif
++ #ifdef LOG_LOCAL4
++     {"local4",  LOG_LOCAL4},
++ #endif
++ #ifdef LOG_LOCAL5
++     {"local5",  LOG_LOCAL5},
++ #endif
++ #ifdef LOG_LOCAL6
++     {"local6",  LOG_LOCAL6},
++ #endif
++ #ifdef LOG_LOCAL7
++     {"local7",  LOG_LOCAL7},
++ #endif
++     {NULL,              -1},
++ };
++ 
+  static config_log_state *open_config_log(server_rec *s, pool *p,
+                                           config_log_state *cls,
+                                           array_header *default_format)
+***************
+*** 992,1003 ****
+--- 1076,1114 ----
+          cls->log_fd = ap_piped_log_write_fd(pl);
+      }
+      else {
++ #ifdef HAVE_SYSLOG
++         if (!strncasecmp(cls->fname, "syslog", 6)) {
++ 	    char *fname = NULL;
++             if ((fname = strchr(cls->fname, ':'))) {
++ 	        const TRANS *fac;
++ 
++ 		fname++;
++ 		for (fac = facilities; fac->t_name; fac++) {
++ 		    if (!strcasecmp(fname, fac->t_name)) {
++ 		        openlog(ap_server_argv0, LOG_NDELAY|LOG_CONS|LOG_PID,
++ 				fac->t_val);
++ 			cls->log_fd = 0;
++ 			return cls;
++ 		    }
++ 		}
++ 		return NULL;
++ 	    } else {
++                 openlog(ap_server_argv0, LOG_NDELAY|LOG_CONS|LOG_PID, 
++ 			LOG_LOCAL7);
++ 		cls->log_fd = 0;
++ 		return cls;
++ 	    }
++ 	} else {
++ #endif 
+          char *fname = ap_server_root_relative(p, cls->fname);
+          if ((cls->log_fd = ap_popenf(p, fname, xfer_flags, xfer_mode)) < 0) {
+              ap_log_error(APLOG_MARK, APLOG_ERR, s,
+                           "could not open transfer log file %s.", fname);
+              exit(1);
+          }
++ #ifdef HAVE_SYSLOG
++ 	}
++ #endif
+      }
+  #ifdef BUFFERED_LOGS
+      cls->outcnt = 0;
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

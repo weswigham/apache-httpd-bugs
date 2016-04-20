@@ -1,0 +1,185 @@
+Received: (qmail 23752 invoked by uid 2012); 21 Apr 1998 22:40:06 -0000
+Message-Id: <19980421224006.23751.qmail@hyperreal.org>
+Date: 21 Apr 1998 22:40:06 -0000
+From: Richard Ruth <rruth@studio.disney.com>
+Reply-To: rruth@studio.disney.com
+To: apbugs@hyperreal.org
+Subject: server-status reports many more requests being processed than really exist
+X-Send-Pr-Version: 3.2
+
+>Number:         2108
+>Category:       mod_status
+>Synopsis:       server-status reports many more requests being processed than really exist
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          analyzed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Apr 21 15:50:00 PDT 1998
+>Last-Modified:  Thu May 28 05:06:09 PDT 1998
+>Originator:     rruth@studio.disney.com
+>Organization:
+>Release:        1.2.6
+>Environment:
+Linux 2.0.33 (Red Hat 5.0 +patches)on Compaq Deskpro 4000  PII  233MHz
+gcc-2.7.2.3
+glibc-2.0.7
+tlan-0.42 Ethernet driver for Compaq's ethernet port
+mod_fastcgi_2.0.13  (only Apache module not supplied with apache_1.2.6 source)
+>Description:
+My Apache server-status page shows an ever growing number of 
+'requests currently being processed' however 'ps ax | grep httpd' only
+shows the ten or so httpd processes that I would expect.  These
+phantom requests slowly grow until I reset the Apache server
+(kill -SIGHUP) or MaxClients is reached (I think).
+
+Here is an example:
+
+
+Current Time: Tue Apr 21 15:21:58 1998 
+Restart Time: Mon Apr 20 16:45:58 1998 
+Server uptime: 22 hours 36 minutes
+Total accesses: 4135 - Total Traffic: 19.7 MB
+CPU Usage: u6.91 s4.29 cu0 cs0 - 0.0138% CPU load
+0.0508 requests/sec - 253 B/second - 4988 B/request
+113 requests currently being processed, 9 idle servers 
+
+_WWWWWWWWWKWWKWWWRWWWWKKWWWKKWWWWWWWKWWKWKWWWKWWWKKWKWWKWWWKWWKK
+KKKWWKKWWWKWWWKKWWKKWWKWWWWWWKWWWKKWWWWKWKWWWK_WWW_W______......
+
+...
+
+[rruth@phone /usr/local/apache/conf]$ ps ax | grep httpd
+  660  ?  S    0:00 /usr/local/apache/httpd -f /usr/local/apache/conf/httpd.con
+ 1429  ?  S    0:00 /usr/local/apache/httpd -f /usr/local/apache/conf/httpd.con
+ 1430  ?  S    0:00 /usr/local/apache/httpd -f /usr/local/apache/conf/httpd.con
+... (6 more httpd lines)
+ 1929  ?  S    0:00 /usr/local/apache/httpd -f /usr/local/apache/conf/httpd.con
+
+
+Notes about this server and the problem:
+
+- This server only receives about 5000 hits per day
+- I have to kill -SIGHUP  about once per day to avoid having these
+phantom requests hit the MaxClients limit of 150
+- There is no pattern of requested web page type that causes the
+phantom requests.  According to server-status I have seen the following
+type of pages cause the phantom request;
+   --  dynamic fast-cgi created page
+   --  static html page 
+   --  static gif image
+   --  server-status request
+- The entire web page request that causes the phantom request is sent to
+the requesting browser.  IE. the browser user does not notice any problem.
+- Multiple types of browsers can cause this problem (NS and IE -- both current
+and past versions)
+
+
+>How-To-Repeat:
+
+>Fix:
+I don't know how to FIX this but my hopefully temporary work-around is
+to kill -SIGHUP  before the number of 'phantom requests' reaches MaxClients
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Richard Ruth <rruth@studio.disney.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/2108: server-status reports many more requests being processed than really exist
+Date: Tue, 21 Apr 1998 16:54:15 -0600 (MDT)
+
+ On 21 Apr 1998, Richard Ruth wrote:
+ 
+ > apache
+ > >Release:        1.2.6
+ > >Environment:
+ > Linux 2.0.33 (Red Hat 5.0 +patches)on Compaq Deskpro 4000  PII  233MHz
+ > gcc-2.7.2.3
+ > glibc-2.0.7
+ > tlan-0.42 Ethernet driver for Compaq's ethernet port
+ > mod_fastcgi_2.0.13  (only Apache module not supplied with apache_1.2.6 source)
+ 
+ Can you try without mod_fastcgi?  It has done some bogus things in the
+ past and I wouldn't be suprised if it were breaking things.
+ 
+ > >Description:
+ > My Apache server-status page shows an ever growing number of 
+ > 'requests currently being processed' however 'ps ax | grep httpd' only
+ > shows the ten or so httpd processes that I would expect.  These
+ > phantom requests slowly grow until I reset the Apache server
+ > (kill -SIGHUP) or MaxClients is reached (I think).
+ 
+ Anything in the error log?
+ 
+ 
+
+From: Richard <rruth@studio.disney.com>
+To: Marc Slemko <marcs@znep.com>
+Cc: Richard Ruth <rruth@studio.disney.com>, apbugs@Apache.Org
+Subject: Re: general/2108: server-status reports many more requests being 
+ processed than really exist
+Date: Tue, 21 Apr 1998 16:11:39 -0600
+
+ > On 21 Apr 1998, Richard Ruth wrote:
+ > 
+ > > apache
+ > > >Release:        1.2.6
+ > > >Environment:
+ > > Linux 2.0.33 (Red Hat 5.0 +patches)on Compaq Deskpro 4000  PII  233MHz
+ > > gcc-2.7.2.3
+ > > glibc-2.0.7
+ > > tlan-0.42 Ethernet driver for Compaq's ethernet port
+ > > mod_fastcgi_2.0.13  (only Apache module not supplied with apache_1.2.6 source)
+ > 
+ > Can you try without mod_fastcgi?  It has done some bogus things in the
+ > past and I wouldn't be suprised if it were breaking things.
+ 
+ Not easily.  However if nothing else works I'll try running without
+ mod_fastcgi.
+ 
+ > 
+ > > >Description:
+ > > My Apache server-status page shows an ever growing number of 
+ > > 'requests currently being processed' however 'ps ax | grep httpd' only
+ > > shows the ten or so httpd processes that I would expect.  These
+ > > phantom requests slowly grow until I reset the Apache server
+ > > (kill -SIGHUP) or MaxClients is reached (I think).
+ > 
+ > Anything in the error log?
+ 
+ There are only 5 or 6 lines per day in the error log.  Mostly they look
+ like this:
+ [Tue Apr 21 14:19:26 1998] mod_fastcgi: AppClass /home/www/fcgi-bin/directory/s
+ earch.fcgi pid 1439 terminated due to uncaught signal 11.
+ [Tue Apr 21 14:19:26 1998] mod_fastcgi: AppClass /home/www/fcgi-bin/directory/s
+ earch.fcgi restarted with pid 1868.
+ 
+ 
+ 
+ 
+State-Changed-From-To: open-analyzed
+State-Changed-By: brian
+State-Changed-When: Wed May 20 05:11:39 PDT 1998
+State-Changed-Why:
+(with Marc's reply, this should now be in analyzed state.)
+(Richard, any update?)
+
+Comment-Added-By: coar
+Comment-Added-When: Thu May 28 05:06:09 PDT 1998
+Comment-Added:
+[Appears to be specific to mod_status, so re-categorise
+appropriately]
+Category-Changed-From-To: general-mod_status
+Category-Changed-By: coar
+Category-Changed-When: Thu May 28 05:06:09 PDT 1998
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

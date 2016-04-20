@@ -1,0 +1,105 @@
+Received: (qmail 20784 invoked by uid 2012); 23 Apr 1999 23:02:08 -0000
+Message-Id: <19990423230208.20783.qmail@hyperreal.org>
+Date: 23 Apr 1999 23:02:08 -0000
+From: Pascal Gaudette <pascal@entrust.com>
+Reply-To: pascal@entrust.com
+To: apbugs@hyperreal.org
+Subject: Small Problem with HTTP headers extended over multiple lines
+X-Send-Pr-Version: 3.2
+
+>Number:         4299
+>Category:       protocol
+>Synopsis:       Small Problem with HTTP headers extended over multiple lines
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          mistaken
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Apr 23 16:10:01 PDT 1999
+>Last-Modified:  Mon Apr 26 10:48:03 PDT 1999
+>Originator:     pascal@entrust.com
+>Organization:
+>Release:        1.3.6
+>Environment:
+Tested under SunOS zigbert 5.5.1 Generic_103640-24 sun4u sparc SUNW,Ultra-5_10,
+but problem found in source as well.
+>Description:
+
+I believe there is a slight bug in Apache when dealing with HTTP headers
+that are split over two or more lines.
+
+To quote the HTTP/1.1 spec:
+> Header fields can be extended over multiple lines by preceding each
+> extra line with at least one SP or HT.
+>
+
+To me, this implies that these extra SP or HT characters should NOT be
+considered part of the value of the header.  So the follwing two inputs
+(with spaces, CR and LF explicitely noted) should both produce the same
+header value of "abcde":
+
+User-Agent: SP abcde CFLF
+
+User-Agent: SP abc CRLF
+SP SP HT de CRLF
+
+Unfortunately, Apache includes the SPs and HTs that denote line continuation
+into the header's value.
+>How-To-Repeat:
+
+Set up Apache, enable the cgi-bin directory and the printenv CGI.  Telnet
+to Apache's port and input a request with a folded header.  Look at the
+output and see that the extra spaces have been deemed part of the value.
+
+EG:
+--------------------
+% telnet myapachehost 80
+Trying <ip>...
+Connected to myapachehost.
+Escape character is '^]'.
+GET /cgi-bin/printenv HTTP/1.0
+Foo: abc
+   de
+
+--------------------
+>Fix:
+
+I believe this problem is in the getline() function in main/http_protocol.c
+(starting at line 643).
+
+This function should trim leading SP and HT characters in continuation lines.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Mon Apr 26 10:48:02 PDT 1999
+State-Changed-Why:
+
+You didn't read the rest of the paragraph:
+
+"All linear white space, including folding, has the same
+semantics as SP. A recipient MAY replace any linear white
+space with a single SP before interpreting the field value
+or forwarding the message downstream."
+
+So the folded continuation, including any tailing whitespace
+on the continued line, leading whitespace on the
+continuation line, and the newline itself, is replaced with
+a single space.
+
+Class-Changed-From-To: sw-bug-mistaken
+Class-Changed-By: coar
+Class-Changed-When: Mon Apr 26 10:48:02 PDT 1999
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

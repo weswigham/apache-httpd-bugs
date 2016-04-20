@@ -1,0 +1,104 @@
+From apwww@hyperreal.org  Wed Sep 10 09:39:25 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id JAA14882;
+	Wed, 10 Sep 1997 09:39:25 -0700 (PDT)
+Message-Id: <199709101639.JAA14882@hyperreal.org>
+Date: Wed, 10 Sep 1997 09:39:25 -0700 (PDT)
+From: Chris Heinze <x@reg.x.nu>
+Reply-To: x@reg.x.nu
+To: apbugs@hyperreal.org
+Subject: log hostname AND ip, log user for dynamic ip-accounting
+X-Send-Pr-Version: 3.2
+
+>Number:         1113
+>Category:       mod_log-any
+>Synopsis:       log hostname AND ip, log user for dynamic ip-accounting
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    contrib@apache.org
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Sep 10 09:40:01 1997
+>Last-Modified:  Sun Jul 19 01:00:35 PDT 1998
+>Originator:     x@x.nu
+>Organization:
+>Release:        1.2.4
+>Environment:
+Linux 2.0.30 i486 GCC 2.7.2.1, but that's not interesting. :)
+>Description:
+it's yet not possible to log both hostname and ip of requesting host. but this
+is sometimes needed (e.g. i need it ;). it would be best if there were another
+tag in customlogformat for the pure ip-address, even if hostname can be and is
+resolved (e.g. %a, as shown below).
+
+another very helpful feature would be if apache could read the corresponding
+username for the requesting ip from a file, like net-acct does. that is:
+if a user has his ppp-connection up and his dynamic ip-address assigned, the
+pppd (ip-up) writes his username to a file /var/run/<user's_ip-address>.
+net-acct is an accounting tool that logs all ip-traffic. if it logs traffic
+with an ip-address that has the according file in /var/run, it puts the name
+in this file into the log, too.
+with a similar feature in customlogformat (let's say %c) it would be possible
+to account proxy-traffic for users with dynamic ips very easily.
+
+i've been able to patch the first part (hostname and ip - big deal :) ) myself
+(see below), but in fact i don't really speak c, so i don't beleive i'm able
+to implement the second part (ip->username)... i hope somebody thinks this is
+a good idea and hacks a little patch to implement this in future releases... :)
+>How-To-Repeat:
+
+>Fix:
+sure, patched it:
+
+http_core.h: insert a line 80: #define REMOTE_IP (4)
+
+http_core.c: line 382-388, include in:
+    if (type == REMOTE_IP)
+    {
+        return conn->remote_ip;
+    }
+    else
+    {
+        if (conn->remote_host != NULL && conn->remote_host[0] != '\0')
+            return conn->remote_host;
+        else
+        {
+            if (type == REMOTE_HOST) return NULL;
+            else return conn->remote_ip;
+        }
+    }
+
+mod_log_config.c: insert a line 356: { 'a', log_remote_ip, 0 },
+and under log_remote_host insert:
+char *log_remote_ip (request_rec *r, char *a)
+{ return (char *)get_remote_host(r->connection, r->per_dir_config, REMOTE_IP); }
+%0
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: coar
+State-Changed-When: Thu Dec 11 17:18:17 PST 1997
+State-Changed-Why:
+This definitely won't be retropatched into Apache 1.2,
+but might make it into a future version.  We're in
+feature-freeze right now, so I'm suspending this request
+so it can be reviewed at the appropriate time.  Thanks
+for the suggestion, and for using Apache!
+Category-Changed-From-To: other-mod_log-any
+Category-Changed-By: coar
+Category-Changed-When: Thu Dec 11 17:18:17 PST 1997
+
+Responsible-Changed-From-To: apache-contrib@apache.org
+Responsible-Changed-By: dgaudet
+Responsible-Changed-When: Mon Feb 23 04:00:16 PST 1998
+Responsible-Changed-Why:
+Mark for contrib.%0
+State-Changed-From-To: suspended-closed
+State-Changed-By: marc
+State-Changed-When: Sun Jul 19 01:00:34 PDT 1998
+State-Changed-Why:
+This was added in 1.3.0.
+>Unformatted:
+
+

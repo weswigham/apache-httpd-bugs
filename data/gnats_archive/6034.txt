@@ -1,0 +1,122 @@
+Received: (qmail 89069 invoked by uid 501); 28 Apr 2000 07:22:08 -0000
+Message-Id: <20000428072208.89068.qmail@locus.apache.org>
+Date: 28 Apr 2000 07:22:08 -0000
+From: Steve Rosenberry <SMRosenberry@ElectronicSolutionsCo.com>
+Reply-To: SMRosenberry@ElectronicSolutionsCo.com
+To: submit@bugz.apache.org
+Subject: NT Perfmon shows growing handle count using ISAPI Extension DLL
+X-Send-Pr-Version: 3.110
+
+>Number:         6034
+>Category:       mod_isapi
+>Synopsis:       NT Perfmon shows growing handle count using ISAPI Extension DLL
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Apr 28 00:30:01 PDT 2000
+>Closed-Date:    Tue Sep 12 20:15:32 PDT 2000
+>Last-Modified:  Tue Sep 12 20:15:32 PDT 2000
+>Originator:     SMRosenberry@ElectronicSolutionsCo.com
+>Release:        1.3.9
+>Organization:
+>Environment:
+Win NT V4/SP5
+>Description:
+In an effort to track down a problem in a real Extension DLL, I noticed that 
+the handle count for the Apache process as given by PerfMon was growing by a
+count of two every time I loaded the ISAPI page.  I stripped the Extension DLL 
+of everything except DllEntryPoint(), GetVersionInfo() and HttpExtensionProc(), 
+and the Apache process is still showing a loss of two handles every time I call
+the DLL from my Netscape browser.
+>How-To-Repeat:
+Build an extension DLL using the following code.  I can also e-mail VC++ 5.0 
+project file and DLL if you wish.
+
+#include <httpext.h>
+
+// project is built with absolutely no C-run time at all, 
+// but we still need an entry point to keep the OS happy
+
+BOOL WINAPI DllEntryPoint( HINSTANCE hinstDLL,
+                           DWORD     fdwReason,
+                           LPVOID    lpvReserved )
+{
+  return( TRUE );
+}
+
+BOOL WINAPI GetExtensionVersion( HSE_VERSION_INFO* pVer )
+{
+  pVer->dwExtensionVersion = MAKELONG( HSE_VERSION_MINOR, HSE_VERSION_MAJOR );
+  pVer->lpszExtensionDesc[0] = 'x';
+  pVer->lpszExtensionDesc[1] = 'y';
+  pVer->lpszExtensionDesc[2] = 'z';
+  pVer->lpszExtensionDesc[3] = '\0';
+  return( TRUE );
+
+}
+
+DWORD WINAPI HttpExtensionProc( LPEXTENSION_CONTROL_BLOCK pECB )
+{
+
+  CHAR szOutput[] = "HTTP/1.0 200\r\n"
+                    "Content-Type: text/html\r\n\r\n" 
+                    "<HTML>"
+                    "<BODY>"
+                    "<H1>Test Message</H1>"
+                    "</BODY>"
+                    "</HTML>";
+
+  DWORD  dwLen = sizeof( szOutput ) - 1;
+
+  pECB->WriteClient( pECB->ConnID, (LPVOID)szOutput, &dwLen, HSE_IO_SYNC );
+
+  return( HSE_STATUS_SUCCESS );
+
+}
+>Fix:
+Sorry, no.
+>Release-Note:
+>Audit-Trail:
+Category-Changed-From-To: general-mod_isapi
+Category-Changed-By: wrowe
+Category-Changed-When: Thu Jun 15 13:30:03 PDT 2000
+
+Comment-Added-By: wrowe
+Comment-Added-When: Tue Sep 12 20:14:59 PDT 2000
+Comment-Added:
+
+This was a side-effect of the bug observed in PR2555.
+
+This is fixed in Apache 1.3.13-dev due for release someday
+soon now.  Thanks for your report and interest in the
+Apache httpd project.
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Tue Sep 12 20:15:31 PDT 2000
+State-Changed-Why:
+
+Did it again... this report is completed.
+
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,75 @@
+From apwww@hyperreal.org  Sat Aug 16 13:39:01 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id NAA06822;
+	Sat, 16 Aug 1997 13:39:01 -0700 (PDT)
+Message-Id: <199708162039.NAA06822@hyperreal.org>
+Date: Sat, 16 Aug 1997 13:39:01 -0700 (PDT)
+From: Patrick Rigney <patrick@evocative.com>
+Reply-To: patrick@evocative.com
+To: apbugs@hyperreal.org
+Subject: Potential group security hole with suexec
+X-Send-Pr-Version: 3.2
+
+>Number:         1001
+>Category:       suexec
+>Synopsis:       Potential group security hole with suexec
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Aug 16 13:40:01 1997
+>Last-Modified:  Tue May 19 21:48:27 PDT 1998
+>Originator:     patrick@evocative.com
+>Organization:
+>Release:        1.2.1
+>Environment:
+FreeBSD 2.2.2-RELEASE, gcc 2.7.2.1
+>Description:
+suexec will setuid/setgid to user who has group membership below GID_MIN.
+For example, if a user "fred" with groups wheel(0) staff(20) and fred(1022) appears
+in the User directive of a virtual host, and that vhost uses suexec, then
+suexec cgis will run within "wheel" (and other above) group privs.  The Group
+directive is not effective in limiting groups for the suexec, and in fact adds
+to the group membership.  For example, specifying group "nobody" would make the
+list of groups "nobody, wheel, staff, fred" for the above.  This can be easily
+exploited if the user's CGI or cgi-bin is writable by other users (perhaps
+through permission via other groups mentioned, e.g. staff).
+>How-To-Repeat:
+Select/create a user with membership in a few low groups (< GID_MIN).  Create a
+vhost and set it up for suexec, using that user in the User directive. A simple
+shell CGI scipt that runs /usr/bin/whoami and /usr/bin/groups and displays their output will
+show the effect.
+>Fix:
+The grouplist should be checked after setgid()/initgroups(), and at a minimum a 
+warning issued to the log, perhaps with a compile-time option to abort.
+Or (my personal preference) setgroups() could be used to limit the grouplist
+to only that group specified in the Group directive, or only those >= GID_MIN
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: brian
+State-Changed-When: Tue May 19 21:48:27 PDT 1998
+State-Changed-Why:
+yeah, better never than late, eh?  :)
+
+To be honest I don't see the security hole present here.  
+The whole point of suexec is to put the same protections
+around the CGI that Unix puts around its users.  A poorly
+written and exploitable CGI, under suexec, can do as much
+damage to the OS as the user whose userid it runs under can
+also do.  This is not a chroot jail and doesn't try to be.
+
+If we were to implement a warning or check, chances are the
+volume of bug reports we'd get about it would overwhelm us,
+as everyone testing "suexec" for the first time will be someone
+who has wheel group membership (etc.) since they had to become
+root to install suexec.
+
+Thanks for the note, though, it was good food for thought.
+
+
+>Unformatted:
+
+

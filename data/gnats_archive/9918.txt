@@ -1,0 +1,209 @@
+Received: (qmail 61412 invoked by uid 501); 23 Feb 2002 07:49:19 -0000
+Message-Id: <20020223074919.61411.qmail@apache.org>
+Date: 23 Feb 2002 07:49:19 -0000
+From: Paul Eggert <eggert@twinsun.com>
+Reply-To: eggert@twinsun.com
+To: submit@bugz.apache.org
+Subject: Apache 1.3.23 incompatibilities with POSIX 1003.1-2001
+X-Send-Pr-Version: 3.110
+
+>Number:         9918
+>Category:       config
+>Synopsis:       Apache 1.3.23 incompatibilities with POSIX 1003.1-2001
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Feb 22 23:50:00 PST 2002
+>Closed-Date:
+>Last-Modified:
+>Originator:     eggert@twinsun.com
+>Release:        1.3.23
+>Organization:
+apache
+>Environment:
+Any host conforming to POSIX 1003.1-2001.
+>Description:
+The new POSIX standard is now official (IEEE Std 1003.1-2001), and it
+has removed support for some obsolete utility options that Apache
+uses.  Basically, the new POSIX has removed digit-string options
+(e.g., "tail -1") and options beginning with "+" (e.g., "sort +1").
+I'm using an experimental environment that insists on the new
+standard, so I tend to run into these problems before other people do.
+>How-To-Repeat:
+Install GNU textutils 2.0.21
+<ftp://alpha.gnu.org/gnu/fetish/textutils-2.0.21.tar.gz>
+and set _POSIX2_VERSION=200112 in your environment.
+Then try to build Apache.
+>Fix:
+2002-02-22  Paul Eggert  <eggert@twinsun.com>
+
+	Port to POSIX 1003.1-2001 hosts, which don't have head -1 or
+	tail -1.
+
+	* src/Configure: head -1 -> sed q
+	tail -1 -> sed -n '$p'
+
+	* src/helpers/buildinfo.sh, src/helpers/fmn.sh: head -1 -> sed q
+
+	* src/helpers/getuid.sh: tail -1 -> sed -n '$p'
+
+===================================================================
+RCS file: src/Configure,v
+retrieving revision 1.3.23.0
+retrieving revision 1.3.23.1
+diff -pu -r1.3.23.0 -r1.3.23.1
+--- src/Configure	2002/01/22 23:32:17	1.3.23.0
++++ src/Configure	2002/02/23 07:38:36	1.3.23.1
+@@ -120,7 +120,7 @@ fi
+ ## Now see if Configuration.tmpl is more recent than $file. If
+ ## so, then we complain and bail out
+ ##
+-if ls -lt $file Configuration.tmpl | head -1 | \
++if ls -lt $file Configuration.tmpl | sed q | \
+   grep 'Configuration.tmpl' > /dev/null
+ then
+   echo "Configuration.tmpl is more recent than $file;"
+@@ -935,7 +935,7 @@ fi
+ #
+ # If $TCC is null, then no such line exists in Configuration
+ #
+-TCC=`egrep '^CC=' Makefile.config | tail -1 | awk -F= '{print $2}'`
++TCC=`egrep '^CC=' Makefile.config | sed -n '$p' | awk -F= '{print $2}'`
+ if [ "x$TCC" = "x" ]; then
+     if [ "x$CC" = "x" ]; then
+ 	# At this point, CC is not set in Configuration or above, so we
+@@ -975,7 +975,7 @@ fi
+ ####################################################################
+ ## Now check how we can _directly_ run the C pre-processor
+ ##
+-TCPP=`egrep '^CPP=' Makefile.config | tail -1 | awk -F= '{print $2}'`
++TCPP=`egrep '^CPP=' Makefile.config | sed -n '$p' | awk -F= '{print $2}'`
+ if [ "x$TCPP" != "x" ]; then
+     CPP=`CPP="$TCPP"; export CPP CC; ./helpers/findcpp.sh`
+ else
+@@ -1035,18 +1035,18 @@ esac
+ ####################################################################
+ ## Look for OPTIM and save for later
+ ##
+-TOPTIM=`egrep '^OPTIM=' Makefile.config | tail -1 | awk -F= '{print $2}'`
+-TRANLIB=`egrep '^RANLIB=' Makefile.config | tail -1 | awk -F= '{print $2}'`
+-TTARGET=`egrep '^TARGET=' Makefile.config | tail -1 | awk -F= '{print $2}'`
++TOPTIM=`egrep '^OPTIM=' Makefile.config | sed -n '$p' | awk -F= '{print $2}'`
++TRANLIB=`egrep '^RANLIB=' Makefile.config | sed -n '$p' | awk -F= '{print $2}'`
++TTARGET=`egrep '^TARGET=' Makefile.config | sed -n '$p' | awk -F= '{print $2}'`
+ 
+ ####################################################################
+ ## Check for user provided flags for shared object support
+ ##
+-TLD_SHLIB=`egrep '^LD_SHLIB=' Makefile.config | tail -1 | awk -F= '{print $2}'`
+-TLDFLAGS_SHLIB=`egrep '^LDFLAGS_SHLIB=' Makefile.config | tail -1 | awk -F= '{print $2}'`
+-TLDFLAGS_MOD_SHLIB=`egrep '^LDFLAGS_MOD_SHLIB=' Makefile.config | tail -1 | awk -F= '{print $2}'`
+-TLDFLAGS_SHLIB_EXPORT=`egrep '^LDFLAGS_SHLIB_EXPORT=' Makefile.config | tail -1 | awk -F= '{print $2}'`
+-TCFLAGS_SHLIB=`egrep '^CFLAGS_SHLIB=' Makefile.config | tail -1 | awk -F= '{print $2}'`
++TLD_SHLIB=`egrep '^LD_SHLIB=' Makefile.config | sed -n '$p' | awk -F= '{print $2}'`
++TLDFLAGS_SHLIB=`egrep '^LDFLAGS_SHLIB=' Makefile.config | sed -n '$p' | awk -F= '{print $2}'`
++TLDFLAGS_MOD_SHLIB=`egrep '^LDFLAGS_MOD_SHLIB=' Makefile.config | sed -n '$p' | awk -F= '{print $2}'`
++TLDFLAGS_SHLIB_EXPORT=`egrep '^LDFLAGS_SHLIB_EXPORT=' Makefile.config | sed -n '$p' | awk -F= '{print $2}'`
++TCFLAGS_SHLIB=`egrep '^CFLAGS_SHLIB=' Makefile.config | sed -n '$p' | awk -F= '{print $2}'`
+ 
+ ####################################################################
+ ## Handle TARGET name
+@@ -1807,7 +1807,7 @@ for modfile in $MODFILES ; do
+ 	    if [ -f $modbase.c ] ; then
+ 		# Guess module structure name in case there is no
+ 		# module definition in this file
+-		modname=`egrep '^module .*;' $modbase.c | head -1 |\
++		modname=`egrep '^module .*;' $modbase.c | sed q |\
+ 			sed 's/^module.*[ 	][ 	]*//' | \
+ 			sed 's/[ 	]*;[ 	]*$//'`
+ 		# Get any module definition part
+@@ -2336,8 +2336,8 @@ fi
+ ## ap_config_auto.h so they are available to external modules needing to
+ ## include Apache header files.
+ ##
+-TEXTRA_CFLAGS=`egrep '^EXTRA_CFLAGS=' Makefile.config | tail -1 |\
+-	       sed -e 's;^EXTRA_CFLAGS=;;' -e 's;\`.*\`;;'`
++TEXTRA_CFLAGS=`egrep '^EXTRA_CFLAGS=' Makefile.config |\
++	       sed -n -e 's;^EXTRA_CFLAGS=;;' -e 's;\`.*\`;;' -e '$p'`
+ tmpstr=`echo $CFLAGS $TEXTRA_CFLAGS |\
+ 	sed -e 's;[ 	]\([+-]\);!\1;g' -e 's/\([^\\\]\)"/\1/g' -e 's/\\\"/\"/g'`
+ OIFS="$IFS"
+===================================================================
+RCS file: src/helpers/buildinfo.sh,v
+retrieving revision 1.3.23.0
+retrieving revision 1.3.23.1
+diff -pu -r1.3.23.0 -r1.3.23.1
+--- src/helpers/buildinfo.sh	1999/06/29 13:49:14	1.3.23.0
++++ src/helpers/buildinfo.sh	2002/02/23 07:38:36	1.3.23.1
+@@ -90,13 +90,13 @@ case $hostname in
+ esac
+ if [ "x$domainname" = "x" ]; then
+     if [ -f /etc/resolv.conf ]; then
+-        domainname="`egrep '^[ 	]*domain' /etc/resolv.conf | head -1 |\
++        domainname="`egrep '^[ 	]*domain' /etc/resolv.conf | sed q |\
+                      sed -e 's/.*domain//' \
+                          -e 's/^[ 	]*//' -e 's/^ *//' -e 's/^	*//' \
+                          -e 's/^\.//' -e 's/^/./' |\
+                      awk '{ printf("%s", $1); }'`"
+         if [ "x$domainname" = "x" ]; then
+-            domainname="`egrep '^[ 	]*search' /etc/resolv.conf | head -1 |\
++            domainname="`egrep '^[ 	]*search' /etc/resolv.conf | sed q |\
+                          sed -e 's/.*search//' \
+                              -e 's/^[ 	]*//' -e 's/^ *//' -e 's/^	*//' \
+                              -e 's/ .*//' -e 's/	.*//' \
+===================================================================
+RCS file: src/helpers/fmn.sh,v
+retrieving revision 1.3.23.0
+retrieving revision 1.3.23.1
+diff -pu -r1.3.23.0 -r1.3.23.1
+--- src/helpers/fmn.sh	1999/11/28 14:25:43	1.3.23.0
++++ src/helpers/fmn.sh	2002/02/23 07:38:36	1.3.23.1
+@@ -26,7 +26,7 @@ if [ -r $modbase.module ] ; then
+     cat $modbase.module >$tmpfile
+ else
+     if [ -f $modbase.c ] ; then
+-        modname=`egrep '^module .*;' $modbase.c | head -1 |\
++        modname=`egrep '^module .*;' $modbase.c | sed q |\
+                 sed 's/^module.*[ 	][ 	]*//' | \
+                 sed 's/[ 	]*;[ 	]*$//'`
+         if grep "MODULE-DEFINITION-" $modbase.c >/dev/null; then
+===================================================================
+RCS file: src/helpers/getuid.sh,v
+retrieving revision 1.3.23.0
+retrieving revision 1.3.23.1
+diff -pu -r1.3.23.0 -r1.3.23.1
+--- src/helpers/getuid.sh	1999/04/23 12:45:12	1.3.23.0
++++ src/helpers/getuid.sh	2002/02/23 07:38:36	1.3.23.1
+@@ -35,7 +35,7 @@ if `./src/helpers/PrintPath -s whoami` ;
+     AP_WAIPATH=`./src/helpers/PrintPath whoami`
+     AP_LOGNAME=`$AP_WAIPATH`
+ else
+-    AP_LOGNAME=`who am i | tail -1 | sed -e 's/[ 	][ 	]*.*$//'`
++    AP_LOGNAME=`who am i | sed -n -e 's/[ 	][ 	]*.*$//' -e '$p'`
+ fi
+ 
+ #
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

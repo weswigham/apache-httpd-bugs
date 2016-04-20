@@ -1,0 +1,184 @@
+Received: (qmail 92812 invoked by uid 501); 31 Aug 2001 15:24:52 -0000
+Message-Id: <20010831152452.92811.qmail@apache.org>
+Date: 31 Aug 2001 15:24:52 -0000
+From: Alessandro Bottoni <abottoni@quadrante.com>
+Reply-To: abottoni@quadrante.com
+To: submit@bugz.apache.org
+Subject: memory lack or infinite loop in mod_rewrite?
+X-Send-Pr-Version: 3.110
+
+>Number:         8278
+>Category:       mod_rewrite
+>Synopsis:       memory lack or infinite loop in mod_rewrite?
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          mistaken
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Aug 31 08:30:00 PDT 2001
+>Closed-Date:    Mon Sep 03 11:24:46 PDT 2001
+>Last-Modified:  Mon Sep 03 11:24:46 PDT 2001
+>Originator:     abottoni@quadrante.com
+>Release:        1.3.20 Windows 2000
+>Organization:
+>Environment:
+Apache 1.3.20 on Windows 2000 Pro Machine.
+Pentium III 800 Mhz with 128 Mb RAM (Dell Optiplex GX150)
+PHP 4.04pl - ezPublish 2.1 (developer.ez.no)
+>Description:
+Apparently, mod-rewrite enters an infinite loop and consumes all memory, until windows starts compalining for low memory. It could be a memory lack, as well.
+You can use the Task Manager to check the phenomenon. The consumption rate is something like one Mb per minute on my machine.
+
+I'm tring to install ezPublish 2.1 (see http://developer.ez.no). It uses both virtual hosts and the rewrite engine. After having modified the httpd.conf file as descripted in their documentation, I have got the memory problem.
+
+>How-To-Repeat:
+This is the relevant part of my httpd.conf:
+---------------------------------------------------
+
+#
+# Dynamic Shared Object (DSO) Support
+#
+# To be able to use the functionality of a module which was built as a DSO you
+# have to place corresponding `LoadModule' lines at this location so the
+# directives contained in it are actually available _before_ they are used.
+# Please read the file README.DSO in the Apache 1.3 distribution for more
+# details about the DSO mechanism and run `apache -l' for the list of already
+# built-in (statically linked and thus always available) modules in your Apache
+# binary.
+#
+# Note: The order in which modules are loaded is important.  Don't change
+# the order below without expert advice.
+#
+#LoadModule anon_auth_module modules/mod_auth_anon.so
+#LoadModule dbm_auth_module modules/mod_auth_dbm.so
+#LoadModule digest_auth_module modules/mod_auth_digest.so
+#LoadModule cern_meta_module modules/mod_cern_meta.so
+#LoadModule digest_module modules/mod_digest.so
+#LoadModule expires_module modules/mod_expires.so
+#LoadModule headers_module modules/mod_headers.so
+#LoadModule proxy_module modules/mod_proxy.so
+LoadModule rewrite_module modules/mod_rewrite.so
+#LoadModule speling_module modules/mod_speling.so
+#LoadModule info_module modules/mod_info.so
+#LoadModule status_module modules/mod_status.so
+#LoadModule usertrack_module modules/mod_usertrack.so
+
+#
+# Use name-based virtual hosting.
+#
+NameVirtualHost 192.168.0.54
+
+#
+# VirtualHost example:
+# Almost any Apache directive may go into a VirtualHost container.
+# The first VirtualHost section is used for requests without a known
+# server name.
+#
+#<VirtualHost *>
+#    ServerAdmin webmaster@dummy-host.example.com
+#    DocumentRoot /www/docs/dummy-host.example.com
+#    ServerName dummy-host.example.com
+#    ErrorLog logs/dummy-host.example.com-error_log
+#    CustomLog logs/dummy-host.example.com-access_log common
+#</VirtualHost>
+#
+
+<VirtualHost silvana2.quadrante.com>
+    ServerAdmin abottoni@quadrante.com
+    DocumentRoot "C:/Apache/htdocs"
+    ServerName silvana2.quadrante.com
+</VirtualHost>
+
+<VirtualHost ezpublish.quadrante.com>
+    ServerName ezpublish.quadrante.com
+    DocumentRoot "C:/Apache/htdocs/ezpublish"
+    <Directory "C:/Apache/htdocs/ezpublish">
+      Options FollowSymLinks Indexes ExecCGI
+      AllowOverride None
+    </Directory>
+    RewriteEngine On
+    RewriteLog rewrite_user.log
+    RewriteLogLevel 9
+    RewriteRule ^/stats/store/(.*).gif$ /ezstats/user/storestats.php [S=2]
+    # The lines above should appear on the same line in your configuration file!
+    RewriteRule ^/filemanager/filedownload/([^/]+)/(.*)$ /ezfilemanager/files/$1 [T="application/oct-stream",S=1]
+    # The lines above should appear on the same line in your configuration file!
+    RewriteRule !\.(gif|css|jpg|png)$ /index.php
+    ServerAdmin abottoni@quadrante.com
+</VirtualHost>
+
+<VirtualHost ezadmin.quadrante.com>
+   ServerAdmin abottoni@quadrante.com
+   DocumentRoot "C:/Apache/htdocs/ezpublish"
+   <Directory "C:/Apache/htdocs/ezpublish">
+     Options FollowSymLinks Indexes ExecCGI
+     AllowOverride None
+   </Directory>
+   ServerName ezadmin.quadrante.com
+   RewriteEngine On
+   RewriteLog rewrite_admin.log
+   RewriteLogLevel 9
+   RewriteRule !\.(gif|css|jpg|png)$ /index_admin.php
+</VirtualHost>
+-------------------------------------------------
+
+and this is the relevant part of my hosts file: 
+-------------------------------------------------
+127.0.0.1       localhost
+192.168.0.217     jader.quadrante.com
+192.168.0.54	silvana2.quadrante.com
+192.168.0.54	silvana2
+192.168.0.54	ezpublish.quadrante.com
+192.168.0.54	ezpublish
+192.168.0.54	ezadmin.quadrante.com
+192.168.0.54	ezadmin
+------------------------------------------
+>Fix:
+I did not find any workaround until now.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Mon Sep  3 11:24:46 PDT 2001
+State-Changed-Why:
+I can offer one quick hint, that 
+
+/index.php is mapped to /index.php.
+
+There is no bug, you wrote an absurd rule.
+
+So, for further info, here is the standard response;
+
+This is a CGI programming or basic configuration issue.
+As mentioned on the main bug database page, we must refer
+all such basic or non-Apache-related questions to the
+user newsgroups comp.infosystems.www.servers.unix and
+comp.infosystems.www.servers.ms-windows, or the scripting
+newsgroup comp.infosystems.www.authoring.cgi  First check
+the FAQ http://httpd.apache.org/docs/misc/FAQ.html and then
+pose your question to the appropriate newsgroup.
+Thanks for using Apache!
+
+Class-Changed-From-To: sw-bug-mistaken
+Class-Changed-By: wrowe
+Class-Changed-When: Mon Sep  3 11:24:46 PDT 2001
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,236 @@
+Received: (qmail 1415 invoked by uid 2012); 1 Sep 1999 01:20:02 -0000
+Message-Id: <19990901012002.1414.qmail@hyperreal.org>
+Date: 1 Sep 1999 01:20:02 -0000
+From: Frederico Bohne <quiron@vortex.ufrgs.br>
+Reply-To: quiron@vortex.ufrgs.br
+To: apbugs@hyperreal.org
+Subject: cgi-bin directory or cgi script file name not found.
+X-Send-Pr-Version: 3.2
+
+>Number:         4941
+>Category:       os-linux
+>Synopsis:       cgi-bin directory or cgi script file name not found.
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Aug 31 18:30:01 PDT 1999
+>Last-Modified:  Wed Oct 20 02:40:01 PDT 1999
+>Originator:     quiron@vortex.ufrgs.br
+>Organization:
+apache
+>Release:        1.3.6
+>Environment:
+Linux katana.dojo.net 2.2.5-23cl #1 sex jul 2 00:31:56 EST 1999 i586 unknown
+>Description:
+In a page (.html) exists a command <!--#exec cgi="/cgi-bin/counter" -->
+The page is loaded but the counter not register a number and not increment
+a visit in access_count file.
+in apache´s erro_log look this:
+[Tue Aug 31 21:41:17 1999] [error] (2)File or directory not found: exec
+ of /home/httpd/cgi-bin/counter failed
+[Tue Aug 31 21:41:17 1999] [error] [client 172.28.1.1] Premature end of script 
+headers: /home/httpd/cgi-bin/counter
+
+All .conf file are right. This script run with apache-1.3.3. with no problems.
+>How-To-Repeat:
+
+>Fix:
+something in mod_alias ou mod_cgi, im not sure!
+>Audit-Trail:
+
+From: "Steven Van Poeck" <steven.van-poeck@wanadoo.com>
+To: <apbugs@hyperreal.org>
+Cc: <apbugs@Apache.Org>
+Subject: Re: general/4941
+Date: Wed, 20 Oct 1999 11:36:43 +0200
+
+ In bug report 4941 is written:
+ 
+ ----------
+ In a page (.html) exists a command <!--#exec cgi="/cgi-bin/counter" -->
+ The page is loaded but the counter not register a number and not increment
+ a visit in access_count file.in apache´s erro_log look this:
+ [Tue Aug 31 21:41:17 1999] [error] (2)File or directory not found: exec
+  of /home/httpd/cgi-bin/counter failed
+ [Tue Aug 31 21:41:17 1999] [error] [client 172.28.1.1] Premature end of
+ script
+ headers: /home/httpd/cgi-bin/counter
+ All .conf file are right. This script run with apache-1.3.3. with no
+ problems.
+ >How-To-Repeat:
+ >Fix:something in mod_alias ou mod_cgi, im not sure!
+ ----------
+ 
+ I've just had this error too and after applying all of the suggested fixes
+ in the FAQ (and thouroughly sc**wing up my Apache 1.3.6-7 configuration), I
+ still got these error messages in /var/log/httpd/error_log:
+ 
+ <SNIP>
+ [Wed Oct 20 10:40:21 1999] [error] (2)No such file or directory: exec of
+ /home/web/cgi-bin/scheduler/pbtest.cgi failed
+ [Wed Oct 20 10:40:21 1999] [error] [client 192.168.1.2] Premature end of
+ script headers: /home/web/cgi-bin/scheduler/pbtest.cgi
+ </SNIP>
+ 
+ NOTE : These two lines are _always_ coupled.
+ 
+ I finally found out what this was due to.
+ 
+ I use HomeSite 4.0 to develop my code (HTML, Perl etc...). This program
+ _still_ does not exist for Unix platforms, so I use it on a Windows NT4 SP3
+ Workstation and send the lot through the built-in HomeSite FTP client to the
+ Apache web server (on an Intel i686 RedHat 6.0).
+ HomeSite can be configured to save files in PC, Unix or Macintosh format. My
+ files were saved on the Apache server in PC format.
+ 
+ There's nothing wrong with that as long as you do not use the Common Gateway
+ Interface (CGI): HTML files work fine, text files too, executing the Perl
+ script directly on the linux box's command line works fine too. But from the
+ moment your (PC format saved) script is being mangled through the CGI (i.e.:
+ you're requesting the execution of the script from a remote client -- the
+ Windows NT4 SP3 Workstation on IP address 192.168.1.2 in my case), you get
+ the incriminated error.
+ 
+ I changed the HomeSite option to save files in Unix format and my troubles
+ were over.
+ 
+ It must be the difference in CR/LF between the PC and the Unix world that
+ cause this error, the Apache server esteeming that the trailing PC CR/LF is
+ a file and not finding it (whence the first error line). Or it attaches a
+ trailing PC CR/LF to the Perl scipt filename and can't find it. Either of
+ these, I guess.
+ 
+ I think it would **really** be a good idea to put this *simple* check 1st in
+ place in the FAQ concerning the "Premature end of script headers" item: "Are
+ you saving your files in PC format and your Apache server is running on a
+ Linux machine? Save your files in Unix format !"... It would certainly save
+ a lot of time and misery to those working in mixed environments (I spent
+ more then 5 hours in two days finding the origin of my problem).
+ 
+ You can easily reproduce the problem:
+ 1/ Write and save a simple "Hello, world" Perl script on a PC. (I only
+ tested with Perl)
+ 2/ FTP the file up to a cgi-bin directory on any Apache server running on a
+ Linux machine. (Maybe the problem goes for all Unix machines, I don't know)
+ 3/ Call the script through CGI from a remote client
+ (http://www.some-domain.tld/cgi-bin/hello.cgi )
+ 4/ Check the error_log for the Apache server while doing so.
+ 
+ 
+ 
+ Best regards,
+ 
+ Steven Van Poeck
+ 
+ France Telecom Interactive / Wanadoo - http://www.wanadoo.fr/
+ Tel : +33 (0)1 41 33 04 22 / Fax : +33 (0)1 41 33 04 10
+ E-Mail: mailto:steven.van-poeck@wanadoo.com
+ 
+
+From: "Steven Van Poeck" <steven.van-poeck@wanadoo.com>
+To: <apbugs@hyperreal.org>
+Cc: <apbugs@Apache.Org>
+Subject: Re: general/4941
+Date: Wed, 20 Oct 1999 11:36:43 +0200
+
+ In bug report 4941 is written:
+ 
+ ----------
+ In a page (.html) exists a command <!--#exec cgi="/cgi-bin/counter" -->
+ The page is loaded but the counter not register a number and not increment
+ a visit in access_count file.in apache´s erro_log look this:
+ [Tue Aug 31 21:41:17 1999] [error] (2)File or directory not found: exec
+  of /home/httpd/cgi-bin/counter failed
+ [Tue Aug 31 21:41:17 1999] [error] [client 172.28.1.1] Premature end of
+ script
+ headers: /home/httpd/cgi-bin/counter
+ All .conf file are right. This script run with apache-1.3.3. with no
+ problems.
+ >How-To-Repeat:
+ >Fix:something in mod_alias ou mod_cgi, im not sure!
+ ----------
+ 
+ I've just had this error too and after applying all of the suggested fixes
+ in the FAQ (and thouroughly sc**wing up my Apache 1.3.6-7 configuration), I
+ still got these error messages in /var/log/httpd/error_log:
+ 
+ <SNIP>
+ [Wed Oct 20 10:40:21 1999] [error] (2)No such file or directory: exec of
+ /home/web/cgi-bin/scheduler/pbtest.cgi failed
+ [Wed Oct 20 10:40:21 1999] [error] [client 192.168.1.2] Premature end of
+ script headers: /home/web/cgi-bin/scheduler/pbtest.cgi
+ </SNIP>
+ 
+ NOTE : These two lines are _always_ coupled.
+ 
+ I finally found out what this was due to.
+ 
+ I use HomeSite 4.0 to develop my code (HTML, Perl etc...). This program
+ _still_ does not exist for Unix platforms, so I use it on a Windows NT4 SP3
+ Workstation and send the lot through the built-in HomeSite FTP client to the
+ Apache web server (on an Intel i686 RedHat 6.0).
+ HomeSite can be configured to save files in PC, Unix or Macintosh format. My
+ files were saved on the Apache server in PC format.
+ 
+ There's nothing wrong with that as long as you do not use the Common Gateway
+ Interface (CGI): HTML files work fine, text files too, executing the Perl
+ script directly on the linux box's command line works fine too. But from the
+ moment your (PC format saved) script is being mangled through the CGI (i.e.:
+ you're requesting the execution of the script from a remote client -- the
+ Windows NT4 SP3 Workstation on IP address 192.168.1.2 in my case), you get
+ the incriminated error.
+ 
+ I changed the HomeSite option to save files in Unix format and my troubles
+ were over.
+ 
+ It must be the difference in CR/LF between the PC and the Unix world that
+ cause this error, the Apache server esteeming that the trailing PC CR/LF is
+ a file and not finding it (whence the first error line). Or it attaches a
+ trailing PC CR/LF to the Perl scipt filename and can't find it. Either of
+ these, I guess.
+ 
+ I think it would **really** be a good idea to put this *simple* check 1st in
+ place in the FAQ concerning the "Premature end of script headers" item: "Are
+ you saving your files in PC format and your Apache server is running on a
+ Linux machine? Save your files in Unix format !"... It would certainly save
+ a lot of time and misery to those working in mixed environments (I spent
+ more then 5 hours in two days finding the origin of my problem).
+ 
+ You can easily reproduce the problem:
+ 1/ Write and save a simple "Hello, world" Perl script on a PC. (I only
+ tested with Perl)
+ 2/ FTP the file up to a cgi-bin directory on any Apache server running on a
+ Linux machine. (Maybe the problem goes for all Unix machines, I don't know)
+ 3/ Call the script through CGI from a remote client
+ (http://www.some-domain.tld/cgi-bin/hello.cgi )
+ 4/ Check the error_log for the Apache server while doing so.
+ 
+ 
+ 
+ Best regards,
+ 
+ Steven Van Poeck
+ 
+ France Telecom Interactive / Wanadoo - http://www.wanadoo.fr/
+ Tel : +33 (0)1 41 33 04 22 / Fax : +33 (0)1 41 33 04 10
+ E-Mail: mailto:steven.van-poeck@wanadoo.com
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

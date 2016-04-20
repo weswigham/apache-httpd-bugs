@@ -1,0 +1,859 @@
+Received: (qmail 20873 invoked by uid 2012); 29 May 1998 20:27:19 -0000
+Message-Id: <19980529202719.20872.qmail@hyperreal.org>
+Date: 29 May 1998 20:27:19 -0000
+From: Dave Dykstra <dwd@bell-labs.com>
+Reply-To: dwd@bell-labs.com
+To: apbugs@hyperreal.org
+Subject: Support of UTS 2.1.2 is broken
+X-Send-Pr-Version: 3.2
+
+>Number:         2320
+>Category:       os-other
+>Synopsis:       Support of UTS 2.1.2 is broken
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri May 29 13:30:01 PDT 1998
+>Last-Modified:  Tue Feb 23 08:32:36 PST 1999
+>Originator:     dwd@bell-labs.com
+>Organization:
+>Release:        1.3b7
+>Environment:
+Amdahl's UTS 2.1.2
+>Description:
+The Configure script is able to recognize the UTS 2.1.2 operating system
+but it is apparent that it had not been tested for many apache releases.
+I have included several porting fixes.
+>How-To-Repeat:
+None of you probably have access to a UTS system so you'll just have to
+trust me.  All these changes should have no effect on other systems.
+>Fix:
+In addition to the patches submitted in the separate reports
+	mod_cgi/2313
+	config/2319
+I offer the following patches:
+*** src/Configure.O     Wed May 27 09:36:56 1998
+--- src/Configure       Wed May 27 09:42:00 1998
+***************
+*** 620,627 ****
+        ;;
+      *-uts*)
+        OS='Amdahl UTS'
+!       CFLAGS="$CFLAGS -Xa -eft -DUTS21"
+        LIBS="$LIBS -lsocket -lbsd -la"
+        ;;
+      *-ultrix)
+        OS='ULTRIX'
+--- 620,628 ----
+        ;;
+      *-uts*)
+        OS='Amdahl UTS'
+!       CFLAGS="$CFLAGS -Xa -eft -DUTS21 -DUSEBCOPY"
+        LIBS="$LIBS -lsocket -lbsd -la"
++       DEF_WANTHSREGEX=yes
+        ;;
+      *-ultrix)
+        OS='ULTRIX'
+*** src/include/conf.h.O        Wed May 27 09:34:09 1998
+--- src/include/conf.h  Fri May 29 15:57:41 1998
+***************
+*** 567,579 ****
+  #undef NO_KILLPG
+  #define NO_SETSID
+  #define NEED_WAITPID
+- #define NO_OTHER_CHILD
+  #define STDIN_FILENO 0
+  #define STDOUT_FILENO 1
+  #define STDERR_FILENO 2
+  #define HAVE_SYSLOG 1
+  #define strftime(buf,bufsize,fmt,tm)    ascftime(buf,fmt,tm)
+  #include <sys/types.h>
+  
+  #elif defined(APOLLO)
+  #undef HAVE_GMTOFF
+--- 567,588 ----
+  #undef NO_KILLPG
+  #define NO_SETSID
+  #define NEED_WAITPID
+  #define STDIN_FILENO 0
+  #define STDOUT_FILENO 1
+  #define STDERR_FILENO 2
+  #define HAVE_SYSLOG 1
++ #define USE_LONGJMP
++ #define JMP_BUF jmp_buf
++ #define NO_USE_SIGACTION
++ #define NEED_STRERROR
++ #define NEED_STRSTR
++ #define NEED_POUND_BANG
++ #define NEED_UNION_WAIT
++ #define NDELAYPIPERETURNSZERO
++ #define NO_DATA NO_ADDRESS
+  #define strftime(buf,bufsize,fmt,tm)    ascftime(buf,fmt,tm)
+  #include <sys/types.h>
++ #include <sys/time.h>     
+  
+  #elif defined(APOLLO)
+  #undef HAVE_GMTOFF
+*** src/main/http_protocol.c.O  Fri May 29 12:22:15 1998
+--- src/main/http_protocol.c    Fri May 29 15:55:51 1998
+***************
+*** 1715,1720 ****
+--- 1715,1729 ----
+  
+      FD_ZERO(&fds);
+      while (!r->connection->aborted) {
++ #ifdef NDELAYPIPERETURNSZERO
++       /* Contributed by dwd@bell-labs.com for UTS 2.1.2, where the fcntl */
++       /*   O_NDELAY flag causes read to return 0 when there's nothing */
++       /*   available when reading from a pipe.  That makes it tricky */
++       /*   to detect end-of-file :-(.  This stupid bug is even documented */
++       /*   in the read(2) man page where it says that everything but */
++       /*   pipes return -1 and EAGAIN.  That makes it a feature, right? */
++       int afterselect = 0;
++ #endif
+          if ((length > 0) && (total_bytes_sent + IOBUFSIZE) > length)
+              len = length - total_bytes_sent;
+          else
+***************
+*** 1722,1729 ****
+  
+          do {
+              n = ap_bread(fb, buf, len);
+!             if (n >= 0 || r->connection->aborted)
+                  break;
+              if (n < 0 && errno != EAGAIN)
+                  break;
+              /* we need to block, so flush the output first */
+--- 1731,1745 ----
+  
+          do {
+              n = ap_bread(fb, buf, len);
+! #ifdef NDELAYPIPERETURNSZERO
+!           if ((n > 0) || (n == 0 && afterselect))
+!               break;
+! #else
+!             if (n >= 0)
+                  break;
++ #endif
++             if (r->connection->aborted)
++                 break;
+              if (n < 0 && errno != EAGAIN)
+                  break;
+              /* we need to block, so flush the output first */
+***************
+*** 1736,1741 ****
+--- 1752,1760 ----
+               * around and try another read
+               */
+              ap_select(fd + 1, &fds, NULL, NULL, NULL);
++ #ifdef NDELAYPIPERETURNSZERO
++           afterselect = 1;
++ #endif
+          } while (!r->connection->aborted);
+  
+          if (n < 1 || r->connection->aborted) {
+*** src/main/http_main.c.O      Wed May 27 16:32:22 1998
+--- src/main/http_main.c        Fri May 29 15:56:46 1998
+***************
+*** 2128,2156 ****
+  }
+  
+  
+! #if defined(BROKEN_WAIT) || defined(NEED_WAITPID)
+  /*
+!    Some systems appear to fail to deliver dead children to wait() at times.
+!    This sorts them out. In fact, this may have been caused by a race condition
+!    in wait_or_timeout(). But this routine is still useful for systems with no
+!    waitpid().
+   */
+! int reap_children(void)
+  {
+!     int status, n;
+!     int ret = 0;
+  
+      for (n = 0; n < max_daemons_limit; ++n) {
+!       if (ap_scoreboard_image->servers[n].status != SERVER_DEAD
+!           && waitpid(ap_scoreboard_image->parent[n].pid, &status, WNOHANG)
+!           == -1
+!           && errno == ECHILD) {
+!           ap_sync_scoreboard_image();
+            ap_update_child_status(n, SERVER_DEAD, NULL);
+!           ret = 1;
+        }
+      }
+!     return ret;
+  }
+  #endif
+  
+--- 2128,2153 ----
+  }
+  
+  
+! #if defined(NEED_WAITPID)
+  /*
+!    Systems without a real waitpid sometimes lose a child's exit while waiting
+!    for another.  Search through the scoreboard for missing children.
+   */
+! int reap_children(int *status)
+  {
+!     int n, pid;
+  
+      for (n = 0; n < max_daemons_limit; ++n) {
+!         ap_sync_scoreboard_image();
+!       if (ap_scoreboard_image->servers[n].status != SERVER_DEAD &&
+!               kill((pid = ap_scoreboard_image->parent[n].pid), 0) == -1) {
+            ap_update_child_status(n, SERVER_DEAD, NULL);
+!           /* just mark it as having a successful exit status */
+!           *status = 0; 
+!           return(pid);
+        }
+      }
+!     return 0;
+  }
+  #endif
+  
+***************
+*** 2213,2218 ****
+--- 2210,2220 ----
+      if (ret > 0) {
+        return ret;
+      }
++ #ifdef NEED_WAITPID
++     if ((ret = reap_children(status)) > 0) {
++       return ret;
++     }
++ #endif
+      tv.tv_sec = SCOREBOARD_MAINTENANCE_INTERVAL / 1000000;
+      tv.tv_usec = SCOREBOARD_MAINTENANCE_INTERVAL % 1000000;
+      ap_select(0, NULL, NULL, NULL, &tv);
+***************
+*** 3913,3923 ****
+  }
+  
+  
+! static void process_child_status(int pid, int status)
+  {
+      /* Child died... if it died due to a fatal error,
+        * we should simply bail out.
+        */
+      if ((WIFEXITED(status)) &&
+        WEXITSTATUS(status) == APEXIT_CHILDFATAL) {
+        ap_log_error(APLOG_MARK, APLOG_ALERT|APLOG_NOERRNO, server_conf,
+--- 3915,3935 ----
+  }
+  
+  
+! static void process_child_status(int pid, int intstatus)
+  {
+      /* Child died... if it died due to a fatal error,
+        * we should simply bail out.
+        */
++ #ifdef NEED_UNION_WAIT
++     union wait status;
++     status.w_status = intstatus;
++ #ifndef WTERMSIG
++ #define WEXITSTATUS(x)        ((x).w_retcode)
++ #define WTERMSIG(x)   ((x).w_termsig)
++ #endif
++ #else
++     int status = intstatus;
++ #endif
+      if ((WIFEXITED(status)) &&
+        WEXITSTATUS(status) == APEXIT_CHILDFATAL) {
+        ap_log_error(APLOG_MARK, APLOG_ALERT|APLOG_NOERRNO, server_conf,
+*** src/main/util.c.O   Wed May 27 09:39:00 1998
+--- src/main/util.c     Fri May 29 15:55:28 1998
+***************
+*** 1387,1393 ****
+  }
+  #endif
+  
+! 
+  
+  #ifdef NEED_INITGROUPS
+  int initgroups(const char *name, gid_t basegid)
+--- 1387,1421 ----
+  }
+  #endif
+  
+! /* The following routine was donated for UTS21 by dwd@bell-labs.com */
+! #ifdef NEED_STRSTR
+! char *strstr(char *s1, char *s2)
+! {
+!     char *p1, *p2;
+!     if (*s2 == '\0') {
+!       /* an empty s2 */
+!         return(s1);
+!     }
+!     while((s1 = strchr(s1, *s2)) != NULL) {
+!       /* found first character of s2, see if the rest matches */
+!         p1 = s1;
+!         p2 = s2;
+!         while (*++p1 == *++p2) {
+!             if (*p1 == '\0') {
+!                 /* both strings ended together */
+!                 return(s1);
+!             }
+!         }
+!         if (*p2 == '\0') {
+!             /* second string ended, a match */
+!             break;
+!         }
+!       /* didn't find a match here, try starting at next character in s1 */
+!         s1++;
+!     }
+!     return(s1);
+! }
+! #endif
+  
+  #ifdef NEED_INITGROUPS
+  int initgroups(const char *name, gid_t basegid)
+***************
+*** 1423,1429 ****
+  #ifdef NEED_WAITPID
+  /* From ikluft@amdahl.com
+   * this is not ideal but it works for SVR3 variants
+!  * httpd does not use the options so this doesn't implement them
+   */
+  int waitpid(pid_t pid, int *statusp, int options)
+  {
+--- 1451,1458 ----
+  #ifdef NEED_WAITPID
+  /* From ikluft@amdahl.com
+   * this is not ideal but it works for SVR3 variants
+!  * Modified by dwd@bell-labs.com to call wait3 instead of wait because
+!  *   apache started to use the WNOHANG option.
+   */
+  int waitpid(pid_t pid, int *statusp, int options)
+  {
+***************
+*** 1432,1438 ****
+        errno = ECHILD;
+        return -1;
+      }
+!     while (((tmp_pid = wait(statusp)) != pid) && (tmp_pid != -1));
+      return tmp_pid;
+  }
+  #endif
+--- 1461,1469 ----
+        errno = ECHILD;
+        return -1;
+      }
+!     while (((tmp_pid = wait3(statusp, options, 0)) != pid) &&
+!               (tmp_pid != -1) && (tmp_pid != 0) && (pid != -1))
+!       ;
+      return tmp_pid;
+  }
+  #endif
+
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Dave Dykstra <dwd@bell-labs.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-other/2320: Support of UTS 2.1.2 is broken
+Date: Thu, 4 Jun 1998 13:36:17 -0700 (PDT)
+
+ Hey, could you do us a huge favour... in a few hours, go to
+ ftp://dev.apache.org/from-cvs/ and grab a snapshot.  It has a tweak that
+ someone else gave us to get NEXTSTEP to compile.  That tweak introduced a
+ #define ap_wait_t, which you could use to do the NEED_UNION_WAIT thing
+ you've got in this patch... Could you update your patch?
+ 
+ Thanks
+ Dean
+ 
+ P.S. You're right, we don't have access to a UTS system, so we'll trust
+ you :)
+ 
+
+From: dwd@ihgp.ih.lucent.com
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-other/2320: Support of UTS 2.1.2 is broken
+Date: Thu, 4 Jun 1998 15:52:09 -0500
+
+ On Jun 4,  1:36pm, Dean Gaudet wrote:
+ > Hey, could you do us a huge favour... in a few hours, go to
+ > ftp://dev.apache.org/from-cvs/ and grab a snapshot.  It has a tweak that
+ > someone else gave us to get NEXTSTEP to compile.  That tweak introduced a
+ > #define ap_wait_t, which you could use to do the NEED_UNION_WAIT thing
+ > you've got in this patch... Could you update your patch?
+ > 
+ > Thanks
+ > Dean
+ > 
+ > P.S. You're right, we don't have access to a UTS system, so we'll trust
+ > you :)
+ 
+ Ok, I'll work on that tomorrow.
+ 
+ I assume you mean http://... and not ftp://...
+ 
+ - Dave Dykstra
+
+From: dwd@ihgp.ih.lucent.com
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-other/2320: Support of UTS 2.1.2 is broken
+Date: Fri, 5 Jun 1998 14:58:57 -0500
+
+ On Jun 4,  1:36pm, Dean Gaudet wrote:
+ > Hey, could you do us a huge favour... in a few hours, go to
+ > ftp://dev.apache.org/from-cvs/ and grab a snapshot.  It has a tweak that
+ > someone else gave us to get NEXTSTEP to compile.  That tweak introduced a
+ > #define ap_wait_t, which you could use to do the NEED_UNION_WAIT thing
+ > you've got in this patch... Could you update your patch?
+ > 
+ > Thanks
+ > Dean
+ 
+ I have now integrated with snapshot apache_19980606010034.  The patches
+ are below.  I eliminated NEED_UNION_WAIT.
+ 
+ I discovered that I had accidentally left out src/main/util_script.c.  
+ It is included below now. 
+ 
+ Thanks for your quick response.
+ 
+ - Dave Dykstra
+ 
+ 
+ *** src/Configure.O	Fri Jun  5 11:11:22 1998
+ --- src/Configure	Fri Jun  5 11:12:59 1998
+ ***************
+ *** 629,636 ****
+   	;;
+       *-uts*)
+   	OS='Amdahl UTS'
+ ! 	CFLAGS="$CFLAGS -Xa -eft -DUTS21"
+   	LIBS="$LIBS -lsocket -lbsd -la"
+   	;;
+       *-ultrix)
+   	OS='ULTRIX'
+ --- 629,637 ----
+   	;;
+       *-uts*)
+   	OS='Amdahl UTS'
+ ! 	CFLAGS="$CFLAGS -Xa -eft -DUTS21 -DUSEBCOPY"
+   	LIBS="$LIBS -lsocket -lbsd -la"
+ + 	DEF_WANTHSREGEX=yes
+   	;;
+       *-ultrix)
+   	OS='ULTRIX'
+ *** src/include/conf.h.O	Fri Jun  5 11:25:15 1998
+ --- src/include/conf.h	Fri Jun  5 11:56:10 1998
+ ***************
+ *** 573,585 ****
+   #undef NO_KILLPG
+   #define NO_SETSID
+   #define NEED_WAITPID
+ - #define NO_OTHER_CHILD
+   #define STDIN_FILENO 0
+   #define STDOUT_FILENO 1
+   #define STDERR_FILENO 2
+   #define HAVE_SYSLOG 1
+   #define strftime(buf,bufsize,fmt,tm)    ascftime(buf,fmt,tm)
+   #include <sys/types.h>
+   
+   #elif defined(APOLLO)
+   #undef HAVE_GMTOFF
+ --- 573,596 ----
+   #undef NO_KILLPG
+   #define NO_SETSID
+   #define NEED_WAITPID
+   #define STDIN_FILENO 0
+   #define STDOUT_FILENO 1
+   #define STDERR_FILENO 2
+   #define HAVE_SYSLOG 1
+ + #define USE_LONGJMP
+ + #define JMP_BUF jmp_buf
+ + #define NO_USE_SIGACTION
+ + #define NEED_STRERROR
+ + #define NEED_STRSTR
+ + #define NEED_POUND_BANG
+ + #define NDELAYPIPERETURNSZERO
+ + #define NO_DATA NO_ADDRESS
+ + #define	ap_wait_t		union wait
+ + #define WEXITSTATUS(status)	(int)((status).w_retcode)
+ + #define WTERMSIG(status)	(int)((status).w_termsig)
+   #define strftime(buf,bufsize,fmt,tm)    ascftime(buf,fmt,tm)
+   #include <sys/types.h>
+ + #include <sys/time.h>     
+   
+   #elif defined(APOLLO)
+   #undef HAVE_GMTOFF
+ *** src/main/http_main.c.O	Fri Jun  5 11:18:48 1998
+ --- src/main/http_main.c	Fri Jun  5 15:34:18 1998
+ ***************
+ *** 2129,2157 ****
+   }
+   
+   
+ ! #if defined(BROKEN_WAIT) || defined(NEED_WAITPID)
+   /*
+ !    Some systems appear to fail to deliver dead children to wait() at times.
+ !    This sorts them out. In fact, this may have been caused by a race condition
+ !    in wait_or_timeout(). But this routine is still useful for systems with no
+ !    waitpid().
+    */
+ ! int reap_children(void)
+   {
+ !     int status, n;
+ !     int ret = 0;
+   
+       for (n = 0; n < max_daemons_limit; ++n) {
+ ! 	if (ap_scoreboard_image->servers[n].status != SERVER_DEAD
+ ! 	    && waitpid(ap_scoreboard_image->parent[n].pid, &status, WNOHANG)
+ ! 	    == -1
+ ! 	    && errno == ECHILD) {
+ ! 	    ap_sync_scoreboard_image();
+   	    ap_update_child_status(n, SERVER_DEAD, NULL);
+ ! 	    ret = 1;
+   	}
+       }
+ !     return ret;
+   }
+   #endif
+   
+ --- 2129,2154 ----
+   }
+   
+   
+ ! #if defined(NEED_WAITPID)
+   /*
+ !    Systems without a real waitpid sometimes lose a child's exit while waiting
+ !    for another.  Search through the scoreboard for missing children.
+    */
+ ! int reap_children(ap_wait_t *status)
+   {
+ !     int n, pid;
+   
+       for (n = 0; n < max_daemons_limit; ++n) {
+ !         ap_sync_scoreboard_image();
+ ! 	if (ap_scoreboard_image->servers[n].status != SERVER_DEAD &&
+ ! 		kill((pid = ap_scoreboard_image->parent[n].pid), 0) == -1) {
+   	    ap_update_child_status(n, SERVER_DEAD, NULL);
+ ! 	    /* just mark it as having a successful exit status */
+ ! 	    *status = 0; 
+ ! 	    return(pid);
+   	}
+       }
+ !     return 0;
+   }
+   #endif
+   
+ ***************
+ *** 2214,2219 ****
+ --- 2211,2221 ----
+       if (ret > 0) {
+   	return ret;
+       }
+ + #ifdef NEED_WAITPID
+ +     if ((ret = reap_children(status)) > 0) {
+ + 	return ret;
+ +     }
+ + #endif
+       tv.tv_sec = SCOREBOARD_MAINTENANCE_INTERVAL / 1000000;
+       tv.tv_usec = SCOREBOARD_MAINTENANCE_INTERVAL % 1000000;
+       ap_select(0, NULL, NULL, NULL, &tv);
+ *** src/main/http_protocol.c.O	Fri Jun  5 11:15:29 1998
+ --- src/main/http_protocol.c	Fri Jun  5 11:16:12 1998
+ ***************
+ *** 1721,1726 ****
+ --- 1721,1735 ----
+   
+       FD_ZERO(&fds);
+       while (!r->connection->aborted) {
+ + #ifdef NDELAYPIPERETURNSZERO
+ + 	/* Contributed by dwd@bell-labs.com for UTS 2.1.2, where the fcntl */
+ + 	/*   O_NDELAY flag causes read to return 0 when there's nothing */
+ + 	/*   available when reading from a pipe.  That makes it tricky */
+ + 	/*   to detect end-of-file :-(.  This stupid bug is even documented */
+ + 	/*   in the read(2) man page where it says that everything but */
+ + 	/*   pipes return -1 and EAGAIN.  That makes it a feature, right? */
+ + 	int afterselect = 0;
+ + #endif
+           if ((length > 0) && (total_bytes_sent + IOBUFSIZE) > length)
+               len = length - total_bytes_sent;
+           else
+ ***************
+ *** 1728,1735 ****
+   
+           do {
+               n = ap_bread(fb, buf, len);
+ !             if (n >= 0 || r->connection->aborted)
+                   break;
+               if (n < 0 && errno != EAGAIN)
+                   break;
+               /* we need to block, so flush the output first */
+ --- 1737,1751 ----
+   
+           do {
+               n = ap_bread(fb, buf, len);
+ ! #ifdef NDELAYPIPERETURNSZERO
+ ! 	    if ((n > 0) || (n == 0 && afterselect))
+ ! 		break;
+ ! #else
+ !             if (n >= 0)
+                   break;
+ + #endif
+ +             if (r->connection->aborted)
+ +                 break;
+               if (n < 0 && errno != EAGAIN)
+                   break;
+               /* we need to block, so flush the output first */
+ ***************
+ *** 1742,1747 ****
+ --- 1758,1766 ----
+                * around and try another read
+                */
+               ap_select(fd + 1, &fds, NULL, NULL, NULL);
+ + #ifdef NDELAYPIPERETURNSZERO
+ + 	    afterselect = 1;
+ + #endif
+           } while (!r->connection->aborted);
+   
+           if (n < 1 || r->connection->aborted) {
+ *** src/main/util.c.O	Fri Jun  5 11:18:09 1998
+ --- src/main/util.c	Fri Jun  5 11:18:25 1998
+ ***************
+ *** 1397,1403 ****
+   }
+   #endif
+   
+ ! 
+   
+   #ifdef NEED_INITGROUPS
+   int initgroups(const char *name, gid_t basegid)
+ --- 1397,1431 ----
+   }
+   #endif
+   
+ ! /* The following routine was donated for UTS21 by dwd@bell-labs.com */
+ ! #ifdef NEED_STRSTR
+ ! char *strstr(char *s1, char *s2)
+ ! {
+ !     char *p1, *p2;
+ !     if (*s2 == '\0') {
+ ! 	/* an empty s2 */
+ !         return(s1);
+ !     }
+ !     while((s1 = strchr(s1, *s2)) != NULL) {
+ ! 	/* found first character of s2, see if the rest matches */
+ !         p1 = s1;
+ !         p2 = s2;
+ !         while (*++p1 == *++p2) {
+ !             if (*p1 == '\0') {
+ !                 /* both strings ended together */
+ !                 return(s1);
+ !             }
+ !         }
+ !         if (*p2 == '\0') {
+ !             /* second string ended, a match */
+ !             break;
+ !         }
+ ! 	/* didn't find a match here, try starting at next character in s1 */
+ !         s1++;
+ !     }
+ !     return(s1);
+ ! }
+ ! #endif
+   
+   #ifdef NEED_INITGROUPS
+   int initgroups(const char *name, gid_t basegid)
+ ***************
+ *** 1433,1439 ****
+   #ifdef NEED_WAITPID
+   /* From ikluft@amdahl.com
+    * this is not ideal but it works for SVR3 variants
+ !  * httpd does not use the options so this doesn't implement them
+    */
+   int waitpid(pid_t pid, int *statusp, int options)
+   {
+ --- 1461,1468 ----
+   #ifdef NEED_WAITPID
+   /* From ikluft@amdahl.com
+    * this is not ideal but it works for SVR3 variants
+ !  * Modified by dwd@bell-labs.com to call wait3 instead of wait because
+ !  *   apache started to use the WNOHANG option.
+    */
+   int waitpid(pid_t pid, int *statusp, int options)
+   {
+ ***************
+ *** 1442,1448 ****
+   	errno = ECHILD;
+   	return -1;
+       }
+ !     while (((tmp_pid = wait(statusp)) != pid) && (tmp_pid != -1));
+       return tmp_pid;
+   }
+   #endif
+ --- 1471,1479 ----
+   	errno = ECHILD;
+   	return -1;
+       }
+ !     while (((tmp_pid = wait3(statusp, options, 0)) != pid) &&
+ ! 		(tmp_pid != -1) && (tmp_pid != 0) && (pid != -1))
+ ! 	;
+       return tmp_pid;
+   }
+   #endif
+ *** src/main/util_script.c.O	Fri Jun  5 15:40:52 1998
+ --- src/main/util_script.c	Fri Jun  5 15:41:15 1998
+ ***************
+ *** 999,1014 ****
+   	}
+       }
+       else {
+ ! 	if (shellcmd)
+ ! 	    execle(SHELL_PATH, SHELL_PATH, "-c", argv0, NULL, env);
+   
+ ! 	else if ((!r->args) || (!r->args[0]) || strchr(r->args, '='))
+   	    execle(r->filename, argv0, NULL, env);
+   
+ ! 	else
+   	    execve(r->filename,
+ ! 		   create_argv(r->pool, NULL, NULL, NULL, argv0, r->args),
+ ! 		   env);
+       }
+       return (pid);
+   #endif
+ --- 999,1051 ----
+   	}
+       }
+       else {
+ ! #ifdef NEED_POUND_BANG
+ ! 	/* This was donated for UTS21 by Dave Dykstra */
+ ! 	/* #! is not supported by the OS, so do it ourselves */
+ ! 	int fd, n;
+ ! 	char bangbuf[256], *eol;
+ ! 
+ ! 	if (!shellcmd) {
+ ! 	    if ((fd = open(r->filename, O_RDONLY)) > 0) {
+ ! 		n = read(fd, bangbuf, sizeof(bangbuf)-1);
+ ! 		close(fd);
+ ! 		if ((n > 2) && (bangbuf[0] == '#') && (bangbuf[1] == '!')) {
+ ! 		    bangbuf[sizeof(bangbuf)-1] = '\0';
+ ! 		    if ((eol = strchr(&bangbuf[2], '\n')) != NULL) {
+ ! 			*eol = '\0';
+ ! 		    }
+ ! 		}
+ ! 		else
+ ! 		    bangbuf[0] = '\0';
+ ! 	    }
+ ! 	}
+ ! #endif
+   
+ ! 	if (shellcmd) 
+ ! 	    execle(SHELL_PATH, SHELL_PATH, "-c", argv0, NULL, env);
+ ! 	
+ ! 	else if ((!r->args) || (!r->args[0]) || strchr(r->args, '=')) {
+ ! #ifdef NEED_POUND_BANG
+ ! 	    if (bangbuf[0] != '\0')
+ ! 		execle(&bangbuf[2], argv0, r->filename, NULL, env);
+ ! 	    else
+ ! #endif
+   	    execle(r->filename, argv0, NULL, env);
+   
+ ! 	}
+ ! 	else {
+ ! #ifdef NEED_POUND_BANG
+ ! 	    if (bangbuf[0] != '\0')
+ ! 		execve(&bangbuf[2],
+ ! 		       create_argv(r->pool, argv0, NULL, NULL,
+ ! 						r->filename, r->args),
+ ! 		       env);
+ ! 	    else
+ ! #endif
+   	    execve(r->filename,
+ ! 	           create_argv(r->pool, NULL, NULL, NULL, argv0, r->args),
+ ! 	           env);
+ ! 	}
+       }
+       return (pid);
+   #endif
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Sat Jun  6 12:33:30 PDT 1998
+State-Changed-Why:
+Cool.  I modified NDELAYPIPERETURNSZERO to NDELAY_PIPE_RETURNS_ZERO
+which is more in style of our other defines.  I also replaced
+your NEED_POUND_BANG with NEED_HASHBANG_EMUL... there is code
+for that already in ap/ap_execve.c.  Could you take a look at
+a snapshot and tell me if it works for you?
+
+Thanks
+Dean
+State-Changed-From-To: feedback-open
+State-Changed-By: lars
+State-Changed-When: Sat Nov 14 08:46:20 PST 1998
+State-Changed-Why:
+issue seems to be still open...
+
+State-Changed-From-To: open-feedback
+State-Changed-By: lars
+State-Changed-When: Sat Feb 20 16:58:47 PST 1999
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+
+From: dwd@ihgp.ih.lucent.com
+To: lars@apache.org, apache-bugdb@apache.org
+Cc: apbugs@apache.org
+Subject: Re: os-other/2320: Support of UTS 2.1.2 is broken
+Date: Mon, 22 Feb 1999 15:20:55 -0600
+
+ On Feb 21, 12:58am, lars@apache.org wrote:
+ > Synopsis: Support of UTS 2.1.2 is broken
+ > 
+ > State-Changed-From-To: open-feedback
+ > State-Changed-By: lars
+ > State-Changed-When: Sat Feb 20 16:58:47 PST 1999
+ > State-Changed-Why:
+ > [This is a standard response.]
+ > This Apache problem report has not been updated recently.
+ > Please reply to this message if you have any additional
+ > information about this issue, or if you have answers to
+ > any questions that have been posed to you.  If there are
+ > no outstanding questions, please consider this a request
+ > to try to reproduce the problem with the latest software
+ > release, if one has been made since last contact.  If we
+ > don't hear from you, this report will be closed.
+ > If you have information to add, BE SURE to reply to this
+ > message and include the apbugs@Apache.Org address so it
+ > will be attached to the problem report!
+ 
+ As far as I can tell this was fixed already in 1.3.3.  Anyway,
+ I just tested it again in 1.3.4 and it works fine.
+ 
+ - Dave Dykstra
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Tue Feb 23 08:32:35 PST 1999
+State-Changed-Why:
+
+user reports fixed as of Apache 1.3.4.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

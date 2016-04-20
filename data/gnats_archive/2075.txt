@@ -1,0 +1,173 @@
+Received: (qmail 6508 invoked by uid 2012); 18 Apr 1998 05:23:28 -0000
+Message-Id: <19980418052328.6507.qmail@hyperreal.org>
+Date: 18 Apr 1998 05:23:28 -0000
+From: Kris Peterson <bepeterson@taconic.net>
+Reply-To: bepeterson@taconic.net
+To: apbugs@hyperreal.org
+Subject: suexec can't write log after failed exec & doesn't check execute permission
+X-Send-Pr-Version: 3.2
+
+>Number:         2075
+>Category:       suexec
+>Synopsis:       suexec can't write log after failed exec & doesn't check execute permission
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Apr 17 22:30:01 PDT 1998
+>Closed-Date:    Wed May 03 13:18:15 PDT 2000
+>Last-Modified:  Wed May 03 13:18:15 PDT 2000
+>Originator:     bepeterson@taconic.net
+>Release:        1.2.6
+>Organization:
+>Environment:
+uname -a gives:
+Linux darkstar.pete.net 2.0.33 #3 Fri Feb 20 04:24:17 EST 1998 i586 unknown
+This is a redhat 5.0 system, compiler is pgcc 1.0.2
+>Description:
+This is more of an annoyance than anything, but of all the checks suexec makes
+before executing a cgi script, it nevers checks if the user has execute
+permission for his own file.
+
+This causes the exec call to fail, and suexec tries to log the failure. But it
+closed the log file just before the exec attempt, and since it already dropped
+root priviledges, it can't reopen the log file. Thus it bombs, and you get a
+strange error in error_log.
+>How-To-Repeat:
+Setup apache with suexec, and try to access a cgi url that passes all of
+suexec's security checks, i.e. under public_html directory, is a real file, not
+group/world writeable, etc. but that does not have execute permission set, i.e.
+0444.
+>Fix:
+This is how I patched suexec.c. First I added a check at the end for a set
+S_IXUSR bit in prg_info.st_mode, and it exits with exit code of 121 and a nicer
+message rather than a failed exec.
+
+And second, to overcome the problem of logging when exec fails, Linux supports
+the FD_CLOEXEC descriptor flags, which closes the descriptor when exec is
+successfully called. When the log file is first opened, I try to set this flag.
+I keep track of the success of this attempt in the static variable I added
+close_before_exec. When we get to the exec() call, if FD_CLOEXEC was successfully
+set, I flush the log and let exec() close it if it exec'd. Otherwise, I close the
+file before exec() as is done in the original code. Thus the exec() cgi program
+never gets the log file descriptor, but it lets suexec log an error if exec()
+failed for some reason.
+
+I hope this helps.
+
+- Kris
+
+--- apache_1.2.6/suexec.c       Fri Jan 30 09:45:44 1998
++++ suexec.c    Fri Apr 17 21:50:53 1998
+@@ -80,6 +80,7 @@
+ #include <grp.h>
+ #include <time.h>
+ #include <sys/stat.h>
++#include <fcntl.h>
+
+ #if defined(PATH_MAX)
+ #define AP_MAXPATH PATH_MAX
+@@ -93,6 +94,7 @@
+
+ extern char **environ;
+ static FILE *log;
++static int close_before_exec;
+
+ char *safe_env_lst[] =
+ {
+@@ -142,12 +144,23 @@
+     time_t timevar;
+     struct tm *lt;
+
+-    if (!log)
++    if (!log) {
+ 	if ((log = fopen(LOG_EXEC, "a")) == NULL) {
+ 	    fprintf(stderr, "failed to open log file\n");
+ 	    perror("fopen");
+ 	    exit(1);
++	} else {
++	    int log_fd = fileno(log);
++	    int fd_flags = fcntl (log_fd, F_GETFD, 0);
++
++	    close_before_exec = 1;
++	    if (fd_flags >= 0) {
++		fd_flags |= FD_CLOEXEC;
++		if (fcntl (log_fd, F_SETFD, fd_flags) >= 0)
++		    close_before_exec = 0;
++	    }
+ 	}
++    }
+
+     time(&timevar);
+     lt = localtime(&timevar);
+@@ -463,6 +476,14 @@
+ 	exit(120);
+     }
+
++    /*
++     * Error out if the file is not executable by the owner.
++     */
++    if (!(prg_info.st_mode & S_IXUSR)) {
++	log_err("file is not executable by owner: (%s/%s)\n",cwd,cmd);
++	exit(121);
++    }
++
+     clean_env();
+
+     /*
+@@ -470,9 +491,13 @@
+      * mess with it.  If the exec fails, it will be reopened
+      * automatically when log_err is called.
+      */
+-    fclose(log);
+-    log = NULL;
+-
++    if (close_before_exec) {
++	fclose(log);
++	log = NULL;
++    } else {
++	fflush(log);
++    }
++
+     /*
+      * Execute the command, replacing our image with its own.
+      */
+%0
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: jim
+State-Changed-When: Thu Jun 10 05:02:33 PDT 1999
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Wed May  3 13:18:15 PDT 2000
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

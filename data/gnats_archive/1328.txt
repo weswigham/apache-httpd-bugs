@@ -1,0 +1,171 @@
+Received: (qmail 3174 invoked by uid 2012); 28 Oct 1997 17:20:06 -0000
+Message-Id: <19971028172006.3173.qmail@hyperreal.org>
+Date: 28 Oct 1997 17:20:06 -0000
+From: Christophe Tronche <ch.tronche@computer.org>
+Reply-To: ch.tronche@computer.org
+To: apbugs@hyperreal.org
+Subject: Bytes are checked in wrong order for T_IP allowdeny_type, resulting in <Location> not working for IP mask
+X-Send-Pr-Version: 3.2
+
+>Number:         1328
+>Category:       mod_access
+>Synopsis:       Bytes are checked in wrong order for T_IP allowdeny_type, resulting in <Location> not working for IP mask
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 28 09:30:00 PST 1997
+>Last-Modified:  Thu Jan 22 09:24:53 PST 1998
+>Originator:     ch.tronche@computer.org
+>Organization:
+>Release:        1.3b2
+>Environment:
+SunOS 5.5 Generic_103093-06 sun4u sparc SUNW,Ultra-1
+gcc version 2.7.2
+>Description:
+Suppose you have in access.conf:
+
+<Location /private/>
+allow from 1.2.3
+</Location>
+
+and try to access from 1.2.3.4,
+
+in function find_allowdeny (in mod_access.c), the ap[i].x.ip.mask is set to
+0xffffff and the ap[i].x.ip.net is set to 0x00010203, while the
+r->connection->remote_addr.sin_addr.s_addr is 0x01020304. Thus, the check
+wrongly fails. I don't think it's related to nhtol(), because it does
+basically nothing on my Sparc. The bug doesn't appear with Apache 1.2.4, and
+the configuration works as I expect.
+>How-To-Repeat:
+See description.
+>Fix:
+A dirty hack is to reverse the r->connection->remote_addr.sin_addr.s_addr in
+find_allowdeny in the T_IP switch branch. The dirtyness comes from the value
+being recomputed on every access.
+
+A better way would be to reverse the ap[i].x.ip.net and ap[i].x.ip.mask
+when parsing the configuration files, but I don't know if they're used
+elsewhere, so I'm not sure. The allowdeny structure is local to the file,
+anyway.
+%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Oct 28 16:15:33 PST 1997
+State-Changed-Why:
+Working on it.
+Responsible-Changed-From-To: apache-dgaudet
+Responsible-Changed-By: dgaudet
+Responsible-Changed-When: Tue Oct 28 16:15:33 PST 1997
+Responsible-Changed-Why:
+GNATS just likes me typing here
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Christophe Tronche <ch.tronche@computer.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_access/1328: Bytes are checked in wrong order for T_IP allowdeny_type, resulting in <Location> not working for IP mask
+Date: Tue, 28 Oct 1997 16:15:53 -0800 (PST)
+
+ Yeah barf, I knew I would screw that up.  I'll sit down and draw it out to
+ make sure I get it right this time.  The ip.net and ip.mask fields are
+ supposed to be in network order so that comparisons at run time are
+ cheaper. 
+ 
+ Dean
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Christophe Tronche <ch.tronche@computer.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_access/1328: Bytes are checked in wrong order for T_IP allowdeny_type, resulting in <Location> not working for IP mask
+Date: Tue, 28 Oct 1997 18:39:50 -0800 (PST)
+
+ Give this patch a try please. 
+ 
+ Dean
+ 
+ Index: modules/standard/mod_access.c
+ ===================================================================
+ RCS file: /export/home/cvs/apachen/src/modules/standard/mod_access.c,v
+ retrieving revision 1.27
+ diff -u -r1.27 mod_access.c
+ --- mod_access.c	1997/10/22 20:30:11	1.27
+ +++ mod_access.c	1997/10/29 02:34:44
+ @@ -204,12 +204,14 @@
+  	/* legacy syntax for ip addrs: a.b.c. ==> a.b.c.0/24 for example */
+  	int shift;
+  	char *t;
+ +	int octet;
+  
+  	a->type = T_IP;
+  	/* parse components */
+  	s = where;
+  	a->x.ip.net = 0;
+ -	shift = 0;
+ +	a->x.ip.mask = 0;
+ +	shift = 24;
+  	while (*s) {
+  	    t = s;
+  	    if (!isdigit(*t)) {
+ @@ -226,11 +228,21 @@
+  		a->type = T_FAIL;
+  		return "invalid ip address";
+  	    }
+ -	    a->x.ip.net |= atoi(s) << shift;
+ +	    if (shift < 0) {
+ +		return "invalid ip address, only 4 octets allowed";
+ +	    }
+ +	    octet = atoi(s);
+ +	    if (octet < 0 || octet > 255) {
+ +		a->type = T_FAIL;
+ +		return "each octet must be between 0 and 255 inclusive";
+ +	    }
+ +	    a->x.ip.net |= octet << shift;
+  	    a->x.ip.mask |= 0xFFUL << shift;
+ -	    shift += 8;
+  	    s = t;
+ +	    shift -= 8;
+  	}
+ +	a->x.ip.net = ntohl(a->x.ip.net);
+ +	a->x.ip.mask = ntohl(a->x.ip.mask);
+      }
+      else {
+  	a->type = T_HOST;
+ 
+
+From: "Christophe Tronche"  <ch.tronche@computer.org>
+To: dgaudet@arctic.org
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_access/1328: Bytes are checked in wrong order for T_IP allowdeny_type, resulting in <Location> not working for IP mask
+Date: Wed, 5 Nov 1997 00:21:20 +0100 (MET)
+
+ > Give this patch a try please. 
+ > 
+ > Dean
+ 
+ Sorry for answering so late, but I've been busy these days. The
+ patched server works fine anyway.
+ 
+ -- 
+ Christophe Tronche		ch.tronche@computer.org
+ Tel: (33) 01 47 40 28 48	Fax: (33) 01 47 40 28 65
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Nov  8 13:34:14 PST 1997
+State-Changed-Why:
+Patch committed to 1.3b3-dev.
+
+Thanks
+Dean
+Responsible-Changed-From-To: dgaudet-apache
+Responsible-Changed-By: coar
+Responsible-Changed-When: Thu Jan 22 09:24:52 PST 1998
+Responsible-Changed-Why:
+Putting back into mainstream bugdb
+>Unformatted:
+

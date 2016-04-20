@@ -1,0 +1,138 @@
+From apwww@hyperreal.org  Tue Aug 26 08:01:53 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id IAA09776;
+	Tue, 26 Aug 1997 08:01:53 -0700 (PDT)
+Message-Id: <199708261501.IAA09776@hyperreal.org>
+Date: Tue, 26 Aug 1997 08:01:53 -0700 (PDT)
+From: Olly Betts <olly@muscat.co.uk>
+Reply-To: olly@muscat.co.uk
+To: apbugs@hyperreal.org
+Subject: Web robots should be told not to index auto-generated index pages
+X-Send-Pr-Version: 3.2
+
+>Number:         1057
+>Category:       mod_dir
+>Synopsis:       Web robots should be told not to index auto-generated index pages
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Aug 26 08:10:01 1997
+>Originator:     olly@muscat.co.uk
+>Organization:
+>Release:        1.3a1
+>Environment:
+Linux noxious.muscat.co.uk 2.0.18 #1 Tue Sep 10 10:15:48 EDT 1996 i586
+>Description:
+A web robot rarely wants to add auto-generated pages to its database.  But it
+can't reliably spot them.  Apache could help a lot by marking such pages as
+not to be indexed by putting:
+
+<META NAME=robots CONTENT=noindex>
+
+into the HTML <HEAD>...</HEAD> section.  This still allows compliant robots to
+follow links on the page, which is probably what's wanted.
+
+See <URL:http://info.webcrawler.com/mak/projects/robots/exclusion.html#meta>
+for details of the protocol.
+>How-To-Repeat:
+Look at:
+
+http://www.altavista.digital.com/cgi-bin/query?pg=q&what=web&kl=XX&q=title%3A%22Index+of%22+%22parent+directory%22
+
+which gives "about 274150" examples.
+>Fix:
+Here's a patch to 1.3a1 -- the change is actually to mod_autoindex, but that's
+not available in the picker on the bug report form.
+
+--- src/mod_autoindex.c Mon Jul 21 06:53:49 1997
++++ src.mod/mod_autoindex.c     Tue Aug 26 11:43:28 1997
+@@ -122,6 +122,9 @@
+  * This routine puts the standard HTML header at the top of the index page.
+  * We include the DOCTYPE because we may be using features therefrom (i.e.,
+  * HEIGHT and WIDTH attributes on the icons if we're FancyIndexing).
++ * "<META NAME=robots CONTENT=noindex>" tells robots which support the protocol
++ * that they shouldn't index this page (but that they can follow links).
++ * See <URL:http://info.webcrawler.com/mak/projects/robots/exclusion.html#meta>
+  */
+ static void emit_preamble(request_rec *r, char *title)
+ {
+@@ -131,7 +134,7 @@
+             "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 3.2 Final//EN\">\n",
+             "<HTML>\n <HEAD>\n  <TITLE>Index of ",
+             title,
+-            "</TITLE>\n </HEAD>\n <BODY>\n",
++            "</TITLE>\n  <META NAME=robots CONTENT=noindex>\n </HEAD>\n <BODY>\n",
+             NULL
+         );
+ }
+
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: brian
+State-Changed-When: Wed Aug 27 10:47:33 PDT 1997
+State-Changed-Why:
+We talked about it on the developers list, and don't necessarily
+agree that index pages shouldn't be indexed by robots.  If
+you want to add custom META tags to your pages, you can set
+"IndexOptions SuppressHTMLPreamble", and then put a full HTML <HEAD>
+section in HEADER.html in each directory.
+
+
+
+From: Marc Slemko <marcs@znep.com>
+To: Olly Betts <olly@muscat.co.uk>
+Subject: Re: mod_dir/1057: Web robots should be told not to index auto-generated index pages 
+Date: Thu, 28 Aug 1997 10:04:44 -0600 (MDT)
+
+ 
+ On Thu, 28 Aug 1997, Olly Betts wrote:
+ 
+ > In message <199708271747.KAA13158@hyperreal.org>, brian@hyperreal.org writes:
+ > >Synopsis: Web robots should be told not to index auto-generated index pages
+ > >
+ > >State-Changed-From-To: open-closed
+ > >State-Changed-By: brian
+ > >State-Changed-When: Wed Aug 27 10:47:33 PDT 1997
+ > >State-Changed-Why:
+ > >We talked about it on the developers list, and don't necessarily
+ > >agree that index pages shouldn't be indexed by robots.  If
+ > >you want to add custom META tags to your pages, you can set
+ > >"IndexOptions SuppressHTMLPreamble", and then put a full HTML <HEAD>
+ > >section in HEADER.html in each directory.
+ > >
+ > >
+ > 
+ > However, this relies on a majority of web page authors being savvy enough to
+ > know about the protocol, get their admin to add the IndexOptions line and to
+ > remember to copy HEADER.html into every directory.  I think this is at best
+ > optimistic.
+ > 
+ > Does anyone really disagree that marking auto-index pages as
+ > "noindex,follow" *by default* is not a good idea?  This is what my
+ > suggestion amounts to, since it could be overridden as you describe.
+ 
+ Yes.  It is not a good idea.  Index pages can have a lot more than a
+ directory index in them.  They can have headers, footers, file
+ descriptions, none of which will necessarily appear anywhere else.
+ 
+ This probably would be accepted as an IndexOptions setting if a patch were
+ made, but default probably wouldn't be enabled.
+ 
+ > 
+ > The real problem robots have with the current situation is that (assuming
+ > the robot author even appreciates the problem) it is hard to come up with a
+ > reliable way to determine if a page is an auto-generated index page.
+ > 
+ > Olly
+ > 
+ 
+>Unformatted:
+
+>Last-Modified:  Wed Aug 27 10:47:34 PDT 1997
+
+

@@ -1,0 +1,235 @@
+From nobody@hyperreal.org  Tue Jul  8 15:38:24 1997
+Received: (from nobody@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id PAA24248;
+	Tue, 8 Jul 1997 15:38:24 -0700 (PDT)
+Message-Id: <199707082238.PAA24248@hyperreal.org>
+Date: Tue, 8 Jul 1997 15:38:24 -0700 (PDT)
+From: Nathan Kurz <nate@tripod.com>
+Reply-To: nate@tripod.com
+To: apbugs@hyperreal.org
+Subject: StartServers directive works but children immediately die
+X-Send-Pr-Version: 3.2
+
+>Number:         843
+>Category:       general
+>Synopsis:       StartServers directive works but children immediately die
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jul  8 15:40:01 1997
+>Last-Modified:  Sat Jul 19 02:35:32 PDT 1997
+>Originator:     nate@tripod.com
+>Organization:
+>Release:        1.2b7
+>Environment:
+SunOS triage 5.5.1 Generic_103640-08 sun4u sparc SUNW,Ultra-1
+>Description:
+I'm having problems getting StartServers to start any large number (> 100)
+of children.  standalone_main() seems to start the correct number of 
+children, but they immediately die off before they get out of
+SERVER_STARTING.   
+
+It's possible that this isn't really a bug, but since the children are
+started after this one at a time (and once per second) it can several 
+minutes until the machine levels off again.
+>How-To-Repeat:
+Kill and restart httpd on a heavily trafficked machine, and observe the 
+number of processes running.
+>Fix:
+Perhaps change child_main so that the child does not exit until it has
+served at least one request?  
+
+Or change the make_child check in standalone_main into a while loop?
+If you are running short of servers you probably want to get back to the
+correct number faster than it is currently done.
+%0
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Nathan Kurz <nate@tripod.com>
+Subject: Re: general/843: StartServers directive works but children immediately die
+Date: Tue, 8 Jul 1997 14:57:02 -0700 (PDT)
+
+ 
+ If StartServers > MaxSpareServers you'll see exactly what you're
+ describing unless your site is really being hit hard enough to get the new
+ servers out of idleness.
+ 
+ The 1.3-dev code kills only one child per second so it behaves much nicer
+ in this area.
+ 
+ Dean
+ 
+ 
+
+From: Nathan J Kurz <nate@tripod.tripod.com>
+To: dgaudet@arctic.org (Dean Gaudet)
+Subject: Re: general/843: StartServers directive works but children immediately die
+Date: Wed, 9 Jul 1997 11:47:54 -0400 (EDT)
+
+ 
+ > 
+ > If StartServers > MaxSpareServers you'll see exactly what you're
+ > describing unless your site is really being hit hard enough to get the new
+ > servers out of idleness.
+ > 
+ > The 1.3-dev code kills only one child per second so it behaves much nicer
+ > in this area.
+ > 
+ > Dean
+ > 
+ > 
+ 
+ Why are processes replenished at only one per second?  It would seem
+ that a deficit should be cleared up as soon as possible.
+ 
+ Should the sleep(1) in wait_or_timeout() be a select() instead?  That
+ would make it much easier to adjust the rate at which processes are
+ created.
+ 
+ Thanks!
+ 
+ nate@tripod.com
+ http://www.tripod.com
+
+From: Marc Slemko <marcs@znep.com>
+To: Nathan J Kurz <nate@tripod.tripod.com>
+Subject: Re: general/843: StartServers directive works but children immediately die
+Date: Wed, 9 Jul 1997 10:30:07 -0600 (MDT)
+
+ 
+ On Wed, 9 Jul 1997, Nathan J Kurz wrote:
+ 
+ >  Why are processes replenished at only one per second?  It would seem
+ >  that a deficit should be cleared up as soon as possible.
+ 
+ Limiting the rate at which servers are created and killed is a good
+ thing(tm) because it helps avoid wild fluctuations due to very short-term
+ changes in load.  It is arguable that the method of limitation is bogus,
+ but it is partly a result of the current design structure.
+ 
+ >  Should the sleep(1) in wait_or_timeout() be a select() instead?  That
+ >  would make it much easier to adjust the rate at which processes are
+ >  created.
+ 
+ A select() is used there now, and the interval can be changed.  Check the
+ 1.3 source tree. 
+ 
+ from httpd.h:
+ 
+ /*
+  * (Unix, OS/2 only)
+  * Interval, in microseconds, between scoreboard maintenance.  During
+  * each scoreboard maintenance cycle the parent decides if it needs to
+  * spawn a new child (to meet MinSpareServers requirements), or kill off
+  * a child (to meet MaxSpareServers requirements).  It will only spawn or
+  * kill one child per cycle.  Setting this too low will chew cpu.  The
+  * default is probably sufficient for everyone.  But some people may want
+  * to raise this on servers which aren't dedicated to httpd and where they
+  * don't like the httpd waking up each second to see what's going on.
+  */
+ #ifndef SCOREBOARD_MAINTENANCE_INTERVAL
+ #define SCOREBOARD_MAINTENANCE_INTERVAL 1000000
+ #endif
+ 
+ 
+
+From: Nathan J Kurz <nate@tripod.tripod.com>
+To: marcs@znep.com (Marc Slemko)
+Subject: Re: general/843: StartServers directive works but children immediately die
+Date: Wed, 9 Jul 1997 12:55:43 -0400 (EDT)
+
+ 
+ > On Wed, 9 Jul 1997, Nathan J Kurz wrote:
+ > 
+ > >  Why are processes replenished at only one per second?  It would seem
+ > >  that a deficit should be cleared up as soon as possible.
+ > 
+ > Limiting the rate at which servers are created and killed is a good
+ > thing(tm) because it helps avoid wild fluctuations due to very short-term
+ > changes in load.  It is arguable that the method of limitation is bogus,
+ > but it is partly a result of the current design structure.
+ 
+ I agree on limitting the rate at which they are created and killed,
+ but I guess I see replenishment as a different matter.  You are right,
+ though, because of the architecture it would be hard for the parent to
+ tell whether the child died because there were too many idle servers
+ or whether it had died because MaxRequests had been exceeded (or if it
+ died an unnatural death).
+ 
+ Perhaps there could be a state added that would be
+ 'SERVER_TOO_MANY_IDLE' which would be set before the child died in
+ that case?  Such that in any other case child would be immediately
+ resurrected? But that is probably too complex to bother with.
+ 
+ Say, why is SERVER_STARTING considered idle in the first place?  
+ 
+ Thanks!
+ 
+ nate@tripod.com
+ http://www.tripod.com
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Nathan J Kurz <nate@tripod.tripod.com>
+Subject: Re: general/843: StartServers directive works but children immediately die
+Date: Wed, 9 Jul 1997 09:10:00 -0700 (PDT)
+
+ 
+ See the 1.3 code, the sleep is a select and it has a define that you can
+ tweak.  The reason for the slow rate is to avoid swamping the system. 
+ It's not perfect though. 
+ 
+ Dean
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Nathan J Kurz <nate@tripod.tripod.com>
+Subject: Re: general/843: StartServers directive works but children immediately die
+Date: Wed, 9 Jul 1997 09:19:43 -0700 (PDT)
+
+ 
+ On Wed, 9 Jul 1997, Nathan J Kurz wrote:
+ >  Perhaps there could be a state added that would be
+ >  'SERVER_TOO_MANY_IDLE' which would be set before the child died in
+ >  that case?  Such that in any other case child would be immediately
+ >  resurrected? But that is probably too complex to bother with.
+ 
+ 1.3 is revamped this way as well.  The children make no attempt to count
+ the idle servers.  Only the parent counts idle servers, and it only does
+ it once per maintenance cycle (default 1 second).  It only kills (or
+ starts) one child per cycle, so there's no mass genocide like could happen
+ in the 1.2 code. 
+ 
+ >  Say, why is SERVER_STARTING considered idle in the first place? 
+ 
+ It isn't, only SERVER_READY is considered idle. 
+ 
+ Dean
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Jul 19 02:35:32 PDT 1997
+State-Changed-Why:
+Should be resolved in 1.3, as per discussion.
+
+Dean
+>Unformatted:
+
+
+
+
+
+
+
+

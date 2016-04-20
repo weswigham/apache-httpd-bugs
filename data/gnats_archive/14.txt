@@ -1,0 +1,87 @@
+From nobody@hyperreal.com  Tue Oct  8 15:47:04 1996
+Received: by taz.hyperreal.com (8.7.6/V2.0) id PAA09518; Tue, 8 Oct 1996 15:47:04 -0700 (PDT)
+Message-Id: <199610082247.PAA09518@taz.hyperreal.com>
+Date: Tue, 8 Oct 1996 15:47:04 -0700 (PDT)
+From: David Green-Seed <dgreen@starnetc.com>
+Reply-To: dgreen@starnetc.com
+To: apbugs@hyperreal.com
+Subject: problems with parse_htaccess due to invalid commands found in .htaccess files.
+X-Send-Pr-Version: 3.2
+
+>Number:         14
+>Category:       config
+>Synopsis:       problems with parse_htaccess due to invalid commands found in .htaccess files.
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct  8 15:47:40 1996
+>Last-Modified:  Sat Feb 15 20:29:23 PST 1997
+>Originator:     dgreen@starnetc.com
+>Organization:
+>Release:        1.1.1
+>Environment:
+
+>Description:
+log_reason is sometimes passed a request_rec with a null
+per_dir_config pointer.  This causes a crash later.
+>How-To-Repeat:
+
+>Fix:
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: brian
+State-Changed-When: Tue Oct  8 15:49:26 PDT 1996
+State-Changed-Why:
+Rob Hartill suggests:
+
+"It looks as if there should be some safety checks for the
+null pointer in "log_reason" instead of trying to work around cases when
+it's null, but I'll leave that to the guys who are more familiar with the
+code."
+State-Changed-From-To: analyzed-closed
+State-Changed-By: marc
+State-Changed-When: Sat Feb 15 20:29:22 PST 1997
+State-Changed-Why:
+Should be fixed by some recent changes made, which will
+be available in the next beta when it comes out.
+>Unformatted:
+>The problem occurs in parse_htaccess in http_config.c:
+>
+>    if((f=pfopen(r->pool, filename, "r"))) {
+>        dc = create_per_dir_config (r->pool);
+>
+>        parms.infile = f;
+>       parms.config_file = filename;
+>
+>       errmsg = srm_command_loop (&parms, dc);
+>
+>        pfclose(r->pool, f);
+>
+>       if (errmsg) {
+>         int doassign = 0;
+>
+>       /* INSERT THIS HERE! */
+>         if (!r->per_dir_config) {
+>           r->per_dir_config = dc;
+>           doassign = 1;
+>         }
+>       /* done. */
+>         log_reason (errmsg, filename, r);
+>       /* INSERT THIS HERE! */
+>         if (doassign) {
+>           r->per_dir_config = NULL;
+>         }
+>       /* done. */
+>
+>         return SERVER_ERROR;
+>       }
+>
+>
+>So you can see that log_reason is sometimes passed a request_rec with a null
+>per_dir_config pointer.  This causes a crash later.%0
+
+

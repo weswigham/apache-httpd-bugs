@@ -1,0 +1,124 @@
+Received: (qmail 11206 invoked by uid 2012); 17 Feb 1998 09:07:32 -0000
+Message-Id: <19980217090732.11205.qmail@hyperreal.org>
+Date: 17 Feb 1998 09:07:32 -0000
+From: Paul Gampe <paulg@twics.com>
+Reply-To: paulg@twics.com
+To: apbugs@hyperreal.org
+Subject: mod_imap.c call to construct_url 3rd arg is wrong type
+X-Send-Pr-Version: 3.2
+
+>Number:         1820
+>Category:       mod_imap
+>Synopsis:       mod_imap.c call to construct_url 3rd arg is wrong type
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Feb 17 01:10:00 PST 1998
+>Last-Modified:  Tue Feb 17 01:13:42 PST 1998
+>Originator:     paulg@twics.com
+>Organization:
+>Release:        Apache/1.2.5 Ben-SSL/1.13
+>Environment:
+[beehive 33] uname -a
+HP-UX beehive B.10.20 C 9000/816 971368231 32-user license
+[beehive 34] what `which cc`
+/usr/bin/cc:
+              LINT A.10.32.16 CXREF  A.10.32.16
+        HP92453-01 A.10.32.16 HP C Compiler
+         /usr/lib/libc: $Revision: 76.3 $
+>Description:
+The following HTML code:
+
+<TD VALIGN=Left><A HREF="footer.map"><IMG ISMAP SRC="../footer.gif"></A>
+
+with a footer.map file of:
+
+rect /index.html "text" 1,0 91,26 
+rect /enter.html "text" 94,0 184,23 
+rect /new/new.html "text" 187,0 278,23 
+rect /resources/internetguide/ "text" 280,0 371,23 
+rect /magazine/magazine.html "text" 1,28 93,50 
+rect /resources/links/links.html "text" 94,26 184,49 
+rect /dialog/dialog.html "text" 187,27 278,49 
+rect /about/about.html "text" 282,27 371,50 
+rect mailto:cjmaster@cjmag.co.jp "text" 373,26 464,50 
+rect /resources/resources.html "text" 373,0 463,24 
+
+resulted in a "Document contains no data" message to the client and the 
+following message to be logged in the error_log file.
+
+httpd: caught SIGSEGV, attempting to dump core in /opt/apache
+
+Note: I repeated this on a version of the server that did not include the SSL 
+code and it did not exhibit this failure.	
+>How-To-Repeat:
+http://www.cjmag.co.jp/new/new.html used to be broken but I've fixed it ;-)	
+>Fix:
+*** mod_imap.c  Tue Feb 17 17:50:49 1998
+--- mod_imap.c.orig     Tue Feb 17 17:47:53 1998
+***************
+*** 381,390 ****
+      char *my_base;
+  
+      if (!strcasecmp(value, "map") || !strcasecmp(value, "menu")) {
+!       /*
+!        * PAG98 - 3rd should be a request not a server according to util.c
+!        */
+!       return construct_url(r->pool, r->uri, r);
+      }
+  
+      if (!strcasecmp(value, "nocontent") || !strcasecmp(value, "error")) {
+--- 381,387 ----
+      char *my_base;
+  
+      if (!strcasecmp(value, "map") || !strcasecmp(value, "menu")) {
+!       return construct_url(r->pool, r->uri, r->server);
+      }
+  
+      if (!strcasecmp(value, "nocontent") || !strcasecmp(value, "error")) {
+***************
+*** 420,430 ****
+            return pstrdup(r->pool, value); /* no base: use what is given */
+          }
+          }
+        /* no base, no value: pick a simple default */
+! 
+!       /*
+!        * PAG98 - 3rd should be a request not a server according to util.c
+!        */
+!       return construct_url(r->pool, "/", r);
+      }
+  
+      /* must be a relative URL to be combined with base */
+--- 417,423 ----
+            return pstrdup(r->pool, value); /* no base: use what is given */
+          }
+        /* no base, no value: pick a simple default */
+!       return construct_url(r->pool, "/", r->server);
+      }
+  
+      /* must be a relative URL to be combined with base */
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Feb 17 01:13:41 PST 1998
+State-Changed-Why:
+Sorry, but if you look at construct_url in apache-1.2.5
+without the SSL patch you'll see the third argument is
+supposed to be a server... so the code is right and the
+ssl patch needs an update.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

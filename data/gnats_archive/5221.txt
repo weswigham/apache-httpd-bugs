@@ -1,0 +1,207 @@
+Received: (qmail 11493 invoked by uid 2012); 29 Oct 1999 22:03:46 -0000
+Message-Id: <19991029220346.11492.qmail@hyperreal.org>
+Date: 29 Oct 1999 22:03:46 -0000
+From: Marcus Doemling <marcus@hotprize.com>
+Reply-To: marcus@hotprize.com
+To: apbugs@hyperreal.org
+Subject: server doesn't start up, problem seems related to PerlRequire
+X-Send-Pr-Version: 3.2
+
+>Number:         5221
+>Category:       mod_perl
+>Synopsis:       server doesn't start up, problem seems related to PerlRequire
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          feedback
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Oct 29 15:10:01 PDT 1999
+>Closed-Date:
+>Last-Modified:  Mon Feb 28 10:10:01 PST 2000
+>Originator:     marcus@hotprize.com
+>Release:        1.3.9
+>Organization:
+>Environment:
+RedHat Linux 2.0.36, Perl 5.004_05
+>Description:
+I upgraded from Apache/1.3.6 (Unix) mod_perl/1.19 to
+Apache/1.3.9 (Unix) mod_perl/1.21. I installed mod_perl
+and Apache the same way as the previous version.
+mod_perl is linked with DSO.
+
+Now the server doesn't start up. It does not give me ANY
+error message, not on the command prompt and not in the
+log files. When using 'apachectl start' it says
+'apachectl start: httpd started', but it didn't start.
+I finally got it to start by removing a
+PerlRequire statement from httpd.conf. Then I found
+that it also starts with PerlRequire when the required
+file doesn't contain any 'use MODULE' statements.
+
+Also I recompiled apache 1.3.9 with the previous
+mod_perl I had (1.19) which did not change any of the
+behaviour. So I conclude that the problem is somewhere
+in apache.
+
+The Perl-required script works fine with the previous
+apache version.
+>How-To-Repeat:
+Here's how I compiled:
+           $ cd mod_perl-1.21
+           $ perl Makefile.PL \
+               APACHE_SRC=/usr/lib/apache_1.3.9/src \
+               DO_HTTPD=1 \
+               USE_APACI=1 \
+               PREP_HTTPD=1 \
+               EVERYTHING=1
+
+           $ make
+           $ make test
+           $ make install
+
+and then
+
+    $ cd apache_1.3.9
+    $ ./configure \
+         --prefix=/usr/lib/apache_1.3.9_bin \
+         --activate-module=src/modules/perl/libperl.a \
+         --enable-shared=perl \
+         --enable-module=most \
+         --enable-shared=max
+    $ make
+    $ make install
+>Fix:
+Unfortunately no.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: ask
+State-Changed-When: Sat Nov 20 01:13:40 PST 1999
+State-Changed-Why:
+Try with a 5.5.3 perl instead of 5.4.5.
+
+We also need a stack trace etc to help you. Please see the SUPPORT
+document in the mod_perl distribution.
+
+From: marcus@hotprize.com
+To: ask@apache.org
+Cc: apbugs@apache.org
+Subject: Re: mod_perl/5221: server doesn't start up, problem seems related
+ to PerlRequire
+Date: Sun, 21 Nov 1999 16:20:31 -0500 (EST)
+
+ Here's some output from gdb
+ 
+ Program terminated with signal 11, Segmentation fault.
+ 
+ (gdb) backtrace
+ #0  0x40208f5f in boot_Socket ()
+ #1  0x401b2d9b in Perl_pp_entersub ()
+ #2  0x401af0ae in Perl_runops ()
+ #3  0x40188447 in perl_call_sv ()
+ #4  0x4018a6d0 in Perl_call_list ()
+ #5  0x401a3549 in Perl_newSUB ()
+ #6  0x401a1303 in Perl_utilize ()
+ #7  0x4019cae8 in Perl_yyparse ()
+ #8  0x401ca5da in Perl_doeval ()
+ #9  0x401caea3 in Perl_pp_require ()
+ #10 0x401af0ae in Perl_runops ()
+ #11 0x40188447 in perl_call_sv ()
+ #12 0x4018a6d0 in Perl_call_list ()
+ #13 0x401a3549 in Perl_newSUB ()
+ #14 0x401a1303 in Perl_utilize ()
+ #15 0x4019cae8 in Perl_yyparse ()
+ #16 0x401ca5da in Perl_doeval ()
+ #17 0x401caea3 in Perl_pp_require ()
+ #18 0x401af0ae in Perl_runops ()
+ #19 0x40188777 in perl_eval_sv ()
+ #20 0x40175f31 in perl_do_file ()
+ #21 0x40175f79 in perl_load_startup_script ()
+ #22 0x401722dd in perl_cmd_require ()
+ #23 0x80546f0 in invoke_cmd ()
+ #24 0x8054b26 in ap_handle_command ()
+ #25 0x8054bbc in ap_srm_command_loop ()
+ #26 0x8054fac in ap_process_resource_config ()
+ #27 0x805586a in ap_read_config ()
+ #28 0x805ebf5 in standalone_main ()
+ #29 0x805f52f in main ()
+ 
+ Marcus
+ 
+ 
+
+From: marcus@hotprize.com
+To: ask@apache.org
+Cc: apbugs@apache.org
+Subject: Re: mod_perl/5221: server doesn't start up, problem seems related
+ to PerlRequire
+Date: Sat, 18 Dec 1999 15:43:05 -0500 (EST)
+
+ Additional info:
+ 
+ I installed a new linux box with RedHat 6.1 Apache 1.3.9 mod_perl 1.21,
+ perl 5.00503 and I have still the same problem.
+ 
+ But I noticed another thing. I PerlRequire a script called
+ startup.pl and in there I 'use' other modules. If the
+ first use statement is:
+ 
+ use DBI ();
+ 
+ then the httpd core dumps and the backtrace looks like:
+ 
+ #0  0x4031e3df in boot_DBI () from
+ /usr/lib/perl5/site_perl/5.005/i386-linux/auto/DBI/DBI.so
+ #1  0x403e9306 in Perl_pp_entersub () from
+ /usr/lib/apache/modules/libperl.so
+ #2  0x4041317d in Perl_runops_standard () from
+ /usr/lib/apache/modules/libperl.so
+ .
+ .
+ .
+ 
+ so now it seems boot_DBI () is the problem,
+ but if I remove the use DBI () I get again
+ boot_Socket () on top of the stack !!
+ 
+ Hope that is some useful information !
+ 
+
+From: marcus@hotprize.com
+To: ask@apache.org
+Cc: apbugs@apache.org
+Subject: Re: mod_perl/5221: server doesn't start up, problem seems related
+ to PerlRequire
+Date: Mon, 28 Feb 2000 13:03:29 -0500 (EST)
+
+ There are two workarounds for the problem.
+ 
+ 1) Link mod_perl statically (Rene Seindal)
+ 
+ 2) Use mod_perl as DSO and in the configuration 
+    file (httpd.conf) move the LoadModule and AddModule
+    directive for mod_perl to the top.
+    This is the simplest solution and I didn't observe
+    any problems with it. 
+ 
+ I hope that will be useful.
+ Marcus
+ 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

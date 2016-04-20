@@ -1,0 +1,96 @@
+Received: (qmail 78445 invoked by uid 65534); 2 Feb 2000 17:12:41 -0000
+Message-Id: <20000202171241.78444.qmail@locus.apache.org>
+Date: 2 Feb 2000 17:12:41 -0000
+From: Ilya Obshadko <ilya@zhurnal.ru>
+Reply-To: ilya@zhurnal.ru
+To: submit@bugz.apache.org
+Subject: mod_proxy functionality extensions when acting as a backend httpd (i.e. mod_perl) accelerator
+X-Send-Pr-Version: 3.110
+
+>Number:         5686
+>Category:       mod_proxy
+>Synopsis:       mod_proxy functionality extensions when acting as a backend httpd (i.e. mod_perl) accelerator
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Feb 02 09:20:00 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     ilya@zhurnal.ru
+>Release:        1.3.9
+>Organization:
+apache
+>Environment:
+FreeBSD 3.4-RC #25: Fri Dec 10 19:16:55 MSK 1999 root@webserv.polit.ru:/usr/src/sys/compile/POLIT  i386
+>Description:
+  Fixes was done for apache version 1.3.9. But I think it should work
+  with 1.3.4 and higher versions too. I've not tested it with versions
+  other than 1.3.9, and I've not tested it on Win32 platform.
+
+  1) Subtle problem with mod_include/mod_rewrite/mod_proxy.
+     mod_include reports error when receiving response code other than
+     HTTP_OK. So I've fixed mod_proxy so that it can return
+     HTTP_NOT_MODIFIED only if request is not subrequest. Also, I've
+     enabled mod_rewrite ruleflag [P] on subrequests.
+     Patched files: proxy_cache.c, mod_rewrite.c
+
+  2) Large amount of reloads cause very high load on backend because
+     requests bypass the cache. I've added IgnoreNoCache <filemask>
+     directive to mod_proxy config. <Filemask> is a mask for frontend
+     server URIs. When mask is matched, Pragma: no-cache header is
+     being deleted from incoming file headers, so if cached data
+     present, it would be returned instead of getting data from
+     backend server.
+     Patched files: proxy_cache.c, mod_proxy.c, mod_proxy.h
+     Added config cmds: IgnoreNoCache <location mask (not regexp!)>
+     Context: global (not tested) & vhost
+
+  3) On site with a very high traffic, there's a real risk of
+     simultaneous reloading of the same URI by numerous clients.
+     This is also causes problems on backend, especially with
+     complicated dynamically-generated pages. I've fixed this by
+     adding mod_proxy directive NoConcurrentCacheUpdates (On|Off),
+     and new scoreboard status SERVER_PROXY_READ. When the flag is on
+     and expired data found, server first checks if this URI is being
+     downloaded from upstream by any other child. If so, it returns
+     expired data to client while 'downloading' child doing its job of
+     updating the cache.
+     Patched files: proxy_cache.c, mod_proxy.c, mod_proxy.h,
+                    mod_status.h, scoreboard.h
+     Added config cmds: NoConcurrentCacheUpdates (On|Off)
+     Context: global (not tested) & vhost
+
+  4) I've added X-Real-IP header to present real IP to the backend
+     server. I think that X-Forwarded-For is for REAL proxies, so I
+     don't want to mess with it.
+     Patched files: proxy_http.c
+
+  5) I've replaced ExplainX macros in proxy_cache.c for ap_log_rerror
+     API call. Seems that those macros don't work, dunno why...
+     Patched files: proxy_cache.c
+>How-To-Repeat:
+
+>Fix:
+patches are available
+http://web.masterskaya.ru/~ilya/apache/xfire_patches1.3.9.tar.gz
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

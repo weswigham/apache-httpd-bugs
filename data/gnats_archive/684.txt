@@ -1,0 +1,304 @@
+From nobody@hyperreal.com  Thu Jun  5 15:09:45 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id PAA19302;
+	Thu, 5 Jun 1997 15:09:45 -0700 (PDT)
+Message-Id: <199706052209.PAA19302@hyperreal.com>
+Date: Thu, 5 Jun 1997 15:09:45 -0700 (PDT)
+From: Igor N Kovalenko <infoh@mail.wplus.net>
+Reply-To: infoh@mail.wplus.net
+To: apbugs@hyperreal.com
+Subject: broken compilation of utils from support directory
+X-Send-Pr-Version: 3.2
+
+>Number:         684
+>Category:       config
+>Synopsis:       broken compilation of utils from support directory
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jun  5 15:10:00 1997
+>Last-Modified:  Thu Feb 12 09:35:41 PST 1998
+>Originator:     infoh@mail.wplus.net
+>Organization:
+>Release:        1.2
+>Environment:
+QNX 4.23A
+Watcom C 10.6
+>Description:
+Makefile generated for support direcrtory is not good for QNX. 
+
+It needs extra LIBS1 definition: LIBS1=-lunix
+and $(LIBS) must be added to htdigest target (like it is in htpasswd target).
+
+suEXEC wrapper needs extra include: <sys/types.h>
+and fake initgroups() definition (like it is in src directory), bacause QNX does not have it.
+
+Problems like above were solved for src directory, but not for support.
+>How-To-Repeat:
+Just type:
+cd support
+make
+ :-)
+>Fix:
+Yes, I have fixed Makefile and suexec.c.
+diff -n output available too
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Sun Jun  8 12:45:02 PDT 1997
+State-Changed-Why:
+Why does it neeed -lunix?  That isn't included in the src 
+directory; what does it choke on if it doesn't have it?
+
+suexec.c already does include sys/types.h and has forever.
+
+Please verify this against 1.2.0 and then send the 
+diffs required to make it work for you...
+
+Thanks.
+
+From: Marc Slemko <marcs@znep.com>
+To: apbugs@apache.org
+Subject: os-qnx/684
+Date: Sun, 8 Jun 1997 16:19:58 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Mon, 9 Jun 1997 01:21:02 +0400
+ From: Igor N Kovalenko <infoh@mail.wplus.net>
+ To: marc@hyperreal.com
+ Subject: Re: Changed information for PR os-qnx/684
+ 
+ > From: marc@hyperreal.com
+ > To: apache-bugdb@apache.org; infoh@mail.wplus.net; marc@apache.org
+ > Subject: Changed information for PR os-qnx/684
+ > Date: Sunday, June 08, 1997 11:45
+ > 
+ > Synopsis: broken compilation of utils from support directory
+ > 
+ > State-Changed-From-To: open-analyzed
+ > State-Changed-By: marc
+ > State-Changed-When: Sun Jun  8 12:45:02 PDT 1997
+ > State-Changed-Why:
+ > Why does it neeed -lunix?
+ 
+ Because some popular Unix stuff is not in libc in QNX. E.g., a function to
+ get password from command line without echo (don't remember its name) is in
+ unix.lib.
+ 
+ > That isn't included in the src 
+ > directory; what does it choke on if it doesn't have it?
+ > 
+ 
+ Perhaps because the rest of Apache code don't use functions which are not
+ in libc in QNX. However, it is not good idea to rely on this luck further.
+ Generally, only POSIX functions are in libc in QNX.
+ 
+ > suexec.c already does include sys/types.h and has forever.
+ > 
+ 
+ Thas was my err - I just included my stuff above, so compiler complained
+ :-(
+ 
+ > Please verify this against 1.2.0 and then send the 
+ > diffs required to make it work for you...
+ > 
+ 
+ 
+ Well, I did it - that all (except for sys/types.h) applies to 1.2.0 as
+ well.
+ You probably aware about another my report - about mmap() support. I
+ include appropriate stuff here, FYI. If something is unclear, please ask.
+ 
+ Affected files:
+ src/Configure		-- required to generate proper Makefile for support dir.
+ src/conf.h			-- mmap definitions for QNX
+ src/http_main.c		-- mmap handling for QNX
+ support/Makefile.tmpl	-- for htdigest.c
+ support/suexec.c		-- for itself
+ 
+ Output of diff my_version apache1.2.0-version:
+ 
+ === src/Configure.diff - cut here ===
+ 335c335
+ < 	LIBS="$LIBS -N128k -lsocket -lunix"
+ ---
+ > 	LIBS="$LIBS -N128k -lsocket"
+ 341c341
+ < 	LIBS="$LIBS -N128k -lsocket -lunix"
+ ---
+ > 	LIBS="$LIBS -N128k -lsocket"
+ === end - cut here ===
+ 
+ === src/conf.h.diff - cut here ===
+ 429,430d428
+ < #define HAVE_MMAP
+ < #include <sys/mman.h>
+ === end - cut here ===
+ 
+ === src/http_main.c.diff - cut here ===
+ 688,718d687
+ < #elif defined(QNX)
+ < /* 
+ <  * POSIX 1003.4 style
+ <  *
+ <  * June 5, 1997, 
+ <  * Igor N. Kovalenko -- infoh@mail.wplus.net
+ <  *
+ <  * Note: 
+ <  * As of version 4.23, shared memory in QNX must reside under /dev/shmem.
+ <  * POSIX shm_open() and shm_unlink() will take care about this issue.
+ <  * 
+ <  * Note also: <sys/mman.h> should be included for QNX into conf.h.
+ <  */
+ <     int fd;
+ < 
+ < 	if ((fd = shm_open(scoreboard_fname, O_RDWR|O_CREAT, S_IRUSR|S_IWUSR ))
+ == -1) {
+ < 		  perror("httpd: could not open(create) scoreboard");
+ < 		  exit(1);
+ < 	}
+ < 	if (ltrunc(fd, (off_t)SCOREBOARD_SIZE, SEEK_SET) == -1) {
+ < 		  perror("httpd: could not ltrunc scoreboard");
+ < 		  shm_unlink(scoreboard_fname);
+ < 		  exit(1);
+ < 	}
+ < 	if ((m = (caddr_t)mmap((caddr_t)0, (size_t)SCOREBOARD_SIZE,
+ PROT_READ|PROT_WRITE,
+ < 		  MAP_SHARED, fd, (off_t)0)) == (caddr_t)-1) {
+ < 		  perror("httpd: cannot mmap scoreboard");
+ < 		  shm_unlink(scoreboard_fname);
+ < 		  exit(1);
+ < 	}
+ <     close(fd);
+ 952,953d920
+ < #elif defined(QNX) && defined(HAVE_MMAP)
+ < 	shm_unlink(scoreboard_fname);
+ === end - cut here ===
+ 
+ === support/Makefile.tmpl - cut here ===
+ 22c22
+ < 	$(CC) $(CFLAGS) htdigest.c -o htdigest $(LIBS)
+ ---
+ > 	$(CC) $(CFLAGS) htdigest.c -o htdigest
+ === end - cut here ===
+ 
+ === support/suexec.c.diff - cut here ===
+ 84,101d83
+ < /*
+ <  ***********************************************************************
+ <  * There is no initgroups() in QNX, so I believe this is safe :-)
+ <  * Use cc -osuexec -3 -O -mf -DQNX suexec.c to compile.
+ <  *
+ <  * May 17, 1997.
+ <  * Igor N. Kovalenko -- infoh@mail.wplus.net
+ <  ***********************************************************************
+ <  */
+ < 
+ < #if defined(QNX)
+ < int initgroups(const char *name, gid_t basegid)
+ < {
+ < /* QNX and MPE do not appear to support supplementary groups. */
+ < 	return 0;
+ < }
+ < #endif
+ < 
+ === end - cut here ===
+ 
+ With above changes applied to fresh 1.2.0 everything complies and works ok
+ on QNX 4.23A, using Watcom C 10.6
+ 
+ Regards,
+ ---
+ Igor N Kovalenko
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Subject: os-qnx/684:
+Date: Fri, 20 Jun 1997 10:06:57 -0700 (PDT)
+
+ 
+ Looks like we're safe to use that patch.
+ 
+ Dean
+ 
+ P.S. I doubt apache compiles in 16-bit land... the int/ptr stuff would
+ easily mess it up.
+ 
+ ---------- Forwarded message ----------
+ Date: Fri, 20 Jun 1997 08:59:59 -0400 (DST)
+ From: Brian Stecher <bstecher@qnx.com>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: Changed information for PR os-qnx/684 (fwd)
+ 
+ > Anyhow, I've got a QNX question for you.  We've got a patch below from
+ > someone to include mmap scoreboard support under qnx.  It's much faster
+ > and more reliable.  But we don't know which versions of QNX would support
+ > this... would you know what #ifdef we could check to test for this?
+ 
+ You should be safe unless you make a 16-bit version of Apache. The mmap
+ support has been in all the 32-bit versions of QNX (4.2 and later). BTW,
+ the compiler atomatically defines the __QNX__ macro, so you could compile
+ QNX code based on that if you want.
+ 
+ 	Brian
+ 
+ 
+State-Changed-From-To: analyzed-feedback
+State-Changed-By: coar
+State-Changed-When: Wed Jul 16 08:14:36 PDT 1997
+State-Changed-Why:
+I am sending you a patch for the following files:
+
+ src/Configuration
+ src/Makefile.tmpl
+ support/Makefile.tmpl
+
+Please apply it and re-run Configure, and let me
+know if this fixes your problem.
+
+#ken    :-)}
+Class-Changed-From-To: mistaken-sw-bug
+Class-Changed-By: coar
+Class-Changed-When: Wed Jul 16 08:14:36 PDT 1997
+Category-Changed-From-To: os-qnx-config
+Category-Changed-By: coar
+Category-Changed-When: Wed Jul 16 08:14:36 PDT 1997
+
+Comment-Added-By: coar
+Comment-Added-When: Wed Jul 16 08:18:29 PDT 1997
+Comment-Added:
+Sorry; the first file listed in the last note
+should have been:
+
+ src/Configure
+
+not "src/Configuration".
+Comment-Added-By: dgaudet
+Comment-Added-When: Sun Jul 20 18:20:48 PDT 1997
+Comment-Added:
+The support/ changes are in 1.3-dev now.  The mmap changes
+are being tracked by PR#683.
+
+Dean
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Thu Feb 12 09:35:41 PST 1998
+State-Changed-Why:
+It appears that this issue has been addressed in the latest
+1.3 development stream.  Thanks for using Apache!
+Class-Changed-From-To: sw-bug-change-request
+Class-Changed-By: coar
+Class-Changed-When: Thu Feb 12 09:35:41 PST 1998
+>Unformatted:
+
+
+
+

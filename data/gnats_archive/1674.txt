@@ -1,0 +1,109 @@
+Received: (qmail 19423 invoked by uid 2012); 15 Jan 1998 02:47:34 -0000
+Message-Id: <19980115024734.19422.qmail@hyperreal.org>
+Date: 15 Jan 1998 02:47:34 -0000
+From: Michael Graff <explorer@flame.org>
+Reply-To: explorer@flame.org
+To: apbugs@hyperreal.org
+Subject: userid used on running php3 files within Apache module
+X-Send-Pr-Version: 3.2
+
+>Number:         1674
+>Category:       general
+>Synopsis:       userid used on running php3 files within Apache module
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan 14 18:50:00 PST 1998
+>Last-Modified:  Thu Jan 15 19:27:41 PST 1998
+>Originator:     explorer@flame.org
+>Organization:
+>Release:        1.2.5
+>Environment:
+NetBSD kechara.flame.org 1.3 NetBSD 1.3 (KECHARA) #0: Thu Jan  1 16:45:38 EST 1998     explorer@kechara.flame.org:/u1/OS/NetBSD/src/sys/arch/i386/compile/KECHARA i386
+>Description:
+I found what I consider a security problem using the php3
+Apache module.
+
+Running this script:
+
+<?php
+
+        print "this is a test<BR>\n";
+
+        print getmyuid();
+        print "<BR>\n";
+
+        print get_current_user();
+        print "<BR>\n";
+
+        system("id ; touch /tmp/php-hack-" . getmypid());
+?>
+
+will return something like this:
+
+this is a test
+173
+
+uid=32699(www) gid=1002(sorwww) groups=1002(sorwww) 
+
+(note that the get_current_user() function returned nothing in this
+case, but sometimes it does return valid data)
+
+Next few runs:
+
+this is a test
+0
+
+uid=32699(www) gid=1002(sorwww) groups=1002(sorwww) 
+
+this is a test
+32699
+
+uid=32699(www) gid=1002(sorwww) groups=1002(sorwww) 
+
+(yes, that is a ^B in there...)
+
+However, the uid used in the system() call is the www server, and this is
+a very bad thing, as users on my machine can run anything as www currently.
+
+Is there a way to run the scripts as the user who's homedir it is in, or
+(not my favorite but will work) a way to run as the owner of the file?
+
+--Michael
+>How-To-Repeat:
+install apache with php3 support, and run the included script
+>Fix:
+I don't know the internal architecture well enough, but it seems to me that
+Apache needs some notion of a way to set the uid based on the path accessed
+within the filesystem.  For instance, if I could say:
+
+	/home/%s/WWW	uid=%s
+or something like that, it would ideally access all /home/explorer/WWW
+files using the uid "explorer" (well, 173 in my case :)
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Thu Jan 15 19:27:41 PST 1998
+State-Changed-Why:
+This is more of an issue with php, not Apache.  The normal
+way of running things on Unix web servers (eg. CGIs) is to
+have them run as the user the server runs as.  For CGIs,
+the suexec program can work around it.  PHP is
+probably different.
+
+There is no magical way to be able to switch uids without
+giving away root if someone compromises the server.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+
+

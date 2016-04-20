@@ -1,0 +1,183 @@
+Received: (qmail 28353 invoked by uid 2012); 20 May 1998 10:49:38 -0000
+Message-Id: <19980520104938.28352.qmail@hyperreal.org>
+Date: 20 May 1998 10:49:38 -0000
+From: Simon Burr <simonb@uk.uu.net>
+Reply-To: simonb@uk.uu.net
+To: apbugs@hyperreal.org
+Subject: SetEnv can not over ride variables like SERVER_NAME, HTTP_HOST, etc
+X-Send-Pr-Version: 3.2
+
+>Number:         2256
+>Category:       mod_env
+>Synopsis:       SetEnv can not over ride variables like SERVER_NAME, HTTP_HOST, etc
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed May 20 03:50:01 PDT 1998
+>Last-Modified:  Wed May 20 06:50:02 PDT 1998
+>Originator:     simonb@uk.uu.net
+>Organization:
+>Release:        1.2.6
+>Environment:
+SunOS duck 5.5.1 Generic_103640-08 sun4u sparc SUNW,Ultra-1
+Built using gcc 2.7.2
+>Description:
+For various reasons we need to be able to set the variables SERVER_NAME and
+HTTP_HOST on a per-virtual host basis so that CGI scripts actually get what
+they expect. The main reason for this is that the name of a web site served as
+seen from the outside world is not the same as used by Apache. Naturally we'd
+like to ensure that CGI scripts don't see the internal name which will probably
+be a non-routable address. I thought that I could use SetEnv to set the
+SERVER_NAME and HTTP_HOST to the correct values, but this did not work.
+>How-To-Repeat:
+The easiest way to repeat this problem is to use something like the following
+in the httpd.conf file:
+
+<VirtualHost 158.43.134.52>
+ServerName web2-real.syseng.uk.uu.net
+ServerAdmin simonb@uk.uu.net
+DocumentRoot /home/www/virtual-servers/web2-real/htdocs
+SetEnv HTTP_HOST web2.syseng.uk.uu.net
+SetEnv SERVER_NAME web2.syseng.uk.uu.net
+</VirtualHost>
+
+And run a CGI script which displays the environment variables.
+>Fix:
+I've actually made some minor changes to mod_cgi.c and alloc.[ch] which fixes
+this problem. I added a simple function table_set_if_empty() to alloc.c which
+only sets the value if it doesn't exist in the table already. I then changed
+most of the table_set() calls to the environment variable table in mod_cgi.c
+to use table_set_if_empty() instead.  This appears to work fine as the SetEnv
+statements in the server config given above replace the server provided ones.
+Looking at the patch database, the problem with passing the PATH variable in
+PR 370 could be fixed by this as well.
+
+I've built a patch for this which I can make available if you are interested in
+it.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: brian
+State-Changed-When: Wed May 20 06:14:39 PDT 1998
+State-Changed-Why:
+There should be no need to override SERVER_NAME and HTTP_HOST.
+You can set the "ServerName" directive for a vhost to be 
+anything, so long as it resolves back to the IP address of
+the vhost.  E.g. instead of
+
+  ServerName web2-real.syseng.uk.uu.net
+
+why not say
+
+  ServerName web2.syseng.uk.uu.net
+
+or whatever "public" name you like.  Also, the "HTTP_HOST"
+variable is precisely whatever the browser puts in its "Host:"
+header, so by definition it's the "public" name of the web
+server.
+
+It's a Good Idea not to allow people to mess with variables
+which our documentation states will always be a certain 
+thing.
+
+
+From: Simon Burr <simonb@uk.uu.net>
+To: brian@hyperreal.org
+Cc: apbugs@Apache.Org
+Subject: Re: mod_env/2256: SetEnv can not over ride variables like SERVER_NAME, HTTP_HOST, etc
+Date: Wed, 20 May 1998 14:25:07 +0100 (BST)
+
+ brian@hyperreal.org said
+ [Valid stuff snipped]
+ 
+ The problem is that the public facing IP address of the site is not
+ going to be the same as the IP address of the vhost on the backend.
+ I'm limited in what I can say (ick :(, but I can say that a browser
+ isn't going to be making the actual request to the web server - an
+ accelerator is going to be on the browsers behalf. The result of this
+ is that the browser does indeed send "web2.syseng.uk.uu.net" in the
+ Host: header, but the web server dealing with the request is going
+ to see "web2-real.syseng.uk.uu.net" in the Host: header of the request
+ that reaches it. To get the vhosting working I need to put the
+ web2-real bit in the ServerName... thus I need to over ride that bit
+ so that CGI scripts see what they are expecting.
+ 
+ I wish that I didn't have to over ride what is held in SERVER_NAME
+ and HTTP_HOST, but in our situation - a large scale mass web hosting
+ system - we're restricted in what we can do :(
+ 
+ >It's a Good Idea not to allow people to mess with variables
+ >which our documentation states will always be a certain 
+ >thing.
+ 
+ Oh generally I'd agree with that. However there are some variables
+ where it would be useful to over ride what the web server would place
+ by default into it. PATH and TZ are two examples. The resetting of the
+ SERVER_NAME and HTTP_HOST shouldn't normally be done, but in our case
+ we need to do so :(
+ 
+ -- 
+ Simon Burr                             Work: simes@uk.uu.net
+ Systems Engineering, UUNET UK          Play: simes@ocsu.arg
+
+From: Brian Behlendorf <brian@hyperreal.org>
+To: Simon Burr <simonb@uk.uu.net>
+Cc: apbugs@Apache.Org
+Subject: Re: mod_env/2256: SetEnv can not over ride variables like SERVER_NAME, HTTP_HOST, etc
+Date: Wed, 20 May 1998 06:42:46 -0700 (PDT)
+
+ On Wed, 20 May 1998, Simon Burr wrote:
+ > brian@hyperreal.org said
+ > [Valid stuff snipped]
+ > 
+ > The problem is that the public facing IP address of the site is not
+ > going to be the same as the IP address of the vhost on the backend.
+ > I'm limited in what I can say (ick :(, but I can say that a browser
+ > isn't going to be making the actual request to the web server - an
+ > accelerator is going to be on the browsers behalf. 
+ 
+ Sure, reverse proxying.  I've set up things like this.
+ 
+ > The result of this
+ > is that the browser does indeed send "web2.syseng.uk.uu.net" in the
+ > Host: header, but the web server dealing with the request is going
+ > to see "web2-real.syseng.uk.uu.net" in the Host: header of the request
+ > that reaches it. 
+ 
+ True.  Then you just need to ask yourself why your CGI script needs to
+ rely upon HTTP_HOST and not some other variable.
+ 
+ > To get the vhosting working I need to put the
+ > web2-real bit in the ServerName... 
+ 
+ You shouldn't need it.  I was incorrect when I stated that ServerName
+ needed to resolve to anything in particular - it doesn't, I just checked. 
+ Yes, it is the name that gets inserted when redirects are created, and
+ when it goes to log, and in the CGI env, but that's about it really. Have
+ a ServerAlias for "web2-real"  and the vhost definition will accept the
+ right requests. 
+ 
+ > I wish that I didn't have to over ride what is held in SERVER_NAME
+ > and HTTP_HOST, but in our situation - a large scale mass web hosting
+ > system - we're restricted in what we can do :(
+ 
+ Are these third-party CGI scripts to which you don't have access or
+ control over source that are relying upon HTTP_HOST?  It's just a very
+ strange thing for a CGI script to be bothering with, what with
+ virtualhosting being handled in the server.
+ 
+ 	Brian
+ 
+ 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

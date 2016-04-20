@@ -1,0 +1,93 @@
+From apwww@hyperreal.org  Tue Sep 30 21:16:03 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id VAA27093;
+	Tue, 30 Sep 1997 21:16:03 -0700 (PDT)
+Message-Id: <199710010416.VAA27093@hyperreal.org>
+Date: Tue, 30 Sep 1997 21:16:03 -0700 (PDT)
+From: "Kevin P. Neal" <kpneal@pobox.com>
+Reply-To: kpneal@pobox.com
+To: apbugs@hyperreal.org
+Subject: SSI: include virtual doesn't handle SCRIPT_NAME correctly.
+X-Send-Pr-Version: 3.2
+
+>Number:         1182
+>Category:       mod_include
+>Synopsis:       SSI: include virtual doesn't handle SCRIPT_NAME correctly.
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Sep 30 21:20:02 1997
+>Last-Modified:  Tue Aug  4 18:54:22 PDT 1998
+>Originator:     kpneal@pobox.com
+>Organization:
+>Release:        1.2.x
+>Environment:
+NetBSD/Alpha 1.2G-current (1.2.0), 
+HP-UX 9.05 (1.2.4)
+>Description:
+The #include virtual="scriptnamehere" SSI directive doesn't handle the SCRIPT_NAME
+correctly when given path info.
+
+When a CGI is run from an SSI include virtual directive, any path info given
+in the URL gets tacked onto the end of the SCRIPT_NAME. For example, going
+to /cgi-bin/test-cgi/foo would run test-cgi with SCRIPT_NAME=/cgi-bin/test-cgi/foo.
+>How-To-Repeat:
+Make an SSI page with this in it:
+<PRE><!--#include virtual="/cgi-bin/test-cgi/foo"--></pre>
+
+and watch it break.
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Tue Sep 30 21:38:19 PDT 1997
+State-Changed-Why:
+This has been tracked to a problem leftover from the horrible
+semantics of exec cgi.
+
+This code:
+
+    if (!strcmp(r->protocol, "INCLUDED")) {
+        table_set(e, "SCRIPT_NAME", r->uri);
+        if (r->path_info && *r->path_info)
+            table_set(e, "PATH_INFO", r->path_info);
+
+in util_script.c is valid for exec cgi because exec cgi
+is odd, but not for include virtual.  Unfortunately, at that
+point we have no way to tell the two apart.  The fix (ie.
+don't run the above special case for include virtual) is obvious
+but the way to do it in the poorly abstracted CGI and SSI implementation
+isn't.
+State-Changed-From-To: analyzed-feedback
+State-Changed-By: coar
+State-Changed-When: Wed May 27 13:47:50 PDT 1998
+State-Changed-Why:
+ISTR some work in this area.. I can't seem to reproduce
+this on 1.3b7.  Can you try setting up a 1.3b7 server
+and seeing if it fixes your problem?
+Comment-Added-By: coar
+Comment-Added-When: Thu Jun 18 13:27:21 PDT 1998
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Tue Aug  4 18:54:22 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+
+

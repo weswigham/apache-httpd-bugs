@@ -1,0 +1,109 @@
+Received: (qmail 35418 invoked by uid 501); 13 Sep 2001 23:07:22 -0000
+Message-Id: <20010913230722.35417.qmail@apache.org>
+Date: 13 Sep 2001 23:07:22 -0000
+From: Will Lowe <harpo@thebackrow.net>
+Reply-To: harpo@thebackrow.net
+To: submit@bugz.apache.org
+Subject: segfaul due to ap_custom_response() setting core module config ap_response_code_strings to per-request memory
+X-Send-Pr-Version: 3.110
+
+>Number:         8334
+>Category:       apache-api
+>Synopsis:       segfaul due to ap_custom_response() setting core module config ap_response_code_strings to per-request memory
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Sep 13 16:10:00 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     harpo@thebackrow.net
+>Release:        <= 1.3.20
+>Organization:
+apache
+>Environment:
+Debian GNU/Linux, potato and sid releases,  Linux kernel.  Using GCC 2.95.2 and 2.95.2
+uname output:	
+Linux alley 2.4.9-ac9-alley #1 Thu Sep 6 12:42:53 PDT 2001 i686 unknown    
+>Description:
+This problem is described in the second half of bug #6336,  where a backtrace is provided.  Basically,  ap_custom_response() sets the core module's response_code_strings to memory from r->pool around line 1171 in http_core.c:
+
+    conf->response_code_strings = 
+	    ap_pcalloc(r->pool,
+		    sizeof(*conf->response_code_strings) * 
+		    RESPONSE_CODES);
+
+This means that any request after this that tries to use response_code_strings may (usually does) segfault because it points to memory from a *previous* request's pool.
+>How-To-Repeat:
+Write some handler code that calls ap_custom_respons on every request.  Mine is in a transhandler,  and it looks something like this:
+
+    ap_custom_response(r, HTTP_NOT_MODIFIED, "/notmodified");       
+
+Send a request or two to the server that DO NOT result in HTTP_NOT_MODIFIED,  then send one that does,  and it'll segfault in ap_die when ap_die looks up custom_response (http_request.c, line 1040) or custom_response[0] (http_request.c, line 1092).
+
+
+>Fix:
+The following patch changes ap_custom_response() and ap_response_code_strings() to use the request_config vector in request_rec to store custom response settings instead.  If there is another, more preferred way to fix this problem,  please let me know and I'll give it a try.
+
+-- BEGIN PATCH
+diff -ur apache_1.3.20/src/main/http_core.c apache_1.3.20-new/src/main/http_core.c
+--- apache_1.3.20/src/main/http_core.c  Fri Mar  9 02:10:25 2001
++++ apache_1.3.20-new/src/main/http_core.c      Fri Aug 17 23:27:58 2001
+@@ -581,9 +581,16 @@
+ {
+     core_dir_config *conf;
+ 
+-    conf = (core_dir_config *)ap_get_module_config(r->per_dir_config,
++    /* prefer per-request settings */
++    conf = (core_dir_config *)ap_get_module_config(r->request_config,
+                                                   &core_module);
+ 
++    /* but if there aren't any,  try the dir config */
++    if ( conf == NULL ) {
++      conf = (core_dir_config *) ap_get_module_config(r->per_dir_config,
++                                                      &core_module);
++    }
++
+     if (conf->response_code_strings == NULL) {
+        return NULL;
+     }
+@@ -1165,8 +1172,14 @@
+ API_EXPORT(void) ap_custom_response(request_rec *r, int status, char *string)
+ {
+     core_dir_config *conf =
+-       ap_get_module_config(r->per_dir_config, &core_module);
++       ap_get_module_config(r->request_config, &core_module);
+     int idx;
++
++    if(conf == NULL) {
++      /* if this doesn't exist,  we'll have to make one */
++      conf = (core_dir_config*) ap_pcalloc(r->pool, sizeof(core_dir_config));
++      ap_set_module_config(r->request_config, &core_module, conf);
++    }
+ 
+     if(conf->response_code_strings == NULL) {
+         conf->response_code_strings =
+-- END PATCH
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

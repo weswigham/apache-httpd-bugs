@@ -1,0 +1,181 @@
+Received: (qmail 14259 invoked by uid 2012); 22 Jun 1999 00:22:46 -0000
+Message-Id: <19990622002246.14258.qmail@hyperreal.org>
+Date: 22 Jun 1999 00:22:46 -0000
+From: Ralph Hightower <lynmax@logicsouth.com>
+Reply-To: lynmax@logicsouth.com
+To: apbugs@hyperreal.org
+Subject: Win NT reports Access Violation in mod_info.c
+X-Send-Pr-Version: 3.2
+
+>Number:         4623
+>Category:       mod_info
+>Synopsis:       Win NT reports Access Violation in mod_info.c
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun 21 17:30:01 PDT 1999
+>Closed-Date:    Wed Jun 14 21:45:26 PDT 2000
+>Last-Modified:  Wed Jun 14 21:45:26 PDT 2000
+>Originator:     lynmax@logicsouth.com
+>Release:        1.3.6
+>Organization:
+>Environment:
+Windows NT Workstation 4.0 SP4; Microsoft Visual Studio 97
+>Description:
+Access Violation occurs in display_info at the start of the for loop:
+        if (!r->args) {
+            ap_rputs("<tt><a href=\"#server\">Server Settings</a>, ", r);
+            for (modp = top_module; modp; modp = modp->next) {
+                ap_rprintf(r, "<a href=\"#%s\">%s</a>", modp->name, modp->name);
+                if (modp->next) {
+                    ap_rputs(", ", r);
+                }
+            }
+            ap_rputs("</tt><hr>", r);
+        }
+>How-To-Repeat:
+On Windows Apache servers: http://www.yourdomain.com/server-info
+>Fix:
+--- http_conf_globals.h.orig	Fri Jan 01 13:04:40 1999
++++ http_conf_globals.h	Thu Jun 10 22:05:33 1999
+@@ -53,6 +53,10 @@
+  * For more information on the Apache Group and the Apache HTTP server
+  * project, please see <http://www.apache.org/>.
+  *
++ *	Ralph Hightower <lynmax@logicsouth.com>, June 1999
++ *
++ * 06.09.99	Changes for Windows version
++ *
+  */
+ 
+ #ifndef APACHE_HTTP_CONF_GLOBALS_H
+@@ -66,33 +70,33 @@
+  * Process config --- what the process ITSELF is doing
+  */
+ 
+-extern int ap_standalone;
+-extern uid_t ap_user_id;
+-extern char *ap_user_name;
+-extern gid_t ap_group_id;
++extern API_VAR_EXPORT int ap_standalone;
++extern API_VAR_EXPORT uid_t ap_user_id;
++extern API_VAR_EXPORT char *ap_user_name;
++extern API_VAR_EXPORT gid_t ap_group_id;
+ #ifdef MULTIPLE_GROUPS
+-extern gid_t group_id_list[NGROUPS_MAX];
++extern API_VAR_EXPORT gid_t group_id_list[NGROUPS_MAX];
+ #endif
+-extern int ap_max_requests_per_child;
+-extern int ap_threads_per_child;
+-extern int ap_excess_requests_per_child;
+-extern struct in_addr ap_bind_address;
+-extern listen_rec *ap_listeners;
+-extern int ap_daemons_to_start;
+-extern int ap_daemons_min_free;
+-extern int ap_daemons_max_free;
+-extern int ap_daemons_limit;
++extern API_VAR_EXPORT int ap_max_requests_per_child;
++extern API_VAR_EXPORT int ap_threads_per_child;
++extern API_VAR_EXPORT int ap_excess_requests_per_child;
++extern API_VAR_EXPORT struct in_addr ap_bind_address;
++extern API_VAR_EXPORT listen_rec *ap_listeners;
++extern API_VAR_EXPORT int ap_daemons_to_start;
++extern API_VAR_EXPORT int ap_daemons_min_free;
++extern API_VAR_EXPORT int ap_daemons_max_free;
++extern API_VAR_EXPORT int ap_daemons_limit;
+ extern MODULE_VAR_EXPORT int ap_suexec_enabled;
+-extern int ap_listenbacklog;
+-extern int ap_dump_settings;
++extern API_VAR_EXPORT int ap_listenbacklog;
++extern API_VAR_EXPORT int ap_dump_settings;
+ extern API_VAR_EXPORT int ap_extended_status;
+ 
+-extern char *ap_pid_fname;
+-extern char *ap_scoreboard_fname;
+-extern char *ap_lock_fname;
++extern API_VAR_EXPORT char *ap_pid_fname;
++extern API_VAR_EXPORT char *ap_scoreboard_fname;
++extern API_VAR_EXPORT char *ap_lock_fname;
+ extern MODULE_VAR_EXPORT char *ap_server_argv0;
+ 
+-extern enum server_token_type ap_server_tokens;
++extern API_VAR_EXPORT enum server_token_type ap_server_tokens;
+ 
+ /* Trying to allocate these in the config pool gets us into some *nasty*
+  * chicken-and-egg problems in http_main.c --- where do you stick them
+@@ -101,17 +105,17 @@
+  */
+ 
+ extern API_VAR_EXPORT char ap_server_root[MAX_STRING_LEN];
+-extern char ap_server_confname[MAX_STRING_LEN];
++extern API_VAR_EXPORT char ap_server_confname[MAX_STRING_LEN];
+ 
+ /* for -C, -c and -D switches */
+-extern array_header *ap_server_pre_read_config;
+-extern array_header *ap_server_post_read_config;
+-extern array_header *ap_server_config_defines;
++extern API_VAR_EXPORT array_header *ap_server_pre_read_config;
++extern API_VAR_EXPORT array_header *ap_server_post_read_config;
++extern API_VAR_EXPORT array_header *ap_server_config_defines;
+ 
+ /* We want this to have the least chance of being corrupted if there
+  * is some memory corruption, so we allocate it statically.
+  */
+-extern char ap_coredump_dir[MAX_STRING_LEN];
++extern API_VAR_EXPORT char ap_coredump_dir[MAX_STRING_LEN];
+ 
+ #ifdef __cplusplus
+ }
+--- mod_info.c.orig	Fri Jan 01 13:05:10 1999
++++ mod_info.c	Thu Jun 10 22:06:08 1999
+@@ -75,6 +75,10 @@
+  * Lou Langholtz <ldl@usi.utah.edu>, July 1997
+  *
+  * 07.11.97 Addition of the AddModuleInfo directive
++ *
++ *	Ralph Hightower <lynmax@logicsouth.com>, June 1999
++ *
++ * 06.09.99	Changes for Windows version
+  * 
+  */
+ 
+@@ -103,7 +107,7 @@
+ } info_cfg_lines;
+ 
+ module MODULE_VAR_EXPORT info_module;
+-extern module *top_module;
++extern API_VAR_EXPORT module *top_module;
+ 
+ static void *create_info_config(pool *p, server_rec *s)
+ {
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Wed Jun 14 21:45:26 PDT 2000
+State-Changed-Why:
+This bug is addressed in the forthcoming release 1.3.13
+of the Apache/Win32 server.  Thank you for taking the time
+to submit a detailed report, with patch no less!
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

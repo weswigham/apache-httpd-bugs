@@ -1,0 +1,71 @@
+Received: (qmail 55404 invoked by uid 65534); 16 Feb 2000 23:16:33 -0000
+Message-Id: <20000216231633.55403.qmail@locus.apache.org>
+Date: 16 Feb 2000 23:16:33 -0000
+From: Rob Sims <robsims@hpesjro.fc.hp.com>
+Reply-To: robsims@hpesjro.fc.hp.com
+To: submit@bugz.apache.org
+Subject: Comparison of encrypted password improperly fails
+X-Send-Pr-Version: 3.110
+
+>Number:         5771
+>Category:       apache-api
+>Synopsis:       Comparison of encrypted password improperly fails
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Feb 16 15:20:01 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     robsims@hpesjro.fc.hp.com
+>Release:        1.3.11
+>Organization:
+apache
+>Environment:
+HP-UX hpesjro B.10.20 A 9000/782 2002236203 two-user license
+>Description:
+Some operating systems append password rules (expiration, last time of change)
+within the password field, so that the field contains 2 bytes salt, 11 bytes 
+password, a comma, and some (2-4 in my case) rules bytes.
+
+ap_validate_password in src/ap/ap_checkpass.c won't validate a password in 
+this case.
+
+Further warning from the man page:
+ WARNINGS
+      The return value for crypt() points to static data whose content is
+      overwritten by each call.  crypt(), setkey(), and encrypt() are unsafe
+      in multi-thread applications.  crypt_r(), setkey_r(), and encrypt_r()
+      are MT-Safe and should be used instead.
+>How-To-Repeat:
+Set up a module that uses a password or NIS services on a machine that supports
+password rules.
+>Fix:
+Change the (almost) last line in ap_checkpass.c from:
+return (strcmp(sample, hash) == 0) ? NULL : "password mismatch";
+To:
+return (strncmp(sample, hash, strlen(sample)) == 0) ? NULL : "password mismatch";
+Or:
+return (strncmp(sample, hash, 13) == 0) ? NULL : "password mismatch";
+
+crypt seems to return a non-null string if hash is non-null.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

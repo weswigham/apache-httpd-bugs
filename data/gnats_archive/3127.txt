@@ -1,0 +1,265 @@
+Received: (qmail 19793 invoked by uid 2012); 3 Oct 1998 07:26:12 -0000
+Message-Id: <19981003072612.19792.qmail@hyperreal.org>
+Date: 3 Oct 1998 07:26:12 -0000
+From: Stephen Webb <spidey@dodds.net>
+Reply-To: spidey@dodds.net
+To: apbugs@hyperreal.org
+Subject: An Apache Offical rpm
+X-Send-Pr-Version: 3.2
+
+>Number:         3127
+>Category:       config
+>Synopsis:       An Apache Offical rpm
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Oct  3 00:30:01 PDT 1998
+>Last-Modified:  Sat Nov 14 09:35:07 PST 1998
+>Originator:     spidey@dodds.net
+>Organization:
+>Release:        1.3.2
+>Environment:
+Any Redhat Linux
+>Description:
+I would like to request three things! 
+
+One: That you make an extra make install option that does not set suexec to root.
+This is so that when I or any other person that trys a make not as root
+they do not get errors. Grant this only happens with suexec enabled.
+
+Two: What I do right now is configure and make apache as a normal user. And then
+as root type make install. Until last night I would have to edit the httpd.conf
+file to change the port, but last night I found out that you can type "make 
+install conf_port="80". But what I would like to request is that you add 
+conf_user like you have conf_group so that at install time you can replace
+no only the port and the group but also the user! That is a one line change in
+the Makefile.tmpl file.
+
+Three: I would like you to add a rpm.spec file the root of your distro. This 
+would standardize the apache rpm's that are out there!	 
+>How-To-Repeat:
+These are only request they are not really bugs! :) (As all the apache developers
+wipe there brow in relief!) 
+>Fix:
+For One: Just put a if statment around the suexec install statements so I can
+define something like suexecnoroot and have it skip of those 4 statements
+
+For Two: Just add one more sed statement for replaceing the user in the conf
+file.
+
+Three: If you implement my first request Here is the spec file to add to the 
+root of the distro!
+
+Start of apache.spec
+____________________________
+Summary: HTTP server daemon to provide WWW services
+Summary(de): Leading World Wide Web-Server
+Summary(fr): Serveur Web leader du marché
+Summary(tr): Lider WWW tarayýcý
+Name: apache
+%define apversion 1.3.2
+Version: %{apversion}
+# Serial number taken from APACHE_RELEASE definition in src/include/httpd.h
+# Update Serial Number when Apache version is changed.
+Serial: 1030301
+Release: 1
+Group: Networking/Daemons
+Source0: ftp://ftp.apache.org/apache/dist/apache_%{apversion}.tar.gz
+Copyright: BSD-like
+Obsoletes: apache-suexec apache-extra apache-doc apache
+BuildRoot: /var/tmp/apache-root
+Requires: initscripts >= 3.25
+Prereq: /sbin/chkconfig
+URL: http://www.apache.org/
+Packager: Stephen Webb <spidey@dodds.net>
+
+%description
+Apache is a full featured web server that is freely available, and also
+happens to be the most widely used. And this package also includes mod_ssl.
+To take care of all your secure needs! :)
+
+%description -l de
+Apache ist ein voll funktionsfähiger Web-Server, der kostenlos
+erhältlich und weit verbreitet ist.
+
+%description -l fr
+Apache est un serveur Web complet, disponible librement, et se trouve être
+aussi le plus utilisé à travers le monde.
+
+%description -l tr
+Apache serbest daðýtýlan ve çok kullanýlan yetenekli bir web sunucusudur.
+
+%prep 
+%setup -n apache_%{apversion}
+
+%build
+
+OPTIM="$RPM_OPT_FLAGS" ./configure --prefix=/usr \
+        --sysconfdir=/etc/apache --datadir=/home/httpd \
+        --libexecdir=/usr/libexec/apache --localstatedir=/var \
+        --runtimedir=/var/run --logfiledir=/var/log/apache \
+        --enable-module=auth_anon --enable-shared=auth_anon \
+        --enable-module=auth_db --enable-shared=auth_db \
+        --enable-module=digest --enable-shared=digest \
+        --enable-module=expires --enable-shared=expires \
+        --enable-module=headers --enable-shared=headers \
+        --enable-module=mime_magic --enable-shared=mime_magic \
+        --enable-module=mmap_static --enable-shared=mmap_static \
+        --enable-module=proxy --enable-shared=proxy \
+        --proxycachedir=/var/spool/proxy \
+        --enable-module=rewrite --enable-shared=rewrite \
+        --enable-module=speling --enable-shared=speling \
+        --enable-module=status --enable-shared=status \
+        --enable-module=unique_id --enable-shared=unique_id \
+        --enable-module=usertrack --enable-shared=usertrack \
+        --enable-suexec --suexec-caller=nobody --suexec-userdir=public_html \
+        --suexec-uidmin=500 --suexec-gidmin=500
+
+make
+
+%install
+rm -rf $RPM_BUILD_ROOT
+
+make install-quiet root="$RPM_BUILD_ROOT" \
+	conf_user="www" \
+        conf_group="www" \
+        conf_port="80" \
+        conf_serveradmin="webmaster@localhost" \
+        conf_servername="localhost" \
+	suexecnoroot=1
+%clean
+rm -rf "$RPM_BUILD_ROOT"
+
+%post
+/sbin/chkconfig --add httpd
+ln -s /usr/sbin/apachectl /etc/rc.d/init.d/httpd
+
+%preun
+if [ $1 = 0 ]; then
+   if [ -f /var/lock/subsys/httpd ]; then
+       /etc/rc.d/init.d/httpd stop
+   fi
+   /sbin/chkconfig --del httpd
+fi
+
+%files
+%defattr(644 root root 755)
+%attr(755,root,root)  %dir %config /etc/apache
+%attr(644,root,root)  %config /etc/apache/*.conf
+%attr(644,root,root)  %config /etc/apache/magic
+%attr(644,root,root)  %config /etc/apache/mime.types
+%attr(644,root,root)  /etc/apache/*.default
+%attr( - ,root,root)  %doc ABOUT_APACHE src/CHANGES KEYS LICENSE README
+%attr( - ,root,root)  %doc src/support/suexec.[ch]
+%attr(755,root,root)  %dir /home/httpd
+%attr(755,root,root)  %dir /home/httpd/htdocs
+%attr(644,root,root)  %config(noreplace) /home/httpd/htdocs/index.html
+%attr( - ,root,root)  /home/httpd/cgi-bin
+%attr( - ,root,root)  /home/httpd/icons
+%attr( - ,root,root)  /usr/include/*
+%attr( - ,root,root)  /usr/libexec/*
+%attr(755,root,root)  /usr/bin/*
+%attr(755,root,root)  /usr/sbin/ab
+%attr(755,root,root)  /usr/sbin/apachectl
+%attr(755,root,root)  /usr/sbin/apxs
+%attr(755,root,root)  /usr/sbin/httpd
+%attr(755,root,root)  /usr/sbin/logresolve
+%attr(755,root,root)  /usr/sbin/rotatelogs
+%attr(4755,root,root) /usr/sbin/suexec
+%attr(644,root,root)  /usr/man/man1/*
+%attr(644,root,root)  /usr/man/man8/*
+%attr(755,root,root)  %dir /var/log/apache
+%attr( - ,root,root)  %docdir /home/httpd/htdocs/manual
+
+%changelog
+
+* Sat Oct 02 1998 Stephen Webb <spidey@dodds.net>
+Created this by using an apache-1.3b8 source from Manoj Kasichainula
+<manojk@io.com>.
+
+-------------
+end of apache.spec
+
+Or something like this!
+
+>Audit-Trail:
+
+From: "Ralf S. Engelschall" <rse@engelschall.com>
+To: apbugs@apache.org
+Cc:  Subject: Re: config/3127: An Apache Offical rpm
+Date: Sat, 3 Oct 1998 15:46:26 +0200
+
+ In article <19981003072612.19792.qmail@hyperreal.org> you wrote:
+ 
+ > One: That you make an extra make install option that does not set suexec to root.
+ > This is so that when I or any other person that trys a make not as root
+ > they do not get errors. Grant this only happens with suexec enabled.
+ 
+ But not installing suexec as root means it doesn't work.  So, when you want
+ suexec it should be installed correctly.  When you can't install it correctly,
+ you have to life with this fact and not use --enable-suexec. That's why we've
+ added this APACI option and made it not the default.  When one is able to
+ install suexec he can enable it. So, IMHO it's not reasonable to change this
+ here. 
+ 
+ > Two: What I do right now is configure and make apache as a normal user. And then
+ > as root type make install. Until last night I would have to edit the httpd.conf
+ > file to change the port, but last night I found out that you can type "make 
+ > install conf_port="80". But what I would like to request is that you add 
+ > conf_user like you have conf_group so that at install time you can replace
+ > no only the port and the group but also the user! That is a one line change in
+ > the Makefile.tmpl file.
+ 
+ Seems like you didn't read the INSTALL as carefully as you should or I do not
+ understand your request correctly.
+ 
+  ``Use the --without-confadjust option to explicitly disable some built
+  user/situation dependent adjustments to the config files (Group, Port,
+  ServerAdmin, ServerName, etc.).  This is usually only interesting for
+  vendor package maintainers who wants to force the keeping of defaults.''
+ 
+ Isn't this what you want?
+ 
+ > Three: I would like you to add a rpm.spec file the root of your distro. This 
+ > would standardize the apache rpm's that are out there!     
+ >[...]
+ 
+ I'm not very familiar of RPM spec files, so cannot comment on it.  But at
+ least I'm sure it isn't useful to include it directly to the distribution
+ root. A subdir like src/support/ is more appropriate for it, isn't it? OTOH
+ I'm not sure whether the Apache Group really should add such a spec file.
+ Because else we have to add SVR4 pkg files, FreeBSD ports, Debian dpkg files,
+ too. So, I don't think it's reasonable to include such a RPM spec file to the
+ official distribution.  But you can place it on our FTP server under the
+ contrib/ section.  There it would be fine.
+ 
+                                        Ralf S. Engelschall
+                                        rse@engelschall.com
+                                        www.engelschall.com
+State-Changed-From-To: open-feedback
+State-Changed-By: rse
+State-Changed-When: Sat Oct  3 06:51:57 PDT 1998
+State-Changed-Why:
+Wait for user response....
+State-Changed-From-To: feedback-closed
+State-Changed-By: lars
+State-Changed-When: Sat Nov 14 09:35:06 PST 1998
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

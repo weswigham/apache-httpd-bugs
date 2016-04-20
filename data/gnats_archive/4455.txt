@@ -1,0 +1,197 @@
+Received: (qmail 6031 invoked by uid 2012); 21 May 1999 18:55:53 -0000
+Message-Id: <19990521185553.6030.qmail@hyperreal.org>
+Date: 21 May 1999 18:55:53 -0000
+From: Todd Vierling <tv@pobox.com>
+Reply-To: tv@pobox.com
+To: apbugs@hyperreal.org
+Subject: apache provides no way to do a wildcard/global NameVirtualHost
+X-Send-Pr-Version: 3.2
+
+>Number:         4455
+>Category:       config
+>Synopsis:       apache provides no way to do a wildcard/global NameVirtualHost
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri May 21 13:00:01 PDT 1999
+>Closed-Date:    Tue Sep 12 09:37:45 PDT 2000
+>Last-Modified:  Tue Sep 12 09:37:45 PDT 2000
+>Originator:     tv@pobox.com
+>Release:        1.3.6
+>Organization:
+>Environment:
+NetBSD 1.4 (host doesn't matter)
+>Description:
+I will be moving to a dynamic-IP configuration soon (DHCP lease based), which
+necessitates using a service such as dynip.com to which I can point CNAMEs of
+various domains.
+
+Unfortunately, Apache insists on specifying static IP addresses to both the
+NameVirtualHost and <VirtualHost> directives.  This won't work for me, as the
+IP address of the web server may change--even while the system is running.
+
+I'd like to be able to specify something similar to the following:
+
+NameVirtualHost * [a]
+
+<VirtualHost *> ... </VirtualHost> [b]
+
+which would [a] identify all addresses as requiring name-based virtual host
+lookup, and [b] allow a name-based virtual host to match on all addresses.
+
+Even with "NameVirtualHost *", it would be possible to restrict particular
+<VirtualHost> segments to a specific IP address.  What I'm looking for is a
+"global-match" option for these directives.
+>How-To-Repeat:
+Attempt to configure Apache to allow any IP address to carry any virtual host.
+>Fix:
+Add a hook to the IP parser for these directives that, say, maps "*" to "0.0.0.0",
+and when matching virtual hosts, "0.0.0.0" matches any IP address.
+
+I'll investigate this myself, but if someone with better Apache code knowledge
+knows a quick way to implement this, please let me know!
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Wed May 26 09:09:11 PDT 1999
+State-Changed-Why:
+
+Please check out the use of the <VirtualHost _default_>
+syntax and see if that addresses your need.
+
+
+From: Rodent of Unusual Size <Ken.Coar@Golux.Com>
+To: Apache bug database <apbugs@Apache.Org>
+Cc:  Subject: Re: config/4455: apache provides no way to do a wildcard/globalNameVirtualHost
+Date: Wed, 26 May 1999 13:08:31 -0400
+
+ This is a multi-part message in MIME format.
+ --------------D3E17CFAA0B29E7CBFD78B87
+ Content-Type: text/plain; charset=us-ascii
+ Content-Transfer-Encoding: 7bit
+ 
+ Not sent to the database..
+ --------------D3E17CFAA0B29E7CBFD78B87
+ Content-Type: message/rfc822
+ Content-Transfer-Encoding: 7bit
+ Content-Disposition: inline
+ 
+ Return-Path: <tv@pobox.com>
+ Received: from hyperreal.org (taz.hyperreal.org [209.133.83.16])
+ 	by Mail.MeepZor.Com (8.8.7/8.8.7) with SMTP id MAA13535
+ 	for <Ken.Coar@Golux.Com>; Wed, 26 May 1999 12:54:41 -0400
+ Received: (qmail 22322 invoked by uid 161); 26 May 1999 16:53:37 -0000
+ Delivered-To: coar@hyperreal.org
+ Received: (qmail 22312 invoked by uid 2016); 26 May 1999 16:53:37 -0000
+ Delivered-To: apcore-coar@apache.org
+ Received: (qmail 22306 invoked from network); 26 May 1999 16:53:36 -0000
+ Received: from www.duh.org (HELO duhnet.net) (root@207.30.95.212)
+   by taz.hyperreal.org with SMTP; 26 May 1999 16:53:36 -0000
+ Received: from localhost (IDENT:tv@localhost [127.0.0.1])
+ 	by duhnet.net (8.9.3/8.9.3/3.1.0) with ESMTP id MAA27261Wed, 26 May 1999 12:59:04 -0400 (EDT)
+ Date: Wed, 26 May 1999 12:59:04 -0400 (EDT)
+ From: Todd Vierling <tv@pobox.com>
+ X-Sender: tv@server.duh.org
+ To: coar@apache.org
+ cc: apache-bugdb@apache.org
+ Subject: Re: config/4455: apache provides no way to do a wildcard/global
+  NameVirtualHost
+ In-Reply-To: <19990526160913.19309.qmail@hyperreal.org>
+ Message-ID: <Pine.NEB.4.10.9905261243120.17325-100000@server.duh.org>
+ MIME-Version: 1.0
+ Content-Type: TEXT/PLAIN; charset=US-ASCII
+ 
+ On 26 May 1999 coar@apache.org wrote:
+ 
+ : Please check out the use of the <VirtualHost _default_>
+ : syntax and see if that addresses your need.
+ 
+ No.  There's two things I'm wanting here, to address two different problems:
+ 
+ - A replicable wildcard for VirtualHost.
+ 
+   This would allow a named virtual host to appear on *any* IP address, if
+   desired using the HTTP/1.1 (and extended HTTP/1.0) Host: header.
+   (Currently, an IP must be assigned to each VirtualHost, though you can
+   duplicate the same ServerName in multiple VirtualHosts.)
+ 
+   The <VirtualHost _default_> directive may be used exactly once, and does
+   not do "NameVirtualHost matching" on the ServerName (since you may only
+   have one of them).
+ 
+ - A wildcard for NameVirtualHost, or "default" behavior of allowing
+   NameVirtualHosts on all addresses.
+ 
+   Name-based virtual hosts are only scanned on addresses for which the
+   NameVirtualHost directive is given.  Frankly, I believe they should be
+   allowed on all addresses by default (whenever a Host: header is supplied).
+   However, a wildcard for NameVirtualHost would suffice.
+ 
+ =====
+ 
+ The two setups I administer which require something like the above:
+ 
+ - One server with a dynamically changing IP address to the outside world
+   which has multiple named virtual hosts.  (Providing an IP address to
+   either VirtualHost or NameVirtualHost would be meaningless.)
+ 
+ - A cluster of servers, referenced by multiple DNS address records for each
+   domain served.  These machines do failover -- if one crashes, another
+   picks up the orphaned IP address as an alias, just to keep that address
+   from becoming a "black hole" in the DNS address list.  (The cluster
+   machines need a way to allow dynamically added IP addresses to serve the
+   same name based virtual hosts without modifying httpd.conf.)
+ 
+ The <VirtualHost _default_> directive provides settings to be a "catch-all"
+ if a virtual host is not matched, which doesn't help either situation above.
+ 
+ In these networks, I do in fact have a <VirtualHost _default_> directive
+ that points to a page reading "Update your browser ... to one supporting
+ HTTP/1.1 named virtual hosts ...."
+ 
+ -- 
+ -- Todd Vierling (Personal tv@pobox.com; Bus. todd_vierling@xn.xerox.com)
+ 
+ 
+ --------------D3E17CFAA0B29E7CBFD78B87--
+ 
+State-Changed-From-To: feedback-suspended
+State-Changed-By: coar
+State-Changed-When: Wed May 26 10:17:43 PDT 1999
+State-Changed-Why:
+
+The current architecture of Apache permits name-based vhosts
+on one and only one IP address.  Changing that is a major
+understaking, so I am suspending this report for future
+consideration.
+
+Severity-Changed-From-To: serious-non-critical
+Severity-Changed-By: coar
+Severity-Changed-When: Wed May 26 10:17:43 PDT 1999
+State-Changed-From-To: suspended-closed
+State-Changed-By: fanf
+State-Changed-When: Tue Sep 12 09:37:45 PDT 2000
+State-Changed-Why:
+The feature you requested has been added and will be
+available in the next release.
+Thanks for using Apache!
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

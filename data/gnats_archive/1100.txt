@@ -1,0 +1,101 @@
+From apwww@hyperreal.org  Fri Sep  5 09:55:51 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id JAA06576;
+	Fri, 5 Sep 1997 09:55:51 -0700 (PDT)
+Message-Id: <199709051655.JAA06576@hyperreal.org>
+Date: Fri, 5 Sep 1997 09:55:51 -0700 (PDT)
+From: Ron Klatchko <ron@ckm.ucsf.edu>
+Reply-To: ron@ckm.ucsf.edu
+To: apbugs@hyperreal.org
+Subject: PATCH: proxy module does not support proxy authorization
+X-Send-Pr-Version: 3.2
+
+>Number:         1100
+>Category:       mod_proxy
+>Synopsis:       PATCH: proxy module does not support proxy authorization
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Sep  7 20:00:02 1997
+>Last-Modified:  Fri Sep 12 16:59:28 PDT 1997
+>Originator:     ron@ckm.ucsf.edu
+>Organization:
+>Release:        1.2.4
+>Environment:
+SunOS minerva 5.5.1 Generic_103640-06 sun4d sparc SUNW,SPARCcenter-2000
+gcc version 2.7.2.2
+>Description:
+Apache 1.2.4 does not support proxy authorization.  Restricting proxy causes
+origin server authorization to be used instead.
+>How-To-Repeat:
+
+>Fix:
+http_request.c:
+812,813d811
+<     if (type == HTTP_UNAUTHORIZED && r->proxyreq)
+<       type = HTTP_PROXY_AUTHENTICATION_REQUIRED;
+
+http_protocol.c:
+885,887d884
+< #define AUTHENTICATE(r) (!(r)->proxyreq ? "WWW-Authenticate" : "Proxy-Authenticate" )
+< #define AUTHORIZATION(r) (!(r)->proxyreq ? "Authorization" : "Proxy-Authorization" )
+< 
+901c898
+<       table_set (r->err_headers_out, AUTHENTICATE(r),
+---
+>       table_set (r->err_headers_out, "WWW-Authenticate",
+910c907
+<     table_set (r->err_headers_out, AUTHENTICATE(r),
+---
+>     table_set (r->err_headers_out, "WWW-Authenticate",
+917c914
+<     const char *auth_line = table_get (r->headers_in, AUTHORIZATION(r));
+---
+>     const char *auth_line = table_get (r->headers_in, "Authorization");
+1843,1850d1839
+<           bputs("browser doesn't understand how to supply\n", fd);
+<           bputs("the credentials required.<P>\n", fd);
+<           break;
+<       case HTTP_PROXY_AUTHENTICATION_REQUIRED:
+<           bputs("This proxy could not verify that you\n", fd);
+<           bputs("are authorized to access the service you\n", fd);
+<           bputs("requested.  Either you supplied the wrong\n", fd);
+<           bputs("credentials (e.g., bad password), or your\n", fd);
+
+modules/proxy/mod_proxy.c:
+186c186
+< proxy_handler_actual(request_rec *r)
+---
+> proxy_handler(request_rec *r)
+249,261d248
+< static int
+< proxy_handler(request_rec *r)
+< {
+<     int rc;
+<     const char *auth_line = table_get (r->headers_in, "Proxy-Authorization");
+<     if (some_auth_required(r) && auth_line)
+<       table_unset (r->headers_in, "Proxy-Authorization");
+<     rc = proxy_handler_actual(r);
+<     if (some_auth_required(r) && auth_line)
+<       table_set (r->headers_in, "Proxy-Authorization", auth_line);
+<     return rc;
+< }
+< 
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Sep 12 16:59:28 PDT 1997
+State-Changed-Why:
+Thanks, we've already added this feature to 1.3 which will
+be going into beta shortly.  Since 1.2 is in feature freeze
+we won't be adding it there.
+
+Dean
+>Unformatted:
+
+

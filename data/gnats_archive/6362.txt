@@ -1,0 +1,89 @@
+Received: (qmail 88680 invoked by uid 501); 2 Aug 2000 14:07:33 -0000
+Message-Id: <20000802140733.88676.qmail@locus.apache.org>
+Date: 2 Aug 2000 14:07:33 -0000
+From: Steven Fosdick <steve.fosdick@aom.bt.co.uk>
+Reply-To: steve.fosdick@aom.bt.co.uk
+To: submit@bugz.apache.org
+Subject: apachectl soemtimes fails to re-start apache after power failure if another process has stolen the pid in the httpd.pid file.
+X-Send-Pr-Version: 3.110
+
+>Number:         6362
+>Category:       general
+>Synopsis:       apachectl soemtimes fails to re-start apache after power failure if another process has stolen the pid in the httpd.pid file.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Aug 02 07:10:01 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     steve.fosdick@aom.bt.co.uk
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+SunOS calders 5.8 Generic sun4u sparc SUNW,Ultra-5_10
+>Description:
+We discovered this bug because on of our server suffered a power failure.
+
+When power was restored and the system came back up the apachectl script
+which we had linked into the system startup scripts directory (/etc/rc2.d)
+failed to start apache and complained it was already running.
+
+On investigatation it turned out that the httpd.pid had not been removed
+because the system hadn't been shut down cleanly and the kill -0 test in
+apachectl concluded that apache was still running because another process
+(not apache) had been started with the same PID as the one listed in the
+httpd.conf file.
+>How-To-Repeat:
+It is very difficult to re-produce live, but there is a test setup that will
+demonstate the problem: Stop apache then re-create the httpd.pid file with
+the PID of the current shell (echo $$ > httpd.pid).  This simulates the situation
+when our system came back up.  Now run apachectl start and it will claim that
+httpd is already running though it isn't.
+>Fix:
+Here's one possibility.  This may need to be checked for portability to
+the various unix flavours due to different options to the 'ps' command.
+
+*** apachectl	Wed Aug  2 14:53:21 2000
+--- apachectl.orig	Wed Aug  2 14:49:14 2000
+***************
+*** 50,56 ****
+      # check for pidfile
+      if [ -f $PIDFILE ] ; then
+  	PID=`cat $PIDFILE`
+! 	if [ "x$PID" != "x" ] && ps -p $PID | fgrep httpd > /dev/null; then
+  	    STATUS="httpd (pid $PID) running"
+  	    RUNNING=1
+  	else
+--- 50,56 ----
+      # check for pidfile
+      if [ -f $PIDFILE ] ; then
+  	PID=`cat $PIDFILE`
+! 	if [ "x$PID" != "x" ] && kill -0 $PID 2>/dev/null ; then
+  	    STATUS="httpd (pid $PID) running"
+  	    RUNNING=1
+  	else
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

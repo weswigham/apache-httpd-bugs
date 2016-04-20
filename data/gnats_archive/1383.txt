@@ -1,0 +1,220 @@
+Received: (qmail 16247 invoked by uid 2012); 7 Nov 1997 19:47:24 -0000
+Message-Id: <19971107194724.16246.qmail@hyperreal.org>
+Date: 7 Nov 1997 19:47:24 -0000
+From: Sergei A.Golubchik <serg@infomag.mipt.rssi.ru>
+Reply-To: serg@infomag.mipt.rssi.ru
+To: apbugs@hyperreal.org
+Subject: I make mod_headers to modify request headers as well as response ones.
+X-Send-Pr-Version: 3.2
+
+>Number:         1383
+>Category:       mod_headers
+>Synopsis:       I make mod_headers to modify request headers as well as response ones.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    contrib@apache.org
+>State:          suspended
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Nov  7 11:50:00 PST 1997
+>Last-Modified:  Mon Feb 23 04:07:08 PST 1998
+>Originator:     serg@infomag.mipt.rssi.ru
+>Organization:
+>Release:        1.2.4
+>Environment:
+Doesn't matter
+>Description:
+I don't want to inform you in such a way, but you wrote in ABOUT_APACHE:
+> If you just want to send in an occasional suggestion/fix, then you can
+> just use the bug reporting form at <http://www.apache.org/bugdb.cgi>
+
+So, you asked for it.
+---------------------------------cut here--------------------------------
+I just changed mod_headers.c slightly to add a new feature - it now is
+able to modify request headers as well as response ones.
+So, two new directives are added: HeaderIn and (for symmetry) HeaderOut.
+Old directive Header remains as an alias for HeaderOut.
+
+Why it is useful ? I don't know, really. I don't know how directive Header and
+HeaderOut can be used. As for me I am using only HeaderIn to support multi-
+lingual site. I switched MultiViews on and created files with language suffixes
+*.ru *.en *.fr etc. But I also created a page for language selection. I did it
+in such a way:
+  Choose one: <A HREF="http://myhost:8000/">Russian</A>,
+              <A HREF="http://myhost:8010/">English</A> etc.
+'cause all files have language-independed links.
+And in httpd.conf I wrote
+  Listen 80
+  Listen 8000
+  Listen 8010
+  <VirtualHost myhost:8000>
+  LanguagePriority ru en fr
+  </Virtualhost>
+  <Virtualhost myhost:8010>
+  Languagepriority en ru fr
+  </virtualhost>
+etc.
+
+but it wouldn't work if user agent sent Accept-Language: en
+It would be always English.
+
+And, you know, Rule Number One: Users Are Stupid!
+I cannot tell them, please, go to the menu item "Options", and change 
+language order in the list "Languages". (Of course I do it anyway, but I
+have to supply the easier soluton).
+
+So, in the <Virtualhost> environment I changed the line 
+   LanguagePriority ru en fr
+to the
+   HeaderIn set Accept-Language: "ru; q=1, *; q=0.1"
+and voila! every port has its own language
+(and the default port 80 relies on Accept-Language and LanguagePriority)
+
+that's all.
+
+Regards,
+     SerG.
+
+P.S. To say the truth, I am also using HeaderIn to modify
+     Accept-Charset header in the same way.
+>How-To-Repeat:
+What ???
+>Fix:
+--- mod_headers.c.orig  Fri Mar  7 17:15:40 1997
++++ mod_headers.c       Fri Nov  7 19:18:49 1997
+@@ -52,13 +52,15 @@
+ 
+ /*
+- * mod_headers.c: Add/append/remove HTTP response headers
++ * mod_headers.c: Add/append/remove HTTP request and response headers
+  *     Written by Paul Sutton, paul@ukweb.com, 1 Oct 1996
++ *     Request headers support added by SerG, serg@infomag.mipt.rssi.ru, 5 Nov 1997
+  *
+  * New directive, Header, can be used to add/replace/remove HTTP headers.
+  * Valid in both per-server and per-dir configurations.
++ * Use HeaderIn for modifying request headers.
+  *
+  * Syntax is:
+  *
+- *   Header action header value
++ *   Header[In/Out] action header value
+  *
+  * Where action is one of:
+@@ -95,4 +97,7 @@
+  *     Header unset Author
+  *
++ *  To make French answers dominating:
++ *     HeaderIn set Accept-Language: fr; q=1, *; q=0.1
++ *
+  */
+ 
+@@ -104,5 +109,7 @@
+     hdr_set = 's',             /* set (replace old value) */
+     hdr_append = 'm',          /* append (merge into any old value) */
+-    hdr_unset = 'u'            /* unset header */
++    hdr_unset = 'u',           /* unset header */
++    hdr_out = 0x00,             /* apply to response header */
++    hdr_in = 0x80               /* apply to request header */
+ } hdr_actions;
+ 
+@@ -157,4 +164,5 @@
+         (headers_conf *)get_module_config(s->module_config,&headers_module);
+     char *colon;
++    hdr_actions hdr_where=*((hdr_actions *)(cmd->cmd->cmd_data));
+ 
+     if ( cmd->path )
+@@ -167,16 +175,16 @@
+     }
+ 
+-    if (!strcasecmp(action, "set")) new->action = hdr_set;
+-    else if (!strcasecmp(action, "add")) new->action = hdr_add;
+-    else if (!strcasecmp(action, "append")) new->action = hdr_append;
+-    else if (!strcasecmp(action, "unset")) new->action = hdr_unset;
++    if (!strcasecmp(action, "set")) new->action = hdr_set | hdr_where;
++    else if (!strcasecmp(action, "add")) new->action = hdr_add | hdr_where;
++    else if (!strcasecmp(action, "append")) new->action = hdr_append | hdr_where;
++    else if (!strcasecmp(action, "unset")) new->action = hdr_unset | hdr_where;
+     else 
+        return "first argument must be add, set, append or unset.";
+ 
+-    if (new->action == hdr_unset) {
+-       if (value) return "Header unset takes two arguments";
++    if (new->action == (hdr_unset|hdr_where)) {
++       if (value) return "Header[In|Out] unset takes two arguments";
+     }
+     else if (!value)
+-       return "Header requires three arguments";
++       return "Header[In|Out] requires three arguments";
+ 
+     if ((colon = strchr(hdr, ':')))
+@@ -189,6 +197,12 @@
+ }
+ 
++hdr_actions hdr_actlist[]={hdr_out, hdr_in};
++
+ command_rec headers_cmds[] = {
+-{ "Header", header_cmd, NULL, OR_FILEINFO, TAKE23, 
++{ "Header", header_cmd, hdr_actlist, OR_FILEINFO, TAKE23, 
++    "an action, header and value"},
++{ "HeaderOut", header_cmd, hdr_actlist, OR_FILEINFO, TAKE23, 
++    "an action, header and value"},
++{ "HeaderIn", header_cmd, hdr_actlist+1, OR_FILEINFO, TAKE23, 
+     "an action, header and value"},
+ { NULL }
+@@ -202,16 +216,28 @@
+        header_entry *hdr = &((header_entry*)(headers->elts))[i];
+        switch (hdr->action) {
+-       case hdr_add:
++       case hdr_add | hdr_out :
+            table_add(r->headers_out, hdr->header, hdr->value);
+            break;
+-       case hdr_append:
++       case hdr_append | hdr_out :
+            table_merge(r->headers_out, hdr->header, hdr->value);
+            break;
+-       case hdr_set:
++       case hdr_set | hdr_out :
+            table_set(r->headers_out, hdr->header, hdr->value);
+            break;
+-       case hdr_unset:
++       case hdr_unset | hdr_out :
+            table_unset(r->headers_out, hdr->header);
+            break;
++       case hdr_add | hdr_in :
++           table_add(r->headers_in, hdr->header, hdr->value);
++           break;
++       case hdr_append | hdr_in :
++           table_merge(r->headers_in, hdr->header, hdr->value);
++           break;
++       case hdr_set | hdr_in :
++           table_set(r->headers_in, hdr->header, hdr->value);
++           break;
++       case hdr_unset | hdr_in :
++           table_unset(r->headers_in, hdr->header);
++           break;
+        }
+     }
+@@ -252,2 +278,3 @@
+    NULL                                /* header parser */
+ };
++
+%0
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: coar
+State-Changed-When: Tue Nov 11 13:03:22 PST 1997
+State-Changed-Why:
+Thank you for the suggestion.  I'm not sure it's allowed,
+but it's an interesting idea.  I'm marking this report
+as "suspended" so we can take a look at it when we begin
+the next feature cycle.
+
+Thanks for your suggestion and for using Apache!
+Responsible-Changed-From-To: apache-contrib@apache.org
+Responsible-Changed-By: dgaudet
+Responsible-Changed-When: Mon Feb 23 04:07:08 PST 1998
+Responsible-Changed-Why:
+mark as contrib%0
+>Unformatted:
+

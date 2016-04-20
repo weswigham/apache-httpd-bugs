@@ -1,0 +1,424 @@
+Received: (qmail 28623 invoked by uid 2012); 5 Jul 1999 21:47:56 -0000
+Message-Id: <19990705214756.28622.qmail@hyperreal.org>
+Date: 5 Jul 1999 21:47:56 -0000
+From: Dan Armstrong <orion@bitwisesystems.com>
+Reply-To: orion@bitwisesystems.com
+To: apbugs@hyperreal.org
+Subject: Basic Authentication - Correct Username/Password pairs never accepted
+X-Send-Pr-Version: 3.2
+
+>Number:         4700
+>Category:       mod_auth-any
+>Synopsis:       Basic Authentication - Correct Username/Password pairs never accepted
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jul  5 14:50:00 PDT 1999
+>Last-Modified:  Tue Jul  6 01:10:01 PDT 1999
+>Originator:     orion@bitwisesystems.com
+>Organization:
+>Release:        1.3.6
+>Environment:
+uname -a:
+Linux xxx.xxx.xxx.xxx 2.2.3 #8 SMP Wed Apr 7 16:12:59 CDT 1999 i686 unknown
+
+gcc --version:
+2.7.2.3
+
+ldd httpd:
+libm.so.5 => libm.so.5.0.9
+libcrypt.so.1 => libcrypt-2.0.7.so
+libc.so.6 => libc-2.0.7.so
+/lib/ld-linux.so.2 => ld-2.0.7.so
+>Description:
+Upgraded from 1.3.4 to 1.3.6
+Basic Authentication with one user in one group
+User is never allowed access
+
+Nothing ever logged in either the Root Server or Virtual Host error log files
+>How-To-Repeat:
+(Not) working example currently at http://passwdtest.daughtkom.com/
+
+Use Apache version 1.3.6
+
+/usr/httpd/conf/httpd.conf:
+# This is my configuration of compiled in modules 
+        Alias /icons/ /usr/httpd/icons/
+        IndexOptions FancyIndexing IconHeight IconWidth NameWidth=* SuppressDescription
+        AddIconByEncoding (CMP,/icons/compressed.gif) x-compress x-gzip
+        AddIconByType (TXT,/icons/text.gif) text/*
+	[more icons types]
+        AddIcon /icons/binary.gif .bin .exe
+	[more icons]
+        DefaultIcon /icons/unknown.gif
+        ReadmeName README
+        HeaderName HEADER
+        IndexIgnore .??* *~ *# HEADER* README* RCS
+        LogFormat "%h %l %u %t \"%r\" %>s %b" common
+        CustomLog /var/log/httpd/access_log common
+        TypesConfig /etc/mime.types
+        AddEncoding x-compress Z
+        AddEncoding x-gzip gz
+        AddLanguage en .en
+#       LanguagePriority en
+        AddType text/html .shtml
+        AddHandler server-parsed .shtml
+        AddHandler imap-file map
+        BrowserMatch "Mozilla/2" nokeepalive
+	[more browser matches]
+
+# These are my global settings
+AccessConfig /dev/null
+BindAddress *
+ContentDigest off
+CoreDumpDirectory /usr/httpd
+DefaultType text/plain
+DirectoryIndex index.html index.shtml
+DocumentRoot /usr/httpd/html
+ErrorLog /var/log/httpd/error_log
+Group www
+HostNameLookups off
+IdentityCheck off
+KeepAlive On
+KeepAliveTimeout 15
+LogLevel crit
+MaxClients 256
+MaxKeepAliveRequests 100
+MaxRequestsPerChild 0
+MaxSpareServers 10
+MinSpareServers 5
+PidFile /var/run/httpd.pid
+Port 80
+ResourceConfig /dev/null
+ScoreBoardFile /var/run/httpd.scoreboard
+ServerAdmin root@localhost
+ServerName localhost
+ServerRoot /usr/httpd
+ServerSignature Off
+ServerTokens Minimal
+ServerType standalone
+StartServers 5
+TimeOut 300
+UseCanonicalName on
+User www
+<Directory />
+        AllowOverride None
+        Deny from All
+        Order deny,allow
+        Options None
+</Directory>
+<Directory /usr/httpd/icons>
+        Allow from All
+        Order allow,deny
+</Directory>
+<Directory /usr/httpd/html>
+        Allow from All
+        Order allow,deny
+</Directory>
+
+# And finally the virtual hosts
+NameVirtualHost 216.178.140.50
+
+<VirtualHost 216.178.140.50>
+        ServerName passwdtest.daughtkom.com
+        DocumentRoot /home/passwdtest/html
+        ServerAdmin orion@bitwisesystems.com
+        LogFormat "%h %l %u %t \"%r\" %>s %b" common
+        CustomLog /home/passwdtest/var/log/access_log common
+        ErrorLog /home/passwdtest/var/log/error_log
+        <Directory /home/passwdtest/html>
+                Allow from All
+                Order allow,deny
+        </Directory>
+        <Directory /home/passwdtest/html/password_protected>
+                AuthGroupFile conf/group
+                AuthUserFile conf/passwd
+                AuthType Basic
+                AuthName "Test User"
+                require group test
+        </Directory>
+</VirtualHost>
+
+/usr/httpd/conf/group:
+test: test
+
+/usr/httpd/conf/passwd:
+test:C284MBhj4uIVY
+>Fix:
+Fix or document what has changed from 1.3.4 to 1.3.6 regarding authentication configuration.
+
+Thank you
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Mon Jul  5 15:06:47 PDT 1999
+State-Changed-Why:
+
+You're probably not getting any error messages because
+you have your LogLevel set to critical -- which means
+only critical OR WORSE errors will be logged.  Try setting
+it to 'notice' to see if the authentication process
+shows anything meaningful.  Also, try spelling out
+the complete path in your AuthUserFile and AuthGroupFile
+directives, rather than using relative paths.  Let
+us know the results.
+
+
+From: Dan <orion@bitwisesystems.com>
+To: coar@apache.org
+Cc: Apache DB <apbugs@apache.org>
+Subject: Re: mod_auth-any/4700: Basic Authentication - Correct Username/Password 
+ pairs never accepted
+Date: Mon, 05 Jul 1999 17:33:10 -0500
+
+ coar@apache.org wrote:
+ > 
+ > [In order for any reply to be added to the PR database, you need]
+ > [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ > [subject line starts with the report component and number, with ]
+ > [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ > ["Re: general/1098:").  If the subject doesn't match this       ]
+ > [pattern, your message will be misfiled and ignored.  The       ]
+ > ["apbugs" address is not added to the Cc line of messages from  ]
+ > [the database automatically because of the potential for mail   ]
+ > [loops.  If you do not include this Cc, your reply may be ig-   ]
+ > [nored unless you are responding to an explicit request from a  ]
+ > [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ > 
+ > Synopsis: Basic Authentication - Correct Username/Password pairs never accepted
+ > 
+ > State-Changed-From-To: open-feedback
+ > State-Changed-By: coar
+ > State-Changed-When: Mon Jul  5 15:06:47 PDT 1999
+ > State-Changed-Why:
+ > 
+ > You're probably not getting any error messages because
+ > you have your LogLevel set to critical -- which means
+ > only critical OR WORSE errors will be logged.  Try setting
+ > it to 'notice' to see if the authentication process
+ > shows anything meaningful.  Also, try spelling out
+ > the complete path in your AuthUserFile and AuthGroupFile
+ > directives, rather than using relative paths.  Let
+ > us know the results.
+ 
+ That did it.  The log pointed out that my permissions on my group and
+ password files were not correct.  The relative paths to the conf/passwd
+ and conf/group files work perfectly.
+ 
+ 95% of your work must be configuration related.  I try not to be that
+ majority.
+ 
+ Amazing response time, thanks.
+ 
+ Dan
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Mon Jul  5 16:00:08 PDT 1999
+State-Changed-Why:
+
+User confirms LogLevel was set too high, concealing the
+permission error message.
+
+
+From: Dirk-Willem van Gulik <dirkx@webweaving.org>
+To: Dan Armstrong <orion@bitwisesystems.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_auth-any/4700: Basic Authentication - Correct Username/Password
+ pairs never accepted
+Date: Tue, 6 Jul 1999 09:39:05 +0200 (CEST)
+
+ You need to specify the full path for the password files, if I recall
+ correctly.
+ 
+ And beware, that, even if things go wrong, you will not see anything in
+ the logs as you have set the log level too high. Set it to info or at
+ least to warning to see what is cooking.
+ 
+ DW.
+ 
+ On 5 Jul 1999, Dan Armstrong wrote:
+ 
+ > 
+ > >Number:         4700
+ > >Category:       mod_auth-any
+ > >Synopsis:       Basic Authentication - Correct Username/Password pairs never accepted
+ > >Confidential:   no
+ > >Severity:       non-critical
+ > >Priority:       medium
+ > >Responsible:    apache
+ > >State:          open
+ > >Class:          sw-bug
+ > >Submitter-Id:   apache
+ > >Arrival-Date:   Mon Jul  5 14:50:00 PDT 1999
+ > >Last-Modified:
+ > >Originator:     orion@bitwisesystems.com
+ > >Organization:
+ > apache
+ > >Release:        1.3.6
+ > >Environment:
+ > uname -a:
+ > Linux xxx.xxx.xxx.xxx 2.2.3 #8 SMP Wed Apr 7 16:12:59 CDT 1999 i686 unknown
+ > 
+ > gcc --version:
+ > 2.7.2.3
+ > 
+ > ldd httpd:
+ > libm.so.5 => libm.so.5.0.9
+ > libcrypt.so.1 => libcrypt-2.0.7.so
+ > libc.so.6 => libc-2.0.7.so
+ > /lib/ld-linux.so.2 => ld-2.0.7.so
+ > >Description:
+ > Upgraded from 1.3.4 to 1.3.6
+ > Basic Authentication with one user in one group
+ > User is never allowed access
+ > 
+ > Nothing ever logged in either the Root Server or Virtual Host error log files
+ > >How-To-Repeat:
+ > (Not) working example currently at http://passwdtest.daughtkom.com/
+ > 
+ > Use Apache version 1.3.6
+ > 
+ > /usr/httpd/conf/httpd.conf:
+ > # This is my configuration of compiled in modules 
+ >         Alias /icons/ /usr/httpd/icons/
+ >         IndexOptions FancyIndexing IconHeight IconWidth NameWidth=* SuppressDescription
+ >         AddIconByEncoding (CMP,/icons/compressed.gif) x-compress x-gzip
+ >         AddIconByType (TXT,/icons/text.gif) text/*
+ > 	[more icons types]
+ >         AddIcon /icons/binary.gif .bin .exe
+ > 	[more icons]
+ >         DefaultIcon /icons/unknown.gif
+ >         ReadmeName README
+ >         HeaderName HEADER
+ >         IndexIgnore .??* *~ *# HEADER* README* RCS
+ >         LogFormat "%h %l %u %t \"%r\" %>s %b" common
+ >         CustomLog /var/log/httpd/access_log common
+ >         TypesConfig /etc/mime.types
+ >         AddEncoding x-compress Z
+ >         AddEncoding x-gzip gz
+ >         AddLanguage en .en
+ > #       LanguagePriority en
+ >         AddType text/html .shtml
+ >         AddHandler server-parsed .shtml
+ >         AddHandler imap-file map
+ >         BrowserMatch "Mozilla/2" nokeepalive
+ > 	[more browser matches]
+ > 
+ > # These are my global settings
+ > AccessConfig /dev/null
+ > BindAddress *
+ > ContentDigest off
+ > CoreDumpDirectory /usr/httpd
+ > DefaultType text/plain
+ > DirectoryIndex index.html index.shtml
+ > DocumentRoot /usr/httpd/html
+ > ErrorLog /var/log/httpd/error_log
+ > Group www
+ > HostNameLookups off
+ > IdentityCheck off
+ > KeepAlive On
+ > KeepAliveTimeout 15
+ > LogLevel crit
+ > MaxClients 256
+ > MaxKeepAliveRequests 100
+ > MaxRequestsPerChild 0
+ > MaxSpareServers 10
+ > MinSpareServers 5
+ > PidFile /var/run/httpd.pid
+ > Port 80
+ > ResourceConfig /dev/null
+ > ScoreBoardFile /var/run/httpd.scoreboard
+ > ServerAdmin root@localhost
+ > ServerName localhost
+ > ServerRoot /usr/httpd
+ > ServerSignature Off
+ > ServerTokens Minimal
+ > ServerType standalone
+ > StartServers 5
+ > TimeOut 300
+ > UseCanonicalName on
+ > User www
+ > <Directory />
+ >         AllowOverride None
+ >         Deny from All
+ >         Order deny,allow
+ >         Options None
+ > </Directory>
+ > <Directory /usr/httpd/icons>
+ >         Allow from All
+ >         Order allow,deny
+ > </Directory>
+ > <Directory /usr/httpd/html>
+ >         Allow from All
+ >         Order allow,deny
+ > </Directory>
+ > 
+ > # And finally the virtual hosts
+ > NameVirtualHost 216.178.140.50
+ > 
+ > <VirtualHost 216.178.140.50>
+ >         ServerName passwdtest.daughtkom.com
+ >         DocumentRoot /home/passwdtest/html
+ >         ServerAdmin orion@bitwisesystems.com
+ >         LogFormat "%h %l %u %t \"%r\" %>s %b" common
+ >         CustomLog /home/passwdtest/var/log/access_log common
+ >         ErrorLog /home/passwdtest/var/log/error_log
+ >         <Directory /home/passwdtest/html>
+ >                 Allow from All
+ >                 Order allow,deny
+ >         </Directory>
+ >         <Directory /home/passwdtest/html/password_protected>
+ >                 AuthGroupFile conf/group
+ >                 AuthUserFile conf/passwd
+ >                 AuthType Basic
+ >                 AuthName "Test User"
+ >                 require group test
+ >         </Directory>
+ > </VirtualHost>
+ > 
+ > /usr/httpd/conf/group:
+ > test: test
+ > 
+ > /usr/httpd/conf/passwd:
+ > test:C284MBhj4uIVY
+ > >Fix:
+ > Fix or document what has changed from 1.3.4 to 1.3.6 regarding authentication configuration.
+ > 
+ > Thank you
+ > >Audit-Trail:
+ > >Unformatted:
+ > [In order for any reply to be added to the PR database, you need]
+ > [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ > [subject line starts with the report component and number, with ]
+ > [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ > ["Re: general/1098:").  If the subject doesn't match this       ]
+ > [pattern, your message will be misfiled and ignored.  The       ]
+ > ["apbugs" address is not added to the Cc line of messages from  ]
+ > [the database automatically because of the potential for mail   ]
+ > [loops.  If you do not include this Cc, your reply may be ig-   ]
+ > [nored unless you are responding to an explicit request from a  ]
+ > [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ > 
+ > 
+ > 
+ > 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

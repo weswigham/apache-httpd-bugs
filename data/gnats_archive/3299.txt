@@ -1,0 +1,182 @@
+Received: (qmail 13602 invoked by uid 2012); 27 Oct 1998 16:02:01 -0000
+Message-Id: <19981027160201.13601.qmail@hyperreal.org>
+Date: 27 Oct 1998 16:02:01 -0000
+From: Jay Treacy <treacy@debian.org>
+Reply-To: treacy@debian.org
+To: apbugs@hyperreal.org
+Subject: random language variant returned when no Accept-Language: header is given
+X-Send-Pr-Version: 3.2
+
+>Number:         3299
+>Category:       mod_negotiation
+>Synopsis:       random language variant returned when no Accept-Language: header is given
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 27 08:10:02 PST 1998
+>Last-Modified:  Tue Dec 29 17:12:17 PST 1998
+>Originator:     treacy@debian.org
+>Organization:
+>Release:        1.3.3
+>Environment:
+Linux landru 2.1.123 #6 SMP Tue Sep 29 15:52:40 EDT 1998 i586 unknown
+>Description:
+When Multiviews is enabled and a client requests a page without specifying an Accept-Language:
+header a random language variant is returned. If an Accept-Language: header is given
+the proper page is always returned.
+
+It is unclear from reading about the negotiation algorithm at
+http://www.apache.org/docs/content-negotiation.html
+what is done in the case when no Accept-Language: header is given. In other
+words, how are quality factors decided when no Accept-Language: header is given?
+I get the impression that when that header is missing, the .html version should
+be served if it exists.
+>How-To-Repeat:
+I used lines such as
+wget -S -O - --header="Accept-Language: it" http://www.debian.org/devel/people | head -4
+to see what apache was returning for different requests. Remove the --header=
+option and notice that the italian page is served.
+
+The following language variants of the file exist:
+lrwxrwxrwx   1 treacy   debwww         14 Oct 12 11:09 devel/people.html -> people.html.en           
+-rw-rw-r--   1 treacy   debwww      91442 Oct 24 22:22 devel/people.html.en                          
+-rw-rw-r--   1 treacy   debwww      91737 Oct 25 14:49 devel/people.html.es                          
+-rw-rw-r--   1 treacy   debwww      82581 Aug 27 23:46 devel/people.html.it
+
+>Fix:
+
+>Audit-Trail:
+Comment-Added-By: lars
+Comment-Added-When: Wed Oct 28 20:33:23 PST 1998
+Comment-Added:
+
+I'm not able to reproduce your problem.
+Are you using any third-party modules?
+
+
+From: "James A. Treacy" <treacy@debian.org>
+To: lars@apache.org
+Cc: apbugs@Apache.Org
+Subject: Re: mod_negotiation/3299: random language variant returned when no Accept-Language: header is given
+Date: Thu, 29 Oct 1998 14:39:10 -0500
+
+ On Thu, Oct 29, 1998 at 04:33:24AM -0000, lars@apache.org wrote:
+ > 
+ > Synopsis: random language variant returned when no Accept-Language: header is given
+ > 
+ > I'm not able to reproduce your problem.
+ > Are you using any third-party modules?
+ > 
+ No. The list of modules uncommented in httpd.conf are:
+   LoadModule config_log_module /usr/lib/apache/1.3/mod_log_config.so
+   LoadModule mime_module /usr/lib/apache/1.3/mod_mime.so
+   LoadModule negotiation_module /usr/lib/apache/1.3/mod_negotiation.so
+   LoadModule autoindex_module /usr/lib/apache/1.3/mod_autoindex.so
+   LoadModule dir_module /usr/lib/apache/1.3/mod_dir.so
+   LoadModule cgi_module /usr/lib/apache/1.3/mod_cgi.so
+   LoadModule userdir_module /usr/lib/apache/1.3/mod_userdir.so
+   LoadModule alias_module /usr/lib/apache/1.3/mod_alias.so
+   LoadModule access_module /usr/lib/apache/1.3/mod_access.so
+   LoadModule expires_module /usr/lib/apache/1.3/mod_expires.so
+ 
+ This is a straight compile of 1.3.3. There were sporadic reports of
+ the wrong language being served in the past, but it has gotten worse
+ as mirrors (the Debian pages are mirrord to over 15 sites) have upgraded
+ to newer versions of apache.
+ 
+ I am willing to recompile apache and turn on any debugging options if needed.
+ Any tips on diagnosing the problem would be helpful. I'd like to get this
+ fixed asap.
+ 
+ As reported before, the problem only occurs when the client does not send
+ Accept-Language: header,i.e. the user does set any language preferences.
+ The language returned is constant across requests. If the wrong language
+ is returned, future requests return the same language. It is not a caching
+ problem as I can reproduce the problem on my machine at home.
+ 
+ Jay Treacy
+
+From: "James A. Treacy" <treacy@debian.org>
+To: lars@apache.org
+Cc: apbugs@Apache.Org
+Subject: Re: mod_negotiation/3299: random language variant returned when no Accept-Language: header is given
+Date: Wed, 4 Nov 1998 17:29:15 -0500
+
+ On Thu, Oct 29, 1998 at 04:33:24AM -0000, lars@apache.org wrote:
+ > 
+ > Synopsis: random language variant returned when no Accept-Language: header is given
+ > 
+ > I'm not able to reproduce your problem.
+ > Are you using any third-party modules?
+ > 
+ The problem has been found. A patch and explanation follow.
+ 
+ Subroutine is_variant_better in mod_negotiation.c states that if the
+ languages are equal to try the LanguagePriority. Fair enough. But if
+ best->lang_index != -1 and variant->lang_index == -1 it believes the
+ variant is better than the current best so it doesn't return 0 when it
+ should. It then recognizes in the next 'if' statement that the variant
+ is not better so continues until it uses the length of the files to
+ decide which is better.
+ 
+ The fix is to simply check for variant->lang_index == -1
+ 
+ With the correction the only condition that lets you fall through this
+ section is if best->lang_index == variant->lang_index == -1
+ This implies that neither is in LanguagePriority.
+ 
+ As noted in the original message, this only affects requests for which
+ there is no Accept-Language: header sent.
+ 
+ Jay Treacy
+ 
+ *** mod_negotiation.c   Wed Nov  4 16:53:29 1998
+ --- mod_negotiation.c.orig      Tue Nov  3 11:53:28 1998
+ ***************
+ *** 1645,1651 ****
+   
+       /* if language qualities were equal, try the LanguagePriority
+        * stuff */
+ !     if (best->lang_index != -1 && (variant->lang_index == -1 || variant->lang_index > best->lang_index)) {
+           return 0;
+       }
+       if (variant->lang_index != -1 &&
+ --- 1645,1651 ----
+   
+       /* if language qualities were equal, try the LanguagePriority
+        * stuff */
+ !     if (best->lang_index != -1 && variant->lang_index > best->lang_index) {
+           return 0;
+       }
+       if (variant->lang_index != -1 &&
+State-Changed-From-To: open-closed
+State-Changed-By: lars
+State-Changed-When: Tue Dec 29 17:12:17 PST 1998
+State-Changed-Why:
+
+mod_negotiation was updated and extended for our
+forthcoming 1.3.4 release. Additionally a
+DefaultLanguage directive has been added to Apache.
+
+The changes should address your problem...
+Please open a new problem report if you still
+encounter problems.
+
+Thanks for using Apache.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

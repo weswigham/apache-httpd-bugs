@@ -1,0 +1,303 @@
+Received: (qmail 9356 invoked by uid 2012); 13 Oct 1998 22:59:40 -0000
+Message-Id: <19981013225940.9355.qmail@hyperreal.org>
+Date: 13 Oct 1998 22:59:40 -0000
+From: Eric Cook <eric.r.cook@tek.com>
+Reply-To: eric.r.cook@tek.com
+To: apbugs@hyperreal.org
+Subject: High system utilization with v1.3.3
+X-Send-Pr-Version: 3.2
+
+>Number:         3202
+>Category:       mod_proxy
+>Synopsis:       High system utilization with v1.3.3
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 13 16:00:00 PDT 1998
+>Last-Modified:  Wed Oct 28 23:40:01 PST 1998
+>Originator:     eric.r.cook@tek.com
+>Organization:
+>Release:        1.3.3
+>Environment:
+Solaris v2.5.1 w/ current recommended patches. Sun SPro v3.0 compiler.
+uname -a -> SunOS authensrv 5.5.1 Generic_103640-23 sun4m sparc SUNW,SPARCstation-20
+>Description:
+I see high system utilization 30-90 percent with 3-20 percent user CPU.  
+System utilization increases with load.  This drives up load average and
+increases response times on the server.  The proxy is intranet and handles
+our WAN browsers.  No caching.  Hit rates are 3-15 per second.  v1.3b3 has much lower
+system percentage.
+>How-To-Repeat:
+Generate 15 hits per second against a proxy-only, no caching configuration.
+>Fix:
+No, sorry.
+>Audit-Trail:
+
+From: eric.r.cook@exgate.tek.com
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: RE: mod_proxy/3202: High system utilization with v1.3.3
+Date: Tue, 13 Oct 1998 17:15:28 -0700
+
+ More Info:
+ 
+ From 'truss -f -p PID' of an httpd process (included below) I can see that
+ 'fork' is called TWICE ON EACH HIT!  The first fork closes 6 file
+ descriptors, the second does a 'setsid' and an 'lseek'.  
+ 
+ From looking at the mod_proxy code, it looks like the offender is
+ detached_proxy_garbage_coll, called by ap_proxy_garbage_coll, called in
+ proxy_ftp.c and proxy_http.c.
+ 
+ I have NoCache * set in httpd.conf.
+ 
+ Regards,
+ 
+ Eric
+ 
+ Truss output:
+ 
+ 10381:  fcntl(18, F_SETLKW, 0x000D7944) (sleeping...)
+ 10381:  fcntl(18, F_SETLKW, 0x000D7944)                 = 0
+ 10381:  getmsg(15, 0xEFFFF6E0, 0xEFFFF6D4, 0xEFFFF6EC)  = 0
+ 10381:  sigprocmask(SIG_BLOCK, 0xEFFFF498, 0xEFFFF590)  = 0
+ 10381:  open("/dev/tcp", O_RDWR)                        = 3
+ 10381:  ioctl(3, I_PUSH, "sockmod")                     = 0
+ 10381:  ioctl(3, I_STR, 0xEFFFF3E0)                     = 0
+ 10381:  ioctl(3, I_SETCLTIME, 0xEFFFF494)               = 0
+ 10381:  ioctl(3, I_SWROPT, 0x00000002)                  = 0
+ 10381:  sigprocmask(SIG_SETMASK, 0xEFFFF484, 0xEFFFF474) = 0
+ 10381:  ioctl(3, I_STR, 0xEFFFF2F8)                     = 0
+ 10381:  sigprocmask(SIG_SETMASK, 0xEFFFF474, 0xEFFFF450) = 0
+ 10381:  ioctl(15, I_FDINSERT, 0xEFFFF53C)               = 0
+ 10381:  getmsg(15, 0xEFFFF6E0, 0x00000000, 0xEFFFF4A4)  = 0
+ 10381:  sigprocmask(SIG_SETMASK, 0xEFFFF590, 0x00000000) = 0
+ 10381:  fcntl(18, F_SETLKW, 0x000D7968)                 = 0
+ 10381:  sigaction(SIGUSR1, 0xEFFFF6D8, 0xEFFFF75C)      = 0
+ 10381:  ioctl(3, TI_GETMYNAME, 0xEFFFF6F4)              = 0
+ 10381:  sigprocmask(SIG_BLOCK, 0xEFFFF620, 0xEFFFF694)  = 0
+ 10381:  ioctl(3, I_STR, 0xEFFFF620)                     = 0
+ 10381:  sigprocmask(SIG_SETMASK, 0xEFFFF694, 0x00000000) = 0
+ 10381:  read(3, " G E T   h t t p : / / w".., 4096)     = 267
+ 10381:  sigaction(SIGUSR1, 0xEFFFD5E0, 0xEFFFD664)      = 0
+ 10381:  time()                                          = 908323734
+ 10381:  time()                                          = 908323734
+ 10381:  door_info(4, 0xEFFFB218)                        = 0
+ 10381:  door_call(4, 0xEFFFB2B0, 0x00002000, 0x0000006A, 0x00000000) = 0
+ 10381:  open("/dev/tcp", O_RDWR)                        = 5
+ 10381:  ioctl(5, I_PUSH, "sockmod")                     = 0
+ 10381:  ioctl(5, I_STR, 0xEFFFD2E8)                     = 0
+ 10381:  ioctl(5, I_SETCLTIME, 0xEFFFD39C)               = 0
+ 10381:  ioctl(5, I_SWROPT, 0x00000002)                  = 0
+ 10381:  sigprocmask(SIG_SETMASK, 0xEFFFD38C, 0xEFFFD37C) = 0
+ 10381:  ioctl(5, I_STR, 0xEFFFD200)                     = 0
+ 10381:  sigprocmask(SIG_SETMASK, 0xEFFFD37C, 0xEFFFD358) = 0
+ 10381:  sigprocmask(SIG_BLOCK, 0xEFFFD368, 0xEFFFD3DC)  = 0
+ 10381:  ioctl(5, I_STR, 0xEFFFD368)                     = 0
+ 10381:  sigprocmask(SIG_SETMASK, 0xEFFFD3DC, 0x00000000) = 0
+ 10381:  fcntl(5, F_GETFL, 0x00000000)                   = 2
+ 10381:  sigprocmask(SIG_BLOCK, 0xEFFFD130, 0xEFFFD1D4)  = 0
+ 10381:  putmsg(5, 0xEFFFD1E4, 0x00000000, 0)            = 0
+ 10381:  getmsg(5, 0xEFFFD1E4, 0x00000000, 0xEFFFD0DC)   = 0
+ 10381:  sigprocmask(SIG_SETMASK, 0xEFFFD1D4, 0x00000000) = 0
+ 10381:  getmsg(5, 0xEFFFD1E4, 0xEFFFD130, 0xEFFFD13C)   = 0
+ 10381:  write(5, " G E T   h t t p : / / w".., 237)     = 237
+ 10381:  read(5, " H T T P / 1 . 0   2 0 0".., 4096)     = 137
+ 10381:  read(5, " < ! D O C T Y P E   h t".., 8192)     = 1460
+ 10381:  read(5, " G H T = 5 8   B O R D E".., 8192)     = 2920
+ 10381:  writev(3, 0xEFFFB35C, 2)                        = 4517
+ 10381:  read(5, " 2 , 1 7 7 , 4 9 6 "    ".., 8192)     = 3043
+ 10381:  read(5, 0xEFFFB478, 8192)                       = 0
+ 10381:  write(3, " 2 , 1 7 7 , 4 9 6 "    ".., 3043)    = 3043
+ 10381:  close(5)                                        = 0
+ 10381:  fork()                                          = 13482
+ 13482:  fork()          (returning as child ...)        = 10381
+ 13482:  close(18)                                       = 0
+ 13482:  close(17)                                       = 0
+ 13482:  close(16)                                       = 0
+ 13482:  close(15)                                       = 0
+ 13482:  close(3)                                        = 0
+ 13482:  close(5)                                        Err#9 EBADF
+ 13482:  fork()                                          = 13484
+ 13484:  fork()          (returning as child ...)        = 13482
+ 13484:  setsid()                                        = 13484
+ 13482:  lseek(0, 0, SEEK_CUR)                           = 0
+ 13484:  lseek(0, 0, SEEK_CUR)                           = 0
+ 13482:  _exit(0)
+ 13484:  _exit(0)
+ 10381:      Received signal #18, SIGCLD, in waitid() [default]
+ 10381:        siginfo: SIGCLD CLD_EXITED pid=13482 status=0x0000
+ 10381:  waitid(P_PID, 13482, 0xEFFFD330, WEXITED|WTRAPPED) = 0
+ 10381:  time()                                          = 908323735
+ 10381:  write(17, " 1 9 2 . 1 5 8 . 9 9 . 1".., 112)    = 112
+ 10381:  times(0xEF6F0870)                               = 19061694
+ 10381:  sigprocmask(SIG_BLOCK, 0xEFFFF3B8, 0xEFFFF448)  = 0
+ 10381:  ioctl(3, I_STR, 0xEFFFF3B8)                     = 0
+ 10381:  sigprocmask(SIG_SETMASK, 0xEFFFF448, 0x00000000) = 0
+ 10381:  poll(0xEFFFD4A8, 1, 2000)                       = 0
+ 10381:  close(3)                                        = 0
+ 10381:  sigaction(SIGUSR1, 0xEFFFF6D8, 0xEFFFF75C)      = 0
+ 10381:  close(5)                                        Err#9 EBADF
+ 10381:  fcntl(18, F_SETLKW, 0x000D7944) (sleeping...)
+ 
+ -----Original Message-----
+ From: apbugs@hyperreal.org [mailto:apbugs@hyperreal.org]
+ Sent: Tuesday, October 13, 1998 4:00 PM
+ To: eric.r.cook@tek.com
+ Subject: Re: mod_proxy/3202: High system utilization with v1.3.3
+ 
+ 
+ Thank you very much for your problem report.
+ It has the internal identification `mod_proxy/3202'.
+ The individual assigned to look at your
+ report is: apache. 
+ 
+ >Category:       mod_proxy
+ >Responsible:    apache
+ >Synopsis:       High system utilization with v1.3.3
+ >Arrival-Date:   Tue Oct 13 16:00:00 PDT 1998
+
+From: eric.r.cook@exgate.tek.com
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: RE: mod_proxy/3202: High system utilization with v1.3.3
+Date: Tue, 13 Oct 1998 18:29:29 -0700
+
+ Even More Info:
+ 
+ Here is are potential fixes (read hacks) that seem to fix my immediate
+ problem.  Of course regression testing is needed.
+ 
+ diff proxy_http.c.orig proxy_http.c
+ 525c525,527
+ <     ap_proxy_garbage_coll(r);
+ ---
+ >     if (nocache == 0) {
+ >         ap_proxy_garbage_coll(r);
+ >     }
+ 
+ diff proxy_ftp.c.orig proxy_ftp.c 
+ 1250c1250,1252
+ <     ap_proxy_garbage_coll(r);
+ ---
+ >     if (nocache == 0) {
+ >         ap_proxy_garbage_coll(r);
+ >     }
+ 
+ Regards,
+ 
+ Eric
+ 
+ -----Original Message-----
+ From: apbugs@hyperreal.org [mailto:apbugs@hyperreal.org]
+ Sent: Tuesday, October 13, 1998 4:00 PM
+ To: eric.r.cook@tek.com
+ Subject: Re: mod_proxy/3202: High system utilization with v1.3.3
+ 
+ 
+ Thank you very much for your problem report.
+ It has the internal identification `mod_proxy/3202'.
+ The individual assigned to look at your
+ report is: apache. 
+ 
+ >Category:       mod_proxy
+ >Responsible:    apache
+ >Synopsis:       High system utilization with v1.3.3
+ >Arrival-Date:   Tue Oct 13 16:00:00 PDT 1998
+Comment-Added-By: marc
+Comment-Added-When: Tue Oct 27 10:34:40 PST 1998
+Comment-Added:
+While it appears like your diagnosis of the problem is
+correct, the patch does make much sense to me.  What
+it seems to be doing is simply not doing garbage collection
+based on if the response is cachable or not, when it should
+move the check for doing garbage collection into the parent
+and only fork if necessary.
+
+From: eric.r.cook@exgate.tek.com
+To: marc@apache.org, apache-bugdb@apache.org, eric.r.cook@tek.com
+Cc: apbugs@apache.org
+Subject: RE: mod_proxy/3202: High system utilization with v1.3.3
+Date: Tue, 27 Oct 1998 14:47:34 -0800
+
+ Marc,
+ 
+ I like your idea better.  I was merely trying to fix the symptom.  I am a
+ system admin and part-time hack.  Is there someone on the Apache team who
+ will address this problem?
+ 
+ Let me know if/how I can help.  I'm not beyond looking at the code, just
+ don't know if I'm qualified.
+ 
+ Regards,
+ 
+ Eric
+ 
+ -----Original Message-----
+ From: marc@apache.org [mailto:marc@apache.org]
+ Sent: Tuesday, October 27, 1998 10:35 AM
+ To: apache-bugdb@apache.org; eric.r.cook@tek.com; marc@apache.org
+ Subject: Re: mod_proxy/3202: High system utilization with v1.3.3
+ 
+ 
+ [In order for any reply to be added to the PR database, ]
+ [you need to include <apbugs@Apache.Org> in the Cc line ]
+ [and leave the subject line UNCHANGED.  This is not done]
+ [automatically because of the potential for mail loops. ]
+ [If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request ]
+ [from a developer.                                      ]
+ [Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+ 
+ 
+ Synopsis: High system utilization with v1.3.3
+ 
+ Comment-Added-By: marc
+ Comment-Added-When: Tue Oct 27 10:34:40 PST 1998
+ Comment-Added:
+ While it appears like your diagnosis of the problem is
+ correct, the patch does make much sense to me.  What
+ it seems to be doing is simply not doing garbage collection
+ based on if the response is cachable or not, when it should
+ move the check for doing garbage collection into the parent
+ and only fork if necessary.
+
+From: Marc Slemko <marcs@znep.com>
+To: eric.r.cook@exgate.tek.com
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: RE: mod_proxy/3202: High system utilization with v1.3.3
+Date: Wed, 28 Oct 1998 23:16:29 -0800 (PST)
+
+ On Tue, 27 Oct 1998 eric.r.cook@exgate.tek.com wrote:
+ 
+ > Marc,
+ > 
+ > I like your idea better.  I was merely trying to fix the symptom.  I am a
+ > system admin and part-time hack.  Is there someone on the Apache team who
+ > will address this problem?
+ 
+ Yes, when someone gets around to it (hopefully before 1.3.4) they will.
+ 
+ > 
+ > Let me know if/how I can help.  I'm not beyond looking at the code, just
+ > don't know if I'm qualified.
+ 
+ Anyone is qualified if they do it right.  <g>
+ 
+ The basic thing that would have to be done is for the code that checks if
+ cache maint. should be done to be moved to before it fork()s.
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

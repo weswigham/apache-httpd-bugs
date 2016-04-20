@@ -1,0 +1,241 @@
+Received: (qmail 11928 invoked by uid 2012); 28 Nov 1997 17:59:38 -0000
+Message-Id: <19971128175938.11927.qmail@hyperreal.org>
+Date: 28 Nov 1997 17:59:38 -0000
+From: Jonathan Roy <roy@atlantic.net>
+Reply-To: roy@atlantic.net
+To: apbugs@hyperreal.org
+Subject: mmap_handler error_log entry for 0 length files
+X-Send-Pr-Version: 3.2
+
+>Number:         1491
+>Category:       general
+>Synopsis:       mmap_handler error_log entry for 0 length files
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Nov 28 11:10:00 PST 1997
+>Last-Modified:  Sun Nov 30 11:19:27 PST 1997
+>Originator:     roy@atlantic.net
+>Organization:
+>Release:        1.3b3
+>Environment:
+SunOS sinistar 5.5 Generic_103093-06 sun4m sparc SUNW,SPARCstation-20
+gcc 2.7.2.1
+>Description:
+[crit] (22)Invalid argument: mmap_handler: mmap failed: filename
+
+for any files which exist but are length 0.
+>How-To-Repeat:
+Have a 0 byte file and try accessing it
+>Fix:
+
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Jonathan Roy <roy@atlantic.net>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/1491: mmap_handler error_log entry for 0 length files
+Date: Fri, 28 Nov 1997 11:23:11 -0800 (PST)
+
+ Oh damn.  Ok here's a patch that fixes this and the other mmap_handler
+ error_log entries for 1.3b3.  It's against 1.3b3. 
+ 
+ Thanks
+ Dean
+ 
+ Index: http_core.c
+ ===================================================================
+ RCS file: /export/home/cvs/apachen/src/main/http_core.c,v
+ retrieving revision 1.140
+ diff -u -r1.140 http_core.c
+ --- http_core.c	1997/11/15 00:16:50	1.140
+ +++ http_core.c	1997/11/28 19:17:47
+ @@ -75,15 +75,15 @@
+   * <http://www.isi.edu/~johnh/SOFTWARE/APACHE/index.html>.
+   */
+  
+ -/* Files have to be at least this big before they're mmap()d.  This is to
+ - * deal with systems where the expense of doing an mmap() and an munmap()
+ - * outweighs the benefit for small files.
+ +/* Files have to be at least this big before they're mmap()d.  This is to deal
+ + * with systems where the expense of doing an mmap() and an munmap() outweighs
+ + * the benefit for small files.  It shouldn't be set lower than 1.
+   */
+  #ifndef MMAP_THRESHOLD
+  #ifdef SUNOS4
+  #define MMAP_THRESHOLD		(8*1024)
+  #else
+ -#define MMAP_THRESHOLD		0
+ +#define MMAP_THRESHOLD		1
+  #endif
+  #endif
+  #endif
+ @@ -1864,21 +1864,20 @@
+      block_alarms();
+      if ((r->finfo.st_size >= MMAP_THRESHOLD)
+  	&& ( !r->header_only || (d->content_md5 & 1))) {
+ -      /* we need to protect ourselves in case we die while we've got the
+ +	/* we need to protect ourselves in case we die while we've got the
+   	 * file mmapped */
+  	mm = mmap (NULL, r->finfo.st_size, PROT_READ, MAP_PRIVATE,
+  		    fileno(f), 0);
+ +	if (mm == (caddr_t)-1) {
+ +	    aplog_error(APLOG_MARK, APLOG_CRIT, r->server,
+ +			"default_handler: mmap failed: %s", r->filename);
+ +	}
+      } else {
+  	mm = (caddr_t)-1;
+      }
+  
+      if (mm == (caddr_t)-1) {
+  	unblock_alarms();
+ -
+ -	if (r->finfo.st_size >= MMAP_THRESHOLD) {
+ -	    aplog_error(APLOG_MARK, APLOG_CRIT, r->server,
+ -			"mmap_handler: mmap failed: %s", r->filename);
+ -	}
+  #endif
+  
+  	if (d->content_md5 & 1) {
+ 
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Fri Nov 28 11:21:10 PST 1997
+State-Changed-Why:
+Waiting feedback on the patch I sent.
+
+Dean
+
+From: Jonathan Roy <roy@atlantic.net>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/1491: mmap_handler error_log entry for 0 length
+  files
+Date: Fri, 28 Nov 1997 15:54:04 -0500
+
+   Put it in and working so far. No idea if this is a new bug or unrelated
+ or what, but now I notice some of these:
+ 
+ [crit] (24)Too many open files:
+ /export/home/bryant/mpog_html/adverts/images/.htaccess pcfg_openfile:
+ unable to check htaccess file, ensure it is readable
+ 
+   the file does't exist at all.
+ 
+ -Jonathan
+ 
+ At 11:23 AM 11/28/97 -0800, Dean Gaudet wrote:
+ >Oh damn.  Ok here's a patch that fixes this and the other mmap_handler
+ >error_log entries for 1.3b3.  It's against 1.3b3. 
+ >
+ >Thanks
+ >Dean
+ >
+ >Index: http_core.c
+ >===================================================================
+ >RCS file: /export/home/cvs/apachen/src/main/http_core.c,v
+ >retrieving revision 1.140
+ >diff -u -r1.140 http_core.c
+ >--- http_core.c	1997/11/15 00:16:50	1.140
+ >+++ http_core.c	1997/11/28 19:17:47
+ >@@ -75,15 +75,15 @@
+ >  * <http://www.isi.edu/~johnh/SOFTWARE/APACHE/index.html>.
+ >  */
+ > 
+ >-/* Files have to be at least this big before they're mmap()d.  This is to
+ >- * deal with systems where the expense of doing an mmap() and an munmap()
+ >- * outweighs the benefit for small files.
+ >+/* Files have to be at least this big before they're mmap()d.  This is to
+ deal
+ >+ * with systems where the expense of doing an mmap() and an munmap()
+ outweighs
+ >+ * the benefit for small files.  It shouldn't be set lower than 1.
+ >  */
+ > #ifndef MMAP_THRESHOLD
+ > #ifdef SUNOS4
+ > #define MMAP_THRESHOLD		(8*1024)
+ > #else
+ >-#define MMAP_THRESHOLD		0
+ >+#define MMAP_THRESHOLD		1
+ > #endif
+ > #endif
+ > #endif
+ >@@ -1864,21 +1864,20 @@
+ >     block_alarms();
+ >     if ((r->finfo.st_size >= MMAP_THRESHOLD)
+ > 	&& ( !r->header_only || (d->content_md5 & 1))) {
+ >-      /* we need to protect ourselves in case we die while we've got the
+ >+	/* we need to protect ourselves in case we die while we've got the
+ >  	 * file mmapped */
+ > 	mm = mmap (NULL, r->finfo.st_size, PROT_READ, MAP_PRIVATE,
+ > 		    fileno(f), 0);
+ >+	if (mm == (caddr_t)-1) {
+ >+	    aplog_error(APLOG_MARK, APLOG_CRIT, r->server,
+ >+			"default_handler: mmap failed: %s", r->filename);
+ >+	}
+ >     } else {
+ > 	mm = (caddr_t)-1;
+ >     }
+ > 
+ >     if (mm == (caddr_t)-1) {
+ > 	unblock_alarms();
+ >-
+ >-	if (r->finfo.st_size >= MMAP_THRESHOLD) {
+ >-	    aplog_error(APLOG_MARK, APLOG_CRIT, r->server,
+ >-			"mmap_handler: mmap failed: %s", r->filename);
+ >-	}
+ > #endif
+ > 
+ > 	if (d->content_md5 & 1) {
+ >
+ >
+ >
+ 
+ --
+ Jonathan Roy - roy@idle.com - Idle Communications, Inc.
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Jonathan Roy <roy@atlantic.net>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/1491: mmap_handler error_log entry for 0 length  files
+Date: Fri, 28 Nov 1997 12:56:59 -0800 (PST)
+
+ I'd be surprised if that's a new bug.  That looks like you started your
+ server with insufficient descriptors. 
+ 
+ Dean
+ 
+ On Fri, 28 Nov 1997, Jonathan Roy wrote:
+ 
+ > 
+ >   Put it in and working so far. No idea if this is a new bug or unrelated
+ > or what, but now I notice some of these:
+ > 
+ > [crit] (24)Too many open files:
+ > /export/home/bryant/mpog_html/adverts/images/.htaccess pcfg_openfile:
+ > unable to check htaccess file, ensure it is readable
+ > 
+ >   the file does't exist at all.
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sun Nov 30 11:19:26 PST 1997
+State-Changed-Why:
+Patch applied to 1.3b4-dev, it'll appear in the next
+release.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

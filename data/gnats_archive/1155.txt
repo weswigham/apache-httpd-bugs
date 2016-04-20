@@ -1,0 +1,180 @@
+From apwww@hyperreal.org  Sat Sep 20 17:51:38 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id RAA01182;
+	Sat, 20 Sep 1997 17:51:38 -0700 (PDT)
+Message-Id: <199709210051.RAA01182@hyperreal.org>
+Date: Sat, 20 Sep 1997 17:51:38 -0700 (PDT)
+From: Tim Newsome <nuisance@cmu.edu>
+Reply-To: nuisance@cmu.edu
+To: apbugs@hyperreal.org
+Subject: RedirectMatch does not correctly deal with URLs which need to be escaped.
+X-Send-Pr-Version: 3.2
+
+>Number:         1155
+>Category:       mod_alias
+>Synopsis:       RedirectMatch does not correctly deal with URLs which need to be escaped.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Sep 20 18:00:03 1997
+>Last-Modified:  Fri Dec 19 00:14:14 PST 1997
+>Originator:     nuisance@cmu.edu
+>Organization:
+>Release:        1.3a1
+>Environment:
+Linux 2.0.30
+gcc 2.7.2
+redhat 4.2
+>Description:
+RedirectMatch will not escape URLs it directs to if they have spaces in them.
+(Ie request for /data/cool%20file will be redirected to something like 
+otherserver/cool file (note the space))
+>How-To-Repeat:
+This patch is pretty crude, and I'm sure it's buggy somewhere. Just ran my server
+for a few hours (getting quite a lot of hits) and nothing shows up in the
+error log, and it doesn't seem to leak.
+>Fix:
+diff -ur apache_1.3a1/src/httpd.h apache_1.3a1-patched/src/httpd.h
+--- apache_1.3a1/src/httpd.h    Tue Jul 22 20:06:06 1997
++++ apache_1.3a1-patched/src/httpd.h    Sat Sep 20 17:55:13 1997
+@@ -709,6 +709,7 @@
+      
+ API_EXPORT(int) is_url(const char *u);
+ API_EXPORT(int) unescape_url(char *url);
++API_EXPORT(char *) escape_url(pool *p, const char *url);
+ API_EXPORT(void) no2slash(char *name);
+ API_EXPORT(void) getparents(char *name);
+ API_EXPORT(char *) escape_path_segment(pool *p, const char *s);
+diff -ur apache_1.3a1/src/mod_alias.c apache_1.3a1-patched/src/mod_alias.c
+--- apache_1.3a1/src/mod_alias.c        Thu Jul 17 18:27:31 1997
++++ apache_1.3a1-patched/src/mod_alias.c        Sat Sep 20 18:03:41 1997
+@@ -273,6 +273,7 @@
+     alias_entry *entries = (alias_entry *)aliases->elts;
+     regmatch_t regm[10];
+     char *found = NULL;
++    char *temp = NULL;
+     int i;
+     
+     for (i = 0; i < aliases->nelts; ++i) {
+@@ -280,9 +281,17 @@
+        int l;
+ 
+        if (p->regexp) {
+-           if (!regexec(p->regexp, r->uri, p->regexp->re_nsub+1, regm, 0))
+-               found = pregsub(r->pool, p->real, r->uri,
+-                               p->regexp->re_nsub+1, regm);
++           if (!regexec(p->regexp, r->uri, p->regexp->re_nsub+1, regm, 0)) {
++               temp = pregsub(r->pool, p->real, r->uri,
++                       p->regexp->re_nsub+1, regm);
++               if (doesc) {
++                   /*char *escurl;*/
++                   found = escape_url(r->pool, temp);
++                   /*fprintf(stderr, "Escaped %s\n", escurl);
++                   found = pstrcpy(r->pool, p->real, escurl, NULL);*/
++               } else
++                   found = temp;
++           }
+        }
+        else {
+            l = alias_matches (r->uri, p->fake);
+diff -ur apache_1.3a1/src/util.c apache_1.3a1-patched/src/util.c
+--- apache_1.3a1/src/util.c     Mon Jul 21 01:53:52 1997
++++ apache_1.3a1-patched/src/util.c     Sat Sep 20 18:00:50 1997
+@@ -799,6 +799,31 @@
+     return(digit);
+ }
+ 
++#define c2x(what,where) sprintf(where,"%%%02x",(unsigned char)what)
++
++API_EXPORT(char *) escape_url(pool *p, const char *url) {
++    char *copy = palloc(p, 3 * strlen(url) + 3);
++    char *s = copy;
++    char c;
++    static const char valid[100] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ
+RSTUVWXYZ01234567890.-_/~:";
++
++    if (copy == NULL)
++       return NULL;
++
++    while ((c = *(url++)) != '\0') {
++       if (strchr(valid, (int) c)) {
++           *s++ = c;
++       }
++       else {
++           c2x(c, s);
++           s += 3;
++       }
++    }
++
++    *s = '\0';
++    return copy;
++}
++
+ /*
+  * Unescapes a URL.
+  * Returns 0 on success, non-zero on error
+@@ -855,7 +880,6 @@
+                    uri, NULL);
+ }
+ 
+-#define c2x(what,where) sprintf(where,"%%%02x",(unsigned char)what)
+ 
+ /*
+ escape_path_segment() escapes a path segment, as defined in RFC 1808. This
+%0
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Tim Newsome <nuisance@cmu.edu>
+Subject: Re: mod_alias/1155: RedirectMatch does not correctly deal with URLs which need to be escaped.
+Date: Wed, 24 Sep 1997 22:22:13 -0700 (PDT)
+
+ 
+ Yup, this is a bug.  But I think this smaller patch accomplishes the same
+ thing using existing functions.
+ 
+ Dean
+ 
+ Index: mod_alias.c
+ ===================================================================
+ RCS file: /export/home/cvs/apachen/src/modules/standard/mod_alias.c,v
+ retrieving revision 1.24
+ diff -u -r1.24 mod_alias.c
+ --- mod_alias.c	1997/09/16 05:31:56	1.24
+ +++ mod_alias.c	1997/09/25 05:20:48
+ @@ -295,9 +295,13 @@
+  	int l;
+  
+  	if (p->regexp) {
+ -	    if (!regexec(p->regexp, r->uri, p->regexp->re_nsub + 1, regm, 0))
+ +	    if (!regexec(p->regexp, r->uri, p->regexp->re_nsub + 1, regm, 0)) {
+  		found = pregsub(r->pool, p->real, r->uri,
+  				p->regexp->re_nsub + 1, regm);
+ +		if (found && doesc) {
+ +		    found = escape_uri(r->pool, found);
+ +		}
+ +	    }
+  	}
+  	else {
+  	    l = alias_matches(r->uri, p->fake);
+ 
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Wed Sep 24 23:14:39 PDT 1997
+State-Changed-Why:
+patch submitted to rest of group for consideration.
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Dec 19 00:14:14 PST 1997
+State-Changed-Why:
+This was patched in 1.3b2 ... I just forgot to close the PR.
+
+Dean
+>Unformatted:
+
+
+

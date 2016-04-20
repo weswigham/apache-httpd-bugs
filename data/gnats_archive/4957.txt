@@ -1,0 +1,201 @@
+Received: (qmail 26745 invoked by uid 2012); 3 Sep 1999 16:20:33 -0000
+Message-Id: <19990903162033.26744.qmail@hyperreal.org>
+Date: 3 Sep 1999 16:20:33 -0000
+From: Peter Huang <peter_huang@hp.com>
+Reply-To: peter_huang@hp.com
+To: apbugs@hyperreal.org
+Subject: mod_auth_digest failed with incorrect nonce value
+X-Send-Pr-Version: 3.2
+
+>Number:         4957
+>Category:       mod_digest
+>Synopsis:       mod_auth_digest failed with incorrect nonce value
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Sep  3 09:30:00 PDT 1999
+>Last-Modified:  Sat Sep 11 12:06:48 PDT 1999
+>Originator:     peter_huang@hp.com
+>Organization:
+>Release:        1.3.9
+>Environment:
+HP-UX 10.20 (HP-UX hpial41 B.10.20 C 9000/712 2013012526 32-user license)
+HP-UX 11.00
+>Description:
+check_nonce code in mod_auth_digest code does not work correctly in HP-UX CC compiler where the strcmp(hash, resp->nonce+NONCE_TIME_LEN) always failed.
+I modified the mod_auth_digest code to extract the hash from resp->nonce and it works for HP-UX 10.20 and HPUX 11.0.  the diff is below.
+>How-To-Repeat:
+
+>Fix:
+the attached code should fix it.
+
+
+*** mod_auth_digest.c.org	Fri Sep  3 09:04:19 1999
+--- mod_auth_digest.c	Fri Sep  3 09:05:45 1999
+***************
+*** 1332,1338 ****
+  {
+      double dt;
+      time_rec nonce_time;
+!     char tmp, hash[NONCE_HASH_LEN+1];
+  
+      if (strlen(resp->nonce) != NONCE_LEN) {
+  	ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r,
+--- 1332,1338 ----
+  {
+      double dt;
+      time_rec nonce_time;
+!     char tmp, r_hash[NONCE_HASH_LEN+1], hash[NONCE_HASH_LEN+1];
+  
+      if (strlen(resp->nonce) != NONCE_LEN) {
+  	ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r,
+***************
+*** 1342,1347 ****
+--- 1342,1351 ----
+  	return AUTH_REQUIRED;
+      }
+  
++     	/*extract the nonce hash code for later use*/
++ 	memset(r_hash, '\0', NONCE_HASH_LEN+1);
++ 	strncpy(r_hash, &resp->nonce[NONCE_TIME_LEN], strlen(resp->nonce)-NONCE_TIME_LEN);
++ 	
+      tmp = resp->nonce[NONCE_TIME_LEN];
+      resp->nonce[NONCE_TIME_LEN] = '\0';
+      ap_base64decode_binary(nonce_time.arr, resp->nonce);
+***************
+*** 1349,1358 ****
+      resp->nonce[NONCE_TIME_LEN] = tmp;
+      resp->nonce_time = nonce_time.time;
+  
+!     if (strcmp(hash, resp->nonce+NONCE_TIME_LEN)) {
+  	ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r,
+  		      "Digest: invalid nonce %s received - hash is not %s",
+! 		      resp->nonce, hash);
+  	note_digest_auth_failure(r, conf, resp, 1);
+  	return AUTH_REQUIRED;
+      }
+--- 1353,1362 ----
+      resp->nonce[NONCE_TIME_LEN] = tmp;
+      resp->nonce_time = nonce_time.time;
+  
+!     if (strcmp(hash, r_hash)) {
+  	ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r,
+  		      "Digest: invalid nonce %s received - hash is not %s",
+! 		      r_hash, hash);
+  	note_digest_auth_failure(r, conf, resp, 1);
+  	return AUTH_REQUIRED;
+      }
+>Audit-Trail:
+
+From: "Life is hard, and then you die." <ronald@innovation.ch>
+To: apbugs@Apache.Org
+Cc:  Subject: Re: mod_digest/4957: mod_auth_digest failed with incorrect nonce value
+Date: Sun, 5 Sep 1999 21:54:52 +0200 (MET DST)
+
+ > check_nonce code in mod_auth_digest code does not work correctly in
+ > HP-UX CC compiler where the strcmp(hash, resp->nonce+NONCE_TIME_LEN)
+ > always failed.  I modified the mod_auth_digest code to extract the hash
+ > from resp->nonce and it works for HP-UX 10.20 and HPUX 11.0.  the diff
+ > is below.
+ 
+ Hmm, could explain why the code fails? Is this a bug in the compiler?
+ What optimization flags did you compile the module with, and what
+ happens if you compile w/o optimization?
+ 
+ While the patch is basically ok, I completely fail to see why the
+ original code has a problem, and why the patch fixes it.
+ 
+ 
+   Cheers,
+ 
+   Ronald
+ 
+
+From: "Life is hard, and then you die." <ronald@innovation.ch>
+To: apbugs@Apache.Org
+Cc:  Subject: Re: mod_digest/4957: mod_auth_digest failed with incorrect nonce value
+Date: Sat, 11 Sep 1999 19:44:06 +0200 (MET DST)
+
+   Hi Peter,
+ 
+ > You're correct, you re-insert the tmp, I mis-read the code.  However,
+ > the tmp is getting clobbered.
+ 
+ I think we found the problem. Can you apply the following patch to
+ src/ap/ap_base64.c and let me know how things turn out?
+ 
+ 
+   Cheers,
+ 
+   Ronald
+ 
+ 
+ -----------------------------------------------------------------------
+ Index: ap_base64.c
+ ===================================================================
+ RCS file: /home/cvs/apache-1.3/src/ap/ap_base64.c,v
+ retrieving revision 1.4
+ diff -u -r1.4 ap_base64.c
+ --- ap_base64.c	1999/08/14 08:35:45	1.4
+ +++ ap_base64.c	1999/09/10 06:23:04
+ @@ -139,6 +139,7 @@
+      for (i = 0; i < len; i++)
+  	bufplain[i] = os_toebcdic[bufplain[i]];
+  #endif				/* CHARSET_EBCDIC */
+ +    bufplain[len] = '\0';
+      return len;
+  }
+  
+ @@ -186,7 +187,6 @@
+  	    (unsigned char) (pr2six[bufin[2]] << 6 | pr2six[bufin[3]]);
+      }
+  
+ -    *(bufout++) = '\0';
+      nbytesdecoded -= (4 - nprbytes) & 3;
+      return nbytesdecoded;
+  }
+ -----------------------------------------------------------------------
+ 
+
+From: "Life is hard, and then you die." <ronald@innovation.ch>
+To: apbugs@Apache.Org
+Cc:  Subject: Re: mod_digest/4957: mod_auth_digest failed with incorrect nonce value
+Date: Sat, 11 Sep 1999 19:59:57 +0200 (MET DST)
+
+ From: PETER_HUANG@HP-Cupertino-om8.om.hp.com
+ Subject: Re: mod_auth_digest failed with incorrect nonce value
+ 
+ Ronald,
+ 
+    the patch you sent fixed the problem. I've tested on hpux11 and
+    it works fine now.
+ 
+    thanks
+ 
+    -peter 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: ronald@innovation.ch
+State-Changed-When: Sat Sep 11 12:06:47 PDT 1999
+State-Changed-Why:
+Patch to ap_base64.c commited to the 1.3.10 and 2.0 source trees.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

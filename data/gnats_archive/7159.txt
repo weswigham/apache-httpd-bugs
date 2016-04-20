@@ -1,0 +1,1153 @@
+Received: (qmail 80479 invoked by uid 501); 30 Jan 2001 19:20:14 -0000
+Message-Id: <20010130192014.80473.qmail@apache.org>
+Date: 30 Jan 2001 19:20:14 -0000
+From: Richard Meyer <rmeyer@befree.com>
+Reply-To: rmeyer@befree.com
+To: submit@bugz.apache.org
+Subject: Solaris bug that causes httpd to hang in sleeping state
+X-Send-Pr-Version: 3.110
+
+>Number:         7159
+>Category:       os-solaris
+>Synopsis:       Solaris bug that causes httpd to hang in sleeping state
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jan 30 11:30:03 PST 2001
+>Closed-Date:    
+>Last-Modified:  Thu Feb  1 12:50:06 PST 2001
+>Originator:     rmeyer@befree.com
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+uname -a
+SunOS devfe01 5.6 Generic_105181-23 sun4u sparc SUNW,Ultra-2
+gcc version 2.8.1
+>Description:
+I know that this is a Solaris bug, not Apache, but I figure my odds are better of getting a work around for Apache. This may be the same problem described in PR number 3906, however the solution proposed there does not work.
+We are running Apache with mod_so, and without mod_perl. 
+
+When checking the server-status page we noticed several PIDs were sitting in a ..reading.. state with the SS column well past Apache's Timeout setting (30 seconds). 
+Srv PID   Acc     M   CPU  SS  Req Conn Child Slot Client VHost Request  
+3-0 15618 0/11/11 R  1.60 12185 3 0.0 0.03 0.03  ? ? ..reading..  
+
+When I truss this process I see : read(10, 0x000B1A88, 4096)      (sleeping...)
+
+I've got Apache compiled with gcc's -g flag so I can trace the code in the debugger. Connecting to the process I see that the code is in a system call (___lwp_cond_wait()).
+
+On Solaris' web page I found a bug fix for this call, which may or may not fix the problem, but in any case it requires a newer version of SunOS. Upgrading SunOS won't happen anytime soon, so I'm hoping for an Apache work around.
+
+I have tried the proposed solution in PR 3906, but the problem still exists.
+>How-To-Repeat:
+I can recreate this problem by telneting multiple times to httpd daemon on Port 80.
+eg : telnet devfe01.machine.com 80 &
+I throw it into the background so I can fire of 10 or so at a time.
+
+If I don't issue any further commands on these telnet sessions, /server-status shows the process in the R state. Most of this will correctly be timed out at 30 seconds. Some will stay indefinitely. It sometimes takes 2 or 3 tries to get the processes to hang.
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+
+From: "Meyer, Richard" <rmeyer@befree.com>
+To: "'submit@bugz.apache.org'" <submit@bugz.apache.org>, 
+	"'apache-bugdb@apache.org'" <apache-bugdb@apache.org>
+Cc: "'apbugs@Apache.Org'" <apbugs@Apache.Org>
+Subject: RE: os-solaris/7159: Solaris bug that causes httpd to hang in sle
+	eping state
+Date: Wed, 31 Jan 2001 13:35:40 -0500
+
+ This message is in MIME format. Since your mail reader does not understand
+ this format, some or all of this message may not be legible.
+ 
+ ------_=_NextPart_001_01C08BB4.9CB89310
+ Content-Type: text/plain;
+ 	charset="iso-8859-1"
+ 
+ I just noticed that I can append more information to an existing bug w/o
+ having to submit a new one. I already submitted a new one though. Sorry
+ about that.
+ 
+ 
+ An addendum to this bug,
+ 
+ Learning a bit more about gdb, I've attached to a hung process and entered
+ gdb> info threads
+ (gdb) info threads
+   8 Thread 3          0xef5b9790 in __lwp_sema_wait ()
+   7 Thread 2 (LWP 2)  0xef5b98d8 in __signotifywait ()
+   6 Thread 1 (LWP 1)  0xef5b8688 in _read ()
+   5 LWP    6          0xef5b9744 in ___lwp_cond_wait ()
+   4 LWP    6          0xef5b9744 in ___lwp_cond_wait ()
+   3 LWP    4          0xef5b9790 in __lwp_sema_wait ()
+   2 LWP    2          0xef5b98d8 in __signotifywait ()
+ * 1 LWP    1          0xef5b8688 in _read ()
+ 
+ Connecting to the unique threads and issueing >info stack calls I get :
+ (gdb) thread 1
+ [Switching to LWP    1        ]
+ #0  0xef5b8688 in _read ()
+ (gdb) info stack
+ #0  0xef5b8688 in _read ()
+ #1  0xef365b8c in _ti_read ()
+ #2  0x1fb58 in buff_read (fb=0xb1a48, buf=0xb1a88, nbyte=4096) at buff.c:299
+ #3  0x1fac8 in saferead_guts (fb=0xb1a48, buf=0xb1a88, nbyte=4096) at
+ buff.c:662
+ #4  0x1db30 in read_with_errors (fb=0xb1a48, buf=0xb1a88, nbyte=4096) at
+ buff.c:713
+ #5  0x1dffc in ap_bgets (buff=0xefffd800 "", n=8192, fb=0xb1a48) at
+ buff.c:866
+ #6  0x340a0 in getline (s=0xefffd800 "", n=8192, in=0xb1a48, fold=0) at
+ http_protocol.c:757
+ #7  0x34538 in read_request_line (r=0x644c68) at http_protocol.c:880
+ #8  0x34f18 in ap_read_request (conn=0x643c28) at http_protocol.c:1038
+ #9  0x308f8 in child_main (child_num_arg=3) at http_main.c:4166
+ #10 0x30ca4 in make_child (s=0xa3b78, slot=3, now=980869018) at
+ http_main.c:4336
+ #11 0x30db4 in startup_children (number_to_start=2) at http_main.c:4363
+ #12 0x31694 in standalone_main (argc=1, argv=0xeffffbcc) at http_main.c:4651
+ #13 0x32240 in main (argc=1, argv=0xeffffbcc) at http_main.c:4978
+ 
+ (gdb) thread 2
+ [Switching to LWP    2        ]
+ #0  0xef5b98d8 in __signotifywait ()
+ (gdb) info stack
+ #0  0xef5b98d8 in __signotifywait ()
+ #1  0xef35bdec in _dynamiclwps ()
+ 
+ (gdb) thread 3
+ [Switching to LWP    4        ]
+ #0  0xef5b9790 in __lwp_sema_wait ()
+ (gdb) info stack
+ #0  0xef5b9790 in __lwp_sema_wait ()
+ #1  0xef357ea0 in _park ()
+ #2  0xef357b84 in _swtch ()
+ #3  0xef35b000 in _reap_wait ()
+ #4  0xef35ad8c in _reaper ()
+ 
+ These are in addition to the stack trace I provided for the _lwp_cond_wait
+ thread yesterday.
+ 
+ BTW, we just heard from Sun and the bugfix which may address this problem
+ won't be available publicly until March 9,2001.
+ 
+ 
+ 
+ > -----Original Message-----
+ > From: submit@bugz.apache.org [mailto:submit@bugz.apache.org]
+ > Sent: Tuesday, January 30, 2001 2:30 PM
+ > To: rmeyer@befree.com
+ > Subject: Re: os-solaris/7159: Solaris bug that causes httpd to hang in
+ > sleeping state
+ > 
+ > 
+ > Thank you very much for your problem report.
+ > It has the internal identification `os-solaris/7159'.
+ > The individual assigned to look at your
+ > report is: apache. 
+ > 
+ > >Category:       os-solaris
+ > >Responsible:    apache
+ > >Synopsis:       Solaris bug that causes httpd to hang in 
+ > sleeping state
+ > >Arrival-Date:   Tue Jan 30 11:30:03 PST 2001
+ > 
+ 
+ ------_=_NextPart_001_01C08BB4.9CB89310
+ Content-Type: text/html;
+ 	charset="iso-8859-1"
+ Content-Transfer-Encoding: quoted-printable
+ 
+ <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2//EN">
+ <HTML>
+ <HEAD>
+ <META HTTP-EQUIV=3D"Content-Type" CONTENT=3D"text/html; =
+ charset=3Diso-8859-1">
+ <META NAME=3D"Generator" CONTENT=3D"MS Exchange Server version =
+ 5.5.2653.12">
+ <TITLE>RE: os-solaris/7159: Solaris bug that causes httpd to hang in =
+ sleeping state</TITLE>
+ </HEAD>
+ <BODY>
+ 
+ <P><FONT SIZE=3D2>I just noticed that I can append more information to =
+ an existing bug w/o having to submit a new one. I already submitted a =
+ new one though. Sorry about that.</FONT></P>
+ <BR>
+ 
+ <P><FONT SIZE=3D2>An addendum to this bug,</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>Learning a bit more about gdb, I've attached to a =
+ hung process and entered gdb&gt; info threads</FONT>
+ <BR><FONT SIZE=3D2>(gdb) info threads</FONT>
+ <BR><FONT SIZE=3D2>&nbsp; 8 Thread =
+ 3&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 0xef5b9790 in =
+ __lwp_sema_wait ()</FONT>
+ <BR><FONT SIZE=3D2>&nbsp; 7 Thread 2 (LWP 2)&nbsp; 0xef5b98d8 in =
+ __signotifywait ()</FONT>
+ <BR><FONT SIZE=3D2>&nbsp; 6 Thread 1 (LWP 1)&nbsp; 0xef5b8688 in _read =
+ ()</FONT>
+ <BR><FONT SIZE=3D2>&nbsp; 5 LWP&nbsp;&nbsp;&nbsp; =
+ 6&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 0xef5b9744 in =
+ ___lwp_cond_wait ()</FONT>
+ <BR><FONT SIZE=3D2>&nbsp; 4 LWP&nbsp;&nbsp;&nbsp; =
+ 6&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 0xef5b9744 in =
+ ___lwp_cond_wait ()</FONT>
+ <BR><FONT SIZE=3D2>&nbsp; 3 LWP&nbsp;&nbsp;&nbsp; =
+ 4&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 0xef5b9790 in =
+ __lwp_sema_wait ()</FONT>
+ <BR><FONT SIZE=3D2>&nbsp; 2 LWP&nbsp;&nbsp;&nbsp; =
+ 2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 0xef5b98d8 in =
+ __signotifywait ()</FONT>
+ <BR><FONT SIZE=3D2>* 1 LWP&nbsp;&nbsp;&nbsp; =
+ 1&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 0xef5b8688 in =
+ _read ()</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>Connecting to the unique threads and issueing =
+ &gt;info stack calls I get :</FONT>
+ <BR><FONT SIZE=3D2>(gdb) thread 1</FONT>
+ <BR><FONT SIZE=3D2>[Switching to LWP&nbsp;&nbsp;&nbsp; =
+ 1&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ]</FONT>
+ <BR><FONT SIZE=3D2>#0&nbsp; 0xef5b8688 in _read ()</FONT>
+ <BR><FONT SIZE=3D2>(gdb) info stack</FONT>
+ <BR><FONT SIZE=3D2>#0&nbsp; 0xef5b8688 in _read ()</FONT>
+ <BR><FONT SIZE=3D2>#1&nbsp; 0xef365b8c in _ti_read ()</FONT>
+ <BR><FONT SIZE=3D2>#2&nbsp; 0x1fb58 in buff_read (fb=3D0xb1a48, =
+ buf=3D0xb1a88, nbyte=3D4096) at buff.c:299</FONT>
+ <BR><FONT SIZE=3D2>#3&nbsp; 0x1fac8 in saferead_guts (fb=3D0xb1a48, =
+ buf=3D0xb1a88, nbyte=3D4096) at buff.c:662</FONT>
+ <BR><FONT SIZE=3D2>#4&nbsp; 0x1db30 in read_with_errors (fb=3D0xb1a48, =
+ buf=3D0xb1a88, nbyte=3D4096) at buff.c:713</FONT>
+ <BR><FONT SIZE=3D2>#5&nbsp; 0x1dffc in ap_bgets (buff=3D0xefffd800 =
+ &quot;&quot;, n=3D8192, fb=3D0xb1a48) at buff.c:866</FONT>
+ <BR><FONT SIZE=3D2>#6&nbsp; 0x340a0 in getline (s=3D0xefffd800 =
+ &quot;&quot;, n=3D8192, in=3D0xb1a48, fold=3D0) at =
+ http_protocol.c:757</FONT>
+ <BR><FONT SIZE=3D2>#7&nbsp; 0x34538 in read_request_line (r=3D0x644c68) =
+ at http_protocol.c:880</FONT>
+ <BR><FONT SIZE=3D2>#8&nbsp; 0x34f18 in ap_read_request =
+ (conn=3D0x643c28) at http_protocol.c:1038</FONT>
+ <BR><FONT SIZE=3D2>#9&nbsp; 0x308f8 in child_main (child_num_arg=3D3) =
+ at http_main.c:4166</FONT>
+ <BR><FONT SIZE=3D2>#10 0x30ca4 in make_child (s=3D0xa3b78, slot=3D3, =
+ now=3D980869018) at http_main.c:4336</FONT>
+ <BR><FONT SIZE=3D2>#11 0x30db4 in startup_children =
+ (number_to_start=3D2) at http_main.c:4363</FONT>
+ <BR><FONT SIZE=3D2>#12 0x31694 in standalone_main (argc=3D1, =
+ argv=3D0xeffffbcc) at http_main.c:4651</FONT>
+ <BR><FONT SIZE=3D2>#13 0x32240 in main (argc=3D1, argv=3D0xeffffbcc) at =
+ http_main.c:4978</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>(gdb) thread 2</FONT>
+ <BR><FONT SIZE=3D2>[Switching to LWP&nbsp;&nbsp;&nbsp; =
+ 2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ]</FONT>
+ <BR><FONT SIZE=3D2>#0&nbsp; 0xef5b98d8 in __signotifywait ()</FONT>
+ <BR><FONT SIZE=3D2>(gdb) info stack</FONT>
+ <BR><FONT SIZE=3D2>#0&nbsp; 0xef5b98d8 in __signotifywait ()</FONT>
+ <BR><FONT SIZE=3D2>#1&nbsp; 0xef35bdec in _dynamiclwps ()</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>(gdb) thread 3</FONT>
+ <BR><FONT SIZE=3D2>[Switching to LWP&nbsp;&nbsp;&nbsp; =
+ 4&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ]</FONT>
+ <BR><FONT SIZE=3D2>#0&nbsp; 0xef5b9790 in __lwp_sema_wait ()</FONT>
+ <BR><FONT SIZE=3D2>(gdb) info stack</FONT>
+ <BR><FONT SIZE=3D2>#0&nbsp; 0xef5b9790 in __lwp_sema_wait ()</FONT>
+ <BR><FONT SIZE=3D2>#1&nbsp; 0xef357ea0 in _park ()</FONT>
+ <BR><FONT SIZE=3D2>#2&nbsp; 0xef357b84 in _swtch ()</FONT>
+ <BR><FONT SIZE=3D2>#3&nbsp; 0xef35b000 in _reap_wait ()</FONT>
+ <BR><FONT SIZE=3D2>#4&nbsp; 0xef35ad8c in _reaper ()</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>These are in addition to the stack trace I provided =
+ for the _lwp_cond_wait thread yesterday.</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>BTW, we just heard from Sun and the bugfix which may =
+ address this problem won't be available publicly until March =
+ 9,2001.</FONT></P>
+ <BR>
+ <BR>
+ 
+ <P><FONT SIZE=3D2>&gt; -----Original Message-----</FONT>
+ <BR><FONT SIZE=3D2>&gt; From: submit@bugz.apache.org [<A =
+ HREF=3D"mailto:submit@bugz.apache.org">mailto:submit@bugz.apache.org</A>=
+ ]</FONT>
+ <BR><FONT SIZE=3D2>&gt; Sent: Tuesday, January 30, 2001 2:30 PM</FONT>
+ <BR><FONT SIZE=3D2>&gt; To: rmeyer@befree.com</FONT>
+ <BR><FONT SIZE=3D2>&gt; Subject: Re: os-solaris/7159: Solaris bug that =
+ causes httpd to hang in</FONT>
+ <BR><FONT SIZE=3D2>&gt; sleeping state</FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ <BR><FONT SIZE=3D2>&gt; Thank you very much for your problem =
+ report.</FONT>
+ <BR><FONT SIZE=3D2>&gt; It has the internal identification =
+ `os-solaris/7159'.</FONT>
+ <BR><FONT SIZE=3D2>&gt; The individual assigned to look at your</FONT>
+ <BR><FONT SIZE=3D2>&gt; report is: apache. </FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ <BR><FONT SIZE=3D2>&gt; =
+ &gt;Category:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; os-solaris</FONT>
+ <BR><FONT SIZE=3D2>&gt; &gt;Responsible:&nbsp;&nbsp;&nbsp; =
+ apache</FONT>
+ <BR><FONT SIZE=3D2>&gt; =
+ &gt;Synopsis:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Solaris bug that =
+ causes httpd to hang in </FONT>
+ <BR><FONT SIZE=3D2>&gt; sleeping state</FONT>
+ <BR><FONT SIZE=3D2>&gt; &gt;Arrival-Date:&nbsp;&nbsp; Tue Jan 30 =
+ 11:30:03 PST 2001</FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ </P>
+ 
+ </BODY>
+ </HTML>
+ ------_=_NextPart_001_01C08BB4.9CB89310--
+
+From: "Meyer, Richard" <rmeyer@befree.com>
+To: "'submit@bugz.apache.org'" <submit@bugz.apache.org>, 
+	"'apache-bugdb@apache.org'" <apache-bugdb@apache.org>
+Cc: "'apbugs@Apache.Org'" <apbugs@Apache.Org>
+Subject: RE: os-solaris/7159: Solaris bug that causes httpd to hang in sle
+	eping state
+Date: Wed, 31 Jan 2001 13:35:40 -0500
+
+ This message is in MIME format. Since your mail reader does not understand
+ this format, some or all of this message may not be legible.
+ 
+ ------_=_NextPart_001_01C08BB4.9CB89310
+ Content-Type: text/plain;
+ 	charset="iso-8859-1"
+ 
+ I just noticed that I can append more information to an existing bug w/o
+ having to submit a new one. I already submitted a new one though. Sorry
+ about that.
+ 
+ 
+ An addendum to this bug,
+ 
+ Learning a bit more about gdb, I've attached to a hung process and entered
+ gdb> info threads
+ (gdb) info threads
+   8 Thread 3          0xef5b9790 in __lwp_sema_wait ()
+   7 Thread 2 (LWP 2)  0xef5b98d8 in __signotifywait ()
+   6 Thread 1 (LWP 1)  0xef5b8688 in _read ()
+   5 LWP    6          0xef5b9744 in ___lwp_cond_wait ()
+   4 LWP    6          0xef5b9744 in ___lwp_cond_wait ()
+   3 LWP    4          0xef5b9790 in __lwp_sema_wait ()
+   2 LWP    2          0xef5b98d8 in __signotifywait ()
+ * 1 LWP    1          0xef5b8688 in _read ()
+ 
+ Connecting to the unique threads and issueing >info stack calls I get :
+ (gdb) thread 1
+ [Switching to LWP    1        ]
+ #0  0xef5b8688 in _read ()
+ (gdb) info stack
+ #0  0xef5b8688 in _read ()
+ #1  0xef365b8c in _ti_read ()
+ #2  0x1fb58 in buff_read (fb=0xb1a48, buf=0xb1a88, nbyte=4096) at buff.c:299
+ #3  0x1fac8 in saferead_guts (fb=0xb1a48, buf=0xb1a88, nbyte=4096) at
+ buff.c:662
+ #4  0x1db30 in read_with_errors (fb=0xb1a48, buf=0xb1a88, nbyte=4096) at
+ buff.c:713
+ #5  0x1dffc in ap_bgets (buff=0xefffd800 "", n=8192, fb=0xb1a48) at
+ buff.c:866
+ #6  0x340a0 in getline (s=0xefffd800 "", n=8192, in=0xb1a48, fold=0) at
+ http_protocol.c:757
+ #7  0x34538 in read_request_line (r=0x644c68) at http_protocol.c:880
+ #8  0x34f18 in ap_read_request (conn=0x643c28) at http_protocol.c:1038
+ #9  0x308f8 in child_main (child_num_arg=3) at http_main.c:4166
+ #10 0x30ca4 in make_child (s=0xa3b78, slot=3, now=980869018) at
+ http_main.c:4336
+ #11 0x30db4 in startup_children (number_to_start=2) at http_main.c:4363
+ #12 0x31694 in standalone_main (argc=1, argv=0xeffffbcc) at http_main.c:4651
+ #13 0x32240 in main (argc=1, argv=0xeffffbcc) at http_main.c:4978
+ 
+ (gdb) thread 2
+ [Switching to LWP    2        ]
+ #0  0xef5b98d8 in __signotifywait ()
+ (gdb) info stack
+ #0  0xef5b98d8 in __signotifywait ()
+ #1  0xef35bdec in _dynamiclwps ()
+ 
+ (gdb) thread 3
+ [Switching to LWP    4        ]
+ #0  0xef5b9790 in __lwp_sema_wait ()
+ (gdb) info stack
+ #0  0xef5b9790 in __lwp_sema_wait ()
+ #1  0xef357ea0 in _park ()
+ #2  0xef357b84 in _swtch ()
+ #3  0xef35b000 in _reap_wait ()
+ #4  0xef35ad8c in _reaper ()
+ 
+ These are in addition to the stack trace I provided for the _lwp_cond_wait
+ thread yesterday.
+ 
+ BTW, we just heard from Sun and the bugfix which may address this problem
+ won't be available publicly until March 9,2001.
+ 
+ 
+ 
+ > -----Original Message-----
+ > From: submit@bugz.apache.org [mailto:submit@bugz.apache.org]
+ > Sent: Tuesday, January 30, 2001 2:30 PM
+ > To: rmeyer@befree.com
+ > Subject: Re: os-solaris/7159: Solaris bug that causes httpd to hang in
+ > sleeping state
+ > 
+ > 
+ > Thank you very much for your problem report.
+ > It has the internal identification `os-solaris/7159'.
+ > The individual assigned to look at your
+ > report is: apache. 
+ > 
+ > >Category:       os-solaris
+ > >Responsible:    apache
+ > >Synopsis:       Solaris bug that causes httpd to hang in 
+ > sleeping state
+ > >Arrival-Date:   Tue Jan 30 11:30:03 PST 2001
+ > 
+ 
+ ------_=_NextPart_001_01C08BB4.9CB89310
+ Content-Type: text/html;
+ 	charset="iso-8859-1"
+ Content-Transfer-Encoding: quoted-printable
+ 
+ <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2//EN">
+ <HTML>
+ <HEAD>
+ <META HTTP-EQUIV=3D"Content-Type" CONTENT=3D"text/html; =
+ charset=3Diso-8859-1">
+ <META NAME=3D"Generator" CONTENT=3D"MS Exchange Server version =
+ 5.5.2653.12">
+ <TITLE>RE: os-solaris/7159: Solaris bug that causes httpd to hang in =
+ sleeping state</TITLE>
+ </HEAD>
+ <BODY>
+ 
+ <P><FONT SIZE=3D2>I just noticed that I can append more information to =
+ an existing bug w/o having to submit a new one. I already submitted a =
+ new one though. Sorry about that.</FONT></P>
+ <BR>
+ 
+ <P><FONT SIZE=3D2>An addendum to this bug,</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>Learning a bit more about gdb, I've attached to a =
+ hung process and entered gdb&gt; info threads</FONT>
+ <BR><FONT SIZE=3D2>(gdb) info threads</FONT>
+ <BR><FONT SIZE=3D2>&nbsp; 8 Thread =
+ 3&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 0xef5b9790 in =
+ __lwp_sema_wait ()</FONT>
+ <BR><FONT SIZE=3D2>&nbsp; 7 Thread 2 (LWP 2)&nbsp; 0xef5b98d8 in =
+ __signotifywait ()</FONT>
+ <BR><FONT SIZE=3D2>&nbsp; 6 Thread 1 (LWP 1)&nbsp; 0xef5b8688 in _read =
+ ()</FONT>
+ <BR><FONT SIZE=3D2>&nbsp; 5 LWP&nbsp;&nbsp;&nbsp; =
+ 6&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 0xef5b9744 in =
+ ___lwp_cond_wait ()</FONT>
+ <BR><FONT SIZE=3D2>&nbsp; 4 LWP&nbsp;&nbsp;&nbsp; =
+ 6&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 0xef5b9744 in =
+ ___lwp_cond_wait ()</FONT>
+ <BR><FONT SIZE=3D2>&nbsp; 3 LWP&nbsp;&nbsp;&nbsp; =
+ 4&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 0xef5b9790 in =
+ __lwp_sema_wait ()</FONT>
+ <BR><FONT SIZE=3D2>&nbsp; 2 LWP&nbsp;&nbsp;&nbsp; =
+ 2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 0xef5b98d8 in =
+ __signotifywait ()</FONT>
+ <BR><FONT SIZE=3D2>* 1 LWP&nbsp;&nbsp;&nbsp; =
+ 1&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 0xef5b8688 in =
+ _read ()</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>Connecting to the unique threads and issueing =
+ &gt;info stack calls I get :</FONT>
+ <BR><FONT SIZE=3D2>(gdb) thread 1</FONT>
+ <BR><FONT SIZE=3D2>[Switching to LWP&nbsp;&nbsp;&nbsp; =
+ 1&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ]</FONT>
+ <BR><FONT SIZE=3D2>#0&nbsp; 0xef5b8688 in _read ()</FONT>
+ <BR><FONT SIZE=3D2>(gdb) info stack</FONT>
+ <BR><FONT SIZE=3D2>#0&nbsp; 0xef5b8688 in _read ()</FONT>
+ <BR><FONT SIZE=3D2>#1&nbsp; 0xef365b8c in _ti_read ()</FONT>
+ <BR><FONT SIZE=3D2>#2&nbsp; 0x1fb58 in buff_read (fb=3D0xb1a48, =
+ buf=3D0xb1a88, nbyte=3D4096) at buff.c:299</FONT>
+ <BR><FONT SIZE=3D2>#3&nbsp; 0x1fac8 in saferead_guts (fb=3D0xb1a48, =
+ buf=3D0xb1a88, nbyte=3D4096) at buff.c:662</FONT>
+ <BR><FONT SIZE=3D2>#4&nbsp; 0x1db30 in read_with_errors (fb=3D0xb1a48, =
+ buf=3D0xb1a88, nbyte=3D4096) at buff.c:713</FONT>
+ <BR><FONT SIZE=3D2>#5&nbsp; 0x1dffc in ap_bgets (buff=3D0xefffd800 =
+ &quot;&quot;, n=3D8192, fb=3D0xb1a48) at buff.c:866</FONT>
+ <BR><FONT SIZE=3D2>#6&nbsp; 0x340a0 in getline (s=3D0xefffd800 =
+ &quot;&quot;, n=3D8192, in=3D0xb1a48, fold=3D0) at =
+ http_protocol.c:757</FONT>
+ <BR><FONT SIZE=3D2>#7&nbsp; 0x34538 in read_request_line (r=3D0x644c68) =
+ at http_protocol.c:880</FONT>
+ <BR><FONT SIZE=3D2>#8&nbsp; 0x34f18 in ap_read_request =
+ (conn=3D0x643c28) at http_protocol.c:1038</FONT>
+ <BR><FONT SIZE=3D2>#9&nbsp; 0x308f8 in child_main (child_num_arg=3D3) =
+ at http_main.c:4166</FONT>
+ <BR><FONT SIZE=3D2>#10 0x30ca4 in make_child (s=3D0xa3b78, slot=3D3, =
+ now=3D980869018) at http_main.c:4336</FONT>
+ <BR><FONT SIZE=3D2>#11 0x30db4 in startup_children =
+ (number_to_start=3D2) at http_main.c:4363</FONT>
+ <BR><FONT SIZE=3D2>#12 0x31694 in standalone_main (argc=3D1, =
+ argv=3D0xeffffbcc) at http_main.c:4651</FONT>
+ <BR><FONT SIZE=3D2>#13 0x32240 in main (argc=3D1, argv=3D0xeffffbcc) at =
+ http_main.c:4978</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>(gdb) thread 2</FONT>
+ <BR><FONT SIZE=3D2>[Switching to LWP&nbsp;&nbsp;&nbsp; =
+ 2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ]</FONT>
+ <BR><FONT SIZE=3D2>#0&nbsp; 0xef5b98d8 in __signotifywait ()</FONT>
+ <BR><FONT SIZE=3D2>(gdb) info stack</FONT>
+ <BR><FONT SIZE=3D2>#0&nbsp; 0xef5b98d8 in __signotifywait ()</FONT>
+ <BR><FONT SIZE=3D2>#1&nbsp; 0xef35bdec in _dynamiclwps ()</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>(gdb) thread 3</FONT>
+ <BR><FONT SIZE=3D2>[Switching to LWP&nbsp;&nbsp;&nbsp; =
+ 4&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ]</FONT>
+ <BR><FONT SIZE=3D2>#0&nbsp; 0xef5b9790 in __lwp_sema_wait ()</FONT>
+ <BR><FONT SIZE=3D2>(gdb) info stack</FONT>
+ <BR><FONT SIZE=3D2>#0&nbsp; 0xef5b9790 in __lwp_sema_wait ()</FONT>
+ <BR><FONT SIZE=3D2>#1&nbsp; 0xef357ea0 in _park ()</FONT>
+ <BR><FONT SIZE=3D2>#2&nbsp; 0xef357b84 in _swtch ()</FONT>
+ <BR><FONT SIZE=3D2>#3&nbsp; 0xef35b000 in _reap_wait ()</FONT>
+ <BR><FONT SIZE=3D2>#4&nbsp; 0xef35ad8c in _reaper ()</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>These are in addition to the stack trace I provided =
+ for the _lwp_cond_wait thread yesterday.</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>BTW, we just heard from Sun and the bugfix which may =
+ address this problem won't be available publicly until March =
+ 9,2001.</FONT></P>
+ <BR>
+ <BR>
+ 
+ <P><FONT SIZE=3D2>&gt; -----Original Message-----</FONT>
+ <BR><FONT SIZE=3D2>&gt; From: submit@bugz.apache.org [<A =
+ HREF=3D"mailto:submit@bugz.apache.org">mailto:submit@bugz.apache.org</A>=
+ ]</FONT>
+ <BR><FONT SIZE=3D2>&gt; Sent: Tuesday, January 30, 2001 2:30 PM</FONT>
+ <BR><FONT SIZE=3D2>&gt; To: rmeyer@befree.com</FONT>
+ <BR><FONT SIZE=3D2>&gt; Subject: Re: os-solaris/7159: Solaris bug that =
+ causes httpd to hang in</FONT>
+ <BR><FONT SIZE=3D2>&gt; sleeping state</FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ <BR><FONT SIZE=3D2>&gt; Thank you very much for your problem =
+ report.</FONT>
+ <BR><FONT SIZE=3D2>&gt; It has the internal identification =
+ `os-solaris/7159'.</FONT>
+ <BR><FONT SIZE=3D2>&gt; The individual assigned to look at your</FONT>
+ <BR><FONT SIZE=3D2>&gt; report is: apache. </FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ <BR><FONT SIZE=3D2>&gt; =
+ &gt;Category:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; os-solaris</FONT>
+ <BR><FONT SIZE=3D2>&gt; &gt;Responsible:&nbsp;&nbsp;&nbsp; =
+ apache</FONT>
+ <BR><FONT SIZE=3D2>&gt; =
+ &gt;Synopsis:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Solaris bug that =
+ causes httpd to hang in </FONT>
+ <BR><FONT SIZE=3D2>&gt; sleeping state</FONT>
+ <BR><FONT SIZE=3D2>&gt; &gt;Arrival-Date:&nbsp;&nbsp; Tue Jan 30 =
+ 11:30:03 PST 2001</FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ </P>
+ 
+ </BODY>
+ </HTML>
+ ------_=_NextPart_001_01C08BB4.9CB89310--
+
+From: "Meyer, Richard" <rmeyer@befree.com>
+To: "'submit@bugz.apache.org'" <submit@bugz.apache.org>, 
+	"'apache-bugdb@apache.org'" <apache-bugdb@apache.org>
+Cc: "'apbugs@apache.org'" <apbugs@apache.org>
+Subject: RE: os-solaris/7159: Solaris bug that causes httpd to hang in sle
+	eping state
+Date: Thu, 1 Feb 2001 12:30:20 -0500 
+
+ This message is in MIME format. Since your mail reader does not understand
+ this format, some or all of this message may not be legible.
+ 
+ ------_=_NextPart_001_01C08C74.A6D16690
+ Content-Type: text/plain;
+ 	charset="iso-8859-1"
+ 
+ Some more information regarding this problem.
+ 
+ We are using C modules, loaded as shared objects, to handle some location
+ tags and interface with an Oracle database.
+ As a test, we disabled all of our modules (commenting out the LoadModule,
+ AddModule, and <Location>...</Location> tags.
+ Lo and behold, we can't replicate this problem.
+ 
+ So, I tried putting back the LoadModule and AddModule tags, but not the
+ <Location> stuff. I also took out the mod_init, child_init,
+ create_dir_config and command_table stuff from the module. If I'm not
+ mistaken this is everything from the module that would execute on startup.
+ The only thing left is basically the handler, which should only be executed
+ when the defined Location URL is received. Thus the .so should only load
+ into memory and not execute anything, correct?
+ 
+ Doing this, I tried to replicate the problem and I AM able to. 
+ 
+ At this point I used apxs to create a dummy .so for me (mod_foo.so). I
+ installed this and re-removed my own module and tried to recreate the
+ problem. In this case, I am NOT able to recreate this problem.
+ 
+ The only difference I can see between mod_foo.so and my module are the
+ Oracle libraries that have to be linked in, in order to use OCI and the
+ overall size of the .so. Mine is 162K, while I've noticed that all of the
+ Apache provide .so's are less than 100K. 
+ 
+ If somebody can send me an email, I'd be willing to share httpd.conf files
+ and the setup portion of the module code. I'm not comfortable posting this
+ on a public board.
+ 
+ > -----Original Message-----
+ > From: submit@bugz.apache.org [mailto:submit@bugz.apache.org]
+ > Sent: Tuesday, January 30, 2001 2:30 PM
+ > To: rmeyer@befree.com
+ > Subject: Re: os-solaris/7159: Solaris bug that causes httpd to hang in
+ > sleeping state
+ > 
+ > 
+ > Thank you very much for your problem report.
+ > It has the internal identification `os-solaris/7159'.
+ > The individual assigned to look at your
+ > report is: apache. 
+ > 
+ > >Category:       os-solaris
+ > >Responsible:    apache
+ > >Synopsis:       Solaris bug that causes httpd to hang in 
+ > sleeping state
+ > >Arrival-Date:   Tue Jan 30 11:30:03 PST 2001
+ > 
+ 
+ ------_=_NextPart_001_01C08C74.A6D16690
+ Content-Type: text/html;
+ 	charset="iso-8859-1"
+ Content-Transfer-Encoding: quoted-printable
+ 
+ <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2//EN">
+ <HTML>
+ <HEAD>
+ <META HTTP-EQUIV=3D"Content-Type" CONTENT=3D"text/html; =
+ charset=3Diso-8859-1">
+ <META NAME=3D"Generator" CONTENT=3D"MS Exchange Server version =
+ 5.5.2653.12">
+ <TITLE>RE: os-solaris/7159: Solaris bug that causes httpd to hang in =
+ sleeping state</TITLE>
+ </HEAD>
+ <BODY>
+ 
+ <P><FONT SIZE=3D2>Some more information regarding this problem.</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>We are using C modules, loaded as shared objects, to =
+ handle some location tags and interface with an Oracle database.</FONT>
+ <BR><FONT SIZE=3D2>As a test, we disabled all of our modules =
+ (commenting out the LoadModule, AddModule, and =
+ &lt;Location&gt;...&lt;/Location&gt; tags.</FONT>
+ <BR><FONT SIZE=3D2>Lo and behold, we can't replicate this =
+ problem.</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>So, I tried putting back the LoadModule and AddModule =
+ tags, but not the &lt;Location&gt; stuff. I also took out the mod_init, =
+ child_init, create_dir_config and command_table stuff from the module. =
+ If I'm not mistaken this is everything from the module that would =
+ execute on startup. The only thing left is basically the handler, which =
+ should only be executed when the defined Location URL is received. Thus =
+ the .so should only load into memory and not execute anything, =
+ correct?</FONT></P>
+ 
+ <P><FONT SIZE=3D2>Doing this, I tried to replicate the problem and I AM =
+ able to. </FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>At this point I used apxs to create a dummy .so for =
+ me (mod_foo.so). I installed this and re-removed my own module and =
+ tried to recreate the problem. In this case, I am NOT able to recreate =
+ this problem.</FONT></P>
+ 
+ <P><FONT SIZE=3D2>The only difference I can see between mod_foo.so and =
+ my module are the Oracle libraries that have to be linked in, in order =
+ to use OCI and the overall size of the .so. Mine is 162K, while I've =
+ noticed that all of the Apache provide .so's are less than 100K. =
+ </FONT></P>
+ 
+ <P><FONT SIZE=3D2>If somebody can send me an email, I'd be willing to =
+ share httpd.conf files and the setup portion of the module code. I'm =
+ not comfortable posting this on a public board.</FONT></P>
+ 
+ <P><FONT SIZE=3D2>&gt; -----Original Message-----</FONT>
+ <BR><FONT SIZE=3D2>&gt; From: submit@bugz.apache.org [<A =
+ HREF=3D"mailto:submit@bugz.apache.org">mailto:submit@bugz.apache.org</A>=
+ ]</FONT>
+ <BR><FONT SIZE=3D2>&gt; Sent: Tuesday, January 30, 2001 2:30 PM</FONT>
+ <BR><FONT SIZE=3D2>&gt; To: rmeyer@befree.com</FONT>
+ <BR><FONT SIZE=3D2>&gt; Subject: Re: os-solaris/7159: Solaris bug that =
+ causes httpd to hang in</FONT>
+ <BR><FONT SIZE=3D2>&gt; sleeping state</FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ <BR><FONT SIZE=3D2>&gt; Thank you very much for your problem =
+ report.</FONT>
+ <BR><FONT SIZE=3D2>&gt; It has the internal identification =
+ `os-solaris/7159'.</FONT>
+ <BR><FONT SIZE=3D2>&gt; The individual assigned to look at your</FONT>
+ <BR><FONT SIZE=3D2>&gt; report is: apache. </FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ <BR><FONT SIZE=3D2>&gt; =
+ &gt;Category:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; os-solaris</FONT>
+ <BR><FONT SIZE=3D2>&gt; &gt;Responsible:&nbsp;&nbsp;&nbsp; =
+ apache</FONT>
+ <BR><FONT SIZE=3D2>&gt; =
+ &gt;Synopsis:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Solaris bug that =
+ causes httpd to hang in </FONT>
+ <BR><FONT SIZE=3D2>&gt; sleeping state</FONT>
+ <BR><FONT SIZE=3D2>&gt; &gt;Arrival-Date:&nbsp;&nbsp; Tue Jan 30 =
+ 11:30:03 PST 2001</FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ </P>
+ 
+ </BODY>
+ </HTML>
+ ------_=_NextPart_001_01C08C74.A6D16690--
+
+From: "Meyer, Richard" <rmeyer@befree.com>
+To: "'submit@bugz.apache.org'" <submit@bugz.apache.org>, 
+	"'apache-bugdb@apache.org'" <apache-bugdb@apache.org>
+Cc: "'apbugs@apache.org'" <apbugs@apache.org>
+Subject: RE: os-solaris/7159: Solaris bug that causes httpd to hang in sle
+	eping state
+Date: Thu, 1 Feb 2001 12:30:20 -0500 
+
+ This message is in MIME format. Since your mail reader does not understand
+ this format, some or all of this message may not be legible.
+ 
+ ------_=_NextPart_001_01C08C74.A6D16690
+ Content-Type: text/plain;
+ 	charset="iso-8859-1"
+ 
+ Some more information regarding this problem.
+ 
+ We are using C modules, loaded as shared objects, to handle some location
+ tags and interface with an Oracle database.
+ As a test, we disabled all of our modules (commenting out the LoadModule,
+ AddModule, and <Location>...</Location> tags.
+ Lo and behold, we can't replicate this problem.
+ 
+ So, I tried putting back the LoadModule and AddModule tags, but not the
+ <Location> stuff. I also took out the mod_init, child_init,
+ create_dir_config and command_table stuff from the module. If I'm not
+ mistaken this is everything from the module that would execute on startup.
+ The only thing left is basically the handler, which should only be executed
+ when the defined Location URL is received. Thus the .so should only load
+ into memory and not execute anything, correct?
+ 
+ Doing this, I tried to replicate the problem and I AM able to. 
+ 
+ At this point I used apxs to create a dummy .so for me (mod_foo.so). I
+ installed this and re-removed my own module and tried to recreate the
+ problem. In this case, I am NOT able to recreate this problem.
+ 
+ The only difference I can see between mod_foo.so and my module are the
+ Oracle libraries that have to be linked in, in order to use OCI and the
+ overall size of the .so. Mine is 162K, while I've noticed that all of the
+ Apache provide .so's are less than 100K. 
+ 
+ If somebody can send me an email, I'd be willing to share httpd.conf files
+ and the setup portion of the module code. I'm not comfortable posting this
+ on a public board.
+ 
+ > -----Original Message-----
+ > From: submit@bugz.apache.org [mailto:submit@bugz.apache.org]
+ > Sent: Tuesday, January 30, 2001 2:30 PM
+ > To: rmeyer@befree.com
+ > Subject: Re: os-solaris/7159: Solaris bug that causes httpd to hang in
+ > sleeping state
+ > 
+ > 
+ > Thank you very much for your problem report.
+ > It has the internal identification `os-solaris/7159'.
+ > The individual assigned to look at your
+ > report is: apache. 
+ > 
+ > >Category:       os-solaris
+ > >Responsible:    apache
+ > >Synopsis:       Solaris bug that causes httpd to hang in 
+ > sleeping state
+ > >Arrival-Date:   Tue Jan 30 11:30:03 PST 2001
+ > 
+ 
+ ------_=_NextPart_001_01C08C74.A6D16690
+ Content-Type: text/html;
+ 	charset="iso-8859-1"
+ Content-Transfer-Encoding: quoted-printable
+ 
+ <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2//EN">
+ <HTML>
+ <HEAD>
+ <META HTTP-EQUIV=3D"Content-Type" CONTENT=3D"text/html; =
+ charset=3Diso-8859-1">
+ <META NAME=3D"Generator" CONTENT=3D"MS Exchange Server version =
+ 5.5.2653.12">
+ <TITLE>RE: os-solaris/7159: Solaris bug that causes httpd to hang in =
+ sleeping state</TITLE>
+ </HEAD>
+ <BODY>
+ 
+ <P><FONT SIZE=3D2>Some more information regarding this problem.</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>We are using C modules, loaded as shared objects, to =
+ handle some location tags and interface with an Oracle database.</FONT>
+ <BR><FONT SIZE=3D2>As a test, we disabled all of our modules =
+ (commenting out the LoadModule, AddModule, and =
+ &lt;Location&gt;...&lt;/Location&gt; tags.</FONT>
+ <BR><FONT SIZE=3D2>Lo and behold, we can't replicate this =
+ problem.</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>So, I tried putting back the LoadModule and AddModule =
+ tags, but not the &lt;Location&gt; stuff. I also took out the mod_init, =
+ child_init, create_dir_config and command_table stuff from the module. =
+ If I'm not mistaken this is everything from the module that would =
+ execute on startup. The only thing left is basically the handler, which =
+ should only be executed when the defined Location URL is received. Thus =
+ the .so should only load into memory and not execute anything, =
+ correct?</FONT></P>
+ 
+ <P><FONT SIZE=3D2>Doing this, I tried to replicate the problem and I AM =
+ able to. </FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>At this point I used apxs to create a dummy .so for =
+ me (mod_foo.so). I installed this and re-removed my own module and =
+ tried to recreate the problem. In this case, I am NOT able to recreate =
+ this problem.</FONT></P>
+ 
+ <P><FONT SIZE=3D2>The only difference I can see between mod_foo.so and =
+ my module are the Oracle libraries that have to be linked in, in order =
+ to use OCI and the overall size of the .so. Mine is 162K, while I've =
+ noticed that all of the Apache provide .so's are less than 100K. =
+ </FONT></P>
+ 
+ <P><FONT SIZE=3D2>If somebody can send me an email, I'd be willing to =
+ share httpd.conf files and the setup portion of the module code. I'm =
+ not comfortable posting this on a public board.</FONT></P>
+ 
+ <P><FONT SIZE=3D2>&gt; -----Original Message-----</FONT>
+ <BR><FONT SIZE=3D2>&gt; From: submit@bugz.apache.org [<A =
+ HREF=3D"mailto:submit@bugz.apache.org">mailto:submit@bugz.apache.org</A>=
+ ]</FONT>
+ <BR><FONT SIZE=3D2>&gt; Sent: Tuesday, January 30, 2001 2:30 PM</FONT>
+ <BR><FONT SIZE=3D2>&gt; To: rmeyer@befree.com</FONT>
+ <BR><FONT SIZE=3D2>&gt; Subject: Re: os-solaris/7159: Solaris bug that =
+ causes httpd to hang in</FONT>
+ <BR><FONT SIZE=3D2>&gt; sleeping state</FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ <BR><FONT SIZE=3D2>&gt; Thank you very much for your problem =
+ report.</FONT>
+ <BR><FONT SIZE=3D2>&gt; It has the internal identification =
+ `os-solaris/7159'.</FONT>
+ <BR><FONT SIZE=3D2>&gt; The individual assigned to look at your</FONT>
+ <BR><FONT SIZE=3D2>&gt; report is: apache. </FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ <BR><FONT SIZE=3D2>&gt; =
+ &gt;Category:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; os-solaris</FONT>
+ <BR><FONT SIZE=3D2>&gt; &gt;Responsible:&nbsp;&nbsp;&nbsp; =
+ apache</FONT>
+ <BR><FONT SIZE=3D2>&gt; =
+ &gt;Synopsis:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Solaris bug that =
+ causes httpd to hang in </FONT>
+ <BR><FONT SIZE=3D2>&gt; sleeping state</FONT>
+ <BR><FONT SIZE=3D2>&gt; &gt;Arrival-Date:&nbsp;&nbsp; Tue Jan 30 =
+ 11:30:03 PST 2001</FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ </P>
+ 
+ </BODY>
+ </HTML>
+ ------_=_NextPart_001_01C08C74.A6D16690--
+
+From: "Meyer, Richard" <rmeyer@befree.com>
+To: "'submit@bugz.apache.org'" <submit@bugz.apache.org>, 
+	"'apache-bugdb@apache.org'" <apache-bugdb@apache.org>
+Cc: "'apbugs@apache.org'" <apbugs@apache.org>
+Subject: RE: os-solaris/7159: Solaris bug that causes httpd to hang in sle
+	eping state
+Date: Thu, 1 Feb 2001 15:29:15 -0500 
+
+ This message is in MIME format. Since your mail reader does not understand
+ this format, some or all of this message may not be legible.
+ 
+ ------_=_NextPart_001_01C08C8D.A5606810
+ Content-Type: text/plain;
+ 	charset="iso-8859-1"
+ 
+ Sorry for the mixup, but you can close this problem.
+ 
+ It turned out to be a problem with the script that Oracle had provided to
+ link in their OCI libraries. 
+ One of the libraries in included was libthread.a. My manager remembered
+ having problems with that a long time ago with gcc, so he suggested I take
+ it out and try again.
+ 
+ I did this, and now Apache seems to be correctly timing out all of the
+ broken connections that we simulate.
+ 
+ Thanks,
+ 
+ Rick
+ 
+ 
+ > -----Original Message-----
+ > From: submit@bugz.apache.org [mailto:submit@bugz.apache.org]
+ > Sent: Tuesday, January 30, 2001 2:30 PM
+ > To: rmeyer@befree.com
+ > Subject: Re: os-solaris/7159: Solaris bug that causes httpd to hang in
+ > sleeping state
+ > 
+ > 
+ > Thank you very much for your problem report.
+ > It has the internal identification `os-solaris/7159'.
+ > The individual assigned to look at your
+ > report is: apache. 
+ > 
+ > >Category:       os-solaris
+ > >Responsible:    apache
+ > >Synopsis:       Solaris bug that causes httpd to hang in 
+ > sleeping state
+ > >Arrival-Date:   Tue Jan 30 11:30:03 PST 2001
+ > 
+ 
+ ------_=_NextPart_001_01C08C8D.A5606810
+ Content-Type: text/html;
+ 	charset="iso-8859-1"
+ Content-Transfer-Encoding: quoted-printable
+ 
+ <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2//EN">
+ <HTML>
+ <HEAD>
+ <META HTTP-EQUIV=3D"Content-Type" CONTENT=3D"text/html; =
+ charset=3Diso-8859-1">
+ <META NAME=3D"Generator" CONTENT=3D"MS Exchange Server version =
+ 5.5.2653.12">
+ <TITLE>RE: os-solaris/7159: Solaris bug that causes httpd to hang in =
+ sleeping state</TITLE>
+ </HEAD>
+ <BODY>
+ 
+ <P><FONT SIZE=3D2>Sorry for the mixup, but you can close this =
+ problem.</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>It turned out to be a problem with the script that =
+ Oracle had provided to link in their OCI libraries. </FONT>
+ <BR><FONT SIZE=3D2>One of the libraries in included was libthread.a. My =
+ manager remembered having problems with that a long time ago with gcc, =
+ so he suggested I take it out and try again.</FONT></P>
+ 
+ <P><FONT SIZE=3D2>I did this, and now Apache seems to be correctly =
+ timing out all of the broken connections that we simulate.</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>Thanks,</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>Rick</FONT>
+ </P>
+ <BR>
+ 
+ <P><FONT SIZE=3D2>&gt; -----Original Message-----</FONT>
+ <BR><FONT SIZE=3D2>&gt; From: submit@bugz.apache.org [<A =
+ HREF=3D"mailto:submit@bugz.apache.org">mailto:submit@bugz.apache.org</A>=
+ ]</FONT>
+ <BR><FONT SIZE=3D2>&gt; Sent: Tuesday, January 30, 2001 2:30 PM</FONT>
+ <BR><FONT SIZE=3D2>&gt; To: rmeyer@befree.com</FONT>
+ <BR><FONT SIZE=3D2>&gt; Subject: Re: os-solaris/7159: Solaris bug that =
+ causes httpd to hang in</FONT>
+ <BR><FONT SIZE=3D2>&gt; sleeping state</FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ <BR><FONT SIZE=3D2>&gt; Thank you very much for your problem =
+ report.</FONT>
+ <BR><FONT SIZE=3D2>&gt; It has the internal identification =
+ `os-solaris/7159'.</FONT>
+ <BR><FONT SIZE=3D2>&gt; The individual assigned to look at your</FONT>
+ <BR><FONT SIZE=3D2>&gt; report is: apache. </FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ <BR><FONT SIZE=3D2>&gt; =
+ &gt;Category:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; os-solaris</FONT>
+ <BR><FONT SIZE=3D2>&gt; &gt;Responsible:&nbsp;&nbsp;&nbsp; =
+ apache</FONT>
+ <BR><FONT SIZE=3D2>&gt; =
+ &gt;Synopsis:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Solaris bug that =
+ causes httpd to hang in </FONT>
+ <BR><FONT SIZE=3D2>&gt; sleeping state</FONT>
+ <BR><FONT SIZE=3D2>&gt; &gt;Arrival-Date:&nbsp;&nbsp; Tue Jan 30 =
+ 11:30:03 PST 2001</FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ </P>
+ 
+ </BODY>
+ </HTML>
+ ------_=_NextPart_001_01C08C8D.A5606810--
+
+From: "Meyer, Richard" <rmeyer@befree.com>
+To: "'submit@bugz.apache.org'" <submit@bugz.apache.org>, 
+	"'apache-bugdb@apache.org'" <apache-bugdb@apache.org>
+Cc: "'apbugs@apache.org'" <apbugs@apache.org>
+Subject: RE: os-solaris/7159: Solaris bug that causes httpd to hang in sle
+	eping state
+Date: Thu, 1 Feb 2001 15:29:15 -0500 
+
+ This message is in MIME format. Since your mail reader does not understand
+ this format, some or all of this message may not be legible.
+ 
+ ------_=_NextPart_001_01C08C8D.A5606810
+ Content-Type: text/plain;
+ 	charset="iso-8859-1"
+ 
+ Sorry for the mixup, but you can close this problem.
+ 
+ It turned out to be a problem with the script that Oracle had provided to
+ link in their OCI libraries. 
+ One of the libraries in included was libthread.a. My manager remembered
+ having problems with that a long time ago with gcc, so he suggested I take
+ it out and try again.
+ 
+ I did this, and now Apache seems to be correctly timing out all of the
+ broken connections that we simulate.
+ 
+ Thanks,
+ 
+ Rick
+ 
+ 
+ > -----Original Message-----
+ > From: submit@bugz.apache.org [mailto:submit@bugz.apache.org]
+ > Sent: Tuesday, January 30, 2001 2:30 PM
+ > To: rmeyer@befree.com
+ > Subject: Re: os-solaris/7159: Solaris bug that causes httpd to hang in
+ > sleeping state
+ > 
+ > 
+ > Thank you very much for your problem report.
+ > It has the internal identification `os-solaris/7159'.
+ > The individual assigned to look at your
+ > report is: apache. 
+ > 
+ > >Category:       os-solaris
+ > >Responsible:    apache
+ > >Synopsis:       Solaris bug that causes httpd to hang in 
+ > sleeping state
+ > >Arrival-Date:   Tue Jan 30 11:30:03 PST 2001
+ > 
+ 
+ ------_=_NextPart_001_01C08C8D.A5606810
+ Content-Type: text/html;
+ 	charset="iso-8859-1"
+ Content-Transfer-Encoding: quoted-printable
+ 
+ <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2//EN">
+ <HTML>
+ <HEAD>
+ <META HTTP-EQUIV=3D"Content-Type" CONTENT=3D"text/html; =
+ charset=3Diso-8859-1">
+ <META NAME=3D"Generator" CONTENT=3D"MS Exchange Server version =
+ 5.5.2653.12">
+ <TITLE>RE: os-solaris/7159: Solaris bug that causes httpd to hang in =
+ sleeping state</TITLE>
+ </HEAD>
+ <BODY>
+ 
+ <P><FONT SIZE=3D2>Sorry for the mixup, but you can close this =
+ problem.</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>It turned out to be a problem with the script that =
+ Oracle had provided to link in their OCI libraries. </FONT>
+ <BR><FONT SIZE=3D2>One of the libraries in included was libthread.a. My =
+ manager remembered having problems with that a long time ago with gcc, =
+ so he suggested I take it out and try again.</FONT></P>
+ 
+ <P><FONT SIZE=3D2>I did this, and now Apache seems to be correctly =
+ timing out all of the broken connections that we simulate.</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>Thanks,</FONT>
+ </P>
+ 
+ <P><FONT SIZE=3D2>Rick</FONT>
+ </P>
+ <BR>
+ 
+ <P><FONT SIZE=3D2>&gt; -----Original Message-----</FONT>
+ <BR><FONT SIZE=3D2>&gt; From: submit@bugz.apache.org [<A =
+ HREF=3D"mailto:submit@bugz.apache.org">mailto:submit@bugz.apache.org</A>=
+ ]</FONT>
+ <BR><FONT SIZE=3D2>&gt; Sent: Tuesday, January 30, 2001 2:30 PM</FONT>
+ <BR><FONT SIZE=3D2>&gt; To: rmeyer@befree.com</FONT>
+ <BR><FONT SIZE=3D2>&gt; Subject: Re: os-solaris/7159: Solaris bug that =
+ causes httpd to hang in</FONT>
+ <BR><FONT SIZE=3D2>&gt; sleeping state</FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ <BR><FONT SIZE=3D2>&gt; Thank you very much for your problem =
+ report.</FONT>
+ <BR><FONT SIZE=3D2>&gt; It has the internal identification =
+ `os-solaris/7159'.</FONT>
+ <BR><FONT SIZE=3D2>&gt; The individual assigned to look at your</FONT>
+ <BR><FONT SIZE=3D2>&gt; report is: apache. </FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ <BR><FONT SIZE=3D2>&gt; =
+ &gt;Category:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; os-solaris</FONT>
+ <BR><FONT SIZE=3D2>&gt; &gt;Responsible:&nbsp;&nbsp;&nbsp; =
+ apache</FONT>
+ <BR><FONT SIZE=3D2>&gt; =
+ &gt;Synopsis:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Solaris bug that =
+ causes httpd to hang in </FONT>
+ <BR><FONT SIZE=3D2>&gt; sleeping state</FONT>
+ <BR><FONT SIZE=3D2>&gt; &gt;Arrival-Date:&nbsp;&nbsp; Tue Jan 30 =
+ 11:30:03 PST 2001</FONT>
+ <BR><FONT SIZE=3D2>&gt; </FONT>
+ </P>
+ 
+ </BODY>
+ </HTML>
+ ------_=_NextPart_001_01C08C8D.A5606810--
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

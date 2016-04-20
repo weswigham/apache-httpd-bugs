@@ -1,0 +1,87 @@
+Received: (qmail 1842 invoked by uid 2012); 21 Apr 1998 11:59:04 -0000
+Message-Id: <19980421115904.1841.qmail@hyperreal.org>
+Date: 21 Apr 1998 11:59:04 -0000
+From: Ernst Kloppenburg <kloppen@isr.uni-stuttgart.de>
+Reply-To: kloppen@isr.uni-stuttgart.de
+To: apbugs@hyperreal.org
+Subject: Documents get not cached, when updated from origin host *and* Content-Length has changed
+X-Send-Pr-Version: 3.2
+
+>Number:         2094
+>Category:       mod_proxy
+>Synopsis:       Documents get not cached, when updated from origin host *and* Content-Length has changed
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    martin
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Apr 21 05:00:00 PDT 1998
+>Last-Modified:  Fri May 15 02:07:48 PDT 1998
+>Originator:     kloppen@isr.uni-stuttgart.de
+>Organization:
+>Release:        1.3b6
+>Environment:
+Linux pinguin 2.0.33 #17 Thu Mar 26 17:42:57 CET 1998 i686 unknown
+>Description:
+In the following case, caching of an otherwise cachable document no longer 
+occurs:
+
+mod_proxy receives a proxy request for a remote document
+there is a copy found in the cache, but it is expired
+the document is refetched from the origin server, and the content length 
+  has changed
+
+In the case described above, the new version of the document is not cached but
+rather the old version is kept. With the next proxy request for the same 
+document, the origin server is contacted again, and so on.
+
+In ap_proxy_cache_tidy, below the commentary 
+/* file lengths don't match; don't cache it */
+bc is not equal c->len and proxy_cache_tidy immediately returns without caching
+the new version.
+
+The problem is the line 
+  clen = ap_proxy_get_header(c->hdrs, "Content-Length");
+in ap_proxy_cache_update, where the old rather than the new content length is 
+taken. Here c->hdrs should be replaced by resp_hdrs in order to get the right
+value for c->len *and* for buff which is written to the cache-file.
+
+(I also considered the problem being in ap_proxy_cache_tidy, 
+but without the fix in proxy_cache_update the wrong value also gets 
+into the cache file via buff.)
+
+
+
+>How-To-Repeat:
+Clear from the description
+>Fix:
+See descriptio
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: martin
+State-Changed-When: Thu May 14 14:30:48 PDT 1998
+State-Changed-Why:
+Excellent analysis.
+Responsible-Changed-From-To: apache-martin
+Responsible-Changed-By: martin
+Responsible-Changed-When: Thu May 14 14:30:48 PDT 1998
+Responsible-Changed-Why:
+I'm going to have another look at proxy_cache.c, but
+it looks like your patch fixes the bug. Thank you!
+State-Changed-From-To: analyzed-closed
+State-Changed-By: martin
+State-Changed-When: Fri May 15 02:07:47 PDT 1998
+State-Changed-Why:
+Yes. The calculation of the length was definitely wrong.
+I put your proposed fix into the 1.3b7 release.
+Thanks a lot for your help.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

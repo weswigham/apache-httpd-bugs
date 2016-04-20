@@ -1,0 +1,194 @@
+Received: (qmail 472 invoked by uid 2012); 30 Oct 1998 15:07:29 -0000
+Message-Id: <19981030150729.471.qmail@hyperreal.org>
+Date: 30 Oct 1998 15:07:29 -0000
+From: Katsushi KAWATO <kawato@isoternet.org>
+Reply-To: kawato@isoternet.org
+To: apbugs@hyperreal.org
+Subject: "force-response-1.0" doesn't effect in some responses
+X-Send-Pr-Version: 3.2
+
+>Number:         3315
+>Category:       protocol
+>Synopsis:       "force-response-1.0" doesn't effect in some responses
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Oct 30 07:10:00 PST 1998
+>Last-Modified:  Sun Aug 15 02:19:17 PDT 1999
+>Originator:     kawato@isoternet.org
+>Organization:
+>Release:        1.3.3
+>Environment:
+Solaris2.6(sparc) with Sun's cc.
+>Description:
+I'm using "force-response-1.0" on Apache1.3.3 (from 1.3.0).
+Normal responses(200,304,...) satisfies my desire.
+
+But, some responses (301,302,...) uses "HTTP/1.1".
+
+in srm.conf:
+        Redirect permanent /gone/ http://xxxx/
+
+--------
+GET /gone/ HTTP/1.0
+
+HTTP/1.1 301 Moved Permanently
+Date: Fri, 30 Oct 1998 14:46:10 GMT
+Server: Apache/1.3.3 (Unix)
+Location: http://xxxx/
+Connection: close
+Content-Type: text/html
+...
+--------
+
+Expected response is "HTTP/1.0 301 Moved Permanently".
+
+Apache1.3.0 returns correct response.
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Katsushi KAWATO <kawato@isoternet.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/3315: "force-response-1.0" doesn't effect in some
+ responses
+Date: Fri, 30 Oct 1998 08:41:42 -0800 (PST)
+
+ On 30 Oct 1998, Katsushi KAWATO wrote:
+ 
+ > >Description:
+ > I'm using "force-response-1.0" on Apache1.3.3 (from 1.3.0).
+ 
+ Exactly how are you using it?
+ 
+ Exactly what directives are you using to set it?
+ 
+
+From: kawato@isoternet.org
+To: marcs@znep.com
+Cc: apbugs@hyperreal.org
+Subject: Re: general/3315: "force-response-1.0" doesn't effect in some responses
+Date: Sat, 31 Oct 1998 02:31:25 +0900
+
+ >> I'm using "force-response-1.0" on Apache1.3.3 (from 1.3.0).
+ >
+ >Exactly how are you using it?
+ >Exactly what directives are you using to set it?
+ 
+ in httpd.conf:
+ 	SetEnv force-response-1.0
+ in srm.conf
+ 	Redirect                /found  http://other.my.domain
+ 	Redirect Permanent      /perm   http://other.my.domain
+ 
+ ------------------------------------------------------------------
+ ns:kawato% telnet ns.my.domain. 80
+ Trying 10.0.0.1...
+ Connected to ns.my.domain.
+ Escape character is '^]'.
+ HEAD / HTTP/1.0
+ 
+ HTTP/1.0 200 OK                                      <-  HTTP/1.0
+ Date: Fri, 30 Oct 1998 17:16:07 GMT
+ Server: Apache/1.3.3 (Unix)
+ Last-Modified: Tue, 06 Oct 1998 08:42:57 GMT
+ ETag: "2ad00-11d-3619d811"
+ Accept-Ranges: bytes
+ Content-Length: 285
+ Connection: close
+ Content-Type: text/html
+ 
+ Connection closed by foreign host.
+ ------------------------------------------------------------------
+ ns:kawato% telnet ns.my.domain. 80
+ Trying 10.0.0.1...
+ Connected to ns.my.domain.
+ Escape character is '^]'.
+ GET / HTTP/1.0
+ If-Modified-Since: Tue, 06 Oct 1998 08:42:57 GMT
+ 
+ HTTP/1.0 304 Not Modified                            <-  HTTP/1.0
+ Date: Fri, 30 Oct 1998 17:16:12 GMT
+ Server: Apache/1.3.3 (Unix)
+ Connection: close
+ ETag: "2ad00-11d-3619d811"
+ 
+ Connection closed by foreign host.
+ ------------------------------------------------------------------
+ ns:kawato% telnet ns.my.domain. 80
+ Trying 10.0.0.1...
+ Connected to ns.my.domain.
+ Escape character is '^]'.
+ GET /found/ HTTP/1.0
+ 
+ HTTP/1.1 302 Found                                   <-  HTTP/1.1
+ Date: Fri, 30 Oct 1998 17:16:18 GMT
+ Server: Apache/1.3.3 (Unix)
+ Location: http://other.my.domain/
+ Connection: close
+ Content-Type: text/html
+ 
+ <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+ <HTML><HEAD>
+ <TITLE>302 Found</TITLE>
+ </HEAD><BODY>
+ <H1>Found</H1>
+ The document has moved <A HREF="http://other.my.domain/">here</A>.<P>
+ <HR>
+ <ADDRESS>Apache/1.3.3 Server at ns.my.domain Port 80</ADDRESS>
+ </BODY></HTML>
+ Connection closed by foreign host.
+ ------------------------------------------------------------------
+ ns:kawato% telnet ns.my.domain. 80
+ Trying 10.0.0.1...
+ Connected to ns.my.domain.
+ Escape character is '^]'.
+ GET /perm/ HTTP/1.0
+ 
+ HTTP/1.1 301 Moved Permanently                       <- HTTP/1.1
+ Date: Fri, 30 Oct 1998 17:16:58 GMT
+ Server: Apache/1.3.3 (Unix)
+ Location: http://other.my.domain/
+ Connection: close
+ Content-Type: text/html
+ 
+ <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+ <HTML><HEAD>
+ <TITLE>301 Moved Permanently</TITLE>
+ </HEAD><BODY>
+ <H1>Moved Permanently</H1>
+ The document has moved <A HREF="http://other.my.domain/">here</A>.<P>
+ <HR>
+ <ADDRESS>Apache/1.3.3 Server at ns.my.domain Port 80</ADDRESS>
+ </BODY></HTML>
+ Connection closed by foreign host.
+ ns:kawato%
+ ------------------------------------------------------------------
+ 
+ 
+ -------------------------------------------------------
+  ISOTERNET ASSOCIATION of JAPAN
+                 KAWATO Katsushi <kawato@isoternet.org>
+Category-Changed-From-To: general-protocol
+Category-Changed-By: fielding
+Category-Changed-When: Sun Aug 15 02:19:16 PDT 1999
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

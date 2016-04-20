@@ -1,0 +1,125 @@
+Received: (qmail 48979 invoked by uid 501); 19 Nov 2001 18:41:18 -0000
+Message-Id: <20011119184118.48974.qmail@apache.org>
+Date: 19 Nov 2001 18:41:18 -0000
+From: Taketo Kabe <kabe@sra-tohoku.co.jp>
+Reply-To: kabe@sra-tohoku.co.jp
+To: submit@bugz.apache.org
+Subject: [PATCH] XBitHack behaves as always "on"
+X-Send-Pr-Version: 3.110
+
+>Number:         8804
+>Category:       mod_include
+>Synopsis:       [PATCH] XBitHack behaves as always "on"
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Nov 19 10:50:00 PST 2001
+>Closed-Date:    Mon Nov 19 13:24:06 PST 2001
+>Last-Modified:  Mon Nov 19 13:24:06 PST 2001
+>Originator:     kabe@sra-tohoku.co.jp
+>Release:        2.0.28
+>Organization:
+>Environment:
+
+SunOS 5.8 Generic_108528-05 sun4u sparc SUNW,Ultra-60
+gcc version 2.95.2 19991024 (release)
+
+>Description:
+
+XBitHack behaved as always "on" regardess of any settings.
+
+This will cause any HTML files accidentally chmod +x 'ed to be
+processed through INCLUDES filter (if Options +Includes in effect).
+
+This seems to be caused by modules/filters/mod_include.c:xbithack_handler()
+incorrectly extracting the module config structure.
+The [PATCH] below fixes the reference into "standard" method.
+
+>How-To-Repeat:
+
+.htaccess:
+	Options +Includes
+	XBitHack off
+
+test.html:
+	<BODY>
+	<!--#exec cmd="ls"-->
+	</BODY>
+
+$ chmod +x test.html
+
+$ GET http://www/~your/dir/test.html
+
+You shouldn't have SSI invoked but actually is (BAD).
+
+>Fix:
+
+#********************************* mod_include.c XBitHack always full patch
+##dist11
+# Fix:
+#	XBitHack behaved as always "full"
+#
+##find httpd-2_0_28 -name '*.dist11' -exec ./0diff {} \;
+/usr/local/gnu/bin/patch -p1 --backup --suffix=.dist11 << 'EOP'
+=============================== {
+diff -u httpd-2_0_28/modules/filters/mod_include.c.dist11 httpd-2_0_28/modules/filters/mod_include.c
+--- httpd-2_0_28/modules/filters/mod_include.c.dist11	Wed Sep 19 06:25:07 2001
++++ httpd-2_0_28/modules/filters/mod_include.c	Mon Nov 19 18:16:45 2001
+@@ -3167,7 +3167,7 @@
+     /* OS/2 dosen't currently support the xbithack. This is being worked on. */
+     return DECLINED;
+ #else
+-    enum xbithack *state;
++    include_dir_config *conf;
+  
+     if (ap_strcmp_match(r->handler, "text/html")) {
+         return DECLINED;
+@@ -3176,10 +3176,10 @@
+         return DECLINED;
+     }
+  
+-    state = (enum xbithack *) ap_get_module_config(r->per_dir_config,
++    conf = (include_dir_config *) ap_get_module_config(r->per_dir_config,
+                                                 &include_module);
+  
+-    if (*state == xbithack_off) {
++    if (*conf->xbithack == xbithack_off) {
+         return DECLINED;
+     }
+     /* We always return declined, because the default handler will actually
+=============================== }}
+EOP
+
+>Release-Note:
+>Audit-Trail:
+Comment-Added-By: jwoolley
+Comment-Added-When: Mon Nov 19 11:02:11 PST 2001
+Comment-Added:
+Thanks for the report, I'm looking into this.
+State-Changed-From-To: open-closed
+State-Changed-By: jwoolley
+State-Changed-When: Mon Nov 19 13:24:06 PST 2001
+State-Changed-Why:
+This has been fixed in 2.0.29-dev.  Thanks for the patch!  It turns out that the behavior was always XBitHack 'on', not XBitHack 'full', by the way... in no case did we ever send a Last-Modified header.  I added a fix for that as well.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

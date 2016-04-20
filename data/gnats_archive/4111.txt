@@ -1,0 +1,180 @@
+Received: (qmail 5889 invoked by uid 2012); 24 Mar 1999 19:17:09 -0000
+Message-Id: <19990324191709.5888.qmail@hyperreal.org>
+Date: 24 Mar 1999 19:17:09 -0000
+From: Holger Metschulat <homer@sgs.wh.tu-darmstadt.de>
+Reply-To: homer@sgs.wh.tu-darmstadt.de
+To: apbugs@hyperreal.org
+Subject: SSI #exec cmd="..." does not work with suexec enabled
+X-Send-Pr-Version: 3.2
+
+>Number:         4111
+>Category:       suexec
+>Synopsis:       SSI #exec cmd="..." does not work with suexec enabled
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Mar 24 11:20:04 PST 1999
+>Last-Modified:  Mon May 24 10:51:50 PDT 1999
+>Originator:     homer@sgs.wh.tu-darmstadt.de
+>Organization:
+>Release:        1.3.1
+>Environment:
+Linux linux 2.0.32 #2 Mon Dec 29 09:42:18 CET 1997 i586
+gcc version 2.7.2.1
+>Description:
+When using the SSI command '#exec cmd="/usr/bin/cal 3 1999"' together
+with the suexec wrapper enabled, the command cannot be executed
+because
+1. The command contains a slash on the first position
+2. Arguments cannot be passed to programs via suexec
+>How-To-Repeat:
+Write a sample script an try it ...
+>Fix:
+Without knowing much of the internals of suexec, I sugges:
+
+1. Try to separate path (/usr/bin) data from program name (cal)
+and then cwd to this path before executing suexec with just
+the program name (as cgi calls do)
+2. The program name and its arguments are passed to suexec
+as one argument. Perhaps one should try to separate program
+and arguments within suexec by splitting at blanks. But this
+imposes that arguments and the program name must not contain blanks.
+
+Do these changes impose security problems?
+>Audit-Trail:
+Comment-Added-By: coar
+Comment-Added-When: Mon May 24 10:51:49 PDT 1999
+Comment-Added:
+[Text improperly submitted to the bugdb but destined for
+this report.]
+
+This patch to suexec will fix that.  See the bottom for a description of
+what the option ROOT_OWNS_DIR does.  Apply this patch from the directory
+suexec.c & .h are in.
+                                                        - Tom
+
+-------- Cut here --------
+
+diff -C 3 orig/suexec.c ./suexec.c
+*** orig/suexec.c       Fri May 14 09:48:44 1999
+--- ./suexec.c  Fri May 14 09:42:15 1999
+***************
+*** 423,428 ****
+--- 423,438 ----
+        exit(111);
+      }
+  
++ #ifdef ROOT_OWNS_DIR
++     /*
++      * Stat the cwd and verify it is a directory, or error out.
++      */
++     if (((lstat(cwd, &dir_info)) != 0) || !(S_ISDIR(dir_info.st_mode))) {
++       log_err("cannot stat directory: (%s)\n", cwd);
++       exit(115);
++     }
++ #endif
++ 
+      if (userdir) {
+        if (((chdir(target_homedir)) != 0) ||
+            ((chdir(USERDIR_SUFFIX)) != 0) ||
+***************
+*** 441,451 ****
+        }
+      }
+  
+!     if ((strncmp(cwd, dwd, strlen(dwd))) != 0) {
+        log_err("command not in docroot (%s/%s)\n", cwd, cmd);
+        exit(114);
+      }
+  
+      /*
+       * Stat the cwd and verify it is a directory, or error out.
+       */
+--- 451,466 ----
+        }
+      }
+  
+!     if (
+! #ifdef ROOT_OWNS_DIR
+!         (dir_info.st_uid!=0 || dir_info.st_gid!=0) &&
+! #endif
+!         (strncmp(cwd, dwd, strlen(dwd))) != 0) {
+        log_err("command not in docroot (%s/%s)\n", cwd, cmd);
+        exit(114);
+      }
+  
++ #ifndef ROOT_OWNS_DIR
+      /*
+       * Stat the cwd and verify it is a directory, or error out.
+       */
+***************
+*** 453,458 ****
+--- 468,474 ----
+        log_err("cannot stat directory: (%s)\n", cwd);
+        exit(115);
+      }
++ #endif
+  
+      /*
+       * Error out if cwd is writable by others.
+***************
+*** 490,495 ****
+--- 506,514 ----
+       * Error out if the target name/group is different from
+       * the name/group of the cwd or the program.
+       */
++ #ifdef ROOT_OWNS_DIR
++   if (dir_info.st_uid!=0 || dir_info.st_gid!=0) {
++ #endif
+      if ((uid != dir_info.st_uid) ||
+        (gid != dir_info.st_gid) ||
+        (uid != prg_info.st_uid) ||
+***************
+*** 500,505 ****
+--- 519,527 ----
+                prg_info.st_uid, prg_info.st_gid);
+        exit(120);
+      }
++ #ifdef ROOT_OWNS_DIR
++   }
++ #endif
+      /*
+       * Error out if the program is not executable for the user.
+       * Otherwise, she won't find any error in the logs except for
+diff -C 3 orig/suexec.h ./suexec.h
+*** orig/suexec.h       Fri May 14 09:48:47 1999
+--- ./suexec.h  Fri May 14 09:42:15 1999
+***************
+*** 139,142 ****
+--- 139,152 ----
+  #define SAFE_PATH "/usr/local/bin:/usr/bin:/bin"
+  #endif
+  
++ /*
++  * ROOT_OWNS_DIR -- If directory is owned by root.root then any directory/file
++  *                  ownership is acceptable, as well as any docroot.  This
++  *                  allows running of standard system binaries.
++  *
++  */
++ #ifndef ROOT_OWNS_DIR
++ #define ROOT_OWNS_DIR
++ #endif
++ 
+  #endif /* _SUEXEC_H */
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

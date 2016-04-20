@@ -1,0 +1,169 @@
+Received: (qmail 26986 invoked by uid 501); 22 Jun 2001 22:15:07 -0000
+Message-Id: <20010622221507.26978.qmail@apache.org>
+Date: 22 Jun 2001 22:15:07 -0000
+From: Rob Donat <rdonat@sedonatech.com>
+Reply-To: rdonat@sedonatech.com
+To: submit@bugz.apache.org
+Subject: after upgrading from 1.3.9, often times page requests are sent twice per request
+X-Send-Pr-Version: 3.110
+
+>Number:         7910
+>Category:       general
+>Synopsis:       after upgrading from 1.3.9, often times page requests are sent twice per request
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jun 22 15:20:00 PDT 2001
+>Closed-Date:    Sun Jun 24 20:40:11 PDT 2001
+>Last-Modified:  Sun Jun 24 21:00:00 PDT 2001
+>Originator:     rdonat@sedonatech.com
+>Release:        1.3.20
+>Organization:
+>Environment:
+Red Hat Linux 6.1, 6.2 & 7:
+Linux XXXX.com 2.2.16-22 #1 Tue Aug 22 16:49:06 EDT 2000 i686 unknown
+Linux XXXX.com 2.2.12-20shmsmp2 #1 SMP Sun Apr 9 09:39:28 CDT 2000 i686 unknown
+
+Apache 1.3.20 running PHP 4.05
+>Description:
+After upgrading from 1.3.9 to 1.3.20, I noticed certain sql commands were running twice (ie noticable with inserts, updates for increments).  I checked and there are MANY similar PHP database issues such as this.  However, I determined the problem NOT to be database related, as I was able to duplicate it using just straight PHP.  When submitting a request for a page, and watching the access_log, the request is duplciated -- for instance, one "refresh" push on my client causes:
+
+206.222.55.6 - - [18/Jun/2001:20:58:22 -0500] "GET /test.phtml HTTP/1.1" 200 86324 "-" "Mozilla/4.0 (compatible; MSIE 5.5; Windows N
+T 5.0)" "C=64.39.11.10.1593991270525822; C=64.39.11.10.5648991270742695"
+206.222.55.6 - - [18/Jun/2001:20:58:22 -0500] "GET /test.phtml HTTP/1.1" 200 86324 "-" "Mozilla/4.0 (compatible; MSIE 5.5; Windows N
+T 5.0)" "C=64.39.11.10.1593991270525822; C=64.39.11.10.5648991270742695"
+
+Then again:
+
+206.222.55.6 - - [18/Jun/2001:21:04:51 -0500] "GET /test.phtml HTTP/1.1" 200 86320 "-" "Mozilla/4.0 (compatible; MSIE 5.5; Windows N
+T 5.0)" "C=64.39.11.10.1593991270525822; C=64.39.11.10.5648991270742695"
+206.222.55.6 - - [18/Jun/2001:21:04:51 -0500] "GET /test.phtml HTTP/1.1" 200 86320 "-" "Mozilla/4.0 (compatible; MSIE 5.5; Windows N
+T 5.0)" "C=64.39.11.10.1593991270525822; C=64.39.11.10.5648991270742695"
+
+I have not been able to duplicate this problem telnetting into port 80 & issuing the GET /test.phtml.  My client is IE 5.50
+
+The simple PHP code I run is:
+
+        <?php
+                include("config.phtml");
+                sybase_select_db("ecrush");
+                $query="";
+                for ($i=0;$i<2000;$i++) {
+                        $query .= "insert rob_test (mycol) values ('abc${i}')\n";
+                }
+                print "$query<br>";
+                $qry= sybase_query("$query");
+                $qry= sybase_query("select count(*) mycount from rob_test");
+                $mycount= sybase_result($qry, 0, "mycount");
+                print "THE NUMBER OF ROWS IS NOW $mycount<br>";
+                if ($mycount > 100000) {
+                        print "DELETING TABLE -- NUMBER OF ROWS IS > 100000<br>";
+                        $qry= sybase_query("delete rob_test");
+                }       
+                print "<br>";
+                #$qry=sybase_query("select * from rob_test");
+                #echo sybase_result($qry, 0, "mycol");
+                #print "<br>";
+?>
+
+>How-To-Repeat:
+My test url is http://206.222.55.2/test.phtml
+
+It echos out the 2000 row insert statement (which still is run twice if I do not do any actual database access), then inserts the rows by executing the statement, then queries the number of rows in the table, then at the end of the output states how many rows are in the table.  If the number increases by 4000 or 6000 when running it from one run (refresh) to the next, the statement has been run twice.  This does not occur using the same version of PHP with apache 1.3.9.  When testing with .9, the number always increases by 2000 (never 4 or 6).
+>Fix:
+I wish I knew.  The unfortunate thing is that I have not duplicated this problem with straight .html -- it is apparently php-specific, but I believe the problem is on the apache side.  I've submitted a bug to PHP but have not heard any response.  I hope this isn't something stupid I'm doing but I don't think so.
+
+Thanks.
+Rob.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Sun Jun 24 20:40:11 PDT 2001
+State-Changed-Why:
+I'm afraid there isn't really anything we can do here; whatever reason IE has for deciding to send duplicate requests is what IE is doing.  Microsoft is the only one that can explain IE's odd and bogus behaviour...
+
+Clearly, Apache is getting multiple requests, so it is processing them.  There are any number of completely legitimate changes to how Apache does things that, while legal, IE may be unable to handle.  We really don't have the resources to try to figure out just why IE is broken.
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  
+Subject: RE: general/7910: after upgrading from 1.3.9, often times page
+ requests are sent twice per request (fwd)
+Date: Sun, 24 Jun 2001 20:58:41 -0700 (PDT)
+
+ ---------- Forwarded message ----------
+ Date: Sun, 24 Jun 2001 22:45:59 -0500
+ From: Rob Donat <donat@sedonatech.com>
+ To: marc@apache.org, apache-bugdb@apache.org
+ Subject: RE: general/7910: after upgrading from 1.3.9,
+      often times page requests are sent twice per request
+ 
+ I am unsure why it is only occurring with the .20 however & not .9.  I guess
+ you're saying .20 does something which makes ie behave strangely, right?  I
+ can't really trace through more than you, but keep this in mind going
+ forward -- I have the feeling you'll see quite a few more bugs of this sort
+ as database requests are duplicated on all apache web servers.
+ 
+ Thanks,
+ Rob.
+ 
+ -----Original Message-----
+ From: marc@apache.org [mailto:marc@apache.org]
+ Sent: Sunday, June 24, 2001 10:40 PM
+ To: apache-bugdb@apache.org; marc@apache.org; rdonat@sedonatech.com
+ Subject: Re: general/7910: after upgrading from 1.3.9, often times page
+ requests are sent twice per request
+ 
+ 
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+ Synopsis: after upgrading from 1.3.9, often times page requests are sent
+ twice per request
+ 
+ State-Changed-From-To: open-closed
+ State-Changed-By: marc
+ State-Changed-When: Sun Jun 24 20:40:11 PDT 2001
+ State-Changed-Why:
+ I'm afraid there isn't really anything we can do here; whatever reason IE
+ has for deciding to send duplicate requests is what IE is doing.  Microsoft
+ is the only one that can explain IE's odd and bogus behaviour...
+ 
+ Clearly, Apache is getting multiple requests, so it is processing them.
+ There are any number of completely legitimate changes to how Apache does
+ things that, while legal, IE may be unable to handle.  We really don't have
+ the resources to try to figure out just why IE is broken.
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

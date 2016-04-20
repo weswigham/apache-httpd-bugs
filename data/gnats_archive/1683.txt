@@ -1,0 +1,86 @@
+Received: (qmail 29744 invoked by uid 2012); 16 Jan 1998 03:45:38 -0000
+Message-Id: <19980116034538.29743.qmail@hyperreal.org>
+Date: 16 Jan 1998 03:45:38 -0000
+From: Ronald Tschalaer <Ronald.Tschalaer@psi.ch>
+Reply-To: Ronald.Tschalaer@psi.ch
+To: apbugs@hyperreal.org
+Subject: The Connection header may contain multiple close tokens
+X-Send-Pr-Version: 3.2
+
+>Number:         1683
+>Category:       protocol
+>Synopsis:       The Connection header may contain multiple close tokens
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jan 15 19:50:00 PST 1998
+>Last-Modified:  Mon Jan 19 16:35:47 PST 1998
+>Originator:     Ronald.Tschalaer@psi.ch
+>Organization:
+>Release:        1.3b3 and earlier 1.2.x
+>Environment:
+All
+>Description:
+If a cgi script generates a "Connection: close" header then the header
+returned by Apache will be "Connection: close, close". This shouldn't
+break any clients, but you never know...
+>How-To-Repeat:
+The following cgi script will do it:
+
+---------------------------------------------------------------
+#!/bin/csh -f
+ 
+echo "Connection: close"
+echo ""
+ 
+echo "... That's all folks ..."
+-------------------------------------------------------------
+
+You can try it at http://www.innovation.ch/cgi-bin/close_con
+>Fix:
+The set_keepalive() function correctly notices that a "Connection: close"
+is there (-> wimpy is true), but it then adds the "close" token anyway.
+Here's the patch:
+
+--------------------------------------------------------------------------
+*** http_protocol.c     Fri Jan 16 04:22:22 1998
+--- http_protocol.c.orig        Sat Nov  1 23:24:08 1997
+***************
+*** 346,353 ****
+       * as HTTP/1.0, but pass our request along with our HTTP/1.1 tag
+       * to a HTTP/1.1 client. Better safe than sorry.
+       */
+!     if (!wimpy)
+!       table_merge(r->headers_out, "Connection", "close");
+  
+      r->connection->keepalive = 0;
+  
+--- 346,352 ----
+       * as HTTP/1.0, but pass our request along with our HTTP/1.1 tag
+       * to a HTTP/1.1 client. Better safe than sorry.
+       */
+!     table_merge(r->headers_out, "Connection", "close");
+  
+      r->connection->keepalive = 0;
+  
+-------------------------------------------------------------------------
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Jan 19 16:35:47 PST 1998
+State-Changed-Why:
+Thanks, committed to 1.3 and 1.2 dev branches.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

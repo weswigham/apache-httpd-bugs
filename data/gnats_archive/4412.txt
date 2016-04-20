@@ -1,0 +1,165 @@
+Received: (qmail 4727 invoked from network); 14 May 1999 17:00:47 -0000
+Message-Id: <Pine.LNX.3.96.990514095411.887A-100000@dreamer.accesscom.com>
+Date: Fri, 14 May 1999 09:58:28 -0700 (PDT)
+From: Tom Lear <tom@trap.mtview.ca.us>
+To: homer@sgs.wh.tu-darmstadt.de
+Cc: apbugs@Apache.Org
+Subject: SSI #exec cmd="..." does not work with suexec enabled
+
+>Number:         4412
+>Category:       mod_include
+>Synopsis:       SSI #exec cmd="..." does not work with suexec enabled
+>Confidential:   yes
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          mistaken
+>Submitter-Id:   unknown
+>Arrival-Date:   Fri May 14 10:10:02 PDT 1999
+>Last-Modified:  Mon May 24 10:53:59 PDT 1999
+>Originator:     
+>Organization:
+>Release:        
+>Environment:
+>Description:
+>How-To-Repeat:
+>Fix:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Mon May 24 10:53:58 PDT 1999
+State-Changed-Why:
+
+Text attached to the right PR.
+
+Class-Changed-From-To: sw-bug-mistaken
+Class-Changed-By: coar
+Class-Changed-When: Mon May 24 10:53:58 PDT 1999
+Responsible-Changed-From-To: gnats-admin-apache
+Responsible-Changed-By: coar
+Responsible-Changed-When: Mon May 24 10:53:58 PDT 1999
+Responsible-Changed-Why:
+
+Putting back into main DB.
+
+Category-Changed-From-To: pending-mod_include
+Category-Changed-By: coar
+Category-Changed-When: Mon May 24 10:53:58 PDT 1999
+
+>Unformatted:
+This patch to suexec will fix that.  See the bottom for a description of
+what the option ROOT_OWNS_DIR does.  Apply this patch from the directory
+suexec.c & .h are in.
+							- Tom
+
+-------- Cut here --------
+
+diff -C 3 orig/suexec.c ./suexec.c
+*** orig/suexec.c	Fri May 14 09:48:44 1999
+--- ./suexec.c	Fri May 14 09:42:15 1999
+***************
+*** 423,428 ****
+--- 423,438 ----
+  	exit(111);
+      }
+  
++ #ifdef ROOT_OWNS_DIR
++     /*
++      * Stat the cwd and verify it is a directory, or error out.
++      */
++     if (((lstat(cwd, &dir_info)) != 0) || !(S_ISDIR(dir_info.st_mode))) {
++ 	log_err("cannot stat directory: (%s)\n", cwd);
++ 	exit(115);
++     }
++ #endif
++ 
+      if (userdir) {
+  	if (((chdir(target_homedir)) != 0) ||
+  	    ((chdir(USERDIR_SUFFIX)) != 0) ||
+***************
+*** 441,451 ****
+  	}
+      }
+  
+!     if ((strncmp(cwd, dwd, strlen(dwd))) != 0) {
+  	log_err("command not in docroot (%s/%s)\n", cwd, cmd);
+  	exit(114);
+      }
+  
+      /*
+       * Stat the cwd and verify it is a directory, or error out.
+       */
+--- 451,466 ----
+  	}
+      }
+  
+!     if (
+! #ifdef ROOT_OWNS_DIR
+!         (dir_info.st_uid!=0 || dir_info.st_gid!=0) &&
+! #endif
+!         (strncmp(cwd, dwd, strlen(dwd))) != 0) {
+  	log_err("command not in docroot (%s/%s)\n", cwd, cmd);
+  	exit(114);
+      }
+  
++ #ifndef ROOT_OWNS_DIR
+      /*
+       * Stat the cwd and verify it is a directory, or error out.
+       */
+***************
+*** 453,458 ****
+--- 468,474 ----
+  	log_err("cannot stat directory: (%s)\n", cwd);
+  	exit(115);
+      }
++ #endif
+  
+      /*
+       * Error out if cwd is writable by others.
+***************
+*** 490,495 ****
+--- 506,514 ----
+       * Error out if the target name/group is different from
+       * the name/group of the cwd or the program.
+       */
++ #ifdef ROOT_OWNS_DIR
++   if (dir_info.st_uid!=0 || dir_info.st_gid!=0) {
++ #endif
+      if ((uid != dir_info.st_uid) ||
+  	(gid != dir_info.st_gid) ||
+  	(uid != prg_info.st_uid) ||
+***************
+*** 500,505 ****
+--- 519,527 ----
+  		prg_info.st_uid, prg_info.st_gid);
+  	exit(120);
+      }
++ #ifdef ROOT_OWNS_DIR
++   }
++ #endif
+      /*
+       * Error out if the program is not executable for the user.
+       * Otherwise, she won't find any error in the logs except for
+diff -C 3 orig/suexec.h ./suexec.h
+*** orig/suexec.h	Fri May 14 09:48:47 1999
+--- ./suexec.h	Fri May 14 09:42:15 1999
+***************
+*** 139,142 ****
+--- 139,152 ----
+  #define SAFE_PATH "/usr/local/bin:/usr/bin:/bin"
+  #endif
+  
++ /*
++  * ROOT_OWNS_DIR -- If directory is owned by root.root then any directory/file
++  *                  ownership is acceptable, as well as any docroot.  This
++  *                  allows running of standard system binaries.
++  *
++  */
++ #ifndef ROOT_OWNS_DIR
++ #define ROOT_OWNS_DIR
++ #endif
++ 
+  #endif /* _SUEXEC_H */
+
+

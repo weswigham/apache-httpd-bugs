@@ -1,0 +1,268 @@
+Received: (qmail 16824 invoked by uid 2012); 21 Jan 1998 05:29:19 -0000
+Message-Id: <19980121052919.16823.qmail@hyperreal.org>
+Date: 21 Jan 1998 05:29:19 -0000
+From: Jamie Scuglia <jamie@cs.monash.edu.au>
+Reply-To: jamie@cs.monash.edu.au
+To: apbugs@hyperreal.org
+Subject: Some image files get corrupted during transfer
+X-Send-Pr-Version: 3.2
+
+>Number:         1710
+>Category:       os-irix
+>Synopsis:       Some image files get corrupted during transfer
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jan 20 21:30:00 PST 1998
+>Last-Modified:  Thu May 28 17:13:50 PDT 1998
+>Originator:     jamie@cs.monash.edu.au
+>Organization:
+>Release:        1.2.5
+>Environment:
+Silicon Graphics Indy
+IRIX shelob 6.2 03131015 IP22
+gcc version 2.7.2.2
+Also used standard IRIX cc with same results
+>Description:
+We have noticed some particular GIF and JPEG files seem to get corrupted
+when dowloading or viewing them.  That is, the files downloaded are
+exactly the same size but the contents are slightly different, when
+a checksum value is computed.
+
+This may not be immediately obvious when viewing the images, but in the section
+below on how to repeat the problem, I show how you can easily test this out.
+
+Note that this only happens for SOME images.  Other images (gif or jpeg)
+download perfectly every time.  Also, some images that are very similar
+in size to problem images also download perfectly.  It's almost as if
+the content of the image is to blame.
+
+I doubt this is a problem with the way the apache web server is configured
+because I tested this out on a Sun Sparc (Solaris 2.6, Apache 1.2.5)
+and the problem images from our Irix web server downloaded perfectly
+under Solaris.  That Solaris web server is set up essentially
+identically to the Irix one we are having trouble with.
+>How-To-Repeat:
+Repeatedly visit:
+
+http://www.cs.monash.edu.au/test1.gif and
+http://www.cs.monash.edu.au/test1.jpg
+
+Repeated downloads of those images should result in files of differing
+content.  The easiest way is to run from the unix shell something like this:
+
+# while true
+# do
+#    wget http://www.cs.monash.edu.au/test1.jpg
+#    wget http://www.cs.monash.edu.au/test1.gif
+# done
+
+Control-C out of that after up to 50 downloads.
+
+Then compare the checksums since the files are the same size.
+
+# cksum test1.gif*
+# cksum test1.jpg*
+
+A lot should be very different.  Make sure you don't use a proxy
+server with wget.
+
+Also check exactly where the differences lie in the files.
+
+# cmp test1.jpg test1.jpg.1
+# cmp test1.jpg.1 test1.jpg.2
+...etc
+
+The differences all seem to occur at the same point.
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Tue Jan 20 21:44:39 PST 1998
+State-Changed-Why:
+This appears to be another broken IRIX problem.  It likes to
+magically corrupt data that is sent because it is dumb.
+
+Did you compile with -n32?  If so, don't.  If not, try it.
+
+Do you have all the SGI patches applied?
+
+This _is_ almost certainly an IRIX bug and numerous people
+running IRIX have had the same problem.  There is a patch
+that one of them submitted that I will dig up and send you when
+I get a chance to see if it helps.  If not, you may want to
+talk to SGI if you have a support contract and tell them
+IRIX is broken.  I have been meaning to talk to a contact
+ there and see if they are aware of this, if it is resolved,
+etc.
+
+From: Marc Slemko <marcs@znep.com>
+To: Jamie Scuglia <jamie@cs.monash.edu.au>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-irix/1710: Some image files get corrupted during transfer
+Date: Tue, 20 Jan 1998 23:25:37 -0700 (MST)
+
+ On 21 Jan 1998, Jamie Scuglia wrote:
+ 
+ > Also check exactly where the differences lie in the files.
+ > 
+ > # cmp test1.jpg test1.jpg.1
+ > # cmp test1.jpg.1 test1.jpg.2
+ > ...etc
+ > 
+ > The differences all seem to occur at the same point.
+ 
+ and they have an ungodly number of nulls in them:
+ 
+       bad  good
+  --------  -----
+  78017   0 212
+  78018   0 224
+  78019   0 352
+  78020   0  34
+  78021   0 175
+  78022   0 216
+  78023   0 233
+  78024 306 177
+  78049   0 102
+  78050   0 354
+  78051   0 374
+  78052   0 167
+  78053   0  33
+  78054   0 257
+  78055   0  32
+ [...]
+ 
+ Hmm.  Wonder if a simple standalone test program could reproduce this...
+ would make it easier to convince SGI.
+ 
+ Ah.  The corruption starts at the beginning of a packet:
+ 
+ 23:17:39.677375 shelob.cs.monash.edu.au.http > valis.worldgate.com.1284: .
+ 68621
+ :70081(1460) ack 141 win 61320 (DF)
+ Data: 1460 bytes
+ Offset  Hex                                              ASCII
+ 0x0000  0f40 7e2a f857 0fc9 0875 8798 66e4 aa10         |.@~*.W...u...f...|
+ 0x0010  7ed1 a13f ea8c a284 8f10 3062 5baf 160c         |~..?......0b[...|
+ 0x0020  9ca5 6d96 4e5b 2ff5 c748 9104 51e9 8468         |..m.N[/..H..Q..h|
+ 0x0030  c046 2a49 2ed5 dd88 c78b e29e 11ee 4b80         |.F*I..........K.|
+ 0x0040  23c4 1fc7 1686 eeea 0de3 9181 1d37 c108         |#............7..|
+ 0x0050  51a4 aca9 eaa0 ad23 0695 f9b0 ca16 f0b4         |Q......#........|
+ 0x0060  3c99 f833 1341 d853 ecf5 1899 0ea1 147a         |<..3.A.S.......z|
+ 0x0070  2636 be6d d560 011d 9668 e942 92af 3523         |&6.m.`...h.B..5#|
+ 
+ 0f40 7e2a is:
+ 
+  68376  17 271
+  68377 100  12
+  68378 176  23
+  68379  52 112
+  68380 370 364
+  68381 127  33
+  68382  17 234
+  68383 311 262
+  68384  10  35
+ 
+ (left is corrupted, right is proper).  Yea, sure looks like an IRIX bug.
+ Sigh.
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: jamie@cs.monash.edu.au
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: os-irix/1710: Some image files get corrupted during transfer  (fwd)
+Date: Thu, 22 Jan 1998 13:25:28 -0700 (MST)
+
+ FYI.
+ 
+ If you do have a support contract, get in touch with SGI and try forcing
+ the issue.  The more pressure from outside, the more likely it will get
+ fixed.  The actual developers that do the code often don't have much say
+ in anything, so don't bug Steve about it.
+ 
+ You could try backing out patches, but you can go crazy trying that...
+ 
+ ---------- Forwarded message ----------
+ Date: Thu, 22 Jan 1998 09:04:04 -0800
+ From: Steve Alexander <sca@refugee.engr.sgi.com>
+ To: Marc Slemko <marcs@znep.com>
+ Subject: Re: os-irix/1710: Some image files get corrupted during transfer 
+ 
+ Marc Slemko <marcs@znep.com> writes:
+ >We have had numerous reports of data corruption when using Apache
+ >on IRIX.  One person went as far as copying the data to a file on
+ >disk at the same places it is sent to the network in Apache, and
+ >the copy they wrote to disk was ok but the one to the network was
+ >corrupted.  The corruption seems to occur at the start of a packet,
+ >and is sometimes fixed by adding a few bflush()es in Apache to
+ >flush the output more frequently.
+ 
+ There are rumors of a corruption problem in some recent 6.2 kernel rollup
+ patches, but I don't have any details yet.
+ 
+ -- Steve
+ 
+State-Changed-From-To: analyzed-feedback
+State-Changed-By: coar
+State-Changed-When: Thu May 28 12:46:39 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+
+From: jamie@cs.monash.edu.au (Jamie Scuglia)
+To: coar@apache.org
+Cc: apache-bugdb@apache.org, jamie@cs.monash.edu.au, apbugs@apache.org
+Subject: Re: os-irix/1710: Some image files get corrupted during transfer
+Date: Fri, 29 May 1998 09:33:34 +1000 (EST)
+
+ => [In order for any reply to be added to the PR database, ]
+ => [you need to include <apbugs@Apache.Org> in the Cc line ]
+ => [and leave the subject line UNCHANGED.  This is not done]
+ => [automatically because of the potential for mail loops. ]
+ => 
+ => 
+ => Synopsis: Some image files get corrupted during transfer
+ => 
+ => State-Changed-From-To: analyzed-feedback
+ => State-Changed-By: coar
+ => State-Changed-When: Thu May 28 12:46:39 PDT 1998
+ => State-Changed-Why:
+ => [This is a standard response.]
+ => This Apache problem report has not been updated recently.
+ => Please reply to this message if you have any additional
+ => information about this issue, or if you have answers to
+ => any questions that have been posed to you.  If there are
+ => no outstanding questions, please consider this a request
+ => to try to reproduce the problem with the latest software
+ => release, if one has been made since last contact.  If we
+ => don't hear from you, this report will be closed.
+ 
+ This problem disappeared with the installation of the latest Irix 6.2
+ kernel and networking patches.  So it was definitely an Irix 6.2 operating
+ system problem and not a problem with the Apache software.
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Thu May 28 17:13:49 PDT 1998
+State-Changed-Why:
+Thanks for the update, the report, and for using Apache!
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

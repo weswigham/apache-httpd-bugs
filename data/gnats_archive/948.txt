@@ -1,0 +1,110 @@
+From nobody@hyperreal.org  Thu Jul 31 03:40:13 1997
+Received: (from nobody@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id DAA04877;
+	Thu, 31 Jul 1997 03:40:13 -0700 (PDT)
+Message-Id: <199707311040.DAA04877@hyperreal.org>
+Date: Thu, 31 Jul 1997 03:40:13 -0700 (PDT)
+From: Sebastian Andersson <sa@hogia.net>
+Reply-To: sa@hogia.net
+To: apbugs@hyperreal.org
+Subject: ServerPath doesn't work as excpected from the documentation.
+X-Send-Pr-Version: 3.2
+
+>Number:         948
+>Category:       documentation
+>Synopsis:       ServerPath doesn't work as excpected from the documentation.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jul 31 03:50:01 1997
+>Originator:     sa@hogia.net
+>Organization:
+>Release:        1.1.1 and newer
+>Environment:
+RedHat  linux 4.2
+>Description:
+If one creates a IP less virtual host and adds a ServerPath /www.domain.com
+so old clients should be able to use http://www.domain.com/www.domain.com
+then (at least I) one can expect from the documentation that an old client's
+request of the form http://www.domain.com/www.domain.com/X and a new client's
+http://www.domain.com/X should be equal but this isn't true it seems. If
+the virtualdomain entry contains ScriptAlias /cgi-bin /home/user/cgi-bin and
+DocumentRoot /home/user/www then
+http://www.domain.com/www.domain.com/cgi-bin/test.cgi doesn't work for an old
+client but http://www.domain.com/cgi-bin/test.cgi works for a new client.
+
+When I inspect my custom log I see that the virtual domain is correct 
+(test.hogia.net) but it says that the user was accessing /test.hogia.net/
+when an old client tried: http://test.hogia.net/test.hogia.net/
+
+What should I do to make this work correctly? Use mod_redirect somehow to rewrite
+test.hogia.net/ into / for clients that don't set the Host header?
+Would that fix the logfiles as well?
+
+Here is my entry:
+<VirtualHost test.hogia.net>
+User sa
+Group staff
+ServerAdmin sa@hogia.net
+DocumentRoot /home/sa/html
+ServerName test.hogia.net
+ServerPath /test.hogia.net
+CustomLog /home/sa/logs/test.custom "%v %h %l %u %t \"%r\" %s %b"
+ScriptAlias /cgi-bin/ /home/sa/cgi-bin/
+Alias /error_htmls /etc/httpd/htdocs/error_htmls
+</VirtualHost>
+>How-To-Repeat:
+http://test.hogia.net/test.hogia.net/ is basically the same as the above
+but without User and Group most of the time. There is a cgi-bin/test.cgi
+script there as well.
+>Fix:
+Either update the documentation or (better) fix the code so the server path
+part is removed from the URL
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: akosut
+State-Changed-When: Thu Jul 31 11:14:27 PDT 1997
+State-Changed-Why:
+ServerPath only intercepts and alters requests that are under
+the DocumentRoot, although it correctly identifies the server
+in all cases.
+
+To make your setup work correctly, you need to add the
+following to the virtual host configuration:
+
+ScriptAlias /test.hogia.net/cgi-bin/ /home/sa/cgi-bin/
+
+From: Alexei Kosut <akosut@organic.com>
+To: Sebastian Andersson <sa@hogia.net>
+Subject: Re: documentation/948: ServerPath doesn't work as excpected from the documentation.
+Date: Fri, 1 Aug 1997 11:16:33 -0700 (PDT)
+
+ 
+ On Fri, 1 Aug 1997, Sebastian Andersson wrote:
+ 
+ > documentation isn't clear about this and it would be more logical to let
+ > the server rewrite the URL from server.domain.com/serverpath/path to
+ > newserver.domain.com/path when a ServerPath match is made.
+ 
+ Yes, but consider redirects. If the server blindly rewrote
+ /serverpath/path to /path, and it needed at some point down the line to
+ send a redirect, it wouldn't have any way to know to redirect it,
+ actually, to /servetpath/path. So the code only does the automatic
+ munching for "core" files (DocumentRoot-based).
+ 
+ We went through all this when the ServerPath code was originally written,
+ and decided that this was basically the best workable solution.
+ 
+ Thanks
+ 
+ -- Alexei Kosut <akosut@organic.com>
+ 
+>Unformatted:
+
+>Last-Modified:  Thu Jul 31 11:14:28 PDT 1997
+
+

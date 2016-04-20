@@ -1,0 +1,98 @@
+Received: (qmail 20032 invoked by uid 2012); 14 Oct 1999 13:48:43 -0000
+Message-Id: <19991014134843.20031.qmail@hyperreal.org>
+Date: 14 Oct 1999 13:48:43 -0000
+From: Jeremy Laidman <jlaidman@auug.org.au>
+Reply-To: jlaidman@auug.org.au
+To: apbugs@hyperreal.org
+Subject: Using mod_rewrite to redirect to a URL starting with http: includes path-info when it shouldn't
+X-Send-Pr-Version: 3.2
+
+>Number:         5148
+>Category:       mod_rewrite
+>Synopsis:       Using mod_rewrite to redirect to a URL starting with http: includes path-info when it shouldn't
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Oct 14 06:50:02 PDT 1999
+>Last-Modified:
+>Originator:     jlaidman@auug.org.au
+>Organization:
+apache
+>Release:        1.3.9
+>Environment:
+Linux 2.2.9#13
+gcc
+mod_ssl 2.4.5
+openssl 0.9.4
+>Description:
+I'm trying to redirect all requests for a set of pages to a secure URL.
+However during the processing mod_rewrite prepends path-info to the string
+which ends up in the final URL.  eg http://www/this/that.html turns into
+https://www/etc/httpd/htdocs/this/that.html
+
+The documentation for mod_rewrite states that
+
+    "When you prefix a substitution field with http://thishost[:thisport]
+     then mod_rewrite automatically strips it out."
+
+However this isn't happenning for me.
+
+Looking at problem number 3855, it may be related to the fact that I'm rewriting
+within a <Location> directive.
+
+>How-To-Repeat:
+Include httpd.conf section thusly:
+
+<Location /proj/>
+  AuthName "Intranet"
+  AuthType Basic
+  AuthUserFile /etc/httpd/auth/apache.auth
+  Require valid-user
+
+  # redirect to secure if not secure
+  <IfModule mod_rewrite.c>
+  <IfDefine SSL>
+     RewriteEngine On
+     RewriteCond %{ENV:HTTPS} ^$
+     RewriteRule ^/(.*) https://%{HTTP_HOST}/$1 [L,R]
+  </IfDefine>
+  </IfModule>
+</Location>
+
+
+My rewrite log shows:
+
+192.168.1.9 - authent [14/Oct/1999:10:38:21 +0100] [www/sid#80c31f4][rid#80985a4/initial] (1) [per-dir /proj/] redirect to https://www/proj/ [REDIRECT/302]
+192.168.1.9 - authent [14/Oct/1999:10:38:28 +0100] [www/sid#80c31f4][rid#80985a4/initial] (3) [per-dir /proj/] add path-info postfix: /home/httpd/html/proj -> /home/httpd/html/proj/
+192.168.1.9 - authent [14/Oct/1999:10:38:28 +0100] [www/sid#80c31f4][rid#80985a4/initial] (3) [per-dir /proj/] applying pattern '^/(.*)' to uri '/home/httpd/html/proj/'
+192.168.1.9 - authent [14/Oct/1999:10:38:28 +0100] [www/sid#80c31f4][rid#80985a4/initial] (4) RewriteCond: input='on' pattern='!="on"' => matched
+192.168.1.9 - authent [14/Oct/1999:10:38:28 +0100] [www/sid#80c31f4][rid#80985a4/initial] (2) [per-dir /proj/] rewrite /home/httpd/html/proj/ -> https://www/proj/
+192.168.1.9 - authent [14/Oct/1999:10:38:28 +0100] [www/sid#80c31f4][rid#80985a4/initial] (2) [per-dir /proj/] explicitly forcing redirect with https://www/proj/
+192.168.1.9 - authent [14/Oct/1999:10:38:28 +0100] [www/sid#80c31f4][rid#80985a4/initial] (1) [per-dir /proj/] escaping https://www/proj/ for redirect
+192.168.1.9 - authent [14/Oct/1999:10:38:28 +0100] [www/sid#80c31f4][rid#80985a4/initial] (1) [per-dir /proj/] redirect to https://www/proj/ [REDIRECT/302]
+
+Similar corruption ocurrs if I redirect to "http" rather than "https".
+>Fix:
+My workaround is to use this rewrite rule:
+
+    RewriteRule ^/(.*)  https://%{HTTP_HOST}%{REQUEST_URI}      [L,R]
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

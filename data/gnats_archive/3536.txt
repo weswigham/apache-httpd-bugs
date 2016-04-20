@@ -1,0 +1,122 @@
+Received: (qmail 29095 invoked by uid 2012); 15 Dec 1998 14:43:09 -0000
+Message-Id: <19981215144309.29094.qmail@hyperreal.org>
+Date: 15 Dec 1998 14:43:09 -0000
+From: Walt Stoneburner <wls@wls.wwco.com>
+Reply-To: wls@wls.wwco.com
+To: apbugs@hyperreal.org
+Subject: File permission denied due to failure to use /etc/group
+X-Send-Pr-Version: 3.2
+
+>Number:         3536
+>Category:       general
+>Synopsis:       File permission denied due to failure to use /etc/group
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Dec 15 06:50:01 PST 1998
+>Last-Modified:
+>Originator:     wls@wls.wwco.com
+>Organization:
+apache
+>Release:        1.3.3
+>Environment:
+Linux Slackware 3.5 from Walnut Creek running 2.0.35 kernel.
+>Description:
+Is there a way to get Apache to honor the groups listed in the
+/etc/group file?  ...or at least to specify multiple group ids in the
+config file?
+
+I'm getting no permission errors, and suspect I've stumbled onto an
+interesting permissions problem involving the way Apache uses its GID. 
+I haven't been able to locate an answer in the Apache FAQ,
+documentation, bug report database, and other users on the newsgroup
+have similiar issues but no solutions.
+
+
+The Problem:
+On the system in question, Apache is user web and group web.  In
+/etc/group user web also is a member of several other groups.
+
+  /etc/passwd
+  web:*:888:777:Web Account:/:/bin/false
+  pds:x:666:555:Some User:/:/bin/bash
+
+  /etc/group
+  users::555
+  web::777:web
+  gean::999:web,pds
+
+I have multiple users responsible for maintaining different parts of the
+content tree; permissions are set so that groups can work only in their
+directories.  Observe three different kinds of file ownership issues
+that Apache ought to be able to access:
+
+-rw-rw----   pds   gean   somefile.html     // Apache cannot read: WHY?
+-rw-rw----   web   gean   otherfile.html    // Apache can read
+-rw-rw----   pds   web    anotherfile.html  // Apache can read
+
+Apache reports the typical no permissions error when a GET somefile.html
+is performed.  The other two are fine.
+
+
+The Catch:
+If I actually login to user web, and issue a groups command, I see both
+the web and gean groups and can now access all files in question without
+incident from the shell only.
+
+However, when I use the web server to access these files, I can't.  My
+User and Group are both set to symbolic name web in the config file, and
+even if I use the values 888 and 777 respectively, I get the same
+results.
+
+My suspicion is that when Apache firsts starts as root, it just does a
+setuid/setgid and never checks to see that it can (and does) belong to
+other groups as well.  As such the running server never "belongs" to
+group gean, except for the special case when I physically login as the
+web user for diagnostics.   Therefore it can not access  somefile.html 
+because it is neither user  pds  or in group  gean.
+
+I don't want user pds to be able to mess with anything that isn't gean. 
+And he needs to be able to collaborate with other users also in the gean
+group.
+
+Is there some way to get Apache to recognize it has access to multiple
+groups?  I've exhausted all my known documented resources.
+>How-To-Repeat:
+Easy.  Create a regular HTML file in the htdocs directory.  Give it a UID/GID pair 
+different than Apache runs under.  Do a chmod 660 on the html file.  ...so far
+Apache should not be able to access the file.
+
+Set the User directive to an exisiting dummy account, like 'web'.
+In the /etc/group file, make user 'web' be part of the GID that the
+file has.  In short, don't explictly make Apache be in the group,
+force it to get the information from /etc/group.
+
+Shutdown and restart the server.
+
+Note what happens.  Apache can't read the file... although it should have
+file permissions to do so.  Apache is running as user 'web' -- and if you
+login as uer 'web', that user does have permissions to get to the file.
+You can type the groups command to verify this.
+
+If you do chmod o+r for the html file, Apache can suddenly access the file.
+But, in theory, it should already have permissions!
+>Fix:
+Someone suggested that initgroups() should be called.
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

@@ -1,0 +1,152 @@
+Received: (qmail 482 invoked by uid 501); 7 Aug 2000 06:38:52 -0000
+Message-Id: <20000807063852.481.qmail@locus.apache.org>
+Date: 7 Aug 2000 06:38:52 -0000
+From: David Zelin <mtg@shore.net>
+Reply-To: mtg@shore.net
+To: submit@bugz.apache.org
+Subject: mod_vhost_alias.c's VirtualDocumentRoot directive does not set DOCUMENT_ROOT correctly
+X-Send-Pr-Version: 3.110
+
+>Number:         6382
+>Category:       mod_env
+>Synopsis:       mod_vhost_alias.c's VirtualDocumentRoot directive does not set DOCUMENT_ROOT correctly
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Aug 06 23:40:00 PDT 2000
+>Closed-Date:    Mon Aug 07 00:39:33 PDT 2000
+>Last-Modified:  Mon Aug 07 00:39:33 PDT 2000
+>Originator:     mtg@shore.net
+>Release:        Apache/1.3.9 (Unix)
+>Organization:
+>Environment:
+FreeBSD 3.4-RELEASE FreeBSD 3.4-RELEASE #0: 
+Sat Mar 11 06:20:17 EST 2000     
+/usr/src/sys/compile/LOCAL  i386
+>Description:
+I have multiple IP's on my machine, with one of them
+set up with "Bulk Virtual Hosting."
+
+Everything works fine, except that CGI programs called on 
+a virtual host under my virtual IP ends up getting a the
+name of the first file references in my configuration file
+reported as the Document_root instead the correct directory.
+(Such as "/usr/local/apache/htdocs", presumably taken from
+the '<Directory "/usr/local/apache/htdocs"'>' directive.
+
+This is rather hard to work around for me.  I could use
+SCRIPT_FILENAME to locate the root directory, except that
+when I use a Script_alias directive, the SCRIPT_FILENAME
+is set to the script's directory (as it should) leaving no
+obvious way to locate the correct Document_root
+
+Document_root gets set correctly for my other "normal"
+virtual hosts on the other IP's.
+>How-To-Repeat:
+I suspect that if you set up a machine with multiple IP's and
+Virtual Hosst and make only one of them, preferably not the
+first one, use the VirtualDocumentRoot directive, that it will
+probably do the same thing.
+
+If not, email me and I'll try to document and research
+this better.
+
+Here's some extracted coded.  I changed a lot of the
+names "to protect the innocent" and I apologise if I
+made any typos while doing that.  Hopefully you can
+easily find the bug and reproduceit without this 
+example though.
+
+
+--------------------
+<Directory "/usr/local/apache/htdocs">
+    Options Indexes FollowSymLinks ExecCGI Includes
+    AllowOverride All
+    Order allow,deny
+    Allow from all
+</Directory>
+
+NameVirtualHost 209.50.2.19
+NameVirtualHost 209.50.2.74
+
+<VirtualHost 209.50.2.19>
+        ServerAdmin     mtg@shore.net
+        DocumentRoot    /usr/home/fs_d/19/public_html
+        ServerName      greatfudge.com
+        ErrorLog        /usr/home/fs_d/19/wwwlogs/errors
+        CustomLog       /usr/home/fs_d/19/wwwlogs/access combined
+        CustomLog       /usr/home/lynxcc/wwwlogs/hosts dzhost
+</VirtualHost>
+
+<VirtualHost 209.50.2.74>
+        UseCanonicalName        Off
+        VirtualDocumentRoot  /usr/home/%-2.1/%-2.0.%-1.0
+        ServerAdmin     v74-webmaster@fudge.com
+        ErrorLog        /usr/home/wwwlogs/errors
+        CustomLog       /usr/home/wwwlogs/access combined
+</VirtualHost>
+
+-----------------------
+
+http://greatfudge.com/env.cgi
+
+[DOCUMENT_ROOT=/usr/local/apache/htdocs]
+[HTTP_ACCEPT=image/gif, image/x-xbitmap, image/jpeg, image/pjpeg, image/png, */*]
+[HTTP_ACCEPT_CHARSET=iso-8859-1,*,utf-8]
+[HTTP_ACCEPT_LANGUAGE=en]
+[HTTP_CONNECTION=Keep-Alive]
+[HTTP_HOST=greatfudge.com]
+[REMOTE_ADDR=151.2.1.5]
+[REMOTE_PORT=3962]
+[SCRIPT_FILENAME=/usr/home/g/greatfudge.com/env.cgi]
+[SERVER_ADDR=209.50.2.74]
+[SERVER_ADMIN=v74-webmaster@fudge.com]
+[SERVER_NAME=greatfudge.com]
+[SERVER_PORT=80]
+[SERVER_SIGNATURE=]
+[SERVER_SOFTWARE=Apache/1.3.9 (Unix)]
+[GATEWAY_INTERFACE=CGI/1.1]
+[SERVER_PROTOCOL=HTTP/1.0]
+[REQUEST_METHOD=GET]
+[QUERY_STRING=]
+[REQUEST_URI=/env.cgi]
+[SCRIPT_NAME=/env.cgi]
+>Fix:
+It's probably a bug in mod_vhost_alias.c .   If you can't
+fix it, let me know.  Perhaps I could track it down myself.
+(But I'm working 100+ hrs/wk on other stuff, so it's hard to
+get to things quickly.)
+
+Thanks!
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: fanf
+State-Changed-When: Mon Aug  7 00:39:32 PDT 2000
+State-Changed-Why:
+This is problem is documented at
+http://www.apache.org/docs/vhosts/mass.html
+and will not be fixed. Sorry.
+You'll have to give the script some knowledge of the filesystem layout.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

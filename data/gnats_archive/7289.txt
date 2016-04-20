@@ -1,0 +1,108 @@
+Received: (qmail 20634 invoked by uid 501); 21 Feb 2001 08:21:04 -0000
+Message-Id: <20010221082104.20633.qmail@apache.org>
+Date: 21 Feb 2001 08:21:04 -0000
+From: Tim Rorden <time0f0f@hotmail.com>
+Reply-To: time0f0f@hotmail.com
+To: submit@bugz.apache.org
+Subject: Apache child process is terminated  while handling concurrent requests to IsItWorking servlet
+X-Send-Pr-Version: 3.110
+
+>Number:         7289
+>Category:       mod_jserv
+>Synopsis:       Apache child process is terminated  while handling concurrent requests to IsItWorking servlet
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    jserv
+>State:          analyzed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Feb 21 00:30:01 PST 2001
+>Closed-Date:
+>Last-Modified:  Wed Feb 21 07:53:57 PST 2001
+>Originator:     time0f0f@hotmail.com
+>Release:        1.3.17
+>Organization:
+>Environment:
+Any of the following configurations:
+1. Windows 2000 Professional Edition on dual-PIII machine
+2. Windows 2000 Server Edition on dual-PIII machine
+3. Windows 2000 Server Edition with SP1 on single-proc PIII machine
+>Description:
+Apache child process crashes on W2K with the following stack trace:
+
+WSHTCPIP! 75011299()
+MSAFD! 74fd4484()
+MSAFD! 74fd1535()
+MSAFD! 74fd6437()
+WS2_32! 7503d1d7()
+WS2_32! 7503d162()
+apache_main(int 8, char * * 0x00421cf0) line 6880
+main(int 8, char * * 0x00421cf0) line 15 + 13 bytes
+mainCRTStartup() line 338 + 17 bytes
+KERNEL32! 77e87903()
+
+The last WIN32 call from Apache is CloseHandle (ap_destroy_mutex) in apache_main.c.
+
+Another type of failure (same test) is that the child process exits from ap_log_assert. ioctlsocket returns socket error 10038 in recvwithtimeout in buff.c. The assertion fails and it calls exit.
+
+Simply run multiple concurrent requests to IsItWorking servlet would reproduce the problem on W2K.
+
+
+Both failures cause the Apache child to terminate. This problem does not occur on NT on the same hardwares. The failure can be reproduced in 4 different W2K boxes. For some reasons, the expected valid socket handles become invalid and trigger the failure. There is no error indicated in W2K Event Viewer. It does not seem to be a OS configuration problem. Not sure if it is Winsock bug. One person post a mesage in April,2000 but there was no resolution and no stack trace was provided.
+
+The problem only occurs when the concurrent requests are made to JServ. No problem is encountered if the requests are static HTML pages request. No problem is encounter if the requests are made to http://host/jserv/ where it would not create buffer socket and contact JServ (JVM). No problem is encounter is there is only 1 HTTP client. The problem occurs if multiple threads execute APJ12 handler and communicate with JServ in W2K. It does not appear it reaches any OS limit. Sometimes it fails when the process consumes 400 handles or 1200 handles. There are at least 40% free physical memory during the test.
+>How-To-Repeat:
+1. Install Apache 1.3.17, 1.3.14 or 1.3.12.
+2. Install ApacheJServ-1.1.2 and JDK 1.2.005.
+2. Use default configuration on both apache, mod_jserv and JServ.
+3. Both distributed binaries or proper build would expose the problem.
+4. Run at least 30 concurrent HTTP clients from another node and each make 100 requests to IsItWorking servlet. (On a single proc machine, run the test for at least 15 minutes. If running HTTP clients on the same node of the apache server, no error would be encountered. It is important to run the client in another machine to expose this problem.)
+5. URL: http://host:port/servlets/IsItWorking
+6. Watch the process list from Task Manager.
+
+Result:
+Apache child process terminates after the test runs for 30 seconds. It either crashes in wshtcpip.dll or exits gracefully after getting an invalid socket error. If not attaching to a debugger, the crash from wshtcpip.dll will NOT report on W2K.
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: jon@clearink.com
+State-Changed-When: Wed Feb 21 07:53:57 PST 2001
+State-Changed-Why:
+You are not going to like this solution, but here it is:
+
+reformat your hard disk and install linux. jserv runs
+just fine on linux and windows sucks anyway.
+
+The reason is that unless you have a patch to go along
+with this bug report, you probably will never see a fix
+because JServ is a dead project. (read the 
+java.apache.org homepage).
+
+You may wish to try Tomcat, which isn't a dead product.
+
+<http://jakarta.apache.org/tomcat/>
+
+thanks,
+
+-jon stevens
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

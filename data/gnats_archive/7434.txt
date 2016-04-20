@@ -1,0 +1,78 @@
+Received: (qmail 44529 invoked by uid 501); 20 Mar 2001 04:30:56 -0000
+Message-Id: <20010320043056.44528.qmail@apache.org>
+Date: 20 Mar 2001 04:30:56 -0000
+From: Yogesh Girdhar <girdhy@rpi.edu>
+Reply-To: girdhy@rpi.edu
+To: submit@bugz.apache.org
+Subject: Buffer overflow in http_main.c
+X-Send-Pr-Version: 3.110
+
+>Number:         7434
+>Category:       general
+>Synopsis:       Buffer overflow in http_main.c
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Mar 19 20:40:00 PST 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     girdhy@rpi.edu
+>Release:        All
+>Organization:
+apache
+>Environment:
+All OSes
+>Description:
+Inside http_main.c we have the following function declaration:
+---------------------------------
+static void usage(char *bin)
+{
+    char pad[MAX_STRING_LEN];
+    unsigned i;
+ 
+    for (i = 0; i < strlen(bin); i++)
+    pad[i] = ' ';                             //<<<------Buffer overflow
+    pad[i] = '\0';
+-------------------------
+
+Call to this function is made from a lot of places like this:
+
+---------------------
+ case 'h':
+     usage(argv[0]);
+ case '?':
+     usage(argv[0]);
+---------------------
+MAX_STRING_LEN has a size of 8k.
+Although argv[0] will be less that 1k on most shells, but if somebody writes a custom shell or if somebody calles apache through exec() with an argv[0] size of greater than 8k then apache will crash.
+This problem isn't really a big security threat but still its a bug which needs to be fixed :)
+>How-To-Repeat:
+If somebody writes a custom shell or if somebody calls apache through exec() with an argv[0] size of greater than 8k then apache will crash.
+>Fix:
+it can be fixed doing the following in ur usage()
+  if(strlen(bin)>=MAX_STRING_LEN) 
+     bin += strlen(bin)-(MAX_STRING_LEN+1); // bin is now a string containing the last 8k characters of the original bin.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

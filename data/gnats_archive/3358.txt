@@ -1,0 +1,147 @@
+Received: (qmail 27251 invoked by uid 2012); 6 Nov 1998 19:44:20 -0000
+Message-Id: <19981106194420.27249.qmail@hyperreal.org>
+Date: 6 Nov 1998 19:44:20 -0000
+From: Jesse Pelton <jsp@pkc.com>
+Reply-To: jsp@pkc.com
+To: apbugs@hyperreal.org
+Subject: Extra CR LF follows headers under ISAPI
+X-Send-Pr-Version: 3.2
+
+>Number:         3358
+>Category:       mod_isapi
+>Synopsis:       Extra CR LF follows headers under ISAPI
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Nov  6 11:50:00 PST 1998
+>Closed-Date:    Tue Sep 12 19:37:06 PDT 2000
+>Last-Modified:  Tue Sep 12 19:37:06 PDT 2000
+>Originator:     jsp@pkc.com
+>Release:        1.3.3
+>Organization:
+>Environment:
+Windows NT Workstation 4.0 SP4
+MSVC++ 5.0
+Netscape Navigator 3.0, 4.07, 4.5
+Internet Explorer 4.0 (4.72.3110.8)
+>Description:
+This is similar to, but I think distinct from, PR 2060.
+
+Apache's ServerSupportFunction(HSE_REQ_SEND_RESPONSE_HEADER) behaves differently
+from the one in Microsoft's Internet Information Server and Personal Web Server.
+The MS servers do not write an empty header line to signify the end of the
+headers, so it's up to the ISA to do so.  MFC's CHttpServer::HttpExtensionProc()
+(in isapi.cpp) therefore includes the following code:
+
+  // write a newline to separate content from headers
+
+  if (ctxtCall.m_bSendHeaders)
+  {
+    *pbContent = cSaved;
+    DWORD dwNewLineSize = 2;
+    bWorked = ctxtCall.WriteClient(_T("\r\n"), &dwNewLineSize, 0);
+  }
+
+Apache writes a blank line, then MFC writes another.  This is harmless if the
+ISA is writing HTML, but if it's writing binary data (in my case, image/png),
+the transmitted data are likely to be rendered invalid by the extra bytes.
+>How-To-Repeat:
+Use MFC to create an ISA that uses AddHeader() to specify a content-type of
+image/png, then copy a valid PNG file to the output stream.  Don't use MFC's
+StartContent() and EndContent(); they emit HMTL.  If you get your ISA "right,"
+you'll be able to view the image in a browser if the server is IIS/PWS, but
+the image will have \r\n prepended under Apache.
+
+My premise, of course, is that Microsoft's servers are the only real
+authority on correct ISAPI implementation, whether or not they operate in
+accord with the ISAPI specification.
+>Fix:
+None that I really like.  The following hack works for me:
+
+In http_protocol.c:
+- Add a parameter to terminate_header() specifying whether or not to emit a
+  blank line.
+- In ap_send_http_header(), check whether we're running an ISA, and if so, tell
+  terminate_header() not to emit the blank line.  I use code like:
+
+  int blank_line = 1;
+
+#ifdef WIN32
+  blank_line = strcmp(r->handler, "isapi-isa") ;
+#endif
+
+  terminate_header(r->connection->client, blank_line);
+
+It's not clear to me whether ap_send_http_options() and ap_send_error_response()
+should also test for ISAPI before calling terminate_header().  I *think* they
+should always send the blank line.
+
+I'm a bit uncomfortable about the string comparison, but I'm not an Apache
+whiz (or wiz), and this was the only way I could come up with to determine
+whether an ISA is running.  As an alternative, I suppose one could add a
+blank_line parameter to ap_send_http_header(); it would always be true, except
+in mod_isapi.c.
+>Release-Note:
+>Audit-Trail:
+
+From: Jesse Pelton <jsp@PKC.com>
+To: "'apbugs@apache.org'" <apbugs@apache.org>
+Cc:  Subject: RE: os-windows/3358: Extra CR LF follows headers under ISAPI
+Date: Fri, 6 Nov 1998 15:36:01 -0500 
+
+ Oops. The strcmp() line should read:
+ 
+   blank_line = r->handler == NULL || strcmp(r->handler, "isapi-isa") ;
+
+From: Jesse Pelton <jsp@PKC.com>
+To: "'apbugs@hyperreal.org'" <apbugs@hyperreal.org>, 
+	"'apache-bugdb@apache.org'" <apache-bugdb@apache.org>
+Cc:  Subject: RE: os-windows/3358: Extra CR LF follows headers under ISAPI
+Date: Tue, 10 Nov 1998 12:33:32 -0500
+
+ Oy, what a pain. Turns out my little "fix" doesn't work with
+ "Transfer-Encoding: chunked". It eliminates the blank line between the
+ headers and the initial chunk length. The following revised calculation
+ of blank_line allows me to limp along, but I don't think it's really
+ robust:
+ 
+     blank_line = r->chunked || r->handler == NULL || strcmp(r->handler,
+ "isapi-isa") ;
+ 
+ I doubt this will work if an ISA transfers a PNG (or other binary
+ object) in chunks, but I haven't been able to set up a test case.
+ (ap_set_keepalive() is just too byzantine - I've got work to do!) I
+ think I'm in over my head here...
+Category-Changed-From-To: os-windows-mod_isapi
+Category-Changed-By: wrowe
+Category-Changed-When: Thu Jun 15 13:25:25 PDT 2000
+
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Tue Sep 12 19:37:06 PDT 2000
+State-Changed-Why:
+
+A slightly different approach, using the native Apache
+header parsing code in util_script.c, should clear this up.
+Should be committed shortly to 1.3.13-dev, after testing
+is complete.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

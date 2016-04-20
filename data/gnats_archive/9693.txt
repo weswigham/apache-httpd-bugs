@@ -1,0 +1,871 @@
+Received: (qmail 18333 invoked by uid 501); 2 Feb 2002 15:32:14 -0000
+Message-Id: <20020202153214.18332.qmail@apache.org>
+Date: 2 Feb 2002 15:32:14 -0000
+From: tom stuart <tom@obsess.com>
+Reply-To: tom@obsess.com
+To: submit@bugz.apache.org
+Subject: mod_autoindex doesn't emit valid XHTML
+X-Send-Pr-Version: 3.110
+
+>Number:         9693
+>Category:       mod_autoindex
+>Synopsis:       mod_autoindex doesn't emit valid XHTML
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Feb 02 07:40:00 PST 2002
+>Closed-Date:    
+>Last-Modified:  Mon Feb  4 05:40:00 PST 2002
+>Originator:     tom@obsess.com
+>Release:        1.3.24-dev
+>Organization:
+apache
+>Environment:
+all
+>Description:
+XML adoption is becoming increasingly widespread, and more and more people want to build web sites that validate as XHTML. while apache 2.0's mod_autoindex provides a remedy for this problem; however, 1.3 is the current stable version of apache, and it cannot produce valid XHTML directory listings.
+>How-To-Repeat:
+
+>Fix:
+(patches can be downloaded from http://obsess.com/files/apache/)
+
+below are patches against the current apache-1.3 and htdocs-1.3 cvs modules to provide an implementation of and documentation for an EmitXHTML index option and a StyleName configuration directive. this provides a huge opportunity for visual formatting of directory listings, as well as making sure that directory indexes validate along with the rest of a web site and are simple for clients to automatically parse. the intent was to have as little impact on mod_autoindex as possible, leaving its behaviour entirely unchanged unless the new functionality is explicitly invoked. code style has therefore been kept consistent with existing mod_autoindex code.
+
+unfortunately this feature involved touching httpd.h to add a define for DOCTYPE_XHTML_1_0S (plus DOCTYPE_XHTML_1_0T and DOCTYPE_XHTML_1_0F while we're in there) and http_core.c to make the <address> tags XHTML compliant (just changing them from upper to lower case). i found it hard to imagine the latter having any compatibility impact but it can be left out if necessary; full XHTML compliance could then still be achieved by turning ServerSignature off.
+
+see additional ISO 8601 comment and possible patch further down.
+
+Index: apache-1.3/src/include/httpd.h
+===================================================================
+RCS file: /home/cvspublic/apache-1.3/src/include/httpd.h,v
+retrieving revision 1.352
+diff -u -r1.352 httpd.h
+--- apache-1.3/src/include/httpd.h	21 Jan 2002 19:29:37 -0000	1.352
++++ apache-1.3/src/include/httpd.h	2 Feb 2002 14:32:23 -0000
+@@ -614,6 +614,15 @@
+ #define DOCTYPE_HTML_4_0F "<!DOCTYPE HTML PUBLIC \"-//W3C//" \
+                           "DTD HTML 4.0 Frameset//EN\"\n" \
+                           "\"http://www.w3.org/TR/REC-html40/frameset.dtd\">\n"
++#define DOCTYPE_XHTML_1_0S "<!DOCTYPE html PUBLIC \"-//W3C//" \
++                           "DTD XHTML 1.0 Strict//EN\"\n" \
++                           "\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">\n"
++#define DOCTYPE_XHTML_1_0T "<!DOCTYPE html PUBLIC \"-//W3C//" \
++                           "DTD XHTML 1.0 Transitional//EN\"\n" \
++                           "\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">\n"
++#define DOCTYPE_XHTML_1_0F "<!DOCTYPE html PUBLIC \"-//W3C//" \
++                           "DTD XHTML 1.0 Frameset//EN\"\n" \
++                           "\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-frameset.dtd\">\n"
+ 
+ /* Just in case your linefeed isn't the one the other end is expecting. */
+ #ifndef CHARSET_EBCDIC
+Index: apache-1.3/src/main/http_core.c
+===================================================================
+RCS file: /home/cvspublic/apache-1.3/src/main/http_core.c,v
+retrieving revision 1.303
+diff -u -r1.303 http_core.c
+--- apache-1.3/src/main/http_core.c	16 Jan 2002 21:34:32 -0000	1.303
++++ apache-1.3/src/main/http_core.c	2 Feb 2002 14:32:24 -0000
+@@ -2726,15 +2726,15 @@
+     ap_snprintf(sport, sizeof sport, "%u", (unsigned) ap_get_server_port(r));
+ 
+     if (conf->server_signature == srv_sig_withmail) {
+-	return ap_pstrcat(r->pool, prefix, "<ADDRESS>" SERVER_BASEVERSION
+-			  " Server at <A HREF=\"mailto:",
++	return ap_pstrcat(r->pool, prefix, "<address>" SERVER_BASEVERSION
++			  " Server at <a href=\"mailto:",
+ 			  r->server->server_admin, "\">",
+ 			  ap_get_server_name(r), "</A> Port ", sport,
+-			  "</ADDRESS>\n", NULL);
++			  "</address>\n", NULL);
+     }
+-    return ap_pstrcat(r->pool, prefix, "<ADDRESS>" SERVER_BASEVERSION
++    return ap_pstrcat(r->pool, prefix, "<address>" SERVER_BASEVERSION
+ 		      " Server at ", ap_get_server_name(r), " Port ", sport,
+-		      "</ADDRESS>\n", NULL);
++		      "</address>\n", NULL);
+ }
+ 
+ /*
+Index: apache-1.3/src/modules/standard/mod_autoindex.c
+===================================================================
+RCS file: /home/cvspublic/apache-1.3/src/modules/standard/mod_autoindex.c,v
+retrieving revision 1.121
+diff -u -r1.121 mod_autoindex.c
+--- apache-1.3/src/modules/standard/mod_autoindex.c	17 Nov 2001 03:27:09 -0000	1.121
++++ apache-1.3/src/modules/standard/mod_autoindex.c	2 Feb 2002 14:32:24 -0000
+@@ -98,6 +98,7 @@
+ #define NO_OPTIONS 256
+ #define FOLDERS_FIRST 512
+ #define TRACK_MODIFIED 1024
++#define EMIT_XHTML 2048
+ 
+ #define K_PAD 1
+ #define K_NOPAD 0
+@@ -162,6 +163,7 @@
+     array_header *ign_list;
+     array_header *hdr_list;
+     array_header *rdme_list;
++    array_header *css_list;
+ 
+ } autoindex_config_rec;
+ 
+@@ -195,11 +197,36 @@
+  * We include the DOCTYPE because we may be using features therefrom (i.e.,
+  * HEIGHT and WIDTH attributes on the icons if we're FancyIndexing).
+  */
+-static void emit_preamble(request_rec *r, char *title)
++static void emit_preamble(request_rec *r, char *title, char *css_fname,
++			  int emit_xhtml)
+ {
+-    ap_rvputs(r, DOCTYPE_HTML_3_2,
+-	      "<HTML>\n <HEAD>\n  <TITLE>Index of ", title,
+-	      "</TITLE>\n </HEAD>\n <BODY>\n", NULL);
++    request_rec *rr = NULL;
++    if(emit_xhtml) {
++	ap_rvputs(r, DOCTYPE_XHTML_1_0S,
++		  "<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"en\"",
++		  " xml:lang=\"en\">\n<head>\n<title>Index of ", title,
++		  "</title>\n", NULL);
++	if((css_fname != NULL)
++	   && (rr = ap_sub_req_lookup_uri(css_fname, r))
++	   && (rr->status == HTTP_OK)
++	   && (rr->filename != NULL)
++	   && S_ISREG(rr->finfo.st_mode)
++	   && (rr->content_type != NULL)
++	   && !strcasecmp(ap_field_noparam(r->pool, rr->content_type),
++			  "text/css")) {
++	    ap_rvputs(r, "<link type=\"text/css\" href=\"",
++		      ap_escape_html(r->pool, css_fname),
++		      "\" rel=\"stylesheet\" />\n", NULL);
++	}
++	ap_rvputs(r, "</head>\n<body>\n", NULL);
++	if (rr != NULL) {
++	    ap_destroy_sub_req(rr);
++	}
++    } else {
++	ap_rvputs(r, DOCTYPE_HTML_3_2,
++		  "<HTML>\n <HEAD>\n  <TITLE>Index of ", title,
++		  "</TITLE>\n </HEAD>\n <BODY>\n", NULL);
++    }
+ }
+ 
+ static void push_item(array_header *arr, char *type, char *to, char *path,
+@@ -332,6 +359,13 @@
+     return NULL;
+ }
+ 
++static const char *add_css(cmd_parms *cmd, void *d, char *name)
++{
++    push_item(((autoindex_config_rec *) d)->css_list, 0, NULL, cmd->path,
++	      name);
++    return NULL;
++}
++
+ static const char *add_readme(cmd_parms *cmd, void *d, char *name)
+ {
+     push_item(((autoindex_config_rec *) d)->rdme_list, 0, NULL, cmd->path,
+@@ -411,6 +445,9 @@
+ 	else if (!strcasecmp(w, "TrackModified")) {
+             option = TRACK_MODIFIED;
+ 	}
++	else if (!strcasecmp(w, "EmitXHTML")) {
++	    option = EMIT_XHTML;
++	}
+         else if (!strcasecmp(w, "None")) {
+ 	    if (action != '\0') {
+ 		return "Cannot combine '+' or '-' with 'None' keyword";
+@@ -591,6 +628,7 @@
+      "Descriptive text followed by one or more filenames"},
+     {"HeaderName", add_header, NULL, DIR_CMD_PERMS, TAKE1, "a filename"},
+     {"ReadmeName", add_readme, NULL, DIR_CMD_PERMS, TAKE1, "a filename"},
++    {"StyleName", add_css, NULL, DIR_CMD_PERMS, TAKE1, "a filename"},
+     {"FancyIndexing", fancy_indexing, NULL, DIR_CMD_PERMS, FLAG,
+      "Limited to 'on' or 'off' (superseded by IndexOptions FancyIndexing)"},
+     {"DefaultIcon", ap_set_string_slot,
+@@ -616,6 +654,7 @@
+     new->ign_list = ap_make_array(p, 4, sizeof(struct item));
+     new->hdr_list = ap_make_array(p, 4, sizeof(struct item));
+     new->rdme_list = ap_make_array(p, 4, sizeof(struct item));
++    new->css_list = ap_make_array(p, 4, sizeof(struct item));
+     new->opts = 0;
+     new->incremented_opts = 0;
+     new->decremented_opts = 0;
+@@ -642,6 +681,7 @@
+     new->desc_list = ap_append_arrays(p, add->desc_list, base->desc_list);
+     new->icon_list = ap_append_arrays(p, add->icon_list, base->icon_list);
+     new->rdme_list = ap_append_arrays(p, add->rdme_list, base->rdme_list);
++    new->css_list = ap_append_arrays(p, add->css_list, base->css_list);
+     if (add->opts & NO_OPTIONS) {
+ 	/*
+ 	 * If the current directory says 'no options' then we also
+@@ -785,6 +825,7 @@
+ #define find_alt(d,p,t) find_item(p,d->alt_list,t)
+ #define find_header(d,p) find_item(p,d->hdr_list,0)
+ #define find_readme(d,p) find_item(p,d->rdme_list,0)
++#define find_css(d,p) find_item(p,d->css_list,0)
+ 
+ static char *find_default_icon(autoindex_config_rec *d, char *bogus_name)
+ {
+@@ -935,12 +976,12 @@
+ /*
+  * emit a plain text file
+  */
+-static void do_emit_plain(request_rec *r, FILE *f)
++static void do_emit_plain(request_rec *r, FILE *f, int emit_xhtml)
+ {
+     char buf[IOBUFSIZE + 1];
+     int i, n, c, ch;
+ 
+-    ap_rputs("<PRE>\n", r);
++    ap_rputs((emit_xhtml ? "<pre>\n" : "<PRE>\n"), r);
+     while (!feof(f)) {
+ 	do {
+ 	    n = fread(buf, sizeof(char), IOBUFSIZE, f);
+@@ -972,7 +1013,7 @@
+ 	    c = i + 1;
+ 	}
+     }
+-    ap_rputs("</PRE>\n", r);
++    ap_rputs((emit_xhtml ? "</pre>\n" : "</PRE>\n"), r);
+ }
+ 
+ /* See mod_include */
+@@ -988,13 +1029,16 @@
+  * instead of a text document, meaning nothing will be displayed, but
+  * oh well.
+  */
+-static void emit_head(request_rec *r, char *header_fname, int suppress_amble,
+-		      char *title)
++static void emit_head(request_rec *r, char *header_fname,
++		      autoindex_config_rec *autoindex_conf, char *title)
+ {
+     FILE *f;
+     request_rec *rr = NULL;
+     int emit_amble = 1;
+     int emit_H1 = 1;
++    int autoindex_opts = autoindex_conf->opts;
++    int suppress_amble = autoindex_opts & SUPPRESS_PREAMBLE;
++    int emit_xhtml = autoindex_opts & EMIT_XHTML;
+ 
+     /*
+      * If there's a header file, send a subrequest to look for it.  If it's
+@@ -1019,7 +1063,8 @@
+ 		emit_H1 = 0;
+ 
+ 		if (! suppress_amble) {
+-		    emit_preamble(r, title);
++		    emit_preamble(r, title, find_css(autoindex_conf, r),
++			emit_xhtml);
+ 		}
+ 
+ 		/* See mod_include */
+@@ -1046,9 +1091,10 @@
+ 		 * where it belongs.
+ 		 */
+ 		if ((f = ap_pfopen(r->pool, rr->filename, "r")) != 0) {
+-		    emit_preamble(r, title);
++		    emit_preamble(r, title, find_css(autoindex_conf, r),
++			emit_xhtml);
+ 		    emit_amble = 0;
+-		    do_emit_plain(r, f);
++		    do_emit_plain(r, f, emit_xhtml);
+ 		    ap_pfclose(r->pool, f);
+ 		    emit_H1 = 0;
+ 		}
+@@ -1057,10 +1103,13 @@
+     }
+ 
+     if (emit_amble) {
+-	emit_preamble(r, title);
++	emit_preamble(r, title, find_css(autoindex_conf, r), emit_xhtml);
+     }
+     if (emit_H1) {
+-	ap_rvputs(r, "<H1>Index of ", title, "</H1>\n", NULL);
++	ap_rvputs(r, (emit_xhtml ? "<h1 class=\"title\">" : "<H1>"),
++		  "Index of ", title,
++		  (emit_xhtml ? "</h1>" : "</H1>"),
++		  "\n", NULL);
+     }
+     if (rr != NULL) {
+ 	ap_destroy_sub_req(rr);
+@@ -1077,12 +1126,14 @@
+  * instead of a text document, meaning nothing will be displayed, but
+  * oh well.
+  */
+-static void emit_tail(request_rec *r, char *readme_fname, int suppress_amble)
++static void emit_tail(request_rec *r, char *readme_fname, int autoindex_opts)
+ {
+     FILE *f;
+     request_rec *rr = NULL;
+     int suppress_post = 0;
+     int suppress_sig = 0;
++    int suppress_amble = autoindex_opts & SUPPRESS_PREAMBLE;
++    int emit_xhtml = autoindex_opts & EMIT_XHTML;
+ 
+     /*
+      * If there's a readme file, send a subrequest to look for it.  If it's
+@@ -1119,7 +1170,7 @@
+ 		 * If we can open the file, suppress the signature.
+ 		 */
+ 		if ((f = ap_pfopen(r->pool, rr->filename, "r")) != 0) {
+-		    do_emit_plain(r, f);
++		    do_emit_plain(r, f, emit_xhtml);
+ 		    ap_pfclose(r->pool, f);
+ 		    suppress_sig = 1;
+ 		}
+@@ -1131,7 +1182,7 @@
+ 	ap_rputs(ap_psignature("", r), r);
+     }
+     if (!suppress_post) {
+-	ap_rputs("</BODY></HTML>\n", r);
++	ap_rputs((emit_xhtml ? "</body>\n</html>\n" : "</BODY></HTML>\n"), r);
+     }
+     if (rr != NULL) {
+ 	ap_destroy_sub_req(rr);
+@@ -1326,7 +1377,7 @@
+  * selected again.  Non-active fields always start in ascending order.
+  */
+ static void emit_link(request_rec *r, char *anchor, char fname, char curkey,
+-                      char curdirection, int nosort)
++                      char curdirection, int nosort, int emit_xhtml)
+ {
+     char qvalue[5];
+     int reverse;
+@@ -1338,7 +1389,8 @@
+ 	qvalue[4] = '\0';
+ 	reverse = ((curkey == fname) && (curdirection == D_ASCENDING));
+ 	qvalue[3] = reverse ? D_DESCENDING : D_ASCENDING;
+-	ap_rvputs(r, "<A HREF=\"", qvalue, "\">", anchor, "</A>", NULL);
++	ap_rvputs(r, (emit_xhtml ? "<a href=\"" : "<A HREF=\""), qvalue,
++		  "\">", anchor, (emit_xhtml ? "</a>" : "</A>"), NULL);
+     }
+     else {
+         ap_rputs(anchor, r);
+@@ -1353,6 +1405,7 @@
+     char *name = r->uri;
+     char *tp;
+     int static_columns = (autoindex_opts & SUPPRESS_COLSORT);
++    int emit_xhtml = (autoindex_opts & EMIT_XHTML);
+     pool *scratch = ap_make_sub_pool(r->pool);
+     int name_width;
+     int desc_width;
+@@ -1389,44 +1442,78 @@
+     pad_scratch[name_width] = '\0';
+ 
+     if (autoindex_opts & FANCY_INDEXING) {
+-	ap_rputs("<PRE>", r);
++	ap_rputs((emit_xhtml ?
++		  "<table class=\"index\">\n<tr class=\"colhead\">\n" \
++		  "<th class=\"icon\">" :
++		  "<PRE>"), r);
+ 	if ((tp = find_default_icon(d, "^^BLANKICON^^"))) {
+-	    ap_rvputs(r, "<IMG SRC=\"", ap_escape_html(scratch, tp),
+-		   "\" ALT=\"     \"", NULL);
++	    ap_rvputs(r, (emit_xhtml ? "<img src=\"" : "<IMG SRC=\""),
++		   ap_escape_html(scratch, tp),
++		   (emit_xhtml ? "\" alt" : "\" ALT"),"=\"     \"", NULL);
+ 	    if (d->icon_width && d->icon_height) {
+ 		ap_rprintf
+ 		    (
+ 			r,
+-			" HEIGHT=\"%d\" WIDTH=\"%d\"",
++			(emit_xhtml ? " height=\"%d\" width=\"%d\""
++				    : " HEIGHT=\"%d\" WIDTH=\"%d\""),
+ 			d->icon_height,
+ 			d->icon_width
+ 		    );
+ 	    }
+-	    ap_rputs("> ", r);
++	    ap_rputs((emit_xhtml ? " />" : "> "), r);
++	}
++	if(emit_xhtml) {
++	    ap_rputs("</th>\n<th class=\"name\">", r);
++	}
++        emit_link(r, "Name", K_NAME, keyid, direction, static_columns,
++		  emit_xhtml);
++	if(emit_xhtml) {
++	    ap_rputs("</th>\n", r);
++	} else {
++	    ap_rputs(pad_scratch + 4, r);
++	    /*
++	     * Emit the guaranteed-at-least-one-space-between-columns byte.
++	     */
++	    ap_rputs(" ", r);
+ 	}
+-        emit_link(r, "Name", K_NAME, keyid, direction, static_columns);
+-	ap_rputs(pad_scratch + 4, r);
+-	/*
+-	 * Emit the guaranteed-at-least-one-space-between-columns byte.
+-	 */
+-	ap_rputs(" ", r);
+ 	if (!(autoindex_opts & SUPPRESS_LAST_MOD)) {
++	    if(emit_xhtml) {
++		ap_rputs("<th class=\"lmod\">", r);
++	    }
+             emit_link(r, "Last modified", K_LAST_MOD, keyid, direction,
+-                      static_columns);
+-	    ap_rputs("       ", r);
++                      static_columns, emit_xhtml);
++	    if(emit_xhtml) {
++		ap_rputs("</th>\n", r);
++	    } else {
++		ap_rputs("       ", r);
++	    }
+ 	}
+ 	if (!(autoindex_opts & SUPPRESS_SIZE)) {
+-            emit_link(r, "Size", K_SIZE, keyid, direction, static_columns);
+-	    ap_rputs("  ", r);
++	    if(emit_xhtml) {
++		ap_rputs("<th class=\"size\">", r);
++	    }
++            emit_link(r, "Size", K_SIZE, keyid, direction, static_columns,
++		      emit_xhtml);
++	    if(emit_xhtml) {
++		ap_rputs("</th>\n", r);
++	    } else {
++		ap_rputs("  ", r);
++	    }
+ 	}
+ 	if (!(autoindex_opts & SUPPRESS_DESC)) {
++	    if(emit_xhtml) {
++		ap_rputs("<th class=\"desc\">", r);
++	    }
+             emit_link(r, "Description", K_DESC, keyid, direction,
+-                      static_columns);
++                      static_columns, emit_xhtml);
++	    if(emit_xhtml) {
++		ap_rputs("</th>\n", r);
++	    }
+ 	}
+-	ap_rputs("\n<HR>\n", r);
++	ap_rputs((emit_xhtml ? "</tr>\n" : "\n<HR>\n"), r);
+     }
+     else {
+-	ap_rputs("<UL>", r);
++	ap_rputs((emit_xhtml ? "<ul>\n" : "<UL>"), r);
+     }
+ 
+     for (x = 0; x < n; x++) {
+@@ -1451,24 +1538,34 @@
+ 	}
+ 
+ 	if (autoindex_opts & FANCY_INDEXING) {
++	    if(emit_xhtml) {
++		ap_rputs("<tr class=\"file\">\n<td class=\"icon\">", r);
++	    }
+ 	    if (autoindex_opts & ICONS_ARE_LINKS) {
+-		ap_rvputs(r, "<A HREF=\"", anchor, "\">", NULL);
++		ap_rvputs(r, (emit_xhtml ? "<a href=\"" : "<A HREF=\""),
++			  anchor, "\">", NULL);
+ 	    }
+ 	    if ((ar[x]->icon) || d->default_icon) {
+-		ap_rvputs(r, "<IMG SRC=\"",
++		ap_rvputs(r, (emit_xhtml ? "<img src=\"" : "<IMG SRC=\""),
+ 			  ap_escape_html(scratch,
+ 					 ar[x]->icon ? ar[x]->icon
+ 					             : d->default_icon),
+-			  "\" ALT=\"[", (ar[x]->alt ? ar[x]->alt : "   "),
++			  "\" ", (emit_xhtml ? "alt" : "ALT"),
++			  "=\"[", (ar[x]->alt ? ar[x]->alt : "   "),
+ 			  "]\"", NULL);
+ 		if (d->icon_width && d->icon_height) {
+-		    ap_rprintf(r, " HEIGHT=\"%d\" WIDTH=\"%d\"",
++		    ap_rprintf(r,
++			       (emit_xhtml ? " height=\"%d\" width=\"%d\""
++					   : " HEIGHT=\"%d\" WIDTH=\"%d\""),
+ 			       d->icon_height, d->icon_width);
+ 		}
+-		ap_rputs(">", r);
++		ap_rputs((emit_xhtml ? " />" : ">"), r);
+ 	    }
+ 	    if (autoindex_opts & ICONS_ARE_LINKS) {
+-		ap_rputs("</A>", r);
++		ap_rputs((emit_xhtml ? "</a>" : "</A>"), r);
++	    }
++	    if(emit_xhtml) {
++		ap_rputs("</td>\n", r);
+ 	    }
+ 
+ 	    nwidth = strlen(t2);
+@@ -1481,48 +1578,87 @@
+ 		t2 = name_scratch;
+ 		nwidth = name_width;
+ 	    }
+-	    ap_rvputs(r, " <A HREF=\"", anchor, "\">",
+-		      ap_escape_html(scratch, t2), "</A>",
+-		      pad_scratch + nwidth, NULL);
+-	    /*
+-	     * The blank before the storm.. er, before the next field.
+-	     */
+-	    ap_rputs(" ", r);
++	    if(emit_xhtml) {
++		ap_rputs("<td class=\"name\">", r);
++	    }
++	    ap_rvputs(r, (emit_xhtml ? "<a href=\"" : " <A HREF=\""),
++		      anchor, "\">", ap_escape_html(scratch, t2),
++		      (emit_xhtml ? "</a>" : "</A>"),
++		      (emit_xhtml ? "" : pad_scratch + nwidth), NULL);
++	    if(emit_xhtml) {
++		ap_rputs("</td>\n", r);
++	    } else {
++		/*
++		 * The blank before the storm.. er, before the next field.
++		 */
++		ap_rputs(" ", r);
++	    }
+ 	    if (!(autoindex_opts & SUPPRESS_LAST_MOD)) {
++		if(emit_xhtml) {
++		    ap_rputs("<td class=\"lmod\">", r);
++		}
+ 		if (ar[x]->lm != -1) {
+ 		    char time_str[MAX_STRING_LEN];
+ 		    struct tm *ts = localtime(&ar[x]->lm);
+-		    strftime(time_str, MAX_STRING_LEN, "%d-%b-%Y %H:%M  ", ts);
++		    strftime(time_str, MAX_STRING_LEN,
++			     (emit_xhtml ? "%d-%b-%Y %H:%M"
++					 : "%d-%b-%Y %H:%M  "),
++			     ts);
+ 		    ap_rputs(time_str, r);
+ 		}
+ 		else {
+ 		    /*Length="22-Feb-1998 23:42  " (see 4 lines above) */
+-		    ap_rputs("                   ", r);
++		    if(!emit_xhtml) {
++			ap_rputs("                   ", r);
++		    }
++		}
++		if(emit_xhtml) {
++		    ap_rputs("</td>\n", r);
+ 		}
+ 	    }
+ 	    if (!(autoindex_opts & SUPPRESS_SIZE)) {
++		if(emit_xhtml) {
++		    ap_rputs("<td class=\"size\">", r);
++		}
+ 		ap_send_size(ar[x]->size, r);
+-		ap_rputs("  ", r);
++		if(emit_xhtml) {
++		    ap_rputs("</td>\n", r);
++		} else {
++		    ap_rputs("  ", r);
++		}
+ 	    }
+ 	    if (!(autoindex_opts & SUPPRESS_DESC)) {
++		if(emit_xhtml) {
++		    ap_rputs("<td class=\"desc\">", r);
++		}
+ 		if (ar[x]->desc) {
+ 		    ap_rputs(terminate_description(d, ar[x]->desc,
+ 						   autoindex_opts,
+ 						   desc_width), r);
+ 		}
++		if(emit_xhtml) {
++		    ap_rputs("</td>\n", r);
++		}
++	    }
++
++	    if(emit_xhtml) {
++		ap_rputs("</tr>\n", r);
+ 	    }
+ 	}
+ 	else {
+-	    ap_rvputs(r, "<LI><A HREF=\"", anchor, "\"> ", t2,
+-		      "</A>", NULL);
++	    ap_rvputs(r, (emit_xhtml ? "<li><a href=\"" : "<LI><A HREF=\""),
++		      anchor, (emit_xhtml ? "\">" : "\"> "), t2,
++		      (emit_xhtml ? "</a></li>\n" : "</A>"), NULL);
++	}
++	if(!emit_xhtml) {
++	    ap_rputc('\n', r);
+ 	}
+-	ap_rputc('\n', r);
+     }
+     if (autoindex_opts & FANCY_INDEXING) {
+-	ap_rputs("</PRE>", r);
++	ap_rputs((emit_xhtml ? "</table>\n" : "</PRE>"), r);
+     }
+     else {
+-	ap_rputs("</UL>", r);
++	ap_rputs((emit_xhtml ? "</ul>\n" : "</UL>"), r);
+     }
+ }
+ 
+@@ -1647,7 +1783,7 @@
+     }
+ 
+     emit_head(r, find_header(autoindex_conf, r),
+-	      autoindex_opts & SUPPRESS_PREAMBLE, title_name);
++	      autoindex_conf, title_name);
+ 
+     /*
+      * Figure out what sort of indexing (if any) we're supposed to use.
+@@ -1713,10 +1849,10 @@
+     ap_pclosedir(r->pool, d);
+ 
+     if (autoindex_opts & FANCY_INDEXING) {
+-	ap_rputs("<HR>\n", r);
++	ap_rputs(((autoindex_opts & EMIT_XHTML) ? "" : "<HR>\n"), r);
+     }
+     emit_tail(r, find_readme(autoindex_conf, r),
+-	      autoindex_opts & SUPPRESS_PREAMBLE);
++	      autoindex_opts);
+ 
+     ap_kill_timeout(r);
+     return 0;
+
+Index: htdocs/manual/mod/directives.html.de
+===================================================================
+RCS file: /home/cvspublic/httpd-docs-1.3/htdocs/manual/mod/directives.html.de,v
+retrieving revision 1.2
+diff -u -r1.2 directives.html.de
+--- htdocs/manual/mod/directives.html.de	28 Sep 2001 07:15:33 -0000	1.2
++++ htdocs/manual/mod/directives.html.de	2 Feb 2002 14:32:27 -0000
+@@ -222,6 +222,7 @@
+ <LI><A HREF="mod_setenvif.html#SetEnvIfNoCase">SetEnvIfNoCase</A>
+ <LI><A HREF="mod_mime.html#sethandler">SetHandler</A>
+ <LI><A HREF="core.html#startservers">StartServers</A>
++<LI><A HREF="mod_autoindex.html#stylename">StyleName</A>
+ <LI><A HREF="core.html#threadsperchild">ThreadsPerChild</A>
+ <LI><A HREF="core.html#timeout">TimeOut</A>
+ <LI><A HREF="mod_log_config.html#transferlog">TransferLog</A>
+Index: htdocs/manual/mod/directives.html.en
+===================================================================
+RCS file: /home/cvspublic/httpd-docs-1.3/htdocs/manual/mod/directives.html.en,v
+retrieving revision 1.74
+diff -u -r1.74 directives.html.en
+--- htdocs/manual/mod/directives.html.en	30 Jan 2002 18:37:03 -0000	1.74
++++ htdocs/manual/mod/directives.html.en	2 Feb 2002 14:32:27 -0000
+@@ -532,6 +532,8 @@
+ 
+       <li><a href="core.html#startservers">StartServers</a></li>
+ 
++      <li><a href="mod_autoindex.html#stylename">StyleName</a></li>
++
+       <li><a
+       href="core.html#threadsperchild">ThreadsPerChild</a></li>
+ 
+Index: htdocs/manual/mod/directives.html.fr
+===================================================================
+RCS file: /home/cvspublic/httpd-docs-1.3/htdocs/manual/mod/directives.html.fr,v
+retrieving revision 1.3
+diff -u -r1.3 directives.html.fr
+--- htdocs/manual/mod/directives.html.fr	8 Oct 2001 01:34:30 -0000	1.3
++++ htdocs/manual/mod/directives.html.fr	2 Feb 2002 14:32:27 -0000
+@@ -528,6 +528,8 @@
+ 
+       <li><a href="core.html#startservers">StartServers</a></li>
+ 
++      <li><a href="mod_autoindex.html#stylename">StyleName</a></li>
++
+       <li><a
+       href="core.html#threadsperchild">ThreadsPerChild</a></li>
+ 
+Index: htdocs/manual/mod/directives.html.ja.jis
+===================================================================
+RCS file: /home/cvspublic/httpd-docs-1.3/htdocs/manual/mod/directives.html.ja.jis,v
+retrieving revision 1.3
+diff -u -r1.3 directives.html.ja.jis
+--- htdocs/manual/mod/directives.html.ja.jis	1 Feb 2002 05:40:17 -0000	1.3
++++ htdocs/manual/mod/directives.html.ja.jis	2 Feb 2002 14:32:27 -0000
+@@ -524,6 +524,8 @@
+ 
+       <li><a href="core.html#startservers">StartServers</a></li>
+ 
++      <li><a href="mod_autoindex.html#stylename">StyleName</a></li>
++
+       <li><a href="core.html#threadsperchild"
+       >ThreadsPerChild</a></li>
+ 
+Index: htdocs/manual/mod/mod_autoindex.html
+===================================================================
+RCS file: /home/cvspublic/httpd-docs-1.3/htdocs/manual/mod/mod_autoindex.html,v
+retrieving revision 1.47
+diff -u -r1.47 mod_autoindex.html
+--- htdocs/manual/mod/mod_autoindex.html	11 Nov 2001 03:24:01 -0000	1.47
++++ htdocs/manual/mod/mod_autoindex.html	2 Feb 2002 14:32:27 -0000
+@@ -100,6 +100,8 @@
+       <li><a href="#indexorderdefault">IndexOrderDefault</a></li>
+ 
+       <li><a href="#readmename">ReadmeName</a></li>
++
++      <li><a href="#stylename">StyleName</a></li>
+     </ul>
+ 
+     <p>See also: <a href="core.html#options">Options</a> and <a
+@@ -578,7 +580,8 @@
+     <samp>FoldersFirst</samp> and <samp>DescriptionWidth</samp>
+     options are only available with Apache 1.3.10 and later; the
+     <samp>TrackModified</samp> option is only available with Apache
+-    1.3.15 and later 
++    1.3.15 and later; the <samp>EmitXHTML</samp> option is only
++    available with Apache 1.3.24 and later 
+ 
+     <p>The IndexOptions directive specifies the behavior of the
+     directory indexing. <em>Option</em> can be one of</p>
+@@ -596,6 +599,19 @@
+       href="#adddescription"><samp>AddDescription</samp></a> for
+       dangers inherent in truncating descriptions.</b></dd>
+ 
++      <dt><a id="indexoptions:emitxhtml"
++      name="indexoptions:emitxhtml">EmitXHTML (<em>Apache 1.3.24 and
++	  later</em>)</a></dt>
++
++      <dd>This will format the directory listing for compliance with
++      XHTML 1.0 Strict. FancyIndexed directories will be formatted as
++      tables rather than with <samp>&lt;pre&gt;</samp> tags, and
++      the various elements of the listing will be identified with
++      appropriate <samp>class</samp> attributes to facilitate visual
++      formatting with CSS. See the section on <a
++      href="#stylename"><samp>StyleName</samp></a> for information on
++      attaching a stylesheet to the listing.</dd>
++
+       <dt><a id="indexoptions:fancyindexing"
+       name="indexoptions:fancyindexing">FancyIndexing</a></dt>
+ 
+@@ -919,6 +935,56 @@
+     </blockquote>
+ 
+     <p>See also <a href="#headername">HeaderName</a>.</p>
++    <hr />
++
++    <h2><a id="stylename" name="stylename">StyleName</a>
++    directive</h2>
++
++    <a href="directive-dict.html#Syntax"
++    rel="Help"><strong>Syntax:</strong></a> StyleName
++    <em>filename</em><br />
++     <a href="directive-dict.html#Context"
++    rel="Help"><strong>Context:</strong></a> server config, virtual
++    host, directory, .htaccess<br />
++     <a href="directive-dict.html#Override"
++    rel="Help"><strong>Override:</strong></a> Indexes<br />
++     <a href="directive-dict.html#Status"
++    rel="Help"><strong>Status:</strong></a> Base<br />
++     <a href="directive-dict.html#Module"
++    rel="Help"><strong>Module:</strong></a> mod_autoindex <br />
++     <a href="directive-dict.html#Compatibility"
++    rel="Help"><strong>Compatibility:</strong></a> StyleName is
++    only available in Apache 1.3.24 and later.
++
++    <p>The <samp>StyleName</samp> directive is used in combination
++    with the <a href="#indexoptions:emitxhtml"><samp>EmitXHTML</samp></a>
++    index option. By default, XHTML directory listings have no
++    CSS stylesheet attached; the <samp>StyleName</samp> allows you to
++    specify a stylesheet for such a directory listing, giving some
++    control over the visual appearance of the output.</p>
++
++    <p><samp>StyleName</samp> sets the name of the stylesheet file that
++    will be linked in the <samp>&lt;head&gt;</samp> of the index listing.
++    <em>filename</em> is the name of the file to include.</p>
++
++    <p>Example:
++    <pre>    StyleName index.css</pre>
++    will, if <samp>index.css</samp> exists, produce the line:
++    <pre>    &lt;link type="text/css" href="index.css" rel="stylesheet" /&gt;</pre>
++    as part of the <samp>&lt;head&gt;</samp> ... <samp>&lt;/head&gt;</samp>
++    of the index listing.</p>
++
++    <p><em>filename</em> is treated as a URI path relative to the one
++    used to access the directory being indexed, and must resolve to a
++    document with a content type of "<samp>text/css</samp>". Details of
++    how it is handled may be found under the description of the
++    <a href="#headername"><samp>HeaderName</samp></a> directive, which
++    uses the same mechanism (but excludes the <samp>text/css</samp>
++    restriction).</p>
++
++
++    <p>See also the <a href="#indexoptions:emitxhtml"><samp
++    >EmitXHTML</samp></a> index option.</p>
+ 
+     <p><!--#include virtual="footer.html" -->
+     </p>
+
+[re: ISO 8601: it would be really nice to have ISO 8601 dates in the XHTML directory listing, but after seeing in PR#7710 that this has been ruled out for 1.3, i decided to leave it out of the main patch. however, anybody using EmitXHTML is clearly going to be breaking any parsing client application anyway, so i would hope that ISO 8601 dates would be considered for when EmitXHTML is in effect. a further patch to provide this is below.]
+
+--- apache-1.3/src/modules/standard/mod_autoindex.c	Sat Feb  2 14:27:52 2002
++++ apache-1.3/src/modules/standard/mod_autoindex.c	Sat Feb  2 14:34:34 2002
+@@ -1601,7 +1601,7 @@
+ 		    char time_str[MAX_STRING_LEN];
+ 		    struct tm *ts = localtime(&ar[x]->lm);
+ 		    strftime(time_str, MAX_STRING_LEN,
+-			     (emit_xhtml ? "%d-%b-%Y %H:%M"
++			     (emit_xhtml ? "%Y-%m-%d %H:%M"
+ 					 : "%d-%b-%Y %H:%M  "),
+ 			     ts);
+ 		    ap_rputs(time_str, r);
+
+>Release-Note:
+>Audit-Trail:
+
+From: tom stuart <tom@obsess.com>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc: apbugs@Apache.Org
+Subject: Re: mod_autoindex/9693: mod_autoindex doesn't emit valid XHTML
+Date: Sat, 2 Feb 2002 16:39:04 +0000
+
+ sorry; missed an </A> in http_core.c:
+ 
+ --- apache-1.3/src/main/http_core.c	Sat Feb  2 16:31:50 2002
+ +++ apache-1.3/src/main/http_core.c	Sat Feb  2 16:21:11 2002
+ @@ -2729,7 +2729,7 @@
+  	return ap_pstrcat(r->pool, prefix, "<address>" SERVER_BASEVERSION
+  			  " Server at <a href=\"mailto:",
+  			  r->server->server_admin, "\">",
+ -			  ap_get_server_name(r), "</A> Port ", sport,
+ +			  ap_get_server_name(r), "</a> Port ", sport,
+  			  "</address>\n", NULL);
+      }
+      return ap_pstrcat(r->pool, prefix, "<address>" SERVER_BASEVERSION
+
+From: tom stuart <tom@obsess.com>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc: apbugs@Apache.Org
+Subject: Re: mod_autoindex/9693: mod_autoindex doesn't emit valid XHTML
+Date: Sat, 2 Feb 2002 16:39:04 +0000
+
+ sorry; missed an </A> in http_core.c:
+ 
+ --- apache-1.3/src/main/http_core.c	Sat Feb  2 16:31:50 2002
+ +++ apache-1.3/src/main/http_core.c	Sat Feb  2 16:21:11 2002
+ @@ -2729,7 +2729,7 @@
+  	return ap_pstrcat(r->pool, prefix, "<address>" SERVER_BASEVERSION
+  			  " Server at <a href=\"mailto:",
+  			  r->server->server_admin, "\">",
+ -			  ap_get_server_name(r), "</A> Port ", sport,
+ +			  ap_get_server_name(r), "</a> Port ", sport,
+  			  "</address>\n", NULL);
+      }
+      return ap_pstrcat(r->pool, prefix, "<address>" SERVER_BASEVERSION
+
+From: tom stuart <tom@obsess.com>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc:  
+Subject: Re: mod_autoindex/9693: mod_autoindex doesn't emit valid XHTML
+Date: Mon, 4 Feb 2002 13:35:33 +0000
+
+ fixed patches (as above, plus style compliance modifications), and an
+ additional patch to provide <div>s around XHTML listing header and
+ readme sections (if this is desirable or appropriate -- i personally
+ find it useful), are available at http://obsess.com/files/apache/
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,470 @@
+Received: (qmail 29369 invoked by uid 2012); 22 Jul 1998 13:31:38 -0000
+Message-Id: <19980722133138.29368.qmail@hyperreal.org>
+Date: 22 Jul 1998 13:31:38 -0000
+From: Seth Chaiklin <seth@psy.au.dk>
+Reply-To: seth@psy.au.dk
+To: apbugs@hyperreal.org
+Subject: valuable information lost in error logging from version 1.2.x to version 1.3.0
+X-Send-Pr-Version: 3.2
+
+>Number:         2661
+>Category:       general
+>Synopsis:       valuable information lost in error logging from version 1.2.x to version 1.3.0
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jul 22 06:40:00 PDT 1998
+>Last-Modified:  Thu Aug  6 10:31:16 PDT 1998
+>Originator:     seth@psy.au.dk
+>Organization:
+>Release:        1.3.0
+>Environment:
+Linux pc126.psy.aau.dk 2.0.33 #2 Fri Jan 16 16:57:55 CET 1998 i586
+>Description:
+I can see that more systematic "error-handling" is on the wishlist, so
+the patches that I am enclosing are meant more to point to places where changes
+could be desirable.  
+
+The attached patch are some places where I have added back (or in some
+cases added in) information about the host that was tried to access a file
+or make a mistake.  
+
+In particular, the change from 1.2.x from 1.3 stopped telling which host
+was trying to find a non-existent file or execute a non-existent script.
+
+This information can be interesting to see if it was a local person
+who was testing their new pages, or a remote person trying to crack
+into one's system.
+
+I don't care if you use my patches, but I hope my request might inspire
+some more attention to the error reporting -- I realize this is boring
+for the developers -- but important for system managers.
+
+Cheers,
+  Seth
+>How-To-Repeat:
+
+>Fix:
+*** apache_1.3.0/src/main/http_core.c.orig	Tue Jul 21 16:07:06 1998
+--- apache_1.3.0/src/main/http_core.c	Wed Jul 22 12:54:44 1998
+***************
+*** 53,58 ****
+--- 53,59 ----
+   * For more information on the Apache Group and the Apache HTTP server
+   * project, please see <http://www.apache.org/>.
+   *
++  * <seth@psy.au.dk> 22 jul 98 - Added hostname to ap_log_error() reports
+   */
+  
+  #define CORE_PRIVATE
+***************
+*** 2048,2054 ****
+      if (r->proxyreq) return HTTP_FORBIDDEN;
+      if ((r->uri[0] != '/') && strcmp(r->uri, "*")) {
+  	ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+! 		    "Invalid URI in request %s", r->the_request);
+  	return BAD_REQUEST;
+      }
+      
+--- 2049,2057 ----
+      if (r->proxyreq) return HTTP_FORBIDDEN;
+      if ((r->uri[0] != '/') && strcmp(r->uri, "*")) {
+  	ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+! 		    "Invalid URI in request %s from %s", r->the_request,
+!                      ap_get_remote_host(r->connection, r->per_dir_config,
+!                                         REMOTE_NAME));
+  	return BAD_REQUEST;
+      }
+      
+***************
+*** 2115,2121 ****
+  
+      if (r->method_number == M_INVALID) {
+  	ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+! 		    "Invalid method in request %s", r->the_request);
+  	return NOT_IMPLEMENTED;
+      }
+      if (r->method_number == M_OPTIONS) return ap_send_http_options(r);
+--- 2118,2126 ----
+  
+      if (r->method_number == M_INVALID) {
+  	ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+! 		    "Invalid method in request %s from %s", r->the_request,
+!                      ap_get_remote_host(r->connection, r->per_dir_config,
+!                                         REMOTE_NAME));
+  	return NOT_IMPLEMENTED;
+      }
+      if (r->method_number == M_OPTIONS) return ap_send_http_options(r);
+***************
+*** 2123,2131 ****
+  
+      if (r->finfo.st_mode == 0 || (r->path_info && *r->path_info)) {
+  	ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, r->server, 
+!                     "File does not exist: %s", r->path_info ? 
+                      ap_pstrcat(r->pool, r->filename, r->path_info, NULL)
+! 		    : r->filename);
+  	return NOT_FOUND;
+      }
+      if (r->method_number != M_GET) return METHOD_NOT_ALLOWED;
+--- 2128,2137 ----
+  
+      if (r->finfo.st_mode == 0 || (r->path_info && *r->path_info)) {
+  	ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, r->server, 
+!                     "File does not exist: %s for %s", r->path_info ? 
+                      ap_pstrcat(r->pool, r->filename, r->path_info, NULL)
+! 		    : r->filename, ap_get_remote_host(r->connection, r->per_dir_config, REMOTE_NAME));
+! 
+  	return NOT_FOUND;
+      }
+      if (r->method_number != M_GET) return METHOD_NOT_ALLOWED;
+***************
+*** 2139,2145 ****
+  
+      if (f == NULL) {
+          ap_log_error(APLOG_MARK, APLOG_ERR, r->server,
+! 		    "file permissions deny server access: %s", r->filename);
+          return FORBIDDEN;
+      }
+  	
+--- 2145,2154 ----
+  
+      if (f == NULL) {
+          ap_log_error(APLOG_MARK, APLOG_ERR, r->server,
+! 		    "file permissions deny server access for %s: %s", 
+!                      ap_get_remote_host(r->connection, r->per_dir_config,
+!                                         REMOTE_NAME), r->filename);
+! 
+          return FORBIDDEN;
+      }
+  	
+*** apache_1.3.0/src/main/http_request.c.orig	Tue Jul 21 16:23:59 1998
+--- apache_1.3.0/src/main/http_request.c	Wed Jul 22 12:47:50 1998
+***************
+*** 63,68 ****
+--- 63,70 ----
+   * Thoroughly revamped by rst for Apache.  NB this file reads
+   * best from the bottom up.
+   *
++  *
++  * <seth@psy.au.dk> 22 jul 98 - Added hostname to ap_log_error() reports
+   */
+  
+  #define CORE_PRIVATE
+***************
+*** 249,255 ****
+                  ap_log_error(APLOG_MARK, APLOG_ERR, r->server,
+                              "access to %s failed for %s", r->uri,
+                              ap_get_remote_host(r->connection, r->per_dir_config,
+!                                             REMOTE_NOLOOKUP));
+              return HTTP_FORBIDDEN;
+          }
+  #else
+--- 251,257 ----
+                  ap_log_error(APLOG_MARK, APLOG_ERR, r->server,
+                              "access to %s failed for %s", r->uri,
+                              ap_get_remote_host(r->connection, r->per_dir_config,
+!                             REMOTE_NAME));
+              return HTTP_FORBIDDEN;
+          }
+  #else
+***************
+*** 1026,1032 ****
+           * comes through...
+           */
+          ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+!                     "client sent illegal HTTP/0.9 request: %s", r->uri);
+          r->header_only = 0;
+          ap_die(BAD_REQUEST, r);
+          return;
+--- 1028,1037 ----
+           * comes through...
+           */
+          ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+!                     "client %s sent illegal HTTP/0.9 request: %s", 
+!                      ap_get_remote_host(r->connection, r->per_dir_config,
+!                      REMOTE_NAME), r->uri);
+! 
+          r->header_only = 0;
+          ap_die(BAD_REQUEST, r);
+          return;
+***************
+*** 1042,1048 ****
+  	 * a Host: header, and the server MUST respond with 400 if it doesn't.
+           */
+          ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+!                "client sent HTTP/1.1 request without hostname (see RFC2068 section 9, and 14.23): %s", r->uri);
+          ap_die(BAD_REQUEST, r);
+          return;
+      }
+--- 1047,1054 ----
+  	 * a Host: header, and the server MUST respond with 400 if it doesn't.
+           */
+          ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+!                "client %s sent HTTP/1.1 request without hostname (see RFC2068 section 9, and 14.23): %s", ap_get_remote_host(r->connection, r->per_dir_config,
+!                           REMOTE_NAME), r->uri);
+          ap_die(BAD_REQUEST, r);
+          return;
+      }
+*** apache_1.3.0/src/modules/standard/mod_speling.c.orig	Wed Jul 22 11:51:07 1998
+--- apache_1.3.0/src/modules/standard/mod_speling.c	Wed Jul 22 13:17:55 1998
+***************
+*** 80,85 ****
+--- 80,88 ----
+   * o wrote a "kind of" html page for mod_speling
+   *
+   * Activate it with "CheckSpelling On"
++  *
++  * 22-Jul-1998 <seth@psy.au.dk>
++  * o Added remote host information to error messages in ap_log_error()
+   */
+  
+  MODULE_VAR_EXPORT module speling_module;
+***************
+*** 348,356 ****
+                        ap_construct_url(r->pool, nuri, r));
+  
+              ap_log_error(APLOG_MARK, APLOG_NOERRNO | APLOG_INFO, r->server,
+!                         ref ? "Fixed spelling: %s to %s from %s"
+!                         : "Fixed spelling: %s to %s",
+!                         r->uri, nuri, ref);
+  
+              return HTTP_MOVED_PERMANENTLY;
+          }
+--- 351,360 ----
+                        ap_construct_url(r->pool, nuri, r));
+  
+              ap_log_error(APLOG_MARK, APLOG_NOERRNO | APLOG_INFO, r->server,
+!                         ref ? "Fixed spelling for %s: %s to %s from %s"
+!                         : "Fixed spelling for %s: %s to %s", 
+!                         ap_get_remote_host(r->connection, r->per_dir_config,
+!                                         REMOTE_NAME), r->uri, nuri, ref);
+  
+              return HTTP_MOVED_PERMANENTLY;
+          }
+***************
+*** 420,428 ****
+              ap_table_setn(notes, "variant-list", t);
+  
+              ap_log_error(APLOG_MARK, APLOG_NOERRNO | APLOG_INFO, r->server,
+!                         ref ? "Spelling fix: %s: %d candidates from %s"
+!                         : "Spelling fix: %s: %d candidates",
+!                         r->uri, candidates->nelts, ref);
+  
+              return HTTP_MULTIPLE_CHOICES;
+          }
+--- 424,433 ----
+              ap_table_setn(notes, "variant-list", t);
+  
+              ap_log_error(APLOG_MARK, APLOG_NOERRNO | APLOG_INFO, r->server,
+!                         ref ? "Spelling fix for %s: %s: %d candidates from %s"
+!                         : "Spelling fix for %s: %s: %d candidates",
+!                         ap_get_remote_host(r->connection, r->per_dir_config,
+!                         REMOTE_NAME), r->uri, candidates->nelts, ref);
+  
+              return HTTP_MULTIPLE_CHOICES;
+          }
+*** apache_1.3.0/src/modules/standard/mod_auth_dbm.c.orig	Wed Jul 22 12:03:32 1998
+--- apache_1.3.0/src/modules/standard/mod_auth_dbm.c	Wed Jul 22 12:13:24 1998
+***************
+*** 67,72 ****
+--- 67,73 ----
+   *         module. A known user with a faulty or absent password still
+   *         causes an AuthRequired. The default is 'Authoritative', i.e.
+   *         no control is passed along.
++  * <seth@psy.au.dk> 22 jul 98 - Added hostname to ap_log_error() reports
+   */
+  
+  #include "httpd.h"
+***************
+*** 219,225 ****
+  	if (!(sec->auth_dbmauthoritative))
+  	    return DECLINED;
+  	ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+! 		    "DBM user %s not found: %s", c->user, r->filename);
+  	ap_note_basic_auth_failure(r);
+  	return AUTH_REQUIRED;
+      }
+--- 220,228 ----
+  	if (!(sec->auth_dbmauthoritative))
+  	    return DECLINED;
+  	ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+! 		    "DBM user %s not found for %s: %s", c->user, 
+!                      ap_get_remote_host(r->connection, r->per_dir_config,
+!                      REMOTE_NAME), r->filename);
+  	ap_note_basic_auth_failure(r);
+  	return AUTH_REQUIRED;
+      }
+***************
+*** 230,236 ****
+      /* anyone know where the prototype for crypt is? */
+      if (strcmp(real_pw, (char *) crypt(sent_pw, real_pw))) {
+  	ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+! 		    "user %s: password mismatch: %s", c->user, r->uri);
+  	ap_note_basic_auth_failure(r);
+  	return AUTH_REQUIRED;
+      }
+--- 233,241 ----
+      /* anyone know where the prototype for crypt is? */
+      if (strcmp(real_pw, (char *) crypt(sent_pw, real_pw))) {
+  	ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+! 		    "user %s from %s: password mismatch: %s", c->user, 
+!                      ap_get_remote_host(r->connection, r->per_dir_config,
+!                      REMOTE_NAME), r->uri);
+  	ap_note_basic_auth_failure(r);
+  	return AUTH_REQUIRED;
+      }
+***************
+*** 275,282 ****
+  		if (!(sec->auth_dbmauthoritative))
+  		    return DECLINED;
+  		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+! 			    "user %s not in DBM group file %s: %s",
+! 			    user, sec->auth_dbmgrpfile, r->filename);
+  		ap_note_basic_auth_failure(r);
+  		return AUTH_REQUIRED;
+  	    }
+--- 280,289 ----
+  		if (!(sec->auth_dbmauthoritative))
+  		    return DECLINED;
+  		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+! 			    "user %s from %s not in DBM group file %s: %s",
+! 			    user, ap_get_remote_host(r->connection, 
+!                             r->per_dir_config, REMOTE_NAME), 
+!                             sec->auth_dbmgrpfile, r->filename);
+  		ap_note_basic_auth_failure(r);
+  		return AUTH_REQUIRED;
+  	    }
+***************
+*** 291,298 ****
+  		}
+  	    }
+  	    ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+! 			"user %s not in right group: %s",
+! 			user, r->filename);
+  	    ap_note_basic_auth_failure(r);
+  	    return AUTH_REQUIRED;
+  	}
+--- 298,306 ----
+  		}
+  	    }
+  	    ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+! 			"user %s from %s not in right group: %s",
+! 			 user, ap_get_remote_host(r->connection, 
+!                          r->per_dir_config, REMOTE_NAME), r->filename);
+  	    ap_note_basic_auth_failure(r);
+  	    return AUTH_REQUIRED;
+  	}
+*** apache_1.3.0/src/modules/standard/mod_cgi.c.orig	Wed Jul 22 12:16:09 1998
+--- apache_1.3.0/src/modules/standard/mod_cgi.c	Wed Jul 22 12:22:44 1998
+***************
+*** 66,71 ****
+--- 66,72 ----
+   * custom error responses, and DOCUMENT_ROOT because we found it useful.
+   * It also adds SERVER_ADMIN - useful for scripts to know who to mail when 
+   * they fail.
++  * <seth@psy.au.dk> 22 jul 98 - Added remote hostname to ap_log_error()
+   */
+  
+  #include "httpd.h"
+***************
+*** 170,176 ****
+      struct stat finfo;
+  
+      ap_log_error(APLOG_MARK, show_errno|APLOG_ERR, r->server, 
+! 		"%s: %s", error, r->filename);
+  
+      if (!conf->logname ||
+  	((stat(ap_server_root_relative(r->pool, conf->logname), &finfo) == 0)
+--- 171,179 ----
+      struct stat finfo;
+  
+      ap_log_error(APLOG_MARK, show_errno|APLOG_ERR, r->server, 
+! 		"%s for %s: %s", error, 
+!                  ap_get_remote_host(r->connection, r->per_dir_config,
+!                  REMOTE_NAME), r->filename);
+  
+      if (!conf->logname ||
+  	((stat(ap_server_root_relative(r->pool, conf->logname), &finfo) == 0)
+*** apache_1.3.0/src/modules/standard/mod_asis.c.orig	Wed Jul 22 12:27:32 1998
+--- apache_1.3.0/src/modules/standard/mod_asis.c	Wed Jul 22 13:15:04 1998
+***************
+*** 53,62 ****
+--- 53,65 ----
+   * For more information on the Apache Group and the Apache HTTP server
+   * project, please see <http://www.apache.org/>.
+   *
++  *
++  * <seth@psy.au.dk> 22 jul 98 - Added hostname to ap_log_error() reports
+   */
+  
+  #include "httpd.h"
+  #include "http_config.h"
++ #include "http_core.h"
+  #include "http_protocol.h"
+  #include "http_log.h"
+  #include "util_script.h"
+***************
+*** 73,79 ****
+  	return DECLINED;
+      if (r->finfo.st_mode == 0) {
+  	ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+! 		    "File does not exist: %s", r->filename);
+  	return NOT_FOUND;
+      }
+  
+--- 76,84 ----
+  	return DECLINED;
+      if (r->finfo.st_mode == 0) {
+  	ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+! 		    "File does not exist: %s for %s", r->filename,
+!                      ap_get_remote_host(r->connection, r->per_dir_config,
+!                      REMOTE_NAME));
+  	return NOT_FOUND;
+      }
+  
+***************
+*** 81,87 ****
+  
+      if (f == NULL) {
+  	ap_log_error(APLOG_MARK, APLOG_ERR, r->server,
+! 		    "file permissions deny server access: %s", r->filename);
+  	return FORBIDDEN;
+      }
+  
+--- 86,94 ----
+  
+      if (f == NULL) {
+  	ap_log_error(APLOG_MARK, APLOG_ERR, r->server,
+! 		    "file permissions deny server access for %s: %s", 
+!                      ap_get_remote_host(r->connection, r->per_dir_config,
+!                      REMOTE_NAME), r->filename);
+  	return FORBIDDEN;
+      }
+  
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Aug  6 10:05:30 PDT 1998
+State-Changed-Why:
+ugh, this needs to be done right.  I'm doing it.
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Aug  6 10:31:15 PDT 1998
+State-Changed-Why:
+I corrected it in 1.3.2-dev by adding a new api function
+ap_log_rerror(), and then changed all existing modules/etc
+to use the new function.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

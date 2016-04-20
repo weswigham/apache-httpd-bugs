@@ -1,0 +1,141 @@
+Received: (qmail 75822 invoked by uid 501); 28 Aug 2000 15:41:32 -0000
+Message-Id: <20000828154132.75821.qmail@locus.apache.org>
+Date: 28 Aug 2000 15:41:32 -0000
+From: Richard Scholz <richard.scholz@subito.de>
+Reply-To: richard.scholz@subito.de
+To: submit@bugz.apache.org
+Subject: Workaround for WIN32 BUG in select( ) function
+X-Send-Pr-Version: 3.110
+
+>Number:         6477
+>Category:       os-windows
+>Synopsis:       Workaround for WIN32 BUG in select( ) function
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Aug 28 08:50:04 PDT 2000
+>Closed-Date:    Thu Aug 31 12:21:48 PDT 2000
+>Last-Modified:  Thu Aug 31 12:21:48 PDT 2000
+>Originator:     richard.scholz@subito.de
+>Release:        1.3.12
+>Organization:
+>Environment:
+Windows NT 4.0, Visual C++ 5.0
+>Description:
+The "select" function in Windows NT 4.0 has a bug. When checking a socket, if data can be read without blocking, select() returns yes, but when actually reading from the socket with recv(), that function returns WSAEWOULDBLOCK, which says that reading would block. 
+
+The code for WIN32 which handles writing to a socket already contains a workaround for this. The code for reading from a socket does not have this workaround. I suggest to apply that workaround here also. 
+
+It seems that this problem does not occur in usual operation, but only in an SSL enabled Apache (modssl or Apache-SSL) with https. I could repeat this problem only in this configuration. But it sounds like a general problem.
+
+Since modssl and Apache-SSL reuse the original Code to implement the SSL operations, I suggest to include the workaround in Apache already. 
+
+The problem that occurs is that export versions of Browsers can't correctly handshake the SSL connection when a SGC Certificate is used. They get a "network error" or similar error message´.
+>How-To-Repeat:
+Build an SSL enabled Apache (modssl or Apache-SSL). Then you need a working SGC Certificate. I used a real SGC Certificate that was issued by a real CA. Then connect to that SSL enabled Apache with Netscape 4.7 export Version, not domestic Version. Then Netscape will get an network error.
+The SSL Log File will show I/O Errors which I traced to the above described problem.
+>Fix:
+Apply the workaround that sendwithtimeout() in buff.c already contains also to recvwithtimeout() (also buff.c)
+
+With this workaround, the recvwithtimeout() function looks like this:
+
+#ifdef EAPI
+API_EXPORT(int) recvwithtimeout(int sock, char *buf, int len, int flags)
+#else /* EAPI */
+int recvwithtimeout(int sock, char *buf, int len, int flags)
+#endif /* EAPI */
+{
+    int iostate = 1;
+    fd_set fdset;
+    struct timeval tv;
+    int err = WSAEWOULDBLOCK;
+    int rv;
+    
+    // CHANGE HERE
+    int retry;
+    // CHANGE HERE END
+
+    if (!(tv.tv_sec = ap_check_alarm()))
+	return (recv(sock, buf, len, flags));
+
+    rv = ioctlsocket(sock, FIONBIO, &iostate);
+    iostate = 0;
+    ap_assert(!rv);
+    rv = recv(sock, buf, len, flags);
+    if (rv == SOCKET_ERROR) {
+	err = WSAGetLastError();
+	if (err == WSAEWOULDBLOCK) {
+
+	    // CHANGE HERE
+	    do {
+		retry=0;
+	    // CHANGE HERE END
+
+	    	FD_ZERO(&fdset);
+	    	FD_SET(sock, &fdset);
+	    	tv.tv_usec = 0;
+	    	rv = select(FD_SETSIZE, &fdset, NULL, NULL, &tv);
+	    	if (rv == SOCKET_ERROR)
+		    err = WSAGetLastError();
+	    	else if (rv == 0) {
+		    ioctlsocket(sock, FIONBIO, &iostate);
+		    ap_check_alarm();
+		    WSASetLastError(WSAEWOULDBLOCK);
+		    return (SOCKET_ERROR);
+	    	}
+	    	else {
+		    rv = recv(sock, buf, len, flags);
+
+		    // CHANGE HERE
+		    if (rv == SOCKET_ERROR) {
+
+		    	err = WSAGetLastError();
+			if(err == WSAEWOULDBLOCK) {
+			    ap_log_error(APLOG_MARK,APLOG_DEBUG,NULL,
+				"select claimed we could read, but in fact we couldn't. This is a bug in Windows.");
+			    retry=1;
+			    Sleep(100);
+			}
+		    }
+		    // CHANGE HERE END
+	    	}
+
+	    // CHANGE HERE
+	    } while(retry);
+	    // CHANGE HERE END
+	}
+    }
+    ioctlsocket(sock, FIONBIO, &iostate);
+    if (rv == SOCKET_ERROR)
+	WSASetLastError(err);
+    return (rv);
+}
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: stoddard
+State-Changed-When: Thu Aug 31 12:21:48 PDT 2000
+State-Changed-Why:
+Integrated this fix into Apache. Will be available in the next release of Apache (which should be 1.3.13). Thanks Richard!
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

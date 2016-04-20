@@ -1,0 +1,82 @@
+From nobody@hyperreal.com  Wed Jun 11 13:22:13 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id NAA09076;
+	Wed, 11 Jun 1997 13:22:13 -0700 (PDT)
+Message-Id: <199706112022.NAA09076@hyperreal.com>
+Date: Wed, 11 Jun 1997 13:22:13 -0700 (PDT)
+From: Davin Milun <milun@cs.buffalo.edu>
+Reply-To: milun@cs.buffalo.edu
+To: apbugs@hyperreal.com
+Subject: SymLinksIfOwnerMatch and root-owned links
+X-Send-Pr-Version: 3.2
+
+>Number:         722
+>Category:       general
+>Synopsis:       SymLinksIfOwnerMatch and root-owned links
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jun 11 13:30:01 1997
+>Last-Modified:  Mon Jul 21 16:01:24 PDT 1997
+>Originator:     milun@cs.buffalo.edu
+>Organization:
+>Release:        1.2.0
+>Environment:
+Solaris 2.x
+>Description:
+We use SymLinksIfOwnerMatch for our user directories.
+There is a problem, however, if we restore/move their home directory (which
+includes their public_html directory).  The problem is that Solaris's 
+ufsrestore program does not set the owner of a symbolic link to the user:
+rather the link remains owned by root.  This causes many user web pages
+to break after we're moved/restored their directories.
+>How-To-Repeat:
+
+>Fix:
+Create a separate directive called SymLinksIfRootOrOwnerMatch.
+
+Locally, I've hacked http_request.c to make this the action of SymLinksIfOwnerMatch
+(however, this does open some possible security issues, related to people
+specifically deleting symbolic links (such as "ln -s /etc/passwd foo") and 
+then asking for foo to be restored.)  In or environment, it is worth the
+risk.
+
+My changes are:
+
+--- http_request.c_dist Wed May 14 15:22:52 1997
++++ http_request.c      Wed Jun 11 10:50:37 1997
+@@ -129,7 +129,8 @@
+        
+     if (stat (d, &fi) < 0) return HTTP_FORBIDDEN;
+     
+-    return (fi.st_uid == lfi.st_uid) ? OK : HTTP_FORBIDDEN;
++    /* Added hack to allow root-owned slinks to work too */
++    return ((!lfi.st_uid) || (fi.st_uid == lfi.st_uid)) ? OK : HTTP_FORBIDDEN;
+ 
+ #endif    
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: brian
+State-Changed-When: Mon Jul 21 16:01:24 PDT 1997
+State-Changed-Why:
+Thanks for your suggestion.  There is a great hesitancy on
+the part of the group to implementing extra features like 
+this to work around glaring bugs in operating system 
+software, particularly software in "userland".  We feel 
+that a better solution to this problem is, say, a perl 
+script which "fixes" that problem right after a restore, 
+rather than implementing it into Apache.  Since the user
+probably has write access to the directory the symlink is
+sitting in, they can remove it and make a new link anyways.
+
+Thanks!
+
+
+>Unformatted:
+
+

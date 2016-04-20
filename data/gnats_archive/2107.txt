@@ -1,0 +1,134 @@
+Received: (qmail 28549 invoked by uid 2012); 21 Apr 1998 21:36:34 -0000
+Message-Id: <19980421213634.28548.qmail@hyperreal.org>
+Date: 21 Apr 1998 21:36:34 -0000
+From: Andrey Chernov <ache@nagual.pp.ru>
+Reply-To: ache@nagual.pp.ru
+To: apbugs@hyperreal.org
+Subject: Additional arguments for fixing PR#1464 ("Range: 0-" bug)
+X-Send-Pr-Version: 3.2
+
+>Number:         2107
+>Category:       protocol
+>Synopsis:       Additional arguments for fixing PR#1464 ("Range: 0-" bug)
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Apr 21 14:40:01 PDT 1998
+>Last-Modified:  Wed May  6 09:00:01 PDT 1998
+>Originator:     ache@nagual.pp.ru
+>Organization:
+>Release:        1.3b6
+>Environment:
+Any
+>Description:
+This PR continues PR#1464 since I don't know how to reply to original PR.
+
+I also agree that Apache must be fixed to return 206 instead of 200, reasons are:
+1) All HTTP/1.1 compatible servers excepting Apache do it.
+2) All transfer tools which are able to do reget (like GetRight, ReGet and many others)
+expect 206 as result for "Range: 0-", not 200.
+3) RFC 2068 eslecially points that the server MUST return 206 for ANY Range: request.
+
+In the reply to PR#1464 I see the point that remote soft can determine reget ability
+using "Accept-ranges" header, but it require yet one additional and totally unneded transfer request
+just for "Accept-ranges",  while with 206 return code remote soft can determine reget ability in ONE 
+initial request using "Range: 0-".
+>How-To-Repeat:
+
+>Fix:
+Return 206 code as standards and common practice says
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: brian
+State-Changed-When: Tue May  5 21:44:01 PDT 1998
+State-Changed-Why:
+
+Apache's current behavior is correct.  In response to your points:
+
+> 1) All HTTP/1.1 compatible servers excepting Apache do it.
+
+Not extremely relevant.
+
+> 2) All transfer tools which are able to do reget (like GetRight, ReGet and many others)
+> expect 206 as result for "Range: 0-", not 200.
+
+They should be fixed to look for a "Accept-Ranges" in a response, not a
+header.  Overloading "206" to mean "this server accepts range requests"
+is an abuse of the protocol.
+
+> 3) RFC 2068 eslecially points that the server MUST return 206 for ANY Range: request.
+
+Where?  That's not even possible - the resource might not even exist, so how
+can it return a 206 instead of a 404?  I'm not being facetious here.
+
+> In the reply to PR#1464 I see the point that remote soft can determine reget ability
+> using "Accept-ranges" header, but it require yet one additional and totally unneded transfer request
+> just for "Accept-ranges",  while with 206 return code remote soft can determine reget ability in ONE 
+> initial request using "Range: 0-".
+
+No, "Accept-Ranges" is in every response which can be byte-ranged, so each method
+only takes one request to determine if a resource can be fetched using byte 
+ranges.
+
+
+
+From: Marc Slemko <marcs@znep.com>
+To: =?koi8-r?B?4c7E0sXKIP7F0s7P1w==?= <ache@nagual.pp.ru>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: protocol/2107: Additional arguments for fixing PR#1464 ("Range: 0-" bug)
+Date: Wed, 6 May 1998 09:49:52 -0600 (MDT)
+
+ On Wed, 6 May 1998, [koi8-r] =E1=CE=C4=D2=C5=CA =FE=C5=D2=CE=CF=D7 wrote:
+ 
+ > On Wed, May 06, 1998 at 04:44:02AM -0000, brian@hyperreal.org wrote:
+ > > > 3) RFC 2068 eslecially points that the server MUST return 206 for ANY=
+  Range: request.
+ > >=20
+ > > Where?  That's not even possible - the resource might not even exist, s=
+ o how
+ > > can it return a 206 instead of a 404?  I'm not being facetious here.
+ >=20
+ > Well, not ANY but ANY SUCCESSFUL, exact quote is:
+ >=20
+ > ---
+ > If the server supports the Range header and the specified range or
+ > ranges are appropriate for the entity:
+ >=20
+ > o  The presence of a Range header in an unconditional GET modifies
+ >    what is returned if the GET is otherwise successful. In other
+ >    words, the response carries a status code of 206 (Partial
+ >    Content) instead of 200 (OK).
+ > ---
+ >=20
+ > As I read it - "the presence of a Range header" cause "the response
+ > carries 206 instead of 200"
+ 
+ Note that this says "if the server supports the Range header and the
+ specified range or ranges are appropriate". =20
+ 
+ However, right above what you quote it says:
+ 
+    A server MAY ignore the Range header. However, HTTP/1.1 origin
+    servers and intermediate caches SHOULD support byte ranges when
+    possible, since Range supports efficient recovery from partially
+    failed transfers, and supports efficient partial retrieval of large
+    entities.
+ 
+ So, in this case, the specified range is decided to be inappropriate for
+ the resource because it covers the whole thing, so the entire thing is
+ sent.  In that case, no 206 is required because it isn't partial content.
+ There is no qualification for when it may ignore the Range header.
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

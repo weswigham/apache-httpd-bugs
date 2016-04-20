@@ -1,0 +1,145 @@
+Received: (qmail 16139 invoked by uid 2012); 2 Mar 1998 21:23:47 -0000
+Message-Id: <19980302212347.16138.qmail@hyperreal.org>
+Date: 2 Mar 1998 21:23:47 -0000
+From: Jason Riedy <ejr@cise.ufl.edu>
+Reply-To: ejr@cise.ufl.edu
+To: apbugs@hyperreal.org
+Subject: -DFCNTL_SERIALIZED_ACCEPT necessary for mod_include's exec functions & suexec
+X-Send-Pr-Version: 3.2
+
+>Number:         1904
+>Category:       os-solaris
+>Synopsis:       -DFCNTL_SERIALIZED_ACCEPT necessary for mod_include's exec functions & suexec
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Mar  2 13:30:00 PST 1998
+>Last-Modified:  Mon Mar  2 17:13:16 PST 1998
+>Originator:     ejr@cise.ufl.edu
+>Organization:
+>Release:        1.3b5
+>Environment:
+SunOS cave 5.6 Generic sun4u sparc SUNW,Ultra-2
+>Description:
+This is a strange one.
+
+When called from mod_include, but not mod_cgi, call_exec can't proceed
+past getpwnam() in the suexec_enabled-guarded part.  Changing the
+serialization type fixes this.
+
+I've tried both ``exec cmd'' and ``exec cgi''.  When the former is called
+before the latter, truss outputs:
+
+For ``exec cmd'':
+> 2760:	setrlimit(RLIMIT_CPU, 0x000A7B68)		= 0
+> 2760:	setrlimit(RLIMIT_DATA, 0x000A7B88)		= 0
+> 2760:	setrlimit(RLIMIT_VMEM, 0x000A7B88)		= 0
+> 2760:	open64("/etc/.name_service_door", O_RDONLY)	= 4
+> 2760:	fcntl(4, F_SETFD, 0x00000001)			= 0
+> 2760:	door_info(4, 0xEF6A86A8)			Err#9 EBADF
+> 2760:	close(4)					= 0
+> 2760:	open("/etc/passwd", O_RDONLY)			= 4
+> 2760:	fstat64(4, 0xEFFF2C68)				= 0
+> 2760:	ioctl(4, TCGETA, 0xEFFF2BF4)			Err#25 ENOTTY
+> 2760:	read(4, " r o o t : x : 0 : 1 : S".., 8192)	= 806
+> 2760:	    Incurred fault #6, FLTBOUNDS  %pc = 0xEF658900
+> 2760:	      siginfo: SIGSEGV SEGV_MAPERR addr=0xEFFF1F7C
+> 2760:	    Received signal #11, SIGSEGV [caught]
+> 2760:	      siginfo: SIGSEGV SEGV_MAPERR addr=0xEFFF1F7C
+> 2760:		*** process killed ***
+> 2744:	read(6, 0x000DEC44, 5120)			= 0
+
+For ``exec cgi'':
+> 2762:	setrlimit(RLIMIT_CPU, 0x000A7B68)		= 0
+> 2762:	setrlimit(RLIMIT_DATA, 0x000A7B88)		= 0
+> 2762:	setrlimit(RLIMIT_VMEM, 0x000A7B88)		= 0
+> 2762:	open64("/etc/.name_service_door", O_RDONLY)	= 4
+> 2762:	fcntl(4, F_SETFD, 0x00000001)			= 0
+> 2762:	door_info(4, 0xEF6A86A8)			Err#9 EBADF
+> 2762:	close(4)					= 0
+> 2762:	open("/etc/passwd", O_RDONLY)			= 4
+> 2762:	fstat64(4, 0xEFFF0A98)				= 0
+> 2762:	ioctl(4, TCGETA, 0xEFFF0A24)			Err#25 ENOTTY
+> 2762:	read(4, " r o o t : x : 0 : 1 : S".., 8192)	= 806
+> 2762:	llseek(4, 0xFFFFFFFFFFFFFFCF, SEEK_CUR)		= 757
+> 2762:	close(4)					= 0
+> 2762:	open64("/etc/.name_service_door", O_RDONLY)	= 4
+> 2762:	fcntl(4, F_SETFD, 0x00000001)			= 0
+> 2762:	door_info(4, 0xEF6A86A8)			Err#9 EBADF
+> 2762:	close(4)					= 0
+> 2762:	open("/etc/group", O_RDONLY)			= 4
+> 2762:	fstat64(4, 0xEFFEED50)				= 0
+> 2762:	ioctl(4, TCGETA, 0xEFFEECDC)			Err#25 ENOTTY
+> 2762:	read(4, " r o o t : : 0 : r o o t".., 8192)	= 281
+> 2762:	read(4, 0x000E1C64, 8192)			= 0
+> 2762:	llseek(4, 0, SEEK_CUR)				= 281
+> 2762:	close(4)					= 0
+> 2762:	getpid()					= 2762 [2744]
+> 2762:	fstat(3, 0xEFFEECC8)				= 0
+> 2762:	close(3)					= 0
+> 2762:	    Incurred fault #6, FLTBOUNDS  %pc = 0xEF658900
+> 2762:	      siginfo: SIGSEGV SEGV_MAPERR addr=0xEFFEDEA4
+> 2762:	    Received signal #11, SIGSEGV [caught]
+> 2762:	      siginfo: SIGSEGV SEGV_MAPERR addr=0xEFFEDEA4
+> 2762:		*** process killed ***
+> 2744:	read(8, 0x000DBA68, 4096)			= 0
+
+However, calling ``exec cgi'' before ``exec cmd'' produces different
+results.  The ``exec cgi'' fails as above, but the ``exec cmd'' works.
+[Yes, I know, ``exec cgi'' is not the prefered method, but I'm using it
+to test my suexec.]
+
+The death is definitely within getpwnam().  Calling getpwnam() elsewhere 
+in the routine moves the point-of-death.
+>How-To-Repeat:
+Compile with the defaults and suexec.  Bang head against wall many times.
+>Fix:
+I wish I knew.  Using fcntl rather than the Solaris mutexes works.
+I'll let you know if I uncover more
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Jason Riedy <ejr@cise.ufl.edu>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-solaris/1904: -DFCNTL_SERIALIZED_ACCEPT necessary for mod_include's exec functions & suexec
+Date: Mon, 2 Mar 1998 13:45:28 -0800 (PST)
+
+ I'm going to suggest to everyone we disable pthreads mutexes... there's
+ enough anecdotal evidence that they're not quite reliable enough.  It'll
+ become an option for advanced users only... folks willing to experiment
+ for speed. 
+ 
+ Dean
+ 
+
+From: Jason Riedy <ejr@cise.ufl.edu>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-solaris/1904: -DFCNTL_SERIALIZED_ACCEPT necessary for mod_include's exec functions & suexec 
+Date: Mon, 02 Mar 1998 17:05:44 -0500
+
+ Changing the defaults is probably the best thing for now.  If I find
+ out anything more about this problem, I'll pass it along.
+ 
+ One thing I forgot to note in the PR:  I tried this both with and
+ without _REENTRANT.  I also tried changing getpwnam() to getpwnam_r()
+ with the same results.  Random guesses, and they didn't help.
+ 
+ Jason
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Mar  2 17:13:16 PST 1998
+State-Changed-Why:
+USE_FCNTL_SERIALIZED_ACCEPT will be the default in 1.3b6.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

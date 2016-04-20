@@ -1,0 +1,107 @@
+Received: (qmail 73427 invoked by uid 501); 4 Apr 2001 09:27:10 -0000
+Message-Id: <20010404092710.73426.qmail@apache.org>
+Date: 4 Apr 2001 09:27:10 -0000
+From: Larry Atkin <latkin@commongrnd.com>
+Reply-To: latkin@commongrnd.com
+To: submit@bugz.apache.org
+Subject: Apache sometimes gives 403 Forbidden when using a cgi on a MacOS X
+X-Send-Pr-Version: 3.110
+
+>Number:         7513
+>Category:       other
+>Synopsis:       Apache sometimes gives 403 Forbidden when using a cgi on a MacOS X
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Apr 04 02:30:00 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     latkin@commongrnd.com
+>Release:        1.3.19
+>Organization:
+apache
+>Environment:
+MacOS X 4K78
+>Description:
+Here's what I sent to Apple.  Perhaps you can be more responsive.
+
+--Reproducible:  Sometimes
+--Severity:      (2) No workaround
+--Effect:        Will effect user
+
+
+-- Steps to Reproduce:
+
+On a MacOS X system installed on an HFS+ disk, put the following in /Library/WebServer/CGI-Executables/test.cgi:
+
+#!/bin/sh
+echo Content-type: text/plain
+echo
+echo PATH_INFO = "$PATH_INFO"
+echo PATH_TRANSLATED = "$PATH_TRANSLATED"
+echo QUERY_STRING = "$QUERY_STRING"
+cat "$PATH_TRANSLATED"
+
+Set the Execute bits on the file (Using 'chmod a+x /Library/WebServer/CGI-Executables/test.cgi' from Terminal.)
+
+Create any text file as /Library/WebServer/Documents/data.txt
+
+Verify Apache is enabled.  (Web Sharing is enabled.)
+
+Attempt to access these files by going to any browser and entering the URL:
+<http://<ip address>/cgi-bin/test.cgi/data.txt>
+
+-- Expected Results:
+
+The CGI should display some header information, then copy the text file to the browser.
+
+
+-- Actual Results:
+
+About half the time, the browser displays the 403 Forbidden message.  If it doesn't, you can create a different text file and try again.  Eventually, it will fail.  It seems to be related to time of day.  Sometimes it fails every time I use a different text file; sometimes it succeeds for hours.  If it is failing, it will fail consistantly with the same file.  If it is failing, and you enter the URL <http://<ip address>/cgi-bin/test.cgi>, that will clear up the problem, and the next attempt to enter <http://<ip address>/cgi-bin/test.cgi/data.txt> will succeed.
+
+If it is failing, the Apache error log reports:
+[<date/time>] [error] [client <ip address>] (21)Is a directory: access to /cgi-bin/test.cgi/data.txt failed
+
+The problem is related to the way Apache parses the URL for a CGI, and the unexpected results it gets from the operating system.  I installed the latest version of Apache (1.3.19) and, when it showed the same behavior, started investigating.  In http_request.c, about line 175, is a routine called get_path_info.  About line 249 it calls the system routine stat, with a path of /Library/WebServer/CGI-Executables/test.cgi/data.txt (which obviously doesn't exist.)  The routine expects to get either a ENOENT or ENOTDIR error.  MacOS sometimes returns a EISDIR error, which causes get_path_info to return HTTP_FORBIDDEN.
+
+When Apache is failing the ls command also fails.  That is,
+ls -l /Library/WebServer/CGI-Executables/test.cgi/data.txt
+responds with "Is a directory", which is absurd.
+
+-- Workaround:
+
+None that I know of, short of changing Apache.  
+
+-- Isolation:
+
+This problem did not occur on the MacOS X Server where the system was on a UFS disk.  I'm not sure which change is relevent, and I don't have sufficient hardware to isolate it further.
+
+>How-To-Repeat:
+See above.
+>Fix:
+Either check for EISDIR in get_path_info, or put in some system-dependent code to identify MacOS as brain-dead.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,132 @@
+Received: (qmail 14128 invoked by uid 2012); 18 Nov 1997 13:40:32 -0000
+Message-Id: <19971118134032.14127.qmail@hyperreal.org>
+Date: 18 Nov 1997 13:40:32 -0000
+From: David Landgren <david@landgren.net>
+Reply-To: david@landgren.net
+To: apbugs@hyperreal.org
+Subject: Unable to compile ./src/support/htdigest.c
+X-Send-Pr-Version: 3.2
+
+>Number:         1427
+>Category:       os-linux
+>Synopsis:       Unable to compile ./src/support/htdigest.c
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          duplicate
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Nov 18 05:50:00 PST 1997
+>Last-Modified:  Tue Nov 18 06:32:34 PST 1997
+>Originator:     david@landgren.net
+>Organization:
+>Release:        1.3b2
+>Environment:
+/home/landgren/apache_1.3b2> uname -a
+Linux neutrino.databass.com 2.0.30 #1 Tue Apr 22 16:32:38 EDT 1997 alpha unknown
+i.e., Redhat 4.2, no patches applied, was able to compile 1.2.4 from source
+>Description:
+make[2]: Entering directory `/home/landgren/apache_1.3b2/src/support'
+gcc  -DLINUX=2  htdigest.c -o htdigest  -lm -lcrypt
+In file included from ../main/md5c.c:88,
+                 from htdigest.c:20:
+../main/conf.h:62: os.h: No such file or directory
+
+I.e., the make bombed out with a missing include file (os.h). My hypothesis is
+that an include switch for the compiler was missing. I looked at Makefile.tmpl
+and made the following change:
+
+htdigest: htdigest.c
+        $(CC) $(CFLAGS) htdigest.c -o htdigest $(LIBS)
+
+became
+
+htdigest: htdigest.c
+        $(CC) $(INCLUDES) $(CFLAGS) htdigest.c -o htdigest $(LIBS)
+              ^^^^^^^^^^^
+
+I then when back to the base directory and ran 'make clean;make'. This time I
+received the following error
+
+gcc  -I../regex -I../os/unix -I../main    -DLINUX=2  htdigest.c -o htdigest  -lm -lcrypt
+/tmp/cca148411.o: In function `main':
+htdigest.c(.text+0x2cb0): undefined reference to `ap_signal'
+htdigest.c(.text+0x2cb4): undefined reference to `ap_signal'
+(note the weird (segment+offset) line number)
+
+I have tracked down ap_signal to the following file: ./src/main/conf.h:
+
+/*
+ * Replace signal function with sigaction equivalent
+ */
+#ifndef NO_USE_SIGACTION
+typedef void Sigfunc(int);
+
+#if defined(SIG_IGN) && !defined(SIG_ERR)
+#define SIG_ERR ((Sigfunc *)-1)
+#endif
+
+/*
+ * For some strange reason, QNX defines signal to signal. Eliminate it.
+ */
+#ifdef signal
+#undef signal
+#endif
+#define signal(s,f)     ap_signal(s,f)
+Sigfunc *signal(int signo, Sigfunc * func);
+#endif
+
+As far as I can see (find . -type f -exec grep -l ap_signal {} \;), this is
+the only occurrence of the string "ap_signal" anywhere in the source 
+distribution. Since 'ap' reminds me of 'Apache', I'm not going to grep my
+/usr tree. Thus, I don't think this can fly.
+
+I'm lost. Please advise.
+
+Also note, my machine is a 64-bit Alpha, and as such, warns of what are
+possible 32-bit assumptions (int* != int):
+
+gcc -c  -I../regex -I../os/unix -I../main    -DLINUX=2   http_config.c
+http_config.c: In function `set_file_slot':
+http_config.c:875: warning: cast from pointer to integer of different size
+
+htpasswd.c: In function `add_password':
+htpasswd.c:125: warning: assignment makes pointer from integer without a cast
+
+Also note the macro redefines:
+/usr/include/netinet/tcp.h:97: warning: `TCP_NODELAY' redefined
+/usr/include/linux/socket.h:128: warning: this is the location of the previous definition
+/usr/include/netinet/tcp.h:98: warning: `TCP_MAXSEG' redefined
+/usr/include/linux/socket.h:129: warning: this is the location of the previous definition
+>How-To-Repeat:
+Um, slaughter a goat during the next full moon? (I mean, this must have worked
+correctly for you, right)?
+>Fix:
+Is my change to ./src/support/Makefile.tmpl kosher?
+
+The macro redefines should be guarded with #ifdefs:
+#ifndef TCP_NODELAY
+#define TCP_NODELAY (0xf00f) /* whatever */
+#endif
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Tue Nov 18 06:32:33 PST 1997
+State-Changed-Why:
+[This is a standard response.]
+This issue has been reported before;
+please search the FAQ and the bug database.
+Thanks for using Apache!
+Class-Changed-From-To: sw-bug-duplicate
+Class-Changed-By: coar
+Class-Changed-When: Tue Nov 18 06:32:33 PST 1997
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

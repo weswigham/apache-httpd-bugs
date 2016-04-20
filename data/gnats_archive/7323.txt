@@ -1,0 +1,150 @@
+Received: (qmail 50156 invoked by uid 501); 27 Feb 2001 11:47:29 -0000
+Message-Id: <20010227114729.50153.qmail@apache.org>
+Date: 27 Feb 2001 11:47:29 -0000
+From: Taketo Kabe <kabe@sra-tohoku.co.jp>
+Reply-To: kabe@sra-tohoku.co.jp
+To: submit@bugz.apache.org
+Subject: access control ineffective on IPv6/IPv4 mixed environment
+X-Send-Pr-Version: 3.110
+
+>Number:         7323
+>Category:       mod_access
+>Synopsis:       access control ineffective on IPv6/IPv4 mixed environment
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Feb 27 03:50:02 PST 2001
+>Closed-Date:    Thu Mar 22 02:05:55 PST 2001
+>Last-Modified:  Thu Mar 22 02:05:55 PST 2001
+>Originator:     kabe@sra-tohoku.co.jp
+>Release:        httpd-2_0_12-alpha
+>Organization:
+>Environment:
+SunOS 5.8 Generic_108528-05 sun4u sparc SUNW,Ultra-60
+gcc version 2.95.2 19991024 (release)
+>Description:
+If the server accept()ed the client's socket with IPv6-mapped IPv4 address,
+the Allow/Deny directives fail to match, rendering most of the 
+access control ineffective.
+
+This is because
+*) IPv6-mapped-IPv4 address has different sockaddr_in format and
+   always fails to match with "Allow: IPADDR/MASK" format.
+*) For access controls, double-lookups are made (accept()addr->FQDN->addr)
+   but nowadays this rarely yields IPv6 address (AAAA record/sockaddr_in6)
+   which differs from sockaddr_in, so it never matches.
+
+These cause only "allow all" "deny all" to be effective;
+the access control "allow all / deny from.badguys"
+allows anyone including badguys.
+
+As commented in modules/aaa/mod_access.c:find_allowdeny(),this is marked
+XXX in the comment and looks like an open issue; a good solution
+should be adding generic matching func in APR.
+Only IPv4/v6 has this kind of "compatibility"; this makes the 
+solution unclean.
+>How-To-Repeat:
+Configure
+* on an OS which accept()s IPv4 connections with IPv6-mapped-IPv4 address
+* with IPv6 enabled
+* put .htaccess or whatever saying
+	order allow,deny
+	allow from all
+	deny from badguys.domain
+  and try getting something there from badguys.domain
+  (should be denyed but actually not)
+
+My environment (Solaris 8, sparc) seems to fall on this by default.
+>Fix:
+This corrects the problem in hand but should be TEMPORAL/QUIKHACK;
+real solutions should be adding generic address parse/match functions
+in APR level.
+
+diff -u httpd-2_0_12-alpha/modules/aaa/mod_access.c.dist httpd-2_0_12-alpha/modules/aaa/mod_access.c
+--- httpd-2_0_12-alpha/modules/aaa/mod_access.c.dist	Fri Feb 16 13:26:34 2001
++++ httpd-2_0_12-alpha/modules/aaa/mod_access.c	Tue Feb 27 19:35:41 2001
+@@ -332,10 +332,26 @@
+ 	case T_IP:
+             /* XXX handle IPv6 with separate T_IP6 type or add common 
+              *     address masking operations to APR */
+-	    if (ap[i].x.ip.net != APR_INADDR_NONE
+-		&& (r->connection->remote_addr->sa.sin.sin_addr.s_addr
+-		    & ap[i].x.ip.mask) == ap[i].x.ip.net) {
+-		return 1;
++	    /* XXX kabe: for now, try match if its's V4 mapped address */
++	    /* XXX yes we should have some generic matching routine */
++	    if (ap[i].x.ip.net == APR_INADDR_NONE)
++		break;
++	    switch (r->connection->remote_addr->sa.sin.sin_family) {
++		case APR_INET:
++		    if ((r->connection->remote_addr->sa.sin.sin_addr.s_addr
++			& ap[i].x.ip.mask) == ap[i].x.ip.net) {
++			return 1;
++		    }
++		    break;
++#if APR_HAVE_IPV6
++		case APR_INET6:
++		    if (IN6_IS_ADDR_V4MAPPED((struct in6_addr *)r->connection->remote_addr->ipaddr_ptr)
++			&& ((*(unsigned long*)&r->connection->remote_addr->sa.sin6.sin6_addr.s6_addr[12]
++			    & ap[i].x.ip.mask) == ap[i].x.ip.net)) {
++			return 1;
++		    }
++#endif
++		    break;
+ 	    }
+ 	    break;
+ 
+diff -u httpd-2_0_12-alpha/modules/http/http_core.c.dist httpd-2_0_12-alpha/modules/http/http_core.c
+--- httpd-2_0_12-alpha/modules/http/http_core.c.dist	Sat Feb 24 20:23:30 2001
++++ httpd-2_0_12-alpha/modules/http/http_core.c	Tue Feb 27 19:35:41 2001
+@@ -600,6 +600,20 @@
+                 conn->double_reverse = 1;
+                 return;
+             }
++#if APR_HAVE_IPV6
++	    /* XXX kabe: match V6-mapped V4 clientaddr with V4 A record */
++	    /* XXX apr_sockaddr_t does not have socket family desc;
++	     *     so had to use sa.sin.sin_family */
++	    if (conn->remote_addr->sa.sin.sin_family == APR_INET6
++		&& IN6_IS_ADDR_V4MAPPED((struct in6_addr *)conn->remote_addr->ipaddr_ptr)
++		&& sa->sa.sin.sin_family == APR_INET
++		&& !memcmp( &((struct in6_addr *)conn->remote_addr->ipaddr_ptr)->s6_addr[12],
++			    sa->ipaddr_ptr,
++			    sizeof (((struct in_addr *)0)->s_addr))) {
++		conn->double_reverse = 1;
++		return;
++	    }
++#endif
+             sa = sa->next;
+         }
+     }
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: trawick
+State-Changed-When: Thu Mar 22 02:05:54 PST 2001
+State-Changed-Why:
+This is a duplicate of PR #7407 (or vice versa :) ).
+7407 has been committed.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

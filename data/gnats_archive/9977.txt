@@ -1,0 +1,169 @@
+Received: (qmail 15977 invoked by uid 501); 27 Feb 2002 12:59:40 -0000
+Message-Id: <20020227125940.15976.qmail@apache.org>
+Date: 27 Feb 2002 12:59:40 -0000
+From: Alexander Dietrich <alexander@dietrich.cx>
+Reply-To: alexander@dietrich.cx
+To: submit@bugz.apache.org
+Subject: Digest authentication fails on POST request
+X-Send-Pr-Version: 3.110
+
+>Number:         9977
+>Category:       general
+>Synopsis:       Digest authentication fails on POST request
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          feedback
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Feb 27 05:00:00 PST 2002
+>Closed-Date:    
+>Last-Modified:  Tue Mar  5 01:40:00 PST 2002
+>Originator:     alexander@dietrich.cx
+>Release:        1.3.22
+>Organization:
+>Environment:
+distribution: Red Hat 6.2
+kernel: 2.2.20
+compiler: egcs-2.91.66
+>Description:
+I use mod_auth_digest to protect a forum CGI script.
+
+This is in httpd.conf:
+
+<Location "/cgi-bin/forum.pl">
+    AuthName private
+    AuthType Digest
+    AuthDigestDomain /cgi-bin/forum.pl
+    AuthDigestFile /etc/httpd/conf/userdb.digest
+    AuthDigestGroupFile /etc/httpd/conf/groupdb
+    AuthDigestNonceLifetime 900
+    Require group forum
+</Location>
+
+As a client I use Mozilla 0.9.8. Authentication works when I move around the
+forum and read postings, all GET requests. However, when I try to post a new
+message, Mozilla pops up the authentication dialog and I have to type in the
+username and password AGAIN. A "password mismatch" line is added to error_log.
+After typing in the credentials again, the POST request works, but you have to
+repeat them for every new POST request.
+
+While this is simply annoying in a forum context, it might seriously
+hurt when transferring larger files with POST requests (think WebDAV).
+>How-To-Repeat:
+1. Create a URL protected by digest authentication with mod_auth_digest.
+2. GET the URL to set up your browser with the necessary credentials.
+3. POST to the URL.
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: slive
+State-Changed-When: Wed Feb 27 07:22:26 PST 2002
+State-Changed-Why:
+
+I haven't tested this myself, but my best guess would be
+that this is a client problem.  Could you do one of the
+following:
+
+1. Try it in IE6 or another browser known to support
+the most recent digest spec.
+
+2. Put a sniffer on the line and see if mozilla is
+really sending the right thing.
+
+Thanks!
+
+
+From: Alexander Dietrich <alexander@dietrich.cx>
+To: apbugs@apache.org
+Cc:  
+Subject: Re: general/9977: Digest authentication fails on POST request
+Date: Tue, 5 Mar 2002 10:41:22 +0100
+
+ slive@apache.org wrote:
+ 
+ > 1. Try it in IE6 or another browser known to support
+ > the most recent digest spec.
+ 
+ Sorry, I don't have IE6. Does Opera for Linux support it ?
+ 
+ > 2. Put a sniffer on the line and see if mozilla is
+ > really sending the right thing.
+ 
+ This is what ethereal sniffed, I only include the auth headers:
+ (I am not a digest auth expert, so unfortuantely I can't tell
+ if there's anything suspicious going on.)
+ 
+ GET /cgi-bin/forum.pl HTTP/1.1
+ 
+ HTTP/1.1 401 Authorization Required
+ WWW-Authenticate: Digest realm="private", nonce="EXZ+PA==82751188dcd5a82a6cda69656d8473f8efe2cbce", algorithm=MD5, domain="/cgi-bin/forum.pl", qop="auth"
+ 
+ GET /cgi-bin/forum.pl HTTP/1.1
+ Authorization: Digest username="foo", realm="private", nonce="EXZ+PA==82751188dcd5a82a6cda69656d8473f8efe2cbce", uri="/cgi-bin/forum.pl", algorithm=MD5, response="b349ac4f14357acc9e38a6f16895f7b9", qop=auth, nc=00000001, cnonce="c5bbd25b487957ed"
+ 
+ HTTP/1.1 200 OK
+ Authentication-Info: rspauth="7327570c586207eca2afae94fc20903d", cnonce="c5bbd25b487957ed", nc=00000001, qop=auth
+ 
+ GET /cgi-bin/forum.pl?submit HTTP/1.1
+ Authorization: Digest username="foo", realm="private", nonce="EXZ+PA==82751188dcd5a82a6cda69656d8473f8efe2cbce", uri="/cgi-bin/forum.pl?submit", algorithm=MD5, response="b18ef2508218534c8b23ac5a816dbeeb", qop=auth, nc=00000002, cnonce="9a29032c2611e37c"
+ 
+ HTTP/1.1 200 OK
+ Authentication-Info: rspauth="34171bff37b1de3113044ad44af36351", cnonce="9a29032c2611e37c", nc=00000002, qop=auth
+ 
+ POST /cgi-bin/forum.pl?preview HTTP/1.1
+ Authorization: Digest username="foo", realm="private", nonce="EXZ+PA==82751188dcd5a82a6cda69656d8473f8efe2cbce", uri="/cgi-bin/forum.pl?preview", algorithm=MD5, response="e19850a9a261cce58820e35b406bfaf0", qop=auth, nc=00000003, cnonce="94977e4b7b6d45cd"
+ 
+ HTTP/1.1 401 Authorization Required
+ WWW-Authenticate: Digest realm="private", nonce="HXZ+PA==e7e86a9c01f7d33dfda8ae0dd70a990186b3411a", algorithm=MD5, domain="/cgi-bin/forum.pl", qop="auth"
+ 
+ POST /cgi-bin/forum.pl?preview HTTP/1.1
+ Authorization: Digest username="foo", realm="private", nonce="HXZ+PA==e7e86a9c01f7d33dfda8ae0dd70a990186b3411a", uri="/cgi-bin/forum.pl?preview", algorithm=MD5, response="200fbc500ae40f80473ad5f3464058e6", qop=auth, nc=00000001, cnonce="1e7129d500603edc"
+ 
+ HTTP/1.1 200 OK
+ Authentication-Info: rspauth="ad4426f5abf89d62a4a24b6b031a9598", cnonce="1e7129d500603edc", nc=00000001, qop=auth
+ 
+ POST /cgi-bin/forum.pl HTTP/1.1
+ Authorization: Digest username="foo", realm="private", nonce="HXZ+PA==e7e86a9c01f7d33dfda8ae0dd70a990186b3411a", uri="/cgi-bin/forum.pl", algorithm=MD5, response="fd6058180c27e85961b803a5007b3eff", qop=auth, nc=00000002, cnonce="385b7a706dda4b95"
+ 
+ HTTP/1.1 401 Authorization Required
+ WWW-Authenticate: Digest realm="private", nonce="IXZ+PA==94aba433108fb50a6027aac831c6c8aea80e0591", algorithm=MD5, domain="/cgi-bin/forum.pl", qop="auth"
+ 
+ POST /cgi-bin/forum.pl HTTP/1.1
+ Authorization: Digest username="foo", realm="private", nonce="IXZ+PA==94aba433108fb50a6027aac831c6c8aea80e0591", uri="/cgi-bin/forum.pl", algorithm=MD5, response="3d0e1afff2f49af0bf4e6b9f5077cda1", qop=auth, nc=00000001, cnonce="a26dc43d5ae89c6d"
+ 
+ HTTP/1.1 200 OK
+ Authentication-Info: rspauth="42b4e9ddcc29a6bd9dfa0b19994b1071", cnonce="a26dc43d5ae89c6d", nc=00000001, qop=auth
+ 
+ GET /cgi-bin/forum.pl?msg=7 HTTP/1.1
+ Authorization: Digest username="foo", realm="private", nonce="IXZ+PA==94aba433108fb50a6027aac831c6c8aea80e0591", uri="/cgi-bin/forum.pl?msg=7", algorithm=MD5, response="858d4eb819b1f612eb4eebbbb4facbad", qop=auth, nc=00000002, cnonce="5cad73ed2d9694b4"
+ 
+ HTTP/1.1 200 OK
+ Authentication-Info: rspauth="4deb794450cd3b31eb22db5ce2682553", cnonce="5cad73ed2d9694b4", nc=00000002, qop=auth
+ 
+ 
+ Regards,
+ Alexander Dietrich
+ -- 
+ ( Alexander Dietrich <alexander@dietrich.cx> )
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

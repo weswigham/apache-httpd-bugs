@@ -1,0 +1,343 @@
+Received: (qmail 5471 invoked by uid 65534); 30 Jan 2000 15:22:36 -0000
+Message-Id: <20000130152236.5470.qmail@locus.apache.org>
+Date: 30 Jan 2000 15:22:36 -0000
+From: W Rowe <wrowe@lnd.com>
+Reply-To: wrowe@lnd.com
+To: submit@bugz.apache.org
+Subject: CGI print to stdout while reading POST from stdin deadlocks Win32 Pipes
+X-Send-Pr-Version: 3.110
+
+>Number:         5671
+>Category:       os-windows
+>Synopsis:       CGI print to stdout while reading POST from stdin deadlocks Win32 Pipes
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          analyzed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Jan 30 07:30:00 PST 2000
+>Closed-Date:
+>Last-Modified:  Sun Oct 01 12:17:29 PDT 2000
+>Originator:     wrowe@lnd.com
+>Release:        1.3.11
+>Organization:
+>Environment:
+Win32 NT 4.0 SP4
+>Description:
+A number of users have reported odd CGI behavior of their scripts locking up the application and an Apache process if the file processes a large POST submission at the same time it is streaming a large response to stdout.
+
+Any CGI program, Perl/C/etc... can create this behavior.  Using FORM INPUT TYPE=FILE to send a large file (greater than the 2000 byte buffer - including the headers) - while providing continual feedback that is flushed to the pipe (that grows beyond the pipe buffer length) deadlocks the write operations from both the application and Apache.  Since neither app is listening, the full buffers deadlock both apps.
+
+module buff.c lns 304-311 --
+
+/* the lowest level writing primitive */
+static int ap_write(BUFF *fb, const void *buf, int nbyte)
+{
+    int rv;
+    
+#ifdef WIN32
+    if (fb->hFH != INVALID_HANDLE_VALUE) {
+        if (!WriteFile(fb->hFH,buf,nbyte,&rv,NULL)) {
+
+-- end module buff.c lns 304-311
+
+Apache freezes at WriteFile above.
+>How-To-Repeat:
+Code example CGIDump.c ----
+
+#include <memory.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+/* For _setmode binary MS-DOS semantics: */
+#include <fcntl.h>
+#include <io.h>
+
+const char hex[16] = "0123456789abcdef";
+
+
+int main(int argc, char **argv, char **argenv)
+{
+    char *server_protocol = NULL, *server_software = NULL;
+    char *content_type = NULL;
+    unsigned long content_length = 0;
+    unsigned char strbuf[16], outbuf[80];
+    unsigned long off, offset = 0;
+    int i, len, acnt;
+    char **aptr, **ignptr;
+    
+    /* For _setmode binary MS-DOS semantics: */
+    _setmode(_fileno(stdin), _O_BINARY);
+
+    aptr = argenv;
+    while (*aptr)
+    {
+        if (strncmp("CONTENT_TYPE=", *aptr, 13) == 0)
+            content_type = *aptr + 13;
+        else if (strncmp("CONTENT_LENGTH=", *aptr, 15) == 0)
+            content_length = strtoul(*aptr + 15, ignptr, 10);
+        ++aptr;
+    }
+
+    if (!server_protocol || !server_software)
+    {
+        fputs("Missing CGI Environment Values!", stderr);
+        exit(1);
+    }
+
+    puts("Content-type: text/plain\n");
+
+    fflush(stdout);
+
+    puts("Command Line Arguments:\n");
+    acnt = argc; aptr = argv;
+	while (acnt-- && *aptr)
+        puts(*(aptr++));
+
+    fflush(stdout);
+    
+    puts("\nEnvironmental Values:\n");
+    aptr = argenv;
+	while (*aptr)
+        puts(*(aptr++));
+    
+    fflush(stdout);
+      
+    puts("\nInput Stream (POST):\n");
+    while (-1)
+    {
+        len = 0;
+        while (offset + len < content_length && len < sizeof(strbuf))
+        {
+            if (!fread(strbuf, 1, 1, stdin)) break;
+            ++len;
+        }
+        memset(outbuf, ' ', sizeof(outbuf));
+        outbuf[76] = '\0';
+        for (i = 8, off = offset; i--; off >>= 4)
+            outbuf[i] = hex[off & 0x0f];
+        for (i = 0; i < len; ++i)
+            outbuf[i * 3 + 10] = hex[strbuf[i] >> 4],
+            outbuf[i * 3 + 11] = hex[strbuf[i] & 0x0f],
+            outbuf[i + 59] = (strbuf[i] < 32 || strbuf[i] > 126) ? '.' : strbuf[i];
+        puts(outbuf);
+        offset += len;
+        if (!(offset | 0x3f))
+            fflush(stdout);
+        if (ferror(stdin) || feof(stdin))
+            break;
+    }
+    
+    printf("\nTotal Stream Length: %ld\n", offset);
+    fflush(stdout);
+
+    return 0;
+}
+
+--- end example code
+>Fix:
+CGI coders: _Don't_ write while reading the POST submission!!!  Remember after you have written about 2000 bytes to the stdout stream (count your lf's as 2 - cr+lf) - the system WILL lock!  It's safe to write just the receipt header (it's still buffered for now) - but hold your response for the end of the file!
+
+Apache: Yes - use async pipes (obviously) - but I will review the code and look at implementation.  It's not the NT port that I'm stumbling over - it's understanding the intent of the original Unix implementation ;^/
+>Release-Note:
+>Audit-Trail:
+
+From: "William A. Rowe, Jr." <wrowe@lnd.com>
+To: <submit@bugz.apache.org>, <apache-bugdb@apache.org>
+Cc:  
+Subject: RE: os-windows/5671: CGI print to stdout while reading POST from stdin deadlocks Win32 Pipes
+Date: Mon, 31 Jan 2000 09:19:35 -0600
+
+ My humble appologies, here is the corrected example write-while-reading
+ script:
+ 
+ #include <memory.h>
+ #include <string.h>
+ #include <stdlib.h>
+ #include <stdio.h>
+ 
+ /* For _setmode binary MS-DOS semantics: */
+ #include <fcntl.h>
+ #include <io.h>
+ 
+ const char hex[16] = "0123456789abcdef";
+ 
+ 
+ int main(int argc, char **argv, char **argenv)
+ {
+     char *content_type = NULL;
+     unsigned long content_length = 0;
+ 
+     unsigned char strbuf[16], outbuf[80];
+     unsigned long off, offset = 0;
+     int i, len, acnt;
+     char **aptr, *ignptr;
+ 
+     /* For _setmode binary MS-DOS semantics: */
+     _setmode(_fileno(stdin), _O_BINARY);
+ 
+     aptr = argenv;
+     while (*aptr)
+     {
+         if (strncmp("CONTENT_TYPE=", *aptr, 13) == 0)
+             content_type = *aptr + 13;
+         else if (strncmp("CONTENT_LENGTH=", *aptr, 15) == 0)
+             content_length = strtoul(*aptr + 15, &ignptr, 10);
+         ++aptr;
+     }
+ 
+     puts("Content-type: text/plain\n");
+ 
+     fflush(stdout);
+ 
+     puts("Command Line Arguments:\n");
+     acnt = argc; aptr = argv;
+ 	while (acnt-- && *aptr)
+         puts(*(aptr++));
+ 
+     fflush(stdout);
+ 
+     puts("\nEnvironmental Values:\n");
+     aptr = argenv;
+ 	while (*aptr)
+         puts(*(aptr++));
+ 
+     fflush(stdout);
+ 
+     puts("\nInput Stream (POST):\n");
+     while (len = fread(strbuf, 1, (offset + sizeof(strbuf) < content_length)
+                                 ? sizeof(strbuf) : (content_length -
+ offset), stdin))
+     {
+         memset(outbuf, ' ', sizeof(outbuf));
+         outbuf[76] = '\0';
+         for (i = 8, off = offset; i--; off >>= 4)
+             outbuf[i] = hex[off & 0x0f];
+         for (i = 0; i < len; ++i)
+             outbuf[i * 3 + 10] = hex[strbuf[i] >> 4],
+             outbuf[i * 3 + 11] = hex[strbuf[i] & 0x0f],
+             outbuf[i + 59] = (strbuf[i] < 32 || strbuf[i] > 126) ? '.' :
+ strbuf[i];
+         puts(outbuf);
+         offset += len;
+         if (!(offset | 0x3f))
+             fflush(stdout);
+         if (ferror(stdin) || feof(stdin))
+             break;
+     }
+ 
+     printf("\nTotal Stream Length: %ld\n", offset);
+     fflush(stdout);
+ 
+     return 0;
+ }
+ 
+
+From: "William A. Rowe, Jr." <wrowe@lnd.com>
+To: <submit@bugz.apache.org>, <apache-bugdb@apache.org>
+Cc:  
+Subject: RE: os-windows/5671: CGI print to stdout while reading POST from stdin deadlocks Win32 Pipes
+Date: Mon, 31 Jan 2000 16:03:37 -0600
+
+ ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ ++
+ 
+ Followup - UNIX behavior;
+ 
+ After compiling the (revised) sample code with libm.a under Linux/Apache
+ 1.3.6
+ I have the same result, although the deadlock threshold seems much larger
+ (perhaps about 64K each of POSTed and reply data before locking up).
+ 
+ ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ ++
+ 
+ Followup - Possible NT Workarounds
+ 
+ 1) Status: Tested - Result: Functional
+ 
+    Expanded the allocators in lines 2414, 2417 and 2425 of src/main/alloc.c
+    The fourth arg to the Win32 CreatePipe call is the requested buffer size.
+    Minimally, this should be HUGE_STRING_LEN.  A return buffer of 0x10000 is
+    not a bad idea either.  This simply stretches the pipe, and is subject to
+    the same deadlock situation, although with more breathing room.
+ 
+ 2) Status: Untested - Result: Hypothetical
+ 
+    Create a TRUE temp file as the input or output queue.  The input queue
+    makes the most sense, since this could be conditionally created based on
+    the size of the POSTed query, and left in pipe mode for smaller requests.
+    The disadvantage is wasting space for the temp file given file upload
+    scripts with small result transmissions.  The output queue suffers the
+    opposite fate, and in any case we cannot predict the result size.
+ 
+ 3) Status: Untested - Result: Hypothetical
+ 
+    Under NT only (and not across 95/98) the anon. pipes are really named
+    pipes assigned unique names.  Therefore, the SetNamedPipeHandleState
+    API call will modify an NT or Win/2000 pipe state.  While depreciated
+    by MS, setting the PIPE_NOWAIT flag on simply one handle may eliminate
+    the deadlock.  There would be several approaches...
+ 
+    Set hPipeInputWrite to PIPE_NOWAIT, therefore failing in Apache
+    upon buffer overflow.
+ 
+    Set hPipeOutputWrite to PIPE_NOWAIT prior to sending the POSTed data,
+    then switching it back to PIPE_WAIT prior to reading the results.  This
+    approach has MANY weaknesses, esp. since we have lost our handle to
+    hPipeOutputWrite (and don't really want to hang on to it, for reasons
+    documented in the source code and in the MS API), and that it changes
+    the expected behavior on the poor client process.
+ 
+    I leave it to others to come up with more ideas on this line.
+ 
+ 4) Status: Untested - Target Platform: Apache 2.0
+ 
+    Using a peek into the stdout result and reading the result back to the
+    client after each write to the stdin stream could cure the deadlock.
+    This would also offer an async behavior scripters are expecting.  Risk -
+    if Apache reads a partial stream header/result code string we have
+    problems!
+ 
+    Obviously parallel Read and Write threads would solve this issue, if
+    the client can be served the results while still transmitting the POSTed
+    query.  WARNING: The read from stdout thread cannot begin until the
+    client is up and running, or a race condition may result!
+ 
+ Thoughts?
+ 
+State-Changed-From-To: open-analyzed
+State-Changed-By: wrowe
+State-Changed-When: Sun Oct  1 12:17:29 PDT 2000
+State-Changed-Why:
+
+Guess I know the problem... don't know which fix may be
+practical for 1.3.x.  Must solve this in 2.0.
+
+Class-Changed-From-To: duplicate-sw-bug
+Class-Changed-By: wrowe
+Class-Changed-When: Sun Oct  1 12:17:29 PDT 2000
+Severity-Changed-From-To: critical-serious
+Severity-Changed-By: wrowe
+Severity-Changed-When: Sun Oct  1 12:17:29 PDT 2000
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

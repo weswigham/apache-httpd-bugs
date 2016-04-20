@@ -1,0 +1,102 @@
+Received: (qmail 13648 invoked by uid 2012); 30 Mar 1999 18:14:18 -0000
+Message-Id: <19990330181418.13647.qmail@hyperreal.org>
+Date: 30 Mar 1999 18:14:18 -0000
+From: Erik Pearson <erik@adaptations.com>
+Reply-To: erik@adaptations.com
+To: apbugs@hyperreal.org
+Subject: cookie expires attribute incorrectly formatted (see 3795)
+X-Send-Pr-Version: 3.2
+
+>Number:         4169
+>Category:       mod_jserv
+>Synopsis:       cookie expires attribute incorrectly formatted (see 3795)
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Mar 30 10:20:01 PST 1999
+>Last-Modified:
+>Originator:     erik@adaptations.com
+>Organization:
+apache
+>Release:        1.0b3
+>Environment:
+Solaris 7, Sparc, Java 1.1.7B, Apache 1.3.4
+>Description:
+The date format used for the 'expires' attribute of cookies is problematic.
+The format used causes problems the Microsoft's IE (4, other version?) browser,
+but not Netscape Navigator (4.5, other versions?).
+
+As a reference for the correct implementation I use rfc822 and netscapes cookie
+definition (which recognizes small changes from rfc822).
+
+There are several problems, not all of which cause problems:
+
+1. space between the = and the first character of the date string.
+This is out of spec (there should be no spaces on either side of the =
+in header attributes).
+
+2. The day of week should be the short 3 character version.
+This doesn't appear to affect browsers, but it seems unnecessary
+to have a longer dow than is required (and it doesn't seem to be
+required either, according to rfc822, although netscape doesn't
+show it as optional.)
+
+3. The year should be 4 digits.
+Rfc822 says 2 digits, netscape redefines as 4 digits. This is the most
+significant problem with IE. In order to provide a cookie deletion, jserv
+uses Date(0), with the date format outputs as year "70". Unfortunately,
+MSIE calls this 2070, Navigator 1970.
+
+4. Hours are formatted from 1-24, not 0-23.
+This is out of spec from rfc822
+
+hour        =  2DIGIT ":" 2DIGIT [":" 2DIGIT]
+; 00:00:00 - 23:59:59
+
+This causes severe problems for IE if the hour 24 is used, which it is
+in the rare case (but common for me!) of deleting a cookie, which again
+uses Date(0), which the date format returns as hour "24". Basically, MSIE
+goes whacko and gives a date far in the future (right now it is giving me
+year 12577)
+
+As you can see, the problems are limited to MSIE in my experience. However,
+I don't think we can assume that they are limited solely to IE. The hour one-off
+error affects all browsers.
+>How-To-Repeat:
+Use MSIE 4 web browser.
+Load page which is handled by a servlet.
+The servlet adds a cookie.
+Try an expiration of 0,
+try an expiration of any other time.
+IE reports a very strange time for expiration of 0,
+IE is shows a GMT cookie expiration date which is one hour greater
+than it should be.
+Navigator handles the date format fine, although I've found that 
+navigator's (4 and above, 3 seems ok) timezone conversion is very funky. 
+>Fix:
+Change:
+
+    private static SimpleDateFormat cookieDate =
+        new SimpleDateFormat(" EEEE, dd-MMM-yy kk:mm:ss zz", Locale.US );
+
+to 
+
+    private static SimpleDateFormat cookieDate =
+        new SimpleDateFormat("EEE, dd-MMM-yyyy HH:mm:ss zz", Locale.US );
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

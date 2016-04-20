@@ -1,0 +1,106 @@
+From nobody@hyperreal.com  Mon May 19 01:16:56 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id BAA29332;
+	Mon, 19 May 1997 01:16:56 -0700 (PDT)
+Message-Id: <199705190816.BAA29332@hyperreal.com>
+Date: Mon, 19 May 1997 01:16:56 -0700 (PDT)
+From: James Burton <jamesb@aone.com.au>
+Reply-To: jamesb@aone.com.au
+To: apbugs@hyperreal.com
+Subject: If ServerName has a name not in the DNS then server will not start
+X-Send-Pr-Version: 3.2
+
+>Number:         596
+>Category:       config
+>Synopsis:       If ServerName has a name not in the DNS then server will not start
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon May 19 01:20:01 1997
+>Last-Modified:  Thu May 22 22:37:46 PDT 1997
+>Originator:     jamesb@aone.com.au
+>Organization:
+>Release:        1.2b8
+>Environment:
+Solaris2.5 40 odd patches, gcc
+>Description:
+If you configure a ServerName which is not available from the DNS (yet)
+then the server will refuse to start. This is unacceptable from the point
+of view of setting up services for customers. The server should start
+(but possibly complain) if the DNS does not match the configuration.
+Otherwise customers cannot try out their service before DNS has been
+set up.
+>How-To-Repeat:
+configure a name into ServerName which is not in the DNS
+>Fix:
+Yes, in http_main.c
+
+void default_server_hostnames(server_rec *s)
+{
+    struct hostent *h;
+    struct in_addr *main_addr;
+    int num_addr;
+    char *def_hostname;
+    int n;
+    server_addr_rec *sar;
+    int has_default_vhost_addr;
+    int mainport = s->port;
+    int from_local=0;
+
+    /* Main host first */
+
+    if (!s->server_hostname) {
+        s->server_hostname = get_local_host(pconf);
+        from_local = 1;
+    }
+
+    def_hostname = s->server_hostname;
+    h = gethostbyname(def_hostname);
+    if( h == NULL ) {
+        fprintf(stderr,"httpd: cannot determine the IP address of ");
+        if (from_local) {
+           fprintf(stderr,"the local host (%s). Use ServerName to set it manuall
+y.\n",
+                s->server_hostname ? s->server_hostname : "<NULL>");
+        } else {
+           fprintf(stderr,"the specified ServerName (%s).\n",
+                s->server_hostname ? s->server_hostname : "<NULL>");
+        };
+        /* :jb don't drop out if DNS check fails
+                doesn't look like we need the rest of this function
+                if DNS check doesn'twork.
+        exit(1);
+        */
+        return;
+    }
+
+***** SWAP the exit(1); for return; as noted
+
+Thanks,
+Jame
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Thu May 22 22:37:45 PDT 1997
+State-Changed-Why:
+That ServerName is absolutely required.  That particular call
+is used only for the global ServerName directive, so it should
+not affect virtual hosts at all (well it does indirectly, but
+not in a manner that stops httpd from starting).  See the
+DNS Issues and Virtual Hosts in Depth pages linked off the
+<VirtualHost> documentation.
+
+Unless you're really setting up an individual apache for
+each customer.  In which case you can work around this
+quite easily.  Use "ServerName localhost" and then proceed
+to set up a server with exactly one VirtualHost, and
+follow the tips on the DNS Issues page.
+
+Dean
+>Unformatted:
+
+

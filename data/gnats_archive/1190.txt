@@ -1,0 +1,828 @@
+From apwww@hyperreal.org  Thu Oct  2 08:49:22 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id IAA06661;
+	Thu, 2 Oct 1997 08:49:22 -0700 (PDT)
+Message-Id: <199710021549.IAA06661@hyperreal.org>
+Date: Thu, 2 Oct 1997 08:49:22 -0700 (PDT)
+From: Eugene Crosser <crosser@average.org>
+Reply-To: crosser@average.org
+To: apbugs@hyperreal.org
+Subject: server processes in keepalive state do not die after keepalive-timeout
+X-Send-Pr-Version: 3.2
+
+>Number:         1190
+>Category:       os-solaris
+>Synopsis:       server processes in keepalive state do not die after keepalive-timeout
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Oct  2 08:50:01 1997
+>Closed-Date:    Tue Mar 26 06:25:16 PST 2002
+>Last-Modified:  Tue Mar 26 06:25:16 PST 2002
+>Originator:     crosser@average.org
+>Release:        1.3.0
+>Organization:
+>Environment:
+SunOS phobos 5.5.1 Generic_103640-03 sun4m sparc SUNW,SPARCstation-20
+SunOS mars 5.5.1 Generic_103640-05 sun4u sparc SUNW,Ultra-Enterprise
+gcc 2.7.2
+>Description:
+Under unknown circumstances, server processes stay in `K' (keepalive)
+status infinitely.  On a server with 1300 hits/day, there are 5 to 15
+such processes a day.  TCP connection is in `ESTABLISHED' state, and
+later disappears from `netstat' display.  When you try to `kill -ALRM'
+the process (as if timeout expired), nothing happens.  If you attach
+the process in `gdb', you see that it is peacefully reading from the
+socket.  As days pass, more and more `K' processes are hanging around
+and eventually reach MaxClient limit.
+
+This does not happen with 1.1.3 running with *exactly* same config.
+This apparently does not happen on other operating systems.
+
+I could *not* reproduce it by telnetting, requesting a file with
+keepalive and waiting: in this situation server gracefully closes
+connection after keepalive-timeout.
+>How-To-Repeat:
+Just let the server run for a few hours...
+>Fix:
+No
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: Lars.Eilebrecht@unix-ag.org
+State-Changed-When: Sat Oct 18 05:35:51 PDT 1997
+State-Changed-Why:
+
+I cannot verify your problem (I'm using Solaris 2.4/2.5 myself).
+Please mail your httpd.conf (at least the important
+directives, eg. Timeout, KeepAlive* etc.).
+
+And please check if you have the lasted Sun (tcp-)patches
+installed on your system.
+
+State-Changed-From-To: feedback-closed
+State-Changed-By: Lars.Eilebrecht@unix-ag.org
+State-Changed-When: Tue Dec 16 08:34:09 PST 1997
+State-Changed-Why:
+
+No response from submitter, assuming problem resolved.
+
+State-Changed-From-To: closed-analyzed
+State-Changed-By: Lars.Eilebrecht@unix-ag.org
+State-Changed-When: Tue Dec 16 18:10:29 PST 1997
+State-Changed-Why:
+
+Sorry, PR was closed by mistake (I overlooked your reply).
+
+But I still don't have an idea why you see that much      
+processes in keep-alive state...
+
+Do you see any messages in your error log?          
+
+What are your settings in httpd.conf for KeepAliveTimeout
+MaxKeepAliveRequests etc.?
+
+Do you have any special settings for your tcp driver
+(e.g. do you use 'ndd' to tune /dev/tcp values)?
+
+Your logfile directory (and thus the lockfile)           
+isn't located on an NFS mounted filesystem, isn't it?
+
+(Maybe you want to try our latest 1.3beta of Apache.)
+
+Release-Changed-From-To: 1.2.0 and 1.2.4-1.2.4
+Release-Changed-By: Lars.Eilebrecht@unix-ag.org
+Release-Changed-When: Tue Dec 16 18:10:29 PST 1997
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Eugene Crosser <crosser@average.org>
+Cc: apbugs@apache.org
+Subject: Re: os-solaris/1190: server processes in keepalive state do not die after keepalive-timeout
+Date: Thu, 18 Dec 1997 10:34:54 -0800 (PST)
+
+ Do you have any third party modules compiled in? 
+ 
+ Are you using IdentityCheck? 
+ 
+ Are you using the proxy module? 
+ 
+ 1.3 includes a rewritten alarm system... so it may actually work.  But
+ this is an odd problem I've never seen before.  Including on ultra 2, 2
+ processor 2.5.1 systems under high load.  (In your original description
+ you wrote "1300 hits/day" ... I think you mean a few orders magnitude
+ more, right? :)  It's possible we still have a race condition which
+ manifests itself only on solaris.
+ 
+ Did you ever try doing kill -ALRM to one of the stuck keepalive children?
+ Did it recover?
+ 
+ Dean
+ 
+
+From: Eugene Crosser <crosser@average.org>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: os-solaris/1190: server processes in keepalive state do not die after keepalive-timeout
+Date: Fri, 19 Dec 1997 01:54:13 +0300 (MSK)
+
+ > Do you have any third party modules compiled in? 
+ 
+ Normally I do but I specially compiled a virgin version to check,
+ and it behaves exactly the same way.
+ 
+ > Are you using IdentityCheck? 
+ 
+ Probably no as I don't know what's that ;)
+ 
+ > Are you using the proxy module? 
+ 
+ No.
+ 
+ > 1.3 includes a rewritten alarm system... so it may actually work.  But
+ 
+ I will compile and try 1.3, maybe next week.  I will report the results.
+ 
+ > you wrote "1300 hits/day" ... I think you mean a few orders magnitude
+ > more, right? :)
+ 
+ No.  The server is not *really* busy, I just mean that this cannot be
+ reproduced on a `test only' server, you need people coming from various
+ places and leaving connections up for a long time.
+ 
+ > It's possible we still have a race condition which
+ > manifests itself only on solaris.
+ 
+ It very well might be a bug in Solaris, but as 1.1 works fine, a
+ workaround must exist...
+ 
+ > Did you ever try doing kill -ALRM to one of the stuck keepalive children?
+ > Did it recover?
+ 
+ I wrote it twice in my reports: yes I tried to kill the processes with
+ -ALRM, and *no*, the process does not notice it!  But if I kill it with
+ -TERM, it gracefully terminates.
+ 
+ Eugene
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Eugene Crosser <crosser@average.org>
+Cc: apbugs@apache.org
+Subject: Re: os-solaris/1190: server processes in keepalive state do not die after keepalive-timeout
+Date: Thu, 18 Dec 1997 16:32:49 -0800 (PST)
+
+ On Fri, 19 Dec 1997, Eugene Crosser wrote:
+ 
+ > > you wrote "1300 hits/day" ... I think you mean a few orders magnitude
+ > > more, right? :)
+ > 
+ > No.  The server is not *really* busy, I just mean that this cannot be
+ > reproduced on a `test only' server, you need people coming from various
+ > places and leaving connections up for a long time.
+ 
+ But 1300 hits/*day* is barely any load at all.  That's why I'm asking what
+ the real number is. 
+ 
+ > > Did you ever try doing kill -ALRM to one of the stuck keepalive children?
+ > > Did it recover?
+ > 
+ > I wrote it twice in my reports: yes I tried to kill the processes with
+ > -ALRM, and *no*, the process does not notice it!  But if I kill it with
+ > -TERM, it gracefully terminates.
+ 
+ I just had to ask to be certain.  This pretty much confirms that the
+ signal handler hasn't even been installed.  One more thing you can try if
+ you can get to this state again is to send a kill -PIPE to the pid -- it
+ should close up the connection and continue.  That'll narrow it down a wee
+ bit more.
+ 
+ Dean
+ 
+ 
+
+From: Eugene Crosser <crosser@average.org>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: os-solaris/1190: server processes in keepalive state do not die after keepalive-timeout
+Date: Sat, 20 Dec 1997 11:37:49 +0300 (MSK)
+
+ > But 1300 hits/*day* is barely any load at all.  That's why I'm asking what
+ > the real number is. 
+ 
+ Oh, yes, you are right!  Probably it really was 13,000/day.
+ And approximately one request of 2000 was causing a lethargic process.
+ 
+ Anyway, from the first try, 1.3b3 does *not* have the reported problem:
+ 
+ Current Time: Sat Dec 20 11:10:01 1997 
+ Restart Time: Fri Dec 19 21:52:17 1997 
+ Server uptime: 13 hours 17 minutes 44 seconds
+ Total accesses: 14386 - Total Traffic: 13.8 MB
+ CPU Usage: u0.75 s1.18 cu0 cs0 - 0.00403% CPU load
+ 0.301 requests/sec - 302 B/second - 1005 B/request
+ 1 requests currently being processed, 9 idle servers 
+ 
+ and there are no sleeping keepalive processes.  Of course I need to
+ run it more and watch.
+ 
+ If things go wrong I will report it but for now it seems that the new
+ version has cured my problem.  (Bad news is that there is no SSL patch
+ for 1.3 yet, but you cannot have everything ;)
+ 
+ Thanks you all for your assistance, and for an excellent www server.
+ 
+ Eugene
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Dec 20 12:21:04 PST 1997
+State-Changed-Why:
+User reports problem is solved in 1.3.  While it'd be nice to
+know what race condition we're avoiding we just don't have the
+bandwidth to track it down.
+
+Dean
+
+From: Eugene Crosser <crosser@online.ru>
+To: apbugs@apache.org
+Cc:  Subject: Re: os-solaris/1190: server processes in keepalive state do not die after keepalive-timeout
+Date: Wed, 17 Jun 1998 15:48:50 +0400 (MSD)
+
+ Dear apache team,
+ 
+ the problem in PR#1190 that disappeared in 1.3beta3, is present again in
+ 1.3.0 release.  For full description, please see the PR transcript. In
+ sort, approximately every 1000th request leaves the server process in
+ "Keepalive" status *forever*, it does not disconnect after
+ Keepalive-Timeout, and after a few hours of operation, all MaxClient
+ processes are in "K" status and no new requests are processed.
+ 
+ The system is
+ SunOS mars 5.5.1 Generic_103640-18 sun4u sparc SUNW,Ultra-Enterprise
+ running on a dual processor Ultra 4000, previously, it was observed
+ on dual processor SS20.
+ 
+ I never tried 1.3 beta releases other than 1.3b3, and I have no access
+ to the sources of beta releases.  If you tell me where I can get betas
+ from 4 to the last (7?), I will look at which exactly release did the
+ problem reappear.
+ 
+ Thank you.
+ 
+ Eugene <crosser@average.org>, <crosser@online.ru>
+State-Changed-From-To: closed-open
+State-Changed-By: coar
+State-Changed-When: Wed Jun 17 15:18:53 PDT 1998
+State-Changed-Why:
+[Problem is back..]
+Release-Changed-From-To: 1.2.4-1.3.0
+Release-Changed-By: coar
+Release-Changed-When: Wed Jun 17 15:18:53 PDT 1998
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Eugene Crosser <crosser@online.ru>
+Cc: apbugs@apache.org
+Subject: Re: os-solaris/1190: server processes in keepalive state do not die after keepalive-timeout
+Date: Wed, 17 Jun 1998 22:56:12 -0700 (PDT)
+
+ Hmm, we don't appear to have all the betas online.  Bleh.  Here's a few
+ suggestions.
+ 
+ - If your ServerRoot is on NFS then you need to use the LockFile directive
+ to move the lock file. 
+ 
+ - Try editing src/include/httpd.h, search for OPTIMIZE_TIMEOUTS, and
+ comment out that line, so that it is not defined.  Then recompile and see
+ if that helps any.
+ 
+ - You're not using any other options for compiling are you?  Are you using
+ gcc or solaris cc?
+ 
+ Dean
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Eugene Crosser <crosser@online.ru>
+Cc: apbugs@apache.org
+Subject: Re: os-solaris/1190: server processes in keepalive state do not die after keepalive-timeout
+Date: Wed, 17 Jun 1998 23:36:49 -0700 (PDT)
+
+ Maybe you could try this patch.  It looks like there's a small race
+ condition with keepalive timeouts... but I don't understand why we don't
+ see it more frequently.
+ 
+ BTW, please set "LogLevel debug" in your httpd.conf and tell me if you get
+ any of those "possible nested timer" warnings. 
+ 
+ Thanks
+ Dean
+ 
+ Index: main/http_main.c
+ ===================================================================
+ RCS file: /export/home/cvs/apache-1.3/src/main/http_main.c,v
+ retrieving revision 1.365
+ diff -u -r1.365 http_main.c
+ --- http_main.c	1998/06/16 03:37:27	1.365
+ +++ http_main.c	1998/06/18 06:18:53
+ @@ -975,6 +975,7 @@
+      }
+      else {			/* abort the connection */
+  	ap_bsetflag(current_conn->client, B_EOUT, 1);
+ +	ap_bclose(current_conn->client);
+  	current_conn->aborted = 1;
+      }
+  }
+ @@ -1045,9 +1046,11 @@
+  	alarm_expiry_time = time(NULL) + x;
+      }
+  #else
+ -    if (x) {
+ -	alarm_fn = fn;
+ +    if (alarm_fn && x && fn != alarm_fn) {
+ +	ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_DEBUG, NULL,
+ +	    "ap_set_callback_and_alarm: possible nested timer!");
+      }
+ +    alarm_fn = fn;
+  #ifndef OPTIMIZE_TIMEOUTS
+      old = alarm(x);
+  #else
+ Index: main/rfc1413.c
+ ===================================================================
+ RCS file: /export/home/cvs/apache-1.3/src/main/rfc1413.c,v
+ retrieving revision 1.24
+ diff -u -r1.24 rfc1413.c
+ --- rfc1413.c	1998/05/18 21:56:11	1.24
+ +++ rfc1413.c	1998/06/18 06:18:53
+ @@ -229,9 +229,8 @@
+  
+  	if (get_rfc1413(sock, &conn->local_addr, &conn->remote_addr, user, srv) >= 0)
+  	    result = user;
+ -
+ -	ap_set_callback_and_alarm(NULL, 0);
+      }
+ +    ap_set_callback_and_alarm(NULL, 0);
+      ap_pclosesocket(conn->pool, sock);
+      conn->remote_logname = result;
+  
+ 
+ 
+
+From: Eugene Crosser <crosser@online.ru>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: os-solaris/1190: server processes in keepalive state do not die after keepalive-timeout
+Date: Thu, 18 Jun 1998 16:00:49 +0400 (MSD)
+
+ Dean,
+ 
+ > Hmm, we don't appear to have all the betas online.  Bleh.  Here's a few
+ > suggestions.
+ 
+ I've already found all needed betas at ftp://ftp.apache.org/httpd/dist/
+ and downloaded them a minute ago.  When I have results, I'll post.
+ 
+ > - If your ServerRoot is on NFS then you need to use the LockFile directive
+ > to move the lock file. 
+ 
+ No it is not on the NFS.
+ 
+ > - Try editing src/include/httpd.h, search for OPTIMIZE_TIMEOUTS, and
+ > comment out that line, so that it is not defined.  Then recompile and see
+ > if that helps any.
+ 
+ I'll try it and tell you.
+ 
+ > - You're not using any other options for compiling are you?  Are you using
+ > gcc or solaris cc?
+ 
+ I currently cannot compile "clean" server: I am using PHP3 and a few
+ modules of my own, *but* 1.3b3 works well in *exactly same* configuration.
+ I am using gcc (2.7.2.2 I think).
+ 
+ (You know, the problem only reveals if there is a considerable traffic...
+ And I cannot have production server without extra modules)
+ 
+ I'll be back when I have more information.
+ 
+ Eugene
+
+From: Eugene Crosser <crosser@online.ru>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: os-solaris/1190: server processes in keepalive state do not die after keepalive-timeout
+Date: Thu, 18 Jun 1998 17:59:28 +0400 (MSD)
+
+ > Maybe you could try this patch.  It looks like there's a small race
+ > condition with keepalive timeouts... but I don't understand why we don't
+ > see it more frequently.
+ 
+ Did not change anything: after processing ~12,000 requests, some ~70
+ server processes fall into "permament keepalive".
+ 
+ > BTW, please set "LogLevel debug" in your httpd.conf and tell me if you get
+ > any of those "possible nested timer" warnings. 
+ 
+ No such messages.
+ 
+ Started 1.3b6 right now, will have results in a few hours.
+ 
+ Eugene
+
+From: Eugene Crosser <crosser@online.ru>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: os-solaris/1190: server processes in keepalive state do not die after keepalive-timeout
+Date: Thu, 18 Jun 1998 20:40:58 +0400 (MSD)
+
+ OK, I am now pretty certain that the fatal change happend between
+ beta 5 and beta 6.
+ 
+ Eugene
+
+From: Eugene Crosser <crosser@online.ru>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: os-solaris/1190: server processes in keepalive state do not die after keepalive-timeout
+Date: Thu, 18 Jun 1998 21:18:14 +0400 (MSD)
+
+ > - Try editing src/include/httpd.h, search for OPTIMIZE_TIMEOUTS, and
+ > comment out that line, so that it is not defined.  Then recompile and see
+ > if that helps any.
+ 
+ I did this: no change.
+ 
+ Now, I did a bit more investigation.  First, sometimes the processes that
+ stayed in "Keepalive" status several minutes (i.e. much longer than the
+ KeepaliveTimeout) still finishes.  I assume this may happen when the other
+ end explicitely closes TCP connection.  Next, if I choose a process that
+ is staying "keepalive" for a long time and send it "kill -ALRM" it does
+ not notice it and stays in the same status.  If I send it "kill -PIPE" it
+ gracefully resets and is ready to serve next requests.
+ 
+ That's all for now.  Please tell me what else I can do to help chasing
+ the problem.
+ 
+ Eugene
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Eugene Crosser <crosser@online.ru>
+Cc: apbugs@apache.org
+Subject: Re: os-solaris/1190: server processes in keepalive state do not die after keepalive-timeout
+Date: Thu, 18 Jun 1998 10:36:10 -0700 (PDT)
+
+ 1.3b5 used USE_PTHREAD_SERIALIZED_ACCEPT on solaris, and 1.3b6 uses
+ USE_FCNTL_SERIALIZED_ACCEPT (as do all the 1.2.x and earlier versions). We
+ switched back to fcntl because the pthread stuff was proving unreliable
+ for a lot of folks...  You could try adding
+ EXTRA_CFLAGS=-DUSE_PTHREAD_SERIALIZED_ACCEPT and reconfiguring/compiling. 
+ But I really don't see how this will help.
+ 
+ That's the only thing I can find...
+ 
+ Dean
+ 
+ On Thu, 18 Jun 1998, Eugene Crosser wrote:
+ 
+ > OK, I am now pretty certain that the fatal change happend between
+ > beta 5 and beta 6.
+ > 
+ > Eugene
+ > 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Eugene Crosser <crosser@online.ru>
+Cc: apbugs@apache.org
+Subject: Re: os-solaris/1190: server processes in keepalive state do not die after keepalive-timeout
+Date: Thu, 18 Jun 1998 10:37:24 -0700 (PDT)
+
+ Yeah this sounds like the signal handler has been removed... which is why
+ I sent the patch yesterday.
+ 
+ You said you're using php, right?  Is it the latest php?  I believe php
+ also plays with timeouts... do you connect to any sql databases with it?
+ 
+ Dean
+ 
+ On Thu, 18 Jun 1998, Eugene Crosser wrote:
+ 
+ > > - Try editing src/include/httpd.h, search for OPTIMIZE_TIMEOUTS, and
+ > > comment out that line, so that it is not defined.  Then recompile and see
+ > > if that helps any.
+ > 
+ > I did this: no change.
+ > 
+ > Now, I did a bit more investigation.  First, sometimes the processes that
+ > stayed in "Keepalive" status several minutes (i.e. much longer than the
+ > KeepaliveTimeout) still finishes.  I assume this may happen when the other
+ > end explicitely closes TCP connection.  Next, if I choose a process that
+ > is staying "keepalive" for a long time and send it "kill -ALRM" it does
+ > not notice it and stays in the same status.  If I send it "kill -PIPE" it
+ > gracefully resets and is ready to serve next requests.
+ > 
+ > That's all for now.  Please tell me what else I can do to help chasing
+ > the problem.
+ > 
+ > Eugene
+ > 
+ 
+
+From: Eugene Crosser <crosser@online.ru>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: os-solaris/1190: server processes in keepalive state do not die after keepalive-timeout
+Date: Thu, 18 Jun 1998 22:04:48 +0400 (MSD)
+
+ > Yeah this sounds like the signal handler has been removed... which is why
+ > I sent the patch yesterday.
+ > 
+ > You said you're using php, right?  Is it the latest php?  I believe php
+ > also plays with timeouts... do you connect to any sql databases with it?
+ 
+ Yes I do, it's Oracle.  Back in October 97, it was my first idea to
+ check.  Back then, I did build a "clean" server and the problem persisted.
+ Also note that betas 3 and 5 are working flawlessly with exactly same PHP
+ (it's 3.0 release).  Beta 3 (with an older PHP3) was runnning here in
+ production without a minor problem for half a year!
+ 
+ Now, 1.3.0 release compiled with -DUSE_PTHREAD_SERIALIZED_ACCEPT is
+ running here for 25 minutes.  It seems that it still suffers the problem.
+ Switching back to beta5 and going home for some sleep...
+ 
+ Eugene
+State-Changed-From-To: open-feedback
+State-Changed-By: lars
+State-Changed-When: Sat Jul 18 13:18:50 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+
+From: Marc Slemko <marcs@znep.com>
+To: apbugs@apache.org
+Cc:  Subject: Re: os-solaris/1190: server processes in keepalive state do not
+ die after keepalive-timeout (fwd)
+Date: Sun, 19 Jul 1998 10:35:50 -0700 (PDT)
+
+ ---------- Forwarded message ----------
+ Date: Sun, 19 Jul 1998 14:41:31 +0400 (MSD)
+ From: Eugene Crosser <crosser@average.org>
+ To: lars@apache.org
+ Cc: apache-bugdb@apache.org
+ Subject: Re: os-solaris/1190: server processes in keepalive state do not die
+     after keepalive-timeout
+ 
+ > This Apache problem report has not been updated recently.
+ > Please reply to this message if you have any additional
+ > information about this issue, or if you have answers to
+ > any questions that have been posed to you.  If there are
+ > no outstanding questions, please consider this a request
+ > to try to reproduce the problem with the latest software
+ > release, if one has been made since last contact.  If we
+ > don't hear from you, this report will be closed.
+ 
+ The problem did *not* disappear automagically.  I sent all
+ the information that I thought is relevant, and followed
+ all advice that I got from the apache team.  So far, it did
+ not help.  If I can do further investigation, please advice.
+ 
+ So far, the situation is as follows: apache 1.1.x works when
+ keepalive is used, apache 1.2.x and 1.3.0 *releases* do not
+ work for me with keepalive.  Although 1.3 betas 3 to 5 do
+ work.  Currently, I have to run 1.3.0 with keepalive disabled.
+ 
+ Eugene
+ 
+State-Changed-From-To: feedback-open
+State-Changed-By: coar
+State-Changed-When: Mon Sep  7 05:52:21 PDT 1998
+State-Changed-Why:
+
+[Issue is still open..]
+
+State-Changed-From-To: open-feedback
+State-Changed-By: lars
+State-Changed-When: Sat Nov 14 08:17:02 PST 1998
+State-Changed-Why:
+
+Can you please recompile Apache with "-DNO_WRITEV"
+and test if this 'fixes' your problem?
+
+
+From: Eugene Crosser <crosser@average.org>
+To: apbugs@Apache.Org
+Cc:  Subject: Re: os-solaris/1190: server processes in keepalive state do not die after keepalive-timeout
+Date: Wed, 9 Dec 1998 11:56:38 +0300 (MSK)
+
+ On the request:
+ 
+ > Can you please recompile Apache with "-DNO_WRITEV"
+ > and test if this 'fixes' your problem?
+ 
+ I can report, that I have a server (1.3.3) built with mod_ssl, and
+ the latter adds "-DNO_WRITEV" option.  No, on this server I still
+ observe hanging keepalive processes.  Apparently, "-DNO_WRITEV" does
+ not fix the problem.  I cannot build a "clean" server (without any
+ third party modules) at the moment, because the problem can only be
+ observed if the hit rate is sufficiently high, i.e. on a production
+ server only...
+ 
+ Eugene
+Comment-Added-By: coar
+Comment-Added-When: Wed May  3 13:16:48 PDT 2000
+Comment-Added:
+Is this still a problem with 1.3.12?
+Comment-Added-By: coar
+Comment-Added-When: Wed May 24 10:37:29 PDT 2000
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+
+From: "David J. MacKenzie" <djm@web.us.uu.net>
+To: apbugs@apache.org
+Cc: djm@uu.net, rse@engelschall.com
+Subject: Re: os-solaris/1190: server processes in keepalive state do not die after keepalive-timeout
+Date: Mon, 20 Nov 2000 23:16:39 -0500 (EST)
+
+ We have just started experiencing what seems to be the same problem
+ as http://bugs.apache.org/index.cgi/full/1190
+ which was reported by a Solaris 2.5.1 user in 1998 and never resolved.
+ That person was also using mod_ssl and PHP, which seems to be relevant.
+ Also http://bugs.apache.org/index.cgi/full/6211 may be related,
+ though today I applied the patch in that PR to no apparent effect.
+ 
+ We are using the newest versions of (almost) everything, on BSDI
+ BSD/OS 4.0.1.  I have some additional data which should be helpful.
+ In short, the finger *seems* to point at mod_ssl as the culprit,
+ though I haven't looked at the code to see how that might be plausible.
+ 
+ A week ago UUNET upgraded our server farm of about 800 servers, of which
+ a few dozen have SSL, from apache 1.3.12 (for most servers) or
+ Stronghold 2.4.2 (for those that have SSL).  They are now running:
+ 
+ apache 1.3.14, with two patches from bugs.apache.org to fix corrupting
+  PDF files and mod_rewrite maps (the Bugtraq patch)
+ mod_ssl 2.7.1
+ OpenSSL 0.9.5a
+ PHP 4.0.3pl1
+ mod_auth_kerb configured for Kerberos v5
+ 
+ All modules except http_core and mod_so are loaded as DSO's.  All of
+ the servers are using the same apache binary and DSO's, compiled with
+ EAPI, but we only LoadModule mod_ssl for those servers that have SSL
+ keys and certs.  We're not using Java or Perl modules, or anything
+ that multithreads.  The BSD/OS pthreads are user-space anyway.
+ 
+ root@enniskillen 39 $ ldd /usr/local/libexec/apache
+         libkrb5.so => /usr/local/krb5/lib/libkrb5.so (0xc054000)
+         libk5crypto.so => /usr/local/krb5/lib/libk5crypto.so (0xc0b4000)
+         libmm.so.11 => /usr/local/lib/libmm.so.11 (0xc0ce000)
+         libdl.so => /shlib/libdl.so (0xc0d2000)
+         libgcc.so => /shlib/libgcc.so (0xc0d5000)
+         libc.so => /shlib/libc.so (0xc0d8000)
+         libcom_err.so => /usr/local/krb5/lib/libcom_err.so (0xc15b000)
+ 
+ Our new apache+mod_ssl installation is not always handling HTTP
+ Keepalive correctly.  It's configured to keep connections alive for 5
+ seconds, but it's not letting some of them go.  We see the same
+ behavior described in PR 1190, in which over the course of a few hours
+ gradually most of the process slots become filled with Keepalive
+ connections that are much older than is supposed to be allowed.
+ Eventually our monitoring systems start alerting that they can't
+ connect to the servers.  Some of the old connections eventually go
+ away on their own, perhaps those from dialup lines; I'm not sure.
+ 
+ I sampled the mod-status pages of several of our customers, loading
+ the page, waiting 30 seconds or more, and loading it again in a second
+ window, and comparing the lists.  I looked for which child processes
+ had connections in the Keepalive state, and checked whether the amount
+ of data transferred had changed.
+ 
+ The random sample of about a dozen non-SSL customers I checked all
+ looked normal.  Some of the customers I checked who have SSL showed
+ the problem.  For example, one server got a few http (not https)
+ requests at 7:29 this morning from IP address 212.250.100.120, and
+ none since.  12 hours later, the TCP connection is still open, and
+ taking up 3 apache process slots in the Keepalive state.  The browser
+ is "Mozilla/4.0 (compatible; MSIE 4.01; Windows 98)".
+ 
+ Another server shows the same sort of problem, with a connection at 1:13
+ this afternoon from 192.44.136.113 which lasted 3 seconds but is still
+ open:
+ 
+ root@platform-33: netstat -an | grep 192.44.136.113
+ tcp        0      0  208.240.90.209.80      192.44.136.113.39653   ESTABLISHED
+ tcp        0      0  208.240.90.209.80      192.44.136.113.39650   ESTABLISHED
+ tcp        0      0  208.240.90.209.80      192.44.136.113.39598   ESTABLISHED
+ 
+ Their mod-status page confirms that 3 child processes are still in the
+ Keepalive state for this IP address.  The browser is
+ "Mozilla/4.5 [en] (Win98; I)".  That address is pingable:
+ 
+ root@platform-31: ping 192.44.136.113
+ PING 192.44.136.113 (192.44.136.113): 56 data bytes
+ 64 bytes from 192.44.136.113: icmp_seq=0 ttl=246 time=23.961 ms
+ 
+ So the problem doesn't seem to depend on the browser (Netscape or
+ MSIE).  I've seen it with clients on Windows 95/98 (mainly) and MacOS,
+ and I think on NT.
+ 
+ Most or all of the requests involved have been for static content.
+ The affected servers aren't using PHP.
+ 
+ Some of our SSL servers aren't showing the problem, but they are doing
+ little volume.  Late this afternoon I temporarily turned Keepalive off
+ for the two servers affected the worst, who keep failing our monitoring
+ because all child processes are used.  They went from 40-60 child
+ processes being used simultaneously, to 2-13, though this wasn't in
+ the busiest part of the day.
+ 
+ I also found this comment on Slashdot from a year ago,
+ at http://slashdot.org/apache/99/12/22/1711203.shtml:
+ 
+            I've tried both, and while admittedly mod_ssl looks cleaner,
+            is easier to set up, and is updated more frequently, we mad
+            several problems with Microsoft and AOL clients connecting
+            via SSL.  All of these problems went away once we moved
+            over to Apache-SSL. We tried fiddling with the keepalive
+            and "unclean shutdown" settings to no avail with mod_ssl
+            but it didn't seem to do any good.
+ 
+ I haven't tried Apache-SSL yet.
+
+From: Tony Finch <dot@dotat.at>
+To: "David J. MacKenzie" <djm@web.us.uu.net>
+Cc: apbugs@apache.org
+Subject: Re: os-solaris/1190: server processes in keepalive state do not die after keepalive-timeout
+Date: Tue, 21 Nov 2000 05:36:59 +0000
+
+ "David J. MacKenzie" <djm@web.us.uu.net> wrote:
+ > 
+ > In short, the finger *seems* to point at mod_ssl as the culprit,
+ > though I haven't looked at the code to see how that might be plausible.
+ 
+ If that is the case then you'll have to speak to the mod_ssl authors
+ because this bug database is only for the core Apache code.
+ 
+ Do I correctly gather that the stuck connections can be either SSL or
+ not? Do your non-SSL customers who do not have the problem run Apache
+ with EAPI?
+ 
+ Tony.
+ -- 
+ f.a.n.finch     dot@dotat.at     fanf@covalent.net     Chad for President!
+
+From: djm@web.us.uu.net (David J. MacKenzie)
+To: dot@dotat.at
+Cc: apbugs@apache.org
+Subject: Re: os-solaris/1190: server processes in keepalive state do not die after keepalive-timeout
+Date: Tue, 21 Nov 2000 09:13:00 -0500 (EST)
+
+ > If that is the case then you'll have to speak to the mod_ssl authors
+ > because this bug database is only for the core Apache code.
+ 
+ Yes--I cc'd rse.  At this point the cause is only a guess, though.
+ 
+ > Do I correctly gather that the stuck connections can be either SSL or
+ > not? Do your non-SSL customers who do not have the problem run Apache
+ > with EAPI?
+ 
+ None of the stuck connections that I've investigated so far have
+ turned out to be SSL connections, which proportionately aren't very
+ common.  The non-SSL servers are indeed the same apache binary,
+ with everything compiled with EAPI (which I said before if you look
+ closely enough :-)  If any of them are having this problem, it hasn't
+ been severe enough to show up in our monitoring or common enough to
+ show up in my spot checking.
+ 
+ BTW, I don't see anything abnormal in the servers' error logs.
+State-Changed-From-To: feedback-closed
+State-Changed-By: jim
+State-Changed-When: Tue Mar 26 06:25:16 PST 2002
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+
+

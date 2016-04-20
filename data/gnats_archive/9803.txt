@@ -1,0 +1,251 @@
+Received: (qmail 57585 invoked by uid 501); 12 Feb 2002 20:06:01 -0000
+Message-Id: <20020212200601.57584.qmail@apache.org>
+Date: 12 Feb 2002 20:06:01 -0000
+From: Seva Gluschenko <gvs@rinet.ru>
+Reply-To: gvs@rinet.ru
+To: submit@bugz.apache.org
+Subject: suexec limits execution to only one caller and only one document root
+X-Send-Pr-Version: 3.110
+
+>Number:         9803
+>Category:       suexec
+>Synopsis:       suexec limits execution to only one caller and only one document root
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Feb 12 12:10:00 PST 2002
+>Closed-Date:
+>Last-Modified:
+>Originator:     gvs@rinet.ru
+>Release:        1.3.23
+>Organization:
+apache
+>Environment:
+4.5-RC FreeBSD i386, gcc version 2.95.3 20010315 (release) [FreeBSD]
+(however it doesn't really matter %)
+>Description:
+So, as I said (in synopsis), suexec limits execution to only one caller and only one document root. It is fairly unacceptable for large hostings which need to run several instances of Apache for several document roots. I found it a bit stupid to produce several Apache trees (~4M per tree) which differ only with configuration file and suexec compile-time options. Therefore, I've created a patch which addresses this problem
+>How-To-Repeat:
+Try to start different httpd's, e.g. for non-SSL and SSL connections, set different permissions for them and try suexec for both. Try, on the other hand, several instances of httpd's for several categories of hosters and do the same.
+>Fix:
+Yes, I have the one, it is provided @ 
+ftp://ftp.cronyx.ru/pub/misc/apache-suexec-multihomed.diff
+
+I copy'n'paste it here.
+
+HOWTO:
+
+$ cd apache_1.3.23
+$ patch < /path/to/this_file
+	if you're patching over previous installation
+$ ./config.status --suexec_caller=httpd,httpd2,httpd3 \
+		--suexec_docroot=/home,/www,/virt
+	or if you're running first time
+$ ./configure ... --suexec_caller=httpd,httpd2,httpd3 \
+		--suexec_docroot=/home,/www,/virt
+$ make
+	you need to be a super-user to install Apache (maybe)
+$ su
+	or
+$ sudo
+	Then type the following if you need to install suexec only
+# make install-support
+	otherwise type
+# make install
+
+--- src/support/suexec.h.orig	Mon Jan 15 20:06:40 2001
++++ src/support/suexec.h	Tue Feb 12 17:11:35 2002
+@@ -74,6 +74,10 @@
+ #define HTTPD_USER "www"
+ #endif
+ 
++#ifndef MAX_HTUSERS
++#define MAX_HTUSERS 16
++#endif
++
+ /*
+  * UID_MIN -- Define this as the lowest UID allowed to be a target user
+  *            for suEXEC.  For most systems, 500 or 100 is common.
+@@ -131,6 +135,10 @@
+  */
+ #ifndef DOC_ROOT
+ #define DOC_ROOT "/usr/local/apache/htdocs"
++#endif
++
++#ifndef MAX_DOCROOTS
++#define MAX_DOCROOTS 16
+ #endif
+ 
+ /*
+--- src/support/suexec.c.orig	Sun Feb 10 15:05:30 2002
++++ src/support/suexec.c	Tue Feb 12 18:32:57 2002
+@@ -121,6 +121,13 @@
+ 
+ #define AP_ENVBUF 256
+ 
++#ifdef _OSD_POSIX
++        /* User name comparisons are case insensitive on BS2000/OSD */
++#define	STRCMP		strcasecmp
++#else
++#define	STRCMP		strcmp
++#endif
++
+ extern char **environ;
+ static FILE *log = NULL;
+ 
+@@ -286,6 +293,10 @@
+     struct stat dir_info;	/* directory info holder     */
+     struct stat prg_info;	/* program info holder       */
+ 
++    char *htuser, *p;		/* list of possible suexec calles */
++    char *docroot;		/* list of possible document roots */
++    int  i;
++
+     prog = argv[0];
+     /*
+      * Check existence/validity of the UID of the user
+@@ -296,19 +307,25 @@
+ 	log_err("crit: invalid uid: (%ld)\n", uid);
+ 	exit(102);
+     }
++
++    /*
++     * Find matching suexec_caller if ever presented
++     */
++
++    htuser = strdup( HTTPD_USER );
++    for (i = 0, p = strtok(htuser, ",");
++		p != NULL && i < MAX_HTUSERS;
++		p = strtok(NULL, ","), i++)
++	if (STRCMP(p, pw->pw_name) == 0) break;
++
+     /*
+      * See if this is a 'how were you compiled' request, and
+      * comply if so.
+      */
++
+     if ((argc > 1)
+         && (! strcmp(argv[1], "-V"))
+-        && ((uid == 0)
+-#ifdef _OSD_POSIX
+-        /* User name comparisons are case insensitive on BS2000/OSD */
+-            || (! strcasecmp(HTTPD_USER, pw->pw_name)))
+-#else  /* _OSD_POSIX */
+-            || (! strcmp(HTTPD_USER, pw->pw_name)))
+-#endif /* _OSD_POSIX */
++        && ((uid == 0) || p == NULL)
+         ) {
+ #ifdef DOC_ROOT
+         fprintf(stderr, " -D DOC_ROOT=\"%s\"\n", DOC_ROOT);
+@@ -344,29 +361,22 @@
+ 	log_err("alert: too few arguments\n");
+ 	exit(101);
+     }
+-    target_uname = argv[1];
+-    target_gname = argv[2];
+-    cmd = argv[3];
+ 
+     /*
+      * Check to see if the user running this program
+      * is the user allowed to do so as defined in
+      * suexec.h.  If not the allowed user, error out.
+      */
+-#ifdef _OSD_POSIX
+-    /* User name comparisons are case insensitive on BS2000/OSD */
+-    if (strcasecmp(HTTPD_USER, pw->pw_name)) {
+-        log_err("crit: calling user mismatch (%s instead of %s)\n",
+-		pw->pw_name, HTTPD_USER);
+-	exit(103);
+-    }
+-#else  /* _OSD_POSIX */
+-    if (strcmp(HTTPD_USER, pw->pw_name)) {
++
++    if (p == NULL) {
+         log_err("crit: calling user mismatch (%s instead of %s)\n",
+ 		pw->pw_name, HTTPD_USER);
+ 	exit(103);
+     }
+-#endif /* _OSD_POSIX */
++
++    target_uname = argv[1];
++    target_gname = argv[2];
++    cmd = argv[3];
+ 
+     /*
+      * Check for a leading '/' (absolute path) in the command to be executed,
+@@ -454,8 +464,8 @@
+      * Log the transaction here to be sure we have an open log 
+      * before we setuid().
+      */
+-    log_err("info: (target/actual) uid: (%s/%s) gid: (%s/%s) cmd: %s\n",
+-	    target_uname, actual_uname,
++    log_err("info: %s: (target/actual) uid: (%s/%s) gid: (%s/%s) cmd: %s\n",
++	    p, target_uname, actual_uname,
+ 	    target_gname, actual_gname,
+ 	    cmd);
+ 
+@@ -518,21 +528,32 @@
+ 		    target_homedir);
+ 	    exit(112);
+ 	}
++
++	if ((strncmp(cwd, dwd, strlen(dwd))) != 0) {
++	    log_err("error: command not in docroot (%s/%s)\n", cwd, cmd);
++	    exit(114);
++	}
+     }
+     else {
+-	if (((chdir(DOC_ROOT)) != 0) ||
++	docroot = strdup( DOC_ROOT );
++	for (i = 0, p = strtok(docroot, ",");
++		    p != NULL && i < MAX_DOCROOTS;
++		    p = strtok( NULL, ","), i++)
++	    if (strncmp(cwd, p, strlen(p)) == 0) break;
++
++	if (p == NULL) {
++	    log_err("error: command not in docroot (%s/%s)\n", cwd, cmd);
++	    exit(114);
++	}
++
++	if (((chdir(p)) != 0) ||
+ 	    ((getcwd(dwd, AP_MAXPATH)) == NULL) ||
+ 	    ((chdir(cwd)) != 0)) {
+-	    log_err("emerg: cannot get docroot information (%s)\n", DOC_ROOT);
++	    log_err("emerg: cannot get docroot information (%s)\n", p);
+ 	    exit(113);
+ 	}
+     }
+ 
+-    if ((strncmp(cwd, dwd, strlen(dwd))) != 0) {
+-	log_err("error: command not in docroot (%s/%s)\n", cwd, cmd);
+-	exit(114);
+-    }
+-
+     /*
+      * Stat the cwd and verify it is a directory, or error out.
+      */
+
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

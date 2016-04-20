@@ -1,0 +1,139 @@
+Received: (qmail 26798 invoked by uid 2012); 6 Oct 1999 18:49:11 -0000
+Message-Id: <19991006184911.26797.qmail@hyperreal.org>
+Date: 6 Oct 1999 18:49:11 -0000
+From: Jack Repenning <jackr@informix.com>
+Reply-To: jackr@informix.com
+To: apbugs@hyperreal.org
+Subject: When run as a Windows "Service," can fail to autostart, hanging the whole system
+X-Send-Pr-Version: 3.2
+
+>Number:         5108
+>Category:       os-windows
+>Synopsis:       When run as a Windows "Service," can fail to autostart, hanging the whole system
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Oct  6 11:50:00 PDT 1999
+>Last-Modified:  Wed Dec  1 09:50:14 PST 1999
+>Originator:     jackr@informix.com
+>Organization:
+>Release:        1.3.9
+>Environment:
+Windows NT Workstation 4.0sp4
+Binary distribution of Apache, from www.apache.org
+Other services running:
+Albd
+Alerter
+Apache
+Browser
+ClipSrv
+DHCP
+HCLInetd
+HCLNFS
+LanmanServer
+LanmanWorkstation
+LmHosts
+Messenger
+Mvfs
+NetBIOS
+NetBT
+NetDDE
+NetDDEdsdm
+Netlogon
+ParVdm
+Parallel
+ProtectedStorage
+RPCLOCATOR
+RasArp
+RasAuto
+RasMan
+RemoteAccess
+Replicator
+TimeServ
+bh
+nmagent
+ol_mpjackr
+>Description:
+First observed in 1.3.6 (my first Apache ever); confirmed in 1.3.9.
+
+When run as an autostarted service, Apache can fail to start, virtually 
+hanging the system (each mouse-click takes one to three _minutes_ to resolve).
+
+Cause: as of SP4, a service needs to specify what other services 
+need to be started before it.  As of WinNT/4.0sp4, Windows is no longer reliably 
+getting this right unless you provide the hints.  This won't cause trouble for everyone, 
+it might not even cause trouble for you every time, because the new start order is 
+something rather like random, unless you provide the hints
+.  For reference, see the 
+Microsoft web-site (which, in standard Microsoft style, says "SP4 changed things; 
+ask your application vendor to fix their application"):
+< http://support.microsoft.com/support/kb/articles/Q197/2/86.ASP >
+
+>How-To-Repeat:
+Repeatability is hard: lacking the DependOnService hint, the start order 
+seems to be pretty much random - probably a function of system load, mix of
+other things starting at the same time, etc.  In my experience, anyway, if
+a given system is susceptible to the problem, then it's 100% repeatable:
+reboot the system, try to log in, it essentially hangs (each mouse-click
+takes several _minutes_ to resolve, many minutes after the boot up you begin 
+to get "can't start" complaints from many services; system remains hung
+indefinitely.
+
+In this state, with much patience, it should be possible to get to the
+Services control panel and disable Apache.  You'll still have to reboot
+to clear the behavior.
+>Fix:
+The hints go into the registry entry
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Apache
+key "DependOnService"
+
+The value is of type REG_MULTI_SZ.  If you're making the entry by hand, it's 
+easiest to use regedt32 (which includes an editor for this data type).  Create the 
+key if it doesn't already exist, and give it the three values (one per line, order not 
+important, case not important): TcpIp, RpcSs, and Afd.
+
+(I'm not equally sure of all three of those entries: I'm quite sure Apache needs TcpIp, 
+but I'm also quite sure that's not enough.  I got the other two by comparing to other 
+services that also need TcpIp; I kind of doubt that Apache needs Rpc, actually, and 
+I have no clue what Afd is, to tell the truth.  But the problem remains with TcpIp 
+only, and goes away with all three, so there you go.  The only danger in specifying 
+too many would be if you have some reason not to start one of them, or it fails; then 
+Apache would never even try to start.)
+
+If you're doing it by script, put this into some file whose name ends in ".reg", such as 
+"Apach.reg" (leave out the "Begin/End" stuff):
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: stoddard
+State-Changed-When: Wed Dec  1 09:50:10 PST 1999
+State-Changed-Why:
+Thanks for the info. I'll update the FAQ and make a not of it for the next binary distribution.
+>Unformatted:
+>>>>>>>>>Begin Apache.reg<<<<<<<<<
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Apache]
+"DependOnService"=hex(7):54,63,70,49,70,00,41,66,64,00,52,70,63,53,73,00,00
+"DependOnGroup"=hex(7):00
+>>>>>>>>>End Apache.reg<<<<<<<<<
+
+Double-click that, and the resource will be created.
+
+
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+

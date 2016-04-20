@@ -1,0 +1,92 @@
+Received: (qmail 54026 invoked by uid 501); 23 Jul 2001 00:33:12 -0000
+Message-Id: <20010723003312.54024.qmail@apache.org>
+Date: 23 Jul 2001 00:33:12 -0000
+From: Qian Zheng <jianjian@sunnet.org>
+Reply-To: jianjian@sunnet.org
+To: submit@bugz.apache.org
+Subject: the "SIGTERM/pause/SIGKILL dance" in mod_cgi
+X-Send-Pr-Version: 3.110
+
+>Number:         8063
+>Category:       mod_cgi
+>Synopsis:       the "SIGTERM/pause/SIGKILL dance" in mod_cgi
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Jul 22 17:40:00 PDT 2001
+>Closed-Date:    Mon Jul 23 12:00:56 PDT 2001
+>Last-Modified:  Mon Jul 23 12:00:56 PDT 2001
+>Originator:     jianjian@sunnet.org
+>Release:        1.3.x
+>Organization:
+>Environment:
+UNIX
+>Description:
+This isnt a bug, but un-safe way apache does on CGIs. When users click "stop" button of their browser, apache will do "SIGTERM/sleep(3)/SIGKILL" to the cgi process. In most cases 3 seconds should be enough for CGI to do cleanup work, but on heavy loaded servers, this wont be true. Consider about a server does heavy job on disk operations, and a CGI is doing following things:
+
+fd = open(path, O_RDRW|O_CREAT);
+if(fd==-1)
+  return;
+flock(fd, ...); // lock the file, if done..
+ftruncate(fd, 0); //truncate the file to be 0 size
+write(fd, ...);
+
+On our site, the problem appeared many times that when CGI just done ftruncate() call, the SIGKILL signal arrives, thus the important file corrupted.
+
+We tried to catch the SIGTERM, change the code to be:
+fd = open(path, O_RDRW|O_CREAT);
+if(fd==-1)
+  return;
+flock(fd, ...); // lock the file, if done..
+if(SIGTERM_RECEIVED)
+  return;  
+ftruncate(fd, 0); //truncate the file to be 0 size
+write(fd, ...);
+
+Yes that decreased lots of the chance the problem appears, but still cant be 100% safe, because our server is really busy on disk operations, means between the ftruncate() and write() call, there still has chance that SIGTERM/sleep(3)/SIGKILL dance finished, file still got corrupted.
+
+So the SIGTERM/pause/SIGKILL is almost the same as power down to CGIs on busy servers.
+>How-To-Repeat:
+
+>Fix:
+Apache should ensure that CGI can be executed in very safe way. I think that apache should only send SIGTERM to cgi in this case(or give the admin a choice in config file). If CGI doesnt care, the default action of SIGTERM will just terminate it. And if CGI did catch the SIGTERM signal, that just means the CGI doesnt want to be terminated in a rude way, it wants to finish its operation without web server's bothering. Httpd should give CGI the chance. 
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: slive
+State-Changed-When: Mon Jul 23 12:00:56 PDT 2001
+State-Changed-Why:
+Apache needs to be able to kill processes that don't
+respond to nicer suggestions.  Otherwise, the CGI 
+interface would be much less robust.
+
+Your problem is really a fundemental design flaw in
+your program.  Instead of deleting the file and then
+recreating it, you should be putting your new stuff
+in a temporary file and then using a more atomic
+operation like "mv" to replace the old file.
+
+Thanks for using Apache!
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

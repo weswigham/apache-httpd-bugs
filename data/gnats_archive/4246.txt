@@ -1,0 +1,112 @@
+Received: (qmail 13327 invoked by uid 2012); 14 Apr 1999 22:30:59 -0000
+Message-Id: <19990414223059.13326.qmail@hyperreal.org>
+Date: 14 Apr 1999 22:30:59 -0000
+From: John Tobey <jtobey@banta-im.com>
+Reply-To: jtobey@banta-im.com
+To: apbugs@hyperreal.org
+Subject: New function: ap_vrprintf
+X-Send-Pr-Version: 3.2
+
+>Number:         4246
+>Category:       apache-api
+>Synopsis:       New function: ap_vrprintf
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Apr 14 15:40:01 PDT 1999
+>Last-Modified:  Tue Apr 20 10:51:47 PDT 1999
+>Originator:     jtobey@banta-im.com
+>Organization:
+>Release:        1.3.6
+>Environment:
+SunOS hendrix 5.6 Generic_105181-04 sun4u sparc SUNW,Ultra-4
+>Description:
+In order for modules to define printf-like functions that accept a request_req
+as the output stream, it is necessary to copy the implementation of ap_rprintf
+in a function that accepts a va_list argument.  By analogy to vfprintf and
+ap_vbprintf, the function should be named ap_vrprintf.
+
+This function's implementation must use an interface that is not part of the
+public API (namely, the SET_BYTES_SENT macro).  If modules implement
+ap_vrprintf, they will break when the internal interface changes.
+
+As a service to modules, ap_vrprintf should be implemented in httpd and added
+to the API.
+>How-To-Repeat:
+You can repeat this problem by trying to transition a large pile of CGI and FCGI
+apps written in C to Apache modules.
+>Fix:
+This patch adds ap_vrprintf to http_protocol.c and adds its prototype to
+http_protocol.h.  It would probably be wise to modify ap_rprintf
+so that it uses the new function, but you might want to consider the overhead
+of an additional function call in ap_rprintf.
+
+*** apache_1.3.6/src/main/http_protocol.c~	Tue Apr 13 19:25:09 1999
+--- apache_1.3.6/src/main/http_protocol.c	Wed Apr 14 17:48:16 1999
+***************
+*** 2182,2187 ****
+--- 2182,2209 ----
+      return n;
+  }
+  
++ API_EXPORT(int) ap_vrprintf(request_rec *r, const char *fmt, va_list ap)
++ {
++     int n;
++ 
++     if (r->connection->aborted)
++         return -1;
++ 
++     n = ap_vbprintf(r->connection->client, fmt, ap);
++ 
++     if (n < 0) {
++         if (!r->connection->aborted) {
++             ap_log_rerror(APLOG_MARK, APLOG_INFO, r,
++                 "client stopped connection before vrprintf completed");
++             ap_bsetflag(r->connection->client, B_EOUT, 1);
++             r->connection->aborted = 1;
++         }
++         return -1;
++     }
++     SET_BYTES_SENT(r);
++     return n;
++ }
++ 
+  API_EXPORT(int) ap_rprintf(request_rec *r, const char *fmt,...)
+  {
+      va_list vlist;
+*** apache_1.3.6/src/include/http_protocol.h~	Fri Jan  1 14:04:40 1999
+--- apache_1.3.6/src/include/http_protocol.h	Wed Apr 14 18:01:41 1999
+***************
+*** 148,153 ****
+--- 148,154 ----
+  API_EXPORT(int) ap_rputs(const char *str, request_rec *r);
+  API_EXPORT(int) ap_rwrite(const void *buf, int nbyte, request_rec *r);
+  API_EXPORT_NONSTD(int) ap_rvputs(request_rec *r,...);
++ API_EXPORT(int) ap_vbprintf(request_rec *r, const char *fmt, va_list vlist);
+  API_EXPORT_NONSTD(int) ap_rprintf(request_rec *r, const char *fmt,...)
+  				__attribute__((format(printf,2,3)));
+  API_EXPORT(int) ap_rflush(request_rec *r);
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 10:51:46 PDT 1999
+State-Changed-Why:
+Thanks, committed to 1.3.7-dev.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

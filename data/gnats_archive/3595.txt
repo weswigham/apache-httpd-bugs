@@ -1,0 +1,91 @@
+Received: (qmail 26453 invoked by uid 2012); 28 Dec 1998 08:34:46 -0000
+Message-Id: <19981228083446.26452.qmail@hyperreal.org>
+Date: 28 Dec 1998 08:34:46 -0000
+From: Joerg Dorchain <dorchain@wirbel.com>
+Reply-To: dorchain@wirbel.com
+To: apbugs@hyperreal.org
+Subject: Proposal for a chroot() call in suexec
+X-Send-Pr-Version: 3.2
+
+>Number:         3595
+>Category:       suexec
+>Synopsis:       Proposal for a chroot() call in suexec
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          support
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Dec 28 00:40:00 PST 1998
+>Last-Modified:
+>Originator:     dorchain@wirbel.com
+>Organization:
+apache
+>Release:        1.3
+>Environment:
+Unix
+>Description:
+One of our custiomers wanted to set up user-cgi in a way that some users cannot 
+access the whole filesystem tree. He is using wu-ftpd the same time, and these
+users are in the wu-ftpd guest group.
+
+I proposed the following patch for him. It might be interesting for someone else.
+
+
+Joerg
+
+--- suexec.c.apache     Mon Dec 21 13:00:48 1998
++++ suexec.c    Mon Dec 21 16:03:09 1998
+@@ -385,6 +385,22 @@
+     }
+ 
+     /*
++     * JD: chroot in wuftp-like manner if it is a userdir
++     * We have to do that as long as we are root
++     */
++    if (userdir) {
++        char *a=strstr(target_homedir,"/./");
++        if (a != NULL) {
++            a[1]=0; /* make . to \0 */
++            if (chroot(target_homedir) != 0) {
++                log_err("failed to chroot to %s\n",target_homedir);
++                exit(199);
++            }
++            target_homedir=a+2; /* Rest after the . */
++        }
++    }
++
++    /*
+      * setuid() to the target user.  Error out on fail.
+      */
+     if ((setuid(uid)) != 0) {
+@@ -498,6 +514,11 @@
+      * Be sure to close the log file so the CGI can't
+      * mess with it.  If the exec fails, it will be reopened 
+      * automatically when log_err is called.
++     */
++    /*
++     * JD: when we close the log here, we cannot open it anymore when
++     * we´re chrott()´ed. So set up the enviroment correctly or you
++     * get strange (or no) error message
+      */
+     fclose(log);
+     log = NULL;
+>How-To-Repeat:
+Look for  a customer which these demands ;-)
+>Fix:
+Patch included
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

@@ -1,0 +1,95 @@
+Received: (qmail 17483 invoked by uid 2012); 23 Dec 1997 15:47:40 -0000
+Message-Id: <19971223154740.17482.qmail@hyperreal.org>
+Date: 23 Dec 1997 15:47:40 -0000
+From: Carol Ghijs <cg@lms.be>
+Reply-To: cg@lms.be
+To: apbugs@hyperreal.org
+Subject: HTTP proxy refuses http://userid:passwd@some.internet.domain
+X-Send-Pr-Version: 3.2
+
+>Number:         1594
+>Category:       mod_proxy
+>Synopsis:       HTTP proxy refuses http://userid:passwd@some.internet.domain
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Dec 23 07:50:00 PST 1997
+>Last-Modified:  Sat Jan 10 13:12:50 PST 1998
+>Originator:     cg@lms.be
+>Organization:
+>Release:        1.3b3
+>Environment:
+HP-UX version B.10.20
+Apache version 1.3b3
+Proxy module included
+>Description:
+If entering URL's as mentioned in synopsis, one gets
+a Bad Request reply. FTP URL's do not cause problems
+and work as expected.
+>How-To-Repeat:
+
+>Fix:
+I compared modules/src/proxy_http.c with modules/src/proxy_ftp.c
+and then tried the following changes which made this feature work. I
+am unaware if these changes could introduce other problems as I am
+very unfamiliar with the rest of the source code:
+
+[herschel,cg,213] % diff src/modules/proxy/proxy_http.c src_modified/modules/proxy/proxy_http.c
+61a62,81
+>  * checks an encoded http string for bad characters, namely, CR, LF, or
+>  * non-ascii character
+>  */
+> static int http_check_string(const char *x)
+> {
+>     int i, ch;
+>
+>     for (i = 0; x[i] != '\0'; i++) {
+>       ch = x[i];
+>       if (ch == '%' && isxdigit(x[i + 1]) && isxdigit(x[i + 2])) {
+>           ch = proxy_hex2c(&x[i + 1]);
+>           i += 2;
+>       }
+>       if (ch == '\015' || ch == '\012' || (ch & 0x80))
+>           return 0;
+>     }
+>     return 1;
+> }
+>
+> /*
+69c89
+<     char *host, *path, *search, *p, sport[7];
+---
+>     char *user, *password, *host, *path, *search, *p, sport[7];
+77c97
+<     err = proxy_canon_netloc(r->pool, &url, NULL, NULL, &host, &port);
+---
+>     err = proxy_canon_netloc(r->pool, &url, &user, &password, &host, &port);
+79a100,103
+>     if (user != NULL && !http_check_string(user))
+>         return BAD_REQUEST;
+>     if (password != NULL && !http_check_string(password))
+>         return BAD_REQUEST;
+[herschel,cg,214] %
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: Lars.Eilebrecht@unix-ag.org
+State-Changed-When: Sat Jan 10 13:12:50 PST 1998
+State-Changed-Why:
+
+PR#1163 is about the same problem. Please search older
+reports before you submit a new bug report.
+Thanks.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

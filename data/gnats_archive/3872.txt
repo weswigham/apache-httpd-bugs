@@ -1,0 +1,99 @@
+Received: (qmail 19160 invoked by uid 2012); 10 Feb 1999 19:28:42 -0000
+Message-Id: <19990210192842.19159.qmail@hyperreal.org>
+Date: 10 Feb 1999 19:28:42 -0000
+From: Jeff Lewis <lewis@stanford.edu>
+Reply-To: lewis@stanford.edu
+To: apbugs@hyperreal.org
+Subject: util_script.c doubles up Set-Cookie headers from r->err_headers_out
+X-Send-Pr-Version: 3.2
+
+>Number:         3872
+>Category:       general
+>Synopsis:       util_script.c doubles up Set-Cookie headers from r->err_headers_out
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Feb 10 11:30:01 PST 1999
+>Last-Modified:  Tue Apr 20 16:58:37 PDT 1999
+>Originator:     lewis@stanford.edu
+>Organization:
+>Release:        1.3.3
+>Environment:
+SunOS wdev 5.5.1 Generic_103640-14 sun4u sparc SUNW,Ultra-1
+gcc version 2.8.1
+>Description:
+I've got an authentication module that sets an encrypted cookie on a successful
+authentication, and sets it in the r->err_headers_out table so that it'll
+survive subrequests.  When the target URL is a cgi script that cookie ends up
+sent to the user twice because it gets duplicated in the 
+util_script.c ap_scan_script_header_err_core() function.
+>How-To-Repeat:
+
+>Fix:
+I commented out line 457 of the 1.3.3 util_script.c,
+> ap_table_do(set_cookie_doo_doo, cookie_table, r->err_headers_out, "Set-Cookie", NULL);
+because it doesn't look like you'd want to preload the temp cookie_table with 
+those set-cookie headers unless you were also going to remove them from
+err_headers_out, since the entire cookie_table gets appended to err_headers_out
+later.
+
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Jeff Lewis <lewis@stanford.edu>
+Cc: apbugs@apache.org
+Subject: re: general/3872: util_script.c doubles up Set-Cookie headers from r->err_headers_out
+Date: Wed, 10 Mar 1999 10:05:48 -0800 (PST)
+
+ Commenting out the ap_table_do line would pose troubles if there were two
+ Set-Cookie headers already in err_headers_out... I'm pretty sure the patch
+ below is the right way to fix it.  Can you test to make sure it works for
+ you? 
+ 
+ Thanks
+ Dean
+ 
+ Index: main/util_script.c
+ ===================================================================
+ RCS file: /home/cvs/apache-1.3/src/main/util_script.c,v
+ retrieving revision 1.138
+ diff -u -r1.138 util_script.c
+ --- util_script.c	1999/02/05 00:37:48	1.138
+ +++ util_script.c	1999/03/10 18:04:53
+ @@ -496,6 +496,8 @@
+  	    ap_overlap_tables(r->err_headers_out, merge,
+  		AP_OVERLAP_TABLES_MERGE);
+  	    if (!ap_is_empty_table(cookie_table)) {
+ +		/* the cookies have already been copied to the cookie_table */
+ +		ap_table_unset(r->err_headers_out, "Set-Cookie");
+  		r->err_headers_out = ap_overlay_tables(r->pool,
+  		    r->err_headers_out, cookie_table);
+  	    }
+ 
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Wed Mar 10 10:11:41 PST 1999
+State-Changed-Why:
+yup  it's a bug -- the suggested fix isn't quite right though,
+sent a patch separately (and committed it, what the heck)
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 16:58:36 PDT 1999
+State-Changed-Why:
+This went into 1.3.6.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

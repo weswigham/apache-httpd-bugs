@@ -1,0 +1,90 @@
+From nobody@hyperreal.com  Fri Apr 11 13:31:45 1997
+Received: (from nobody@localhost)
+          by hyperreal.com (8.8.4/8.8.4)
+	  id NAA23502; Fri, 11 Apr 1997 13:31:45 -0700 (PDT)
+Message-Id: <199704112031.NAA23502@hyperreal.com>
+Date: Fri, 11 Apr 1997 13:31:45 -0700 (PDT)
+From: Christian Gilmore <cgilmore@research.att.com>
+Reply-To: cgilmore@research.att.com
+To: apbugs@hyperreal.com
+Subject: PR# 354 Update
+X-Send-Pr-Version: 3.2
+
+>Number:         367
+>Category:       suexec
+>Synopsis:       PR# 354 Update
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Apr 11 13:40:01 1997
+>Last-Modified:  Thu Apr 24 16:39:16 PDT 1997
+>Originator:     cgilmore@research.att.com
+>Organization:
+>Release:        1.2b8
+>Environment:
+General problem, regardless of compiler and os
+>Description:
+I researched further the problem I reported with PR# 354. Here are my findings.
+
+When executing a script with suexec, apache calls getgrgid without
+checking whether the returned group pointer is null.  This will cause
+apache to dump core on the subsequent execle if the user's default
+group isn't in /etc/group. The fix is below.
+
+Obviously, this is suboptimal, but as long as suexec insists on taking
+group names on the command line, it'll have to do. I wonder why suexec
+requires user and group names instead of just uids and gids?
+>How-To-Repeat:
+
+>Fix:
+*** util_script.c.orig  Tue Mar 18 04:46:27 1997
+--- util_script.c       Fri Apr 11 16:09:10 1997
+***************
+*** 551,557 ****
+                return;
+            }
+              r->uri -= 2;
+!             gr = getgrgid (pw->pw_gid);
+              execuser = (char *) palloc (r->pool, (sizeof(pw->pw_name) + 1));
+              execuser = pstrcat (r->pool, "~", pw->pw_name, NULL);
+          }
+--- 551,560 ----
+                return;
+            }
+              r->uri -= 2;
+!             if ((gr = getgrgid (pw->pw_gid)) == NULL) {
+!               log_unixerr("getgrgid", NULL, "invalid groupid", pw->pw_gid);
+!               return;
+!           }
+              execuser = (char *) palloc (r->pool, (sizeof(pw->pw_name) + 1));
+              execuser = pstrcat (r->pool, "~", pw->pw_name, NULL);
+          }%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 22 02:16:27 PDT 1997
+State-Changed-Why:
+Just refiling into suexec.
+
+Submitter also said in PR#368:
+
+The fourth argument should be r->server, not pw->pw_gid. Sorry.
+Category-Changed-From-To: general-suexec
+Category-Changed-By: dgaudet
+Category-Changed-When: Tue Apr 22 02:16:27 PDT 1997
+
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Apr 24 16:39:16 PDT 1997
+State-Changed-Why:
+A fix for this was committed and will appear in 1.2b9 shortly.
+
+Thanks
+Dean
+>Unformatted:
+
+

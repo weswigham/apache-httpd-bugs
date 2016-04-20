@@ -1,0 +1,139 @@
+From nobody@hyperreal.com  Sun Feb 23 21:45:44 1997
+Received: by taz.hyperreal.com (8.8.4/V2.0) id VAA17748; Sun, 23 Feb 1997 21:45:44 -0800 (PST)
+Message-Id: <199702240545.VAA17748@taz.hyperreal.com>
+Date: Sun, 23 Feb 1997 21:45:44 -0800 (PST)
+From: Taso Devetzis <devetzis@snet.net>
+Reply-To: devetzis@snet.net
+To: apbugs@hyperreal.com
+Subject: Redirect not allowed for some absolute URIs (see PR #146)
+X-Send-Pr-Version: 3.2
+
+>Number:         187
+>Category:       protocol
+>Synopsis:       Redirect not allowed for some absolute URIs (see PR #146)
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Feb 23 21:50:01 1997
+>Last-Modified:  Thu Jan 22 09:17:18 PST 1998
+>Originator:     devetzis@snet.net
+>Organization:
+>Release:        1.2b7
+>Environment:
+All
+>Description:
+Redirects to URLs with no net_loc component (like mailto:) fail at startup.
+
+RFC 2068 says (section 14.30):
+
+    Location       = "Location" ":" absoluteURI
+
+Absolute URIs include mailto:, for example (as per RFC 1738).
+
+While mailto: URLs do not refer to an object, redirecting to them is not
+entirely insane.
+>How-To-Repeat:
+This line
+
+    Redirect /foo/bar/ mailto:foo@bar.com
+
+in the appropriate context will fail at runtime.
+>Fix:
+The following patch for 1.2b7 adds support for redirection to mailto: URLs.
+A specific routine is added so as not to impact runtime performance (i.e.
+is_url() is left alone).
+
+Apply in "src" subdirectory.
+
+--------------------------------------------------------------------------------
+Common subdirectories: ../../apache_1.2b7/src/helpers and ./helpers
+diff -c ../../apache_1.2b7/src/httpd.h ./httpd.h
+*** ../../apache_1.2b7/src/httpd.h      Fri Feb 21 19:38:04 1997
+--- ./httpd.h   Sun Feb 23 23:36:34 1997
+***************
+*** 644,649 ****
+--- 644,650 ----
+  int find_token (pool *p, const char *line, const char *tok);
+       
+  int is_url(const char *u);
++ int is_redirect_url(const char *u);
+  extern int unescape_url(char *url);
+  void no2slash(char *name);
+  void getparents(char *name);
+diff -c ../../apache_1.2b7/src/mod_alias.c ./mod_alias.c
+*** ../../apache_1.2b7/src/mod_alias.c  Wed Jan  1 13:10:25 1997
+--- ./mod_alias.c       Sun Feb 23 23:28:32 1997
+***************
+*** 158,164 ****
+  
+      if (is_HTTP_REDIRECT(status)) {
+        if (!url) return "URL to redirect to is missing";
+!       if (!is_url (url)) return "Redirect to non-URL";
+      }
+      else {
+        if (url) return "Redirect URL not valid for this status";
+--- 158,164 ----
+  
+      if (is_HTTP_REDIRECT(status)) {
+        if (!url) return "URL to redirect to is missing";
+!       if (!is_redirect_url (url)) return "Redirect to non-URL";
+      }
+      else {
+        if (url) return "Redirect URL not valid for this status";
+Common subdirectories: ../../apache_1.2b7/src/modules and ./modules
+Common subdirectories: ../../apache_1.2b7/src/regex and ./regex
+diff -c ../../apache_1.2b7/src/util.c ./util.c
+*** ../../apache_1.2b7/src/util.c       Tue Feb 18 11:27:26 1997
+--- ./util.c    Sun Feb 23 23:56:01 1997
+***************
+*** 915,920 ****
+--- 915,926 ----
+      else return 0;
+  }
+  
++ int is_redirect_url(const char *u) {
++   if (is_url (u))
++     return 1;
++   return strncasecmp (&u[0], "mailto:", 7) ? 0 : 1;
++ }
++ 
+  int can_exec(const struct stat *finfo) {
+  #ifdef MULTIPLE_GROUPS
+    int cnt;
+-------------------------------------------------------------------------------
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: coar@decus.org
+State-Changed-When: Thu Feb 27 10:37:19 PST 1997
+State-Changed-Why:
+The analysis appears to be correct.  The correct behaviour
+of is_url() is under discussion; if it should be
+checking for an absoluteURI syntax, the change should be
+made there rather than in an ancillary special-purpose
+routine.
+Responsible-Changed-From-To: apache (GNATS administrator)-coar@decus.org
+Responsible-Changed-By: coar@decus.org
+Responsible-Changed-When: Thu Feb 27 10:37:19 PST 1997
+Responsible-Changed-Why:
+I'll track it.
+State-Changed-From-To: analyzed-closed
+State-Changed-By: coar@decus.org
+State-Changed-When: Fri Mar  7 07:27:28 PST 1997
+State-Changed-Why:
+A fix for this has been checked in to the sources,
+and should be available in the next release after
+1.2b7.  The change makes is_url() compliant with the
+full absoluteURI syntax defined in RFC 2068 section 3.2.
+Thanx for reporting this, and for using Apache!
+Responsible-Changed-From-To: coar@decus.org-apache
+Responsible-Changed-By: coar
+Responsible-Changed-When: Thu Jan 22 09:17:17 PST 1998
+Responsible-Changed-Why:
+Putting back into mainstream bugdb
+>Unformatted:
+
+

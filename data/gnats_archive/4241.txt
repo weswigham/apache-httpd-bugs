@@ -1,0 +1,177 @@
+Received: (qmail 6736 invoked by uid 2012); 13 Apr 1999 22:50:43 -0000
+Message-Id: <19990413225043.6735.qmail@hyperreal.org>
+Date: 13 Apr 1999 22:50:43 -0000
+From: Bill Luebkert <dbe@wgn.net>
+Reply-To: dbe@wgn.net
+To: apbugs@hyperreal.org
+Subject: Need to be able to override shebang line to make CGI scripts more portable.
+X-Send-Pr-Version: 3.2
+
+>Number:         4241
+>Category:       config
+>Synopsis:       Need to be able to override shebang line to make CGI scripts more portable.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Apr 13 17:10:01 PDT 1999
+>Last-Modified:  Sun Jun 27 13:26:32 PDT 1999
+>Originator:     dbe@wgn.net
+>Organization:
+>Release:        1.3.6
+>Environment:
+All, especially Win32
+>Description:
+<pre>
+
+In order to not have to modify each script when porting CGI scripts to different 
+platforms, there ought to be a way to override the shebang line to specify where 
+a given CGI app lies.
+
+Proposed syntax in server config, virtual host, .htaccess:
+    CGIOverride {<full-path-to-app>|off} <file-ext-list>
+or
+    ShebangOverride {<full-path-to-app>|off} <file-ext-list>
+
+Eg:
+CGIOverride c:/perl/bin/perl.exe .pl .cgi  # override shebang line on .pl and .cgi scripts
+CGIOverride off .cgi                       # turn shebang override back off for this dir (.htaccess)
+
+Possibly also:
+CGIOverride c:/perl/bin/perl.exe form.pl   # override a single script (probably only used in .htaccess)
+
+</pre>
+>How-To-Repeat:
+
+>Fix:
+Possible changes to ap_execve.c, util_script.c, mod_cgi.c, etc. to implement, 
+plus addition of syntax above.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: manoj
+State-Changed-When: Sat Jun 26 22:00:36 PDT 1999
+State-Changed-Why:
+The ScriptInterpreterSource directive is available in 1.3.6
+for Win32. With it, you can use the registry to associate
+scripts to interpreters based on the script's extension.
+
+For Unix, you can use symbolic links to allow scripts to see
+the interpreter where they expect.
+
+Thanks for using Apache.
+
+From: "$Bill Luebkert" <dbe@wgn.net>
+To: Cc: apbugs@Apache.Org
+Subject: Re: config/4241: Need to be able to override shebang line to make CGI 
+ scripts more portable.
+Date: Sun, 27 Jun 1999 06:53:29 -0700
+
+ manoj@apache.org wrote:
+ > 
+ > [In order for any reply to be added to the PR database, you need]
+ > [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ > [subject line starts with the report component and number, with ]
+ > [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ > ["Re: general/1098:").  If the subject doesn't match this       ]
+ > [pattern, your message will be misfiled and ignored.  The       ]
+ > ["apbugs" address is not added to the Cc line of messages from  ]
+ > [the database automatically because of the potential for mail   ]
+ > [loops.  If you do not include this Cc, your reply may be ig-   ]
+ > [nored unless you are responding to an explicit request from a  ]
+ > [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ > 
+ > Synopsis: Need to be able to override shebang line to make CGI scripts more portable.
+ > 
+ > State-Changed-From-To: open-closed
+ > State-Changed-By: manoj
+ > State-Changed-When: Sat Jun 26 22:00:36 PDT 1999
+ > State-Changed-Why:
+ > The ScriptInterpreterSource directive is available in 1.3.6
+ > for Win32. With it, you can use the registry to associate
+ > scripts to interpreters based on the script's extension.
+ > 
+ > For Unix, you can use symbolic links to allow scripts to see
+ > the interpreter where they expect.
+ > 
+ > Thanks for using Apache.
+ 
+ This solves nothing for me since the Perl I want to use is not in the 
+ registry.  It is a specific solution to a general problem.  I supplied 
+ a syntax that would have been much more general to use and would have 
+ worked on all systems, not just Windows, eg:
+ 
+         <runtime-directive> <full-path-to-exe> <ext-list> ...
+ 
+ where <runtime-directive> could be:
+ 
+         AddCGIHandler, CGIOverride, OverrideShebang, or ShebangOverride, etc.
+ 
+ Since you've already added new syntax, maybe a later upgrade from this
+ syntax:
+ 
+         ScriptInterpreterSource {registry|script}
+ 
+ to this:
+ 
+         ScriptInterpreterSource {registry|script|full-path-to-interpreter} .ext ...
+ 
+ would be an easier upgrade to get to a more general solution. Eg:
+         
+         ScriptInterpreterSource registry .pl .cgi
+         ScriptInterpreterSource script .pl .cgi
+         ScriptInterpreterSource C:/perl/bin/perl.exe .pl .cgi
+ 
+ There are directives that already use this syntax (such as: AddIcon, AddHandler), 
+ so I assume there is parsing logic to handle it already that just needs to be 
+ copied.
+ 
+ Thanks for listening, thanks for the current solution (which I'm sure will help 
+ many folks who are using the registry - like Activestate Perl users) and let me 
+ know what you think about making this a more general solution that will help the 
+ rest of the users (who may not be using the registry or may even hate it like I 
+ do :)),
+ 
+ -- 
+   ,-/-  __      _  _         $Bill Luebkert   ICQ=14439852
+  (_/   /  )    // //       DBE Collectibles   http://www.wgn.net/~dbe/
+   / ) /--<  o // //      Mailto:dbe@wgn.net   http://dbecoll.webjump.com/
+ -/-' /___/_<_</_</_    http://www.freeyellow.com/members/dbecoll/
+State-Changed-From-To: closed-suspended
+State-Changed-By: manoj
+State-Changed-When: Sun Jun 27 13:26:32 PDT 1999
+State-Changed-Why:
+On Sun, Jun 27, 1999 at 06:59:55AM -0700, $Bill Luebkert wrote:
+> Sorry for a third response, but this is the error I get using
+> registry (which is why I think a more general solution is required):
+>  
+> [Sun Jun 27 06:54:31 1999] [info] ScriptInterpreterSource config
+> directive set to "registry".
+>         Registry was searched but interpreter not found. Trying the
+>         shebang line.
+ 
+Yes, you need to create an association in the registry yourself if
+your interpreter doesn't do it for you. The easiest way I've found to 
+do this is to try to execute the script, at which point Windows will 
+let you choose an interpreter for the script.
+
+I'll suspend the bug report, meaning someone may consider it as a future 
+feature. However, this probably won't be implemented, because there 
+are more generic solutions on both Windows and Unix which provide this 
+functionality and also work for programs other than Apache. OS/2 might
+find this feature useful though; I don't know.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

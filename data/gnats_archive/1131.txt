@@ -1,0 +1,152 @@
+From apwww@hyperreal.org  Sun Sep 14 06:27:18 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id GAA02682;
+	Sun, 14 Sep 1997 06:27:18 -0700 (PDT)
+Message-Id: <199709141327.GAA02682@hyperreal.org>
+Date: Sun, 14 Sep 1997 06:27:18 -0700 (PDT)
+From: Shlomi Fish <shlomi@slink.co.il>
+Reply-To: shlomi@slink.co.il
+To: apbugs@hyperreal.org
+Subject: gethostbyname() in CGI programs always fail.
+X-Send-Pr-Version: 3.2
+
+>Number:         1131
+>Category:       os-windows
+>Synopsis:       gethostbyname() in CGI programs always fail.
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Sep 14 06:30:01 1997
+>Last-Modified:  Wed Nov 12 14:05:25 PST 1997
+>Originator:     shlomi@slink.co.il
+>Organization:
+>Release:        1.3a1
+>Environment:
+Windows 95 and Windows NT Workstation
+Running on Pentium with at least 166 MHz.
+Apache 1.3a1 compiled with Microsft Visual C++ 5.0
+>Description:
+When I use Apache (at least the debug version) to run CGI 
+programs that call the WinSock function
+gethostbyname(), I always get a NULL value returned from the function,
+which indicates that an error has occured. The same program, ran from the
+command line, is succesful in this function call.
+
+On Windows 95 the return value from WSAGetLastError() is WSANO_DATA
+("Valid name, no data record of requested type") and on an NT Workstation
+is WSAHOST_NOT_FOUND ("Authoritative Answer: Host not found")
+>How-To-Repeat:
+Compile the following program using MSVC or some other Windows compiler. (you
+should modify the test server-name to a nearby host). Place it somewhere in the
+server's CGI scripts directory, and type it's URL in the browser.
+You should receieve the following output:
+
+C CGI script started.
+Opened Winsock.
+DNS Failed! WSError is 11004.
+
+You can try to run it from a DOS box and see that everything is OK.
+
+---------------------------------------------
+
+#include <stdio.h>
+#include <string.h>
+#include <winsock.h>
+
+int main()
+{
+	/* Change it to the DNS name of an active HTTP server
+	   near the testing host. */
+	char szRemote[80] = "www.yahoo.com";
+	unsigned short uPort = 80;
+	int status;
+	WSADATA WSAData;
+	struct hostent * pheAddr;
+	SOCKADDR_IN adrRemote;
+	SOCKET sock;
+
+	printf ("Content-Type: text/plain\n\n");
+
+	printf ("C CGI script started.\n");
+	if ((status = WSAStartup(MAKEWORD(1,1), &WSAData)) == 0)
+	{
+		printf("Opened Winsock.\n");
+	}
+	else
+	{
+		printf("Could not open WinSock Stack! %d is the err\n", status);
+		return 0;
+	}
+
+	pheAddr = gethostbyname(szRemote);
+
+	if (pheAddr == NULL)
+	{
+		printf("DNS Failed! WSError is %ld.\n", WSAGetLastError() );
+		
+		WSACleanup();
+		return 0;
+	}
+	else
+	{
+		adrRemote.sin_family = AF_INET;
+		adrRemote.sin_port = htons(uPort);
+		memcpy(&(adrRemote.sin_addr), pheAddr->h_addr_list[0], 4);
+		memset(&(adrRemote.sin_zero), '\0', sizeof(adrRemote.sin_zero));
+
+		printf("DNS Succeeded! Address is %li.%li.%li.%li .\n",
+			(int)adrRemote.sin_addr.S_un.S_un_b.s_b1, 
+			(int)adrRemote.sin_addr.S_un.S_un_b.s_b2, 
+			(int)adrRemote.sin_addr.S_un.S_un_b.s_b3,
+			(int)adrRemote.sin_addr.S_un.S_un_b.s_b4);
+	}
+
+	sock = socket(PF_INET, SOCK_STREAM, 0);
+	if (sock == INVALID_SOCKET)
+	{
+		printf("Socket allocation failed! WSError is %ld.\n", WSAGetLastError() );
+		
+		WSACleanup();
+		return 0;
+	}
+	else
+	{
+		printf("Allocated a socket.\n");
+	}
+
+	if (connect( sock, (PSOCKADDR) &adrRemote, sizeof( adrRemote)) < 0)
+	{		
+		printf("connect() failed! WSError is %ld.\n", WSAGetLastError() );
+        
+		closesocket( sock );
+		WSACleanup();
+		return 0;
+    }
+	else
+	{
+		printf("Socket is connected.\n");
+	}
+
+	closesocket(sock);
+	WSACleanup();
+
+	printf( "TCP/IP test is fully successful!\n");
+
+	return 0;
+}
+>Fix:
+No
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Wed Nov 12 14:05:25 PST 1997
+State-Changed-Why:
+This has been corrected in the source tree; a fixed version
+will be available in the next release.
+>Unformatted:
+
+

@@ -1,0 +1,199 @@
+Received: (qmail 31525 invoked by uid 501); 1 Oct 2001 01:28:06 -0000
+Message-Id: <20011001012806.31523.qmail@apache.org>
+Date: 1 Oct 2001 01:28:06 -0000
+From: Scott Ellentuch <tuc@ttsg.com>
+Reply-To: tuc@ttsg.com
+To: submit@bugz.apache.org
+Subject: Control P in mod_log_referer
+X-Send-Pr-Version: 3.110
+
+>Number:         8439
+>Category:       mod_log-any
+>Synopsis:       Control P in mod_log_referer
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Sep 30 18:30:01 PDT 2001
+>Closed-Date:    Mon Oct 01 10:12:59 PDT 2001
+>Last-Modified:  Sun Oct  7 10:50:00 PDT 2001
+>Originator:     tuc@ttsg.com
+>Release:        1.3.12
+>Organization:
+>Environment:
+Solaris 7,Generic_106541-12,gcc version 2.8.1
+>Description:
+We are getting a Control-P in our logs for mod_log_referer. I've checked the 1.3.20
+version, and it hasn't changed except for headers. The referer log is defined as :
+
+RefererLog "|/usr/local/sbin/cronolog /usr/local/logs/%Y%m%d/domain-referer_log"
+RefererIgnore XX.XX.XX.XX domain.com www.domain.com
+
+In the file I see :
+
+ -> /redirect.htm
+ -> /redirect.htm
+ -> /redirect.htm
+ -> /redirect.htm
+ -> /redirect.htm
+ -> /redirect.htm
+ -> /redirect.htm
+ -> /redirect.htm
+ -> /redirect.htm
+ -> /redirect.htm
+
+When I run it through a dump, I get :
+
+0000000 020055 037040 027562 062544 064562 062543 072056 064164
+0000016 066412 020055 037040 027562 062544 064562 062543 072056
+0000032 064164 066412 020055 037040 027562 062544 064562 062543
+0000048 072056 064164 066412 020055 037040 027562 062544 064562
+0000064 062543 072056 064164 066412 020055 037040 027562 062544
+0000080 064562 062543 072056 064164 066412 020055 037040 027562
+0000096 062544 064562 062543 072056 064164 066412 020055 037040
+0000112 027562 062544 064562 062543 072056 064164 066412 020055
+0000128 037040 027562 062544 064562 062543 072056 064164 066412
+0000144 020055 037040 027562 062544 064562 062543 072056 064164
+0000160 066412 020055 037040 027562 062544 064562 062543 072056
+0000176 064164 066412
+
+020 is dle or control-P.  How do I tell the server I don't want these. There were 
+4 Million of these today, and are unnecessary.
+>How-To-Repeat:
+
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Mon Oct  1 10:12:58 PDT 2001
+State-Changed-Why:
+You are not reading the output of "od" properly.  "020055" is a 16-bit word that can not be split into "020" and "055", as should be obvious by entries like "027562".
+
+I see nothing wrong with the output you have given.
+
+From: Marc Slemko <marcs@znep.com>
+To: Tuc <tuc@ttsg.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: mod_log-any/8439: Control P in mod_log_referer
+Date: Sun, 7 Oct 2001 10:10:52 -0700 (PDT)
+
+ mod_log_referer is an obsolete module with limited support for doing much
+ of anything.
+ 
+ Please see the mod_log_config docs (the section on conditional
+ logging) and the mod_setenvif docs.
+ 
+ On Mon, 1 Oct 2001, Tuc wrote:
+ 
+ > > You are not reading the output of "od" properly.  "020055" is a 16-bit word that can not be split into "020" and "055", as should be obvious by entries like "027562".
+ > > 
+ > > I see nothing wrong with the output you have given.
+ > > 
+ > > 
+ > 	Sorry, I started decoding and saw "55", saw it mapped to "-" and
+ > didn't continue. Your correct. This is a better dump (Octal):
+ > 
+ > 0000000 040 055 076 040 057 162 145 144 151 162 145 143 164 056 150 164
+ > 0000010 155 012 040 055 076 040 057 162 145 144 151 162 145 143 164 056
+ > 0000020 150 164 155 012 040 055 076 040 057 162 145 144 151 162 145 143
+ > 0000030 164 056 150 164 155 012 040 055 076 040 057 162 145 144 151 162
+ > 0000040 145 143 164 056 150 164 155 012 040 055 076 040 057 162 145 144
+ > 0000050 151 162 145 143 164 056 150 164 155 012 040 055 076 040 057 162
+ > 0000060 145 144 151 162 145 143 164 056 150 164 155 012 040 055 076 040
+ > 0000070 057 162 145 144 151 162 145 143 164 056 150 164 155 012 040 055
+ > 0000080 076 040 057 162 145 144 151 162 145 143 164 056 150 164 155 012
+ > 0000090 040 055 076 040 057 162 145 144 151 162 145 143 164 056 150 164
+ > 00000a0 155 012 040 055 076 040 057 162 145 144 151 162 145 143 164 056
+ > 00000b0 150 164 155 012 
+ > 
+ > 
+ > 	Its showing then "{space}->{space}/redirect.htm{nl}
+ > 
+ > 	Then how do I stop these records from ocurring? What do I put into
+ > the "RefererIgnore" line?  Theres technically nothing before the 
+ > "{space}->{space}" to rule out, no?
+ > 
+ > 		Thanks, Tuc/TTSG Internet Services, Inc.
+ > 
+ 
+
+From: Tuc <tuc@ttsg.com>
+To: marcs@znep.com (Marc Slemko)
+Cc: tuc@ttsg.com (Tuc), apbugs@apache.org (Apache bugs database)
+Subject: Re: mod_log-any/8439: Control P in mod_log_referer
+Date: Sun, 7 Oct 2001 13:44:18 -0400 (EDT)
+
+ > 
+ > mod_log_referer is an obsolete module with limited support for doing much
+ > of anything.
+ >
+ 	Understood.
+ > 
+ > Please see the mod_log_config docs (the section on conditional
+ > logging) and the mod_setenvif docs.
+ >
+ 	Ok, thank you.  The issue is can I just specify "", or is there
+ something like NULL I need to use.   Or, should I just specify it as 
+ .*, and then do a ! ? Or is NULL still a match?
+ 
+ 		Thanks, Tuc/TTSG Internet Services, Inc.
+ 
+  
+ > On Mon, 1 Oct 2001, Tuc wrote:
+ > 
+ > > > You are not reading the output of "od" properly.  "020055" is a 16-bit word that can not be split into "020" and "055", as should be obvious by entries like "027562".
+ > > > 
+ > > > I see nothing wrong with the output you have given.
+ > > > 
+ > > > 
+ > > 	Sorry, I started decoding and saw "55", saw it mapped to "-" and
+ > > didn't continue. Your correct. This is a better dump (Octal):
+ > > 
+ > > 0000000 040 055 076 040 057 162 145 144 151 162 145 143 164 056 150 164
+ > > 0000010 155 012 040 055 076 040 057 162 145 144 151 162 145 143 164 056
+ > > 0000020 150 164 155 012 040 055 076 040 057 162 145 144 151 162 145 143
+ > > 0000030 164 056 150 164 155 012 040 055 076 040 057 162 145 144 151 162
+ > > 0000040 145 143 164 056 150 164 155 012 040 055 076 040 057 162 145 144
+ > > 0000050 151 162 145 143 164 056 150 164 155 012 040 055 076 040 057 162
+ > > 0000060 145 144 151 162 145 143 164 056 150 164 155 012 040 055 076 040
+ > > 0000070 057 162 145 144 151 162 145 143 164 056 150 164 155 012 040 055
+ > > 0000080 076 040 057 162 145 144 151 162 145 143 164 056 150 164 155 012
+ > > 0000090 040 055 076 040 057 162 145 144 151 162 145 143 164 056 150 164
+ > > 00000a0 155 012 040 055 076 040 057 162 145 144 151 162 145 143 164 056
+ > > 00000b0 150 164 155 012 
+ > > 
+ > > 
+ > > 	Its showing then "{space}->{space}/redirect.htm{nl}
+ > > 
+ > > 	Then how do I stop these records from ocurring? What do I put into
+ > > the "RefererIgnore" line?  Theres technically nothing before the 
+ > > "{space}->{space}" to rule out, no?
+ > > 
+ > > 		Thanks, Tuc/TTSG Internet Services, Inc.
+ > > 
+ > 
+ > 
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

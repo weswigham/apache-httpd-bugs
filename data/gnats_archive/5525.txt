@@ -1,0 +1,252 @@
+Received: (qmail 1913 invoked by uid 2012); 31 Dec 1999 06:52:15 -0000
+Message-Id: <19991231065215.1912.qmail@hyperreal.org>
+Date: 31 Dec 1999 06:52:15 -0000
+From: Andrew J Barros <andy@nethernet.com>
+Reply-To: andy@nethernet.com
+To: apbugs@hyperreal.org
+Subject: Many sockets left in CLOSE_WAIT, many apache children hang
+X-Send-Pr-Version: 3.2
+
+>Number:         5525
+>Category:       os-linux
+>Synopsis:       Many sockets left in CLOSE_WAIT, many apache children hang
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          feedback
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Dec 31 01:10:00 PST 1999
+>Closed-Date:
+>Last-Modified:  Tue Aug 07 07:01:36 PDT 2001
+>Originator:     andy@nethernet.com
+>Release:        1.3.9
+>Organization:
+>Environment:
+Linux 2.2.7-ac2 
+gcc:
+gcc version egcs-2.91.66 19990314/Linux (egcs-1.1.2 release)
+uname -a:
+Linux srv1 2.2.7-ac2 #2 Sun May 9 23:53:58 EDT 1999 i586 unknown
+>Description:
+Apache has the following modules staticly linked:
+Compiled-in modules:
+  http_core.c
+  mod_mmap_static.c
+  mod_env.c
+  mod_log_config.c
+  mod_log_agent.c
+  mod_log_referer.c
+  mod_mime_magic.c
+  mod_mime.c
+  mod_negotiation.c
+  mod_status.c
+  mod_info.c
+  mod_include.c
+  mod_autoindex.c
+  mod_dir.c
+  mod_cgi.c
+  mod_asis.c
+  mod_imap.c
+  mod_actions.c
+  mod_userdir.c
+  mod_alias.c
+  mod_rewrite.c
+  mod_access.c
+  mod_auth.c
+  mod_auth_dbm.c
+  mod_auth_db.c
+  mod_digest.c
+  mod_proxy.c
+  mod_expires.c
+  mod_headers.c
+  mod_usertrack.c
+  mod_unique_id.c
+  mod_so.c
+  mod_setenvif.c
+It Dynamicly loads:
+
+LoadModule pam_auth_module    libexec/mod_auth_pam.so
+LoadModule perl_module        libexec/libperl.so
+LoadModule php3_module        libexec/libphp3.so
+LoadModule roaming_module     libexec/mod_roaming.so
+LoadModule mysql_auth_module  libexec/mod_auth_mysql.so
+LoadModule throttle_module    libexec/mod_throttle.so
+
+Apache starts up and begins to use more and more memory. 
+It leaves many sockets in CLOSE_WAIT and the children hand and idle. CPU usage 
+hits 100% and the load average has gotten as high as 62.00. A strace of a hung 
+child reveals many calls to munmap(). Partial output is include as it spans many 
+many similar lines
+munmap(0x403be000, 4096)                = 0
+munmap(0x403bd000, 4096)                = 0
+munmap(0x403bc000, 4096)                = 0
+munmap(0x403bb000, 4096)                = 0
+munmap(0x403ba000, 4096)                = 0
+munmap(0x403b9000, 4096)                = 0
+munmap(0x403b8000, 4096)                = 0
+munmap(0x403b7000, 4096)                = 0
+munmap(0x403b6000, 4096)                = 0
+munmap(0x40392000, 4096)                = 0
+munmap(0x40391000, 4096)                = 0
+munmap(0x40390000, 4096)                = 0
+munmap(0x4038f000, 4096)                = 0
+munmap(0x4038e000, 4096)                = 0
+munmap(0x4038d000, 4096)                = 0
+munmap(0x4018c000, 4096)                = 0
+munmap(0x40016000, 4096)                = 0
+munmap(0x40015000, 4096)                = 0
+munmap(0x40014000, 4096)                = 0
+This problem seems similar to one solved on solaris.
+If i add the following lines to my httpd.conf:
+ClearModuleList
+
+AddModule http_core.c
+AddModule mod_env.c
+AddModule mod_log_config.c
+AddModule mod_log_agent.c
+AddModule mod_log_referer.c
+AddModule mod_mime_magic.c
+AddModule mod_mime.c
+AddModule mod_negotiation.c
+AddModule mod_status.c
+AddModule mod_info.c
+AddModule mod_include.c
+AddModule mod_autoindex.c
+AddModule mod_dir.c
+AddModule mod_cgi.c
+AddModule mod_asis.c
+AddModule mod_imap.c
+AddModule mod_actions.c
+AddModule mod_userdir.c
+AddModule mod_alias.c
+AddModule mod_rewrite.c
+AddModule mod_access.c
+AddModule mod_auth.c
+AddModule mod_auth_dbm.c
+AddModule mod_auth_db.c
+AddModule mod_digest.c
+AddModule mod_proxy.c
+AddModule mod_expires.c
+AddModule mod_headers.c
+AddModule mod_usertrack.c
+AddModule mod_unique_id.c
+AddModule mod_so.c
+AddModule mod_setenvif.c
+
+Apache will take a very long time to start and use lots of memory producing this 
+error message: Ouch!  malloc failed in malloc_block()
+ 
+Contact me at andy@nethernet.com for more info
+>How-To-Repeat:
+Problem happens regularly. No changes were made to teh configuration.
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Fri Dec 31 07:09:57 PST 1999
+State-Changed-Why:
+Well, have you tried things without all the third party
+modules being loaded?
+
+I have no idea what you mean by:
+"This problem seems similar to one solved on solaris"
+
+Have you tried attaching gdb to one of the problem processes?
+
+From: Andy <andy@nethernet.com>
+To: andy@nethernet.com, apache-bugdb@apache.org, marc@apache.org
+Cc: apbugs@Apache.Org
+Subject: Re: os-linux/5525: Many sockets left in CLOSE_WAIT,    many apache
+ children hang
+Date: Fri, 31 Dec 1999 12:44:44 -0500 (EST)
+
+ sorry, i guess i should clarify myself.
+ 
+ Before i submitted a bug report i looked at the previous ones. Bug reports
+ 5412, 4984, and 2386 all seem to have the same symptoms, but they are all
+ on solaris machines. I have tried without all the 3rd party modules, and
+ removing them does not help. Running GDB on a child results in the
+ following output:
+ srv1:/usr/webservers/src/apache_1.3.9/src# gdb ./httpd 31176
+ GNU gdb 4.17.0.11 with Linux support
+ Copyright 1998 Free Software Foundation, Inc.
+ GDB is free software, covered by the GNU General Public License, and you
+ are
+ welcome to change it and/or distribute copies of it under certain
+ conditions.
+ Type "show copying" to see the conditions.
+ There is absolutely no warranty for GDB.  Type "show warranty" for
+ details.
+ This GDB was configured as "i386-redhat-linux"...
+ 
+ /usr/webservers/src/apache_1.3.9/src/31176: No such file or directory.
+ Attaching to program `/usr/webservers/src/apache_1.3.9/src/./httpd', Pid
+ 31176
+ Reading symbols from /lib/libm.so.6...done.
+ Reading symbols from /lib/libcrypt.so.1...done.
+ Reading symbols from /lib/libdb.so.3...done.
+ Reading symbols from /lib/libdl.so.2...done.
+ Reading symbols from /lib/libc.so.6...done.
+ Reading symbols from /lib/ld-linux.so.2...done.
+ Reading symbols from /lib/libnsl.so.1...done.
+ Reading symbols from /lib/libnss_nisplus.so.2...done.
+ Reading symbols from /lib/libnss_files.so.2...done.
+ Reading symbols from /usr/webservers/httpd/libexec/mod_auth_pam.so...done.
+ Reading symbols from /lib/libpam.so.0...done.
+ Reading symbols from /usr/webservers/httpd/libexec/libperl.so...done.
+ Reading symbols from /usr/lib/libgdbm.so.2...done.
+ Reading symbols from /usr/webservers/httpd/libexec/libphp3.so...done.
+ Reading symbols from /usr/lib/libgd.so.1...done.
+ Reading symbols from /usr/lib/mysql/libmysqlclient.so.7...done.
+ Reading symbols from /usr/lib/libpq.so.2.0...done.
+ Reading symbols from /usr/lib/libz.so.1...done.
+ Reading symbols from /lib/libresolv.so.2...done.
+ Reading symbols from /usr/webservers/httpd/libexec/mod_roaming.so...done.
+ Reading symbols from
+ /usr/webservers/httpd/libexec/mod_auth_mysql.so...done.
+ Reading symbols from /usr/webservers/httpd/libexec/mod_throttle.so...done.
+ Reading symbols from /lib/libnss_nis.so.2...done.
+ 0x4014c444 in semop (semid=0, sops=0x40261b8c, nsops=1) at
+ ../sysdeps/unix/sysv/linux/semop.c:34
+ ../sysdeps/unix/sysv/linux/semop.c:34: No such file or directory.
+ (gdb) 
+ 
+ at which point that child dies. 
+ 
+Comment-Added-By: wrowe
+Comment-Added-When: Tue Aug  7 07:01:36 PDT 2001
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

@@ -1,0 +1,145 @@
+Received: (qmail 75279 invoked by uid 501); 17 Jul 2001 11:29:49 -0000
+Message-Id: <20010717112949.75278.qmail@apache.org>
+Date: 17 Jul 2001 11:29:49 -0000
+From: Yann Coupin <pov@club-internet.fr>
+Reply-To: pov@club-internet.fr
+To: submit@bugz.apache.org
+Subject: Cannot specify locale which apply to date formating
+X-Send-Pr-Version: 3.110
+
+>Number:         8041
+>Category:       mod_include
+>Synopsis:       Cannot specify locale which apply to date formating
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jul 17 04:30:00 PDT 2001
+>Closed-Date:    
+>Last-Modified:  Mon Sep 10 10:20:00 PDT 2001
+>Originator:     pov@club-internet.fr
+>Release:        1.3.20
+>Organization:
+apache
+>Environment:
+SunOS comp-name 5.8 Generic_108528-03 sun4u sparc SUNW,Ultra-5_10
+>Description:
+I've been searching and wasn't able to find a way to make <!--#echo var="DATE_LOCAL" --> print date in the language I wanted. Envar are ignored, SetEnv directive does not help either.
+>How-To-Repeat:
+In any processed page, put <!--#echo var="DATE_LOCAL" --> with your httpd.conf including "SetEnv LC_TIME fr_FR" for example.
+>Fix:
+Here's a diff to apply to mod_include.c which adds this kind of SSI directive :
+
+<!--#config LC_TIME="fr_FR" -->
+
+mod_include.diff
+
+96d95
+< #include "locale.h"
+1038,1049d1036
+<         else if (!strcmp(tag, "lc_time")) {
+<         	char locale[MAX_STRING_LEN];
+<             time_t date = r->request_time;
+< 
+<         	parse_string(r, tag_val, (char *)&locale, MAX_STRING_LEN, 0);
+<         	setlocale(LC_TIME, (char*)&locale);
+< 
+<             ap_table_setn(env, "DATE_LOCAL", ap_ht_time(r->pool, date, tf, 0));
+<             ap_table_setn(env, "DATE_GMT", ap_ht_time(r->pool, date, tf, 1));
+<             ap_table_setn(env, "LAST_MODIFIED",
+<                       ap_ht_time(r->pool, r->finfo.st_mtime, tf, 0));
+<         }
+
+>Release-Note:
+>Audit-Trail:
+
+From: Yann 'PoV' Coupin <pov@club-internet.fr>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc:  
+Subject: Re: mod_include/8041: Cannot specify locale which apply to
+  date formating
+Date: Mon, 10 Sep 2001 19:08:26 +0200
+
+ Here's an updated version of the patch which is much rigorous in preserving the locale to the locale active before the call in order to not mangle the log file.
+ 
+ Must be applied on mod_include.c
+ ----------------------------------------
+ 95a96
+ > #include "locale.h"
+ 101a103
+ > #define DEFAULT_TIME_LOCALE "C"
+ 1022c1024
+ < static int handle_config(FILE *in, request_rec *r, char *error, char *tf,
+ ---
+ > static int handle_config(FILE *in, request_rec *r, char *error, char *tf, char *tl,
+ 1036a1039,1053
+ >         else if (!strcmp(tag, "lc_time")) {
+ >         	char currentlocale[MAX_STRING_LEN];
+ >             time_t date = r->request_time;
+ > 
+ >         	parse_string(r, tag_val, tl, MAX_STRING_LEN, 0);
+ >        	    ap_cpystrn(currentlocale, setlocale(LC_TIME, NULL), sizeof(currentlocale));
+ >         	setlocale(LC_TIME, tl);
+ > 
+ >             ap_table_setn(env, "DATE_LOCAL", ap_ht_time(r->pool, date, tf, 0));
+ >             ap_table_setn(env, "DATE_GMT", ap_ht_time(r->pool, date, tf, 1));
+ >             ap_table_setn(env, "LAST_MODIFIED",
+ >                       ap_ht_time(r->pool, r->finfo.st_mtime, tf, 0));
+ >                       
+ >             setlocale(LC_TIME, currentlocale);
+ >         }
+ 1037a1055
+ >         	char currentlocale[MAX_STRING_LEN];
+ 1039a1058,1060
+ >        	    ap_cpystrn(currentlocale, setlocale(LC_TIME, NULL), sizeof(currentlocale));
+ >         	setlocale(LC_TIME, tl);
+ > 
+ 1044a1066,1067
+ > 
+ >             setlocale(LC_TIME, currentlocale);
+ 1179c1202
+ < static int handle_flastmod(FILE *in, request_rec *r, const char *error, const char *tf)
+ ---
+ > static int handle_flastmod(FILE *in, request_rec *r, const char *error, const char *tf, const char *tl)
+ 1195a1219,1222
+ > 	        	char currentlocale[MAX_STRING_LEN];
+ > 	       	    ap_cpystrn(currentlocale, setlocale(LC_TIME, NULL), sizeof(currentlocale));
+ > 	        	setlocale(LC_TIME, tl);
+ > 
+ 1196a1224,1225
+ > 
+ > 	            setlocale(LC_TIME, currentlocale);
+ 2174a2204
+ >     char timelocale[MAX_STRING_LEN];
+ 2182a2213
+ >     ap_cpystrn(timelocale, DEFAULT_TIME_LOCALE, sizeof(timelocale));
+ 2263c2294
+ <                 ret = handle_config(f, r, error, timefmt, &sizefmt);
+ ---
+ >                 ret = handle_config(f, r, error, timefmt, timelocale, &sizefmt);
+ 2278c2309
+ <                 ret = handle_flastmod(f, r, error, timefmt);
+ ---
+ >                 ret = handle_flastmod(f, r, error, timefmt, timelocale);
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

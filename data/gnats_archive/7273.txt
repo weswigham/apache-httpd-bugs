@@ -1,0 +1,112 @@
+Received: (qmail 82357 invoked by uid 501); 19 Feb 2001 07:42:42 -0000
+Message-Id: <20010219074242.82356.qmail@apache.org>
+Date: 19 Feb 2001 07:42:42 -0000
+From: Taketo Kabe <kabe@sra-tohoku.co.jp>
+Reply-To: kabe@sra-tohoku.co.jp
+To: submit@bugz.apache.org
+Subject: [cgid] CGI response delayed if CGI forks off longrunning process
+X-Send-Pr-Version: 3.110
+
+>Number:         7273
+>Category:       mod_cgi
+>Synopsis:       [cgid] CGI response delayed if CGI forks off longrunning process
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Feb 18 23:50:00 PST 2001
+>Closed-Date:    Wed Feb 21 11:04:28 PST 2001
+>Last-Modified:  Wed Feb 21 11:04:28 PST 2001
+>Originator:     kabe@sra-tohoku.co.jp
+>Release:        httpd-2_0_11-alpha
+>Organization:
+>Environment:
+SunOS 5.8 Generic_108528-05 sun4u sparc SUNW,Ultra-60
+gcc version 2.95.2 19991024 (release)
+
+CC=gcc CFLAGS='-mcpu=v8 -O -g' ./configure --localstatedir=/var/apache --disable-cgi --enable-cgid
+>Description:
+When using mod_cgid (not mod_cgi), and the CGI forks off a 
+longrunning backgroud process, such as
+	sleep 600 &
+the whole CGI response is delayed until all background jobs complete --
+even if the main CGI process has exited long ago.
+
+This was because the cgid waits for cgid-CGI channel (which is a dup() of
+the accept()ed filedesc ) to be fully closed from the CGI side. 
+Usually it is closed on CGI exit, but if CGI forks, 
+the channel is inherited by the new process and not fully
+closed even if the CGI exits.
+This causes block in read() waiting for EOF from CGI's stdout.
+>How-To-Repeat:
+configure --disable-cgi --enable-cgid ,
+then invoke a CGI which backgrounds a long-running process, like
+
+#!/bin/sh
+echo "Content-Type: text/plain"
+echo ""
+echo "<PLAINTEXT>dummy"
+sleep 60 >/dev/null 2>&1 &
+exit 0
+
+Apache 1.3 will return the result to the client immediately 
+(leaving "sleep" behind for 60secs), but httpd2.0 /w cgid will 
+block for 60secs and then return the result.
+>Fix:
+Just closing the accept()ed filedes BEFORE forking cured it.
+As the filedes is already dup()ed to other filedescs you can safetly 
+close this on UNIX, but I'm not sure whether this is portable to non-UNIX.
+
+--- modules/generators/mod_cgid.c.debug	Wed Feb 14 05:16:15 2001
++++ modules/generators/mod_cgid.c	Mon Feb 19 16:14:08 2001
+@@ -549,11 +549,19 @@
+         }
+         else {
+             argv = (const char * const *)create_argv(r->pool, NULL, NULL, NULL, argv0, r->args);
++	    /* TODO: We want sd2 closed for new CGI process too.
++	     * If it's remained open it'll make ap_pass_brigade() block
++	     * waiting for EOF if CGI forked something running long.
++	     * close(sd2) here should be okay, as CGI channel
++	     * is already dup()ed by apr_procattr_child_{in,out}_set()
++	     * above -- but XXX is this portable?
++	     */
++            close(sd2);
++
+             rc = ap_os_create_privileged_process(r, procnew, argv0, argv, 
+                                                  (const char * const *)env, 
+                                                  procattr, p);
+ 
+-            close(sd2);
+             if (rc != APR_SUCCESS) {
+                 /* Bad things happened. Everyone should have cleaned up. */
+                 ap_log_rerror(APLOG_MARK, APLOG_ERR, rc, r,
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rbb
+State-Changed-When: Wed Feb 21 11:04:26 PST 2001
+State-Changed-Why:
+This patch has been committed to CVS, and should be available
+in the next version of Apache 2.0.  Thank you for the bug 
+report.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

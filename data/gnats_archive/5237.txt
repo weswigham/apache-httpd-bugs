@@ -1,0 +1,73 @@
+Received: (qmail 1049 invoked by uid 2012); 3 Nov 1999 10:58:38 -0000
+Message-Id: <19991103105838.1048.qmail@hyperreal.org>
+Date: 3 Nov 1999 10:58:38 -0000
+From: Matt Hoskins <matt@nipltd.com>
+Reply-To: matt@nipltd.com
+To: apbugs@hyperreal.org
+Subject: Like PR #659, logging of response headers using mod_log_config from requests handled by mod_proxy isn't possible.
+X-Send-Pr-Version: 3.2
+
+>Number:         5237
+>Category:       mod_proxy
+>Synopsis:       Like PR #659, logging of response headers using mod_log_config from requests handled by mod_proxy isn't possible.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Nov  3 04:10:01 PST 1999
+>Last-Modified:
+>Originator:     matt@nipltd.com
+>Organization:
+apache
+>Release:        1.3.9
+>Environment:
+Solaris 2.7, gcc
+>Description:
+mod_proxy builds up its own list of response headers in resp_hdrs, which it
+then sends using an ap_table_do and ap_proxy_send_hdr_line. I've previously
+reported that this means you can't use mod_headers/mod_usertrack to add response
+headers to a proxied request. I've now noticed this means you don't get correct
+behaviour when using %{}o format arguments in mod_log_config with proxied
+requests, because of course these log from r->headers_out, which doesn't contain
+any of the response headers which mod_proxy gets from the downstream server.
+There is a hack in mod_log_config to output r->content_type if you ask for
+%{Content-Type}o instead of the value from r->headers_out. This means that
+for proxied requests you get output the value from r->content_type logged which
+is set based on what mod_mime works out as the content-type based on the url
+extension, and not what is returned as a header by the downstream server
+(hence the behaviour in PR #659 I believe, tho' it was claimed to be fixed in
+that PR).
+>How-To-Repeat:
+Log any output header, especially Content-Type, in mod_log_config for proxied
+requests, and note that the values are not taken from headers returned by
+the downstream server, but from any values previous apache modules may have 
+set.
+>Fix:
+I think content-type is probably the main output header that people would be
+interested in logging for requests, so I would suggest that in proxy_http.c you
+set r->content_type based on any Content-Type header returned by the downstream
+server. Another possibility is to add (in addition to the prior step) all the
+response headers to r->headers_out (with headers in resp_hdrs overwriting any 
+matching headers in r->headers_out). If this was done, it'd be nice to then
+output r->headers_out instead of resp_hdrs to the client, to allow modification
+of response headers for proxied requests by any prior modules.
+overrides any headers in r->headers_out.
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

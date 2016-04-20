@@ -1,0 +1,93 @@
+Received: (qmail 28947 invoked by uid 2012); 27 Aug 1998 14:05:45 -0000
+Message-Id: <19980827140545.28945.qmail@hyperreal.org>
+Date: 27 Aug 1998 14:05:45 -0000
+From: Rick Ohnemus <rick@ecompcon.com>
+Reply-To: rick@ecompcon.com
+To: apbugs@hyperreal.org
+Subject: Segmentation fault on invalid server response
+X-Send-Pr-Version: 3.2
+
+>Number:         2914
+>Category:       mod_proxy
+>Synopsis:       Segmentation fault on invalid server response
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Aug 27 07:10:01 PDT 1998
+>Last-Modified:  Mon Aug 31 07:45:12 PDT 1998
+>Originator:     rick@ecompcon.com
+>Organization:
+>Release:        1.3.2-dev
+>Environment:
+BSD/OS pigasus.ecompcon.com 3.1 BSDI BSD/OS 3.1 i386 with all patches applied
+
+gcc version 2.7.2.1
+>Description:
+The seg fault is being caused by ap_proxy_read_headers() returning NULL. The 
+functions that call ap_proxy_read_headers() do not check for a NULL result.
+
+I first noticed the problem in ap_proxy_http_handler(). It calls
+ap_proxy_read_headers() then calls ap_table_mergen() and clear_connection()
+using the retune value from ap_proxy_read_headers(). None of these functions
+expect the response headers table to be NULL so they just dereference the
+pointer causing a seg fault.
+
+>How-To-Repeat:
+visit www.idot.com using an apache proxy server.
+
+The reponse I am seeing from www.idot.con is:
+HTTP/1.1 200 OK
+Server: Microsoft-IIS/4.0
+Date: Thu, 27 Aug 1998 13:28:50 GMT
+HTTP/1.0 200 OK
+Content-type: text/html
+
+---- end of response ----
+Notice the two HTTP status lines. The second one causes ap_proxy_read_headers()
+to return NULL since the line does not contain a ':'.
+
+From reading the HTTP standards and draft standards, I get the impression that
+this is an invalid response from their server. There should only be one HTTP
+status line. This type of problem appears to be very common on servers running
+Microsoft servers. Am I reading the standards correctly?
+
+So, there are 2 problems here: 1) they are sending an invalid response (I'll
+work on getting them to fix it); 2) apache is seg faulting (something no one
+wants to happen).
+>Fix:
+1. Ignore the offending lines. This fits in with the old 'be liberal in what
+you accept and strict in what you send' philosophy.
+
+2. Send a nasty-gram back to the offending server.
+
+3. ????
+>Audit-Trail:
+Release-Changed-From-To: Apache/1.3.2-dev-1.3.2-dev
+Release-Changed-By: coar
+Release-Changed-When: Sat Aug 29 06:23:17 PDT 1998
+State-Changed-From-To: open-closed
+State-Changed-By: martin
+State-Changed-When: Mon Aug 31 07:45:12 PDT 1998
+State-Changed-Why:
+I wish I had read your report earlier ;-)
+I fixed the problem independently (sorry, without
+mentioning you) in Rev. 1.59 of proxy_http.c on
+1998/08/27.
+You are right, an improvement would be to "accept, log, and ignore"
+microsoft specific bugs in the proxy.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

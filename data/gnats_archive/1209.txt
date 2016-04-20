@@ -1,0 +1,110 @@
+From apwww@hyperreal.org  Tue Oct  7 13:42:44 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id NAA14943;
+	Tue, 7 Oct 1997 13:42:44 -0700 (PDT)
+Message-Id: <199710072042.NAA14943@hyperreal.org>
+Date: Tue, 7 Oct 1997 13:42:44 -0700 (PDT)
+From: Dean Karres <karres@southwind.net>
+Reply-To: karres@southwind.net
+To: apbugs@hyperreal.org
+Subject: various simple scripts are producing "Premature end of script headers" messages
+X-Send-Pr-Version: 3.2
+
+>Number:         1209
+>Category:       mod_cgi
+>Synopsis:       various simple scripts are producing "Premature end of script headers" messages
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          support
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct  7 13:50:02 1997
+>Last-Modified:  Tue Oct  7 13:55:41 PDT 1997
+>Originator:     karres@southwind.net
+>Organization:
+>Release:        1.2.4
+>Environment:
+OS = BSD/OS 2.1
+Compiler = gcc version 2.7.2
+running SUExec
+>Description:
+The following C code
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+void
+main()
+{
+    dup2(fileno(stdout), fileno(stderr));
+
+    printf("Content-type: text/html\n\n"
+           "<html>\n"
+           "  <head></head>\n"
+           "  <body>\n");
+
+    fflush(stdout);
+
+    printf("    <p>Hello worlk\n"
+           "  </body>\n"
+           "</html>\n");
+
+    fflush(stdout);
+
+    exit(0);
+}
+
+works fine if called from a standard script-aliased cgi-bin dir or from the
+command line.  It failes with a "Premature end of script headers" message in
+the error log if called from a dir that is not ScriptAliased but does have
+ExecCGI turned on.  The suExec log shows
+
+[14:53:00 07-10-97]: uid: (karres/karres) gid: (karres/karres) index.cgi
+[14:53:00 07-10-97]: command not in docroot (/u2/karres/.www/trash/index.cgi)
+
+which I suppose is reasonable considering that the script is not in the cgi-bin
+and isn't supposed to be -- perhaps this is the problem?
+
+The ScriptLog shows
+
+%% [Tue Oct  7 14:53:00 1997] GET /~karres/trash/index.cgi HTTP/1.0
+%% 500 /u2/karres/.www/trash/index.cgi
+%request
+Connection: Keep-Alive
+User-Agent: Mozilla/3.0Gold (X11; I; BSD/OS 3.0 i386)
+Pragma: no-cache
+Host: www2.southwind.net
+Accept: image/gif, image/x-xbitmap, image/jpeg, image/pjpeg, */*
+%response
+
+The Options that *should* be in effect at this point are
+
+	Options +Indexes +FollowSymLinks +ExecCGI
+
+This is happening with a couple of other scripts as well but this is the
+simplest example that demonstrates the prolem.
+>How-To-Repeat:
+failure: http://www2.southwind.net/~karres/trash/
+
+success: http://www2.southwind.net/~karres/cgi-bin/index.cgi
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Tue Oct  7 13:55:41 PDT 1997
+State-Changed-Why:
+Please read the suexec docs.  Everything needs to either
+be under the docroot defined in suexec.h or in a
+~userdir request.  It appears you have some
+DocumentRoot pointing to /u2/karres/.www, which is outside
+the docroot you set for suexec so it will not work.
+
+suexec does not currently have the functionality to
+allow for multiple docroots.
+>Unformatted:
+
+

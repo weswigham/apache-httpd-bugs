@@ -1,0 +1,170 @@
+Received: (qmail 4996 invoked by uid 501); 15 Dec 2000 11:48:44 -0000
+Message-Id: <20001215114844.4995.qmail@locus.apache.org>
+Date: 15 Dec 2000 11:48:44 -0000
+From: Susumu Kajino <kajino@nis.nec.co.jp>
+Reply-To: kajino@nis.nec.co.jp
+To: submit@bugz.apache.org
+Subject: A port forwarding problem.
+X-Send-Pr-Version: 3.110
+
+>Number:         6983
+>Category:       general
+>Synopsis:       A port forwarding problem.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          duplicate
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Dec 15 03:50:01 PST 2000
+>Closed-Date:    Fri Dec 15 16:02:10 PST 2000
+>Last-Modified:  Fri Dec 15 16:02:10 PST 2000
+>Originator:     kajino@nis.nec.co.jp
+>Release:        apache_1.3.14
+>Organization:
+>Environment:
+Do not depend on machine environment.
+However, environment of this place is SunOS 5.6 Generic_105181-22 sun4u sparc SUNW,Ultra-250.
+>Description:
+It is assumed that there was the following environment.
+
+              |
+              |  (waiting port/80)
+    [Port forwarding device] (ex. BIG/ip)
+              |
+              |  (connecting port/2000)
+    [Web Server waiting port 2000]
+
+When I access 'test' directory of DocumentRoot subordinates as 
+http://www.domain/test then Server answers it as follows.
+
+% telnet localhost 80
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+GET http://www.domain/test HTTP/1.0
+
+HTTP/1.1 301 Moved Permanently
+Date: Fri, 15 Dec 2000 10:55:52 GMT
+Server: Apache/1.3.14 (Unix)
+Location: http://www.domain:2000/test/
+Connection: close
+Content-Type: text/html
+
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<HTML><HEAD>
+<TITLE>301 Moved Permanently</TITLE>
+</HEAD><BODY>
+<H1>Moved Permanently</H1>
+The document has moved <A HREF="http://www.domain:2000/test/">here</A>.<P>
+</BODY></HTML>
+Connection closed by foreign host.
+
+Because server adds the port number that oneself works and turns over 
+"Moved Permanently" when I do port forwarding, error occurs.
+
+>How-To-Repeat:
+Please prepare the environment that can access server by a change 
+of access port. And access not to add "/" to one directory last.
+>Fix:
+Add directive to appoint the port number that I want to indicate as
+"Moved Permanently" to "httpd.conf".
+
+For example, I add attachment of "ForwardPort 80" in "httpd.conf"
+if I add directive of ForwardPort.
+
+The following is patch of that purpose.
+#Will it be a right solution method?
+
+*** src/include/httpd.h.ORG     Mon Nov 27 18:26:07 JST 2000
+--- src/include/httpd.h Mon Nov 27 18:26:53 JST 2000
+***************
+*** 921,924 ****
+--- 921,925 ----
+      char *server_hostname;
+      unsigned short port;      /* for redirects, etc. */
++     unsigned short fwd_port;  /* forward port for display only. */
+
+      /* Log files --- note that transfer log is now in the modules... */
+*** src/main/http_core.c.ORG    Wed Oct 11 02:33:09 JST 2000
+--- src/main/http_core.c        Mon Nov 27 20:13:19 JST 2000
+***************
+*** 742,745 ****
+--- 742,746 ----
+  {
+      unsigned port;
++     unsigned fwd_port;
+      core_dir_config *d =
+        (core_dir_config *)ap_get_module_config(r->per_dir_config, &core_module);
+***************
+*** 746,749 ****
+--- 747,752 ----
+
+      port = r->server->port ? r->server->port : ap_default_port(r);
++     fwd_port = r->server->fwd_port;
++     if (fwd_port) port = fwd_port;
+
+      if (d->use_canonical_name == USE_CANONICAL_NAME_OFF
+***************
+*** 1924,1927 ****
+--- 1927,1948 ----
+  }
+
++ static const char *forward_port(cmd_parms *cmd, void *dummy, char *arg)
++ {
++     const char *err = ap_check_cmd_context(cmd, NOT_IN_DIR_LOC_FILE|NOT_IN_LIMIT);
++     int fwd_port;
++
++     if (err != NULL) {
++       return err;
++     }
++     fwd_port = atoi(arg);
++     if (fwd_port <= 0 || fwd_port >= 65536) { /* 65536 == 1<<16 */
++       return ap_pstrcat(cmd->temp_pool, "The port number \"", arg,
++                         "\" is outside the appropriate range "
++                         "(i.e., 1..65535).", NULL);
++     }
++     cmd->server->fwd_port = fwd_port;
++     return NULL;
++ }
++
+  static const char *set_signature_flag(cmd_parms *cmd, core_dir_config *d,
+                                      char *arg)
+***************
+*** 2870,2873 ****
+--- 2891,2896 ----
+
+  /* Old server config file commands */
++
++ { "ForwardPort", forward_port, NULL, RSRC_CONF, TAKE1, "A TCP forwarded port number"},
+
+  { "ServerType", server_type, NULL, RSRC_CONF, TAKE1,
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: fanf
+State-Changed-When: Fri Dec 15 16:02:10 PST 2000
+State-Changed-Why:
+duplicate PR
+Class-Changed-From-To: sw-bug-duplicate
+Class-Changed-By: fanf
+Class-Changed-When: Fri Dec 15 16:02:10 PST 2000
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

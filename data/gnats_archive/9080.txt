@@ -1,0 +1,171 @@
+Received: (qmail 96576 invoked by uid 501); 4 Nov 2001 15:14:19 -0000
+Message-Id: <20011104151419.96575.qmail@apache.org>
+Date: 4 Nov 2001 15:14:19 -0000
+From: Tom Gilbert <tom@linuxbrit.co.uk>
+Reply-To: tom@linuxbrit.co.uk
+To: submit@bugz.apache.org
+Subject: [PATCH] read request timeout
+X-Send-Pr-Version: 3.110
+
+>Number:         9080
+>Category:       protocol
+>Synopsis:       [PATCH] read request timeout
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Dec 12 12:40:07 PST 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     tom@linuxbrit.co.uk
+>Release:        1.3.22
+>Organization:
+apache
+>Environment:
+This is a patch against 1.3.22
+>Description:
+We have some clients whose apps take a long time to create content, so
+we have to run apache with Timeout set to 600. (They actually want more
+- yuck).
+
+Anyway, on our internal network (large, international), we have problems
+with buggy clients connecting to apache and then not sending a request.
+This hogs an apache child - unfortunately they often do this in crazy
+doses - our primary production server with a MaxClients of 700 gets
+DoS'd all to hell as all 700 children are sat trying to read a request
+from a bad client. (The bad clients commonly spawn 300+ connections in
+only a few seconds).
+
+Server status looks a lot like:
+9-1111010/142/628 R 0.95 99 2 0.0 0.22 0.88 ? ? ..reading..
+One for each child.
+
+The reads don't time out for 10 minutes - a classic DoS.
+
+Further to this, unless I'm missing something crucial, 700 people
+telnetting to port 80 or one guy with a 6 line perl script can DoS the
+webserver quite easily.
+
+We needed to fix this without affecting the main Timeout setting - the
+apps are still slow...
+
+Fixing the buggy clients is not an option, I'm afraid.
+
+I've fixed this for us by adding a new timeout setting,
+ReadRequestTimeout, which only applies during the period apache is trying
+to read a request from the client.
+
+I thought I'd send in the patch - even if you don't want it, feedback on
+a better way to tackle this problem would be welcome.
+
+ReadRequestTimeout in this patch defaults to DEFAULT_TIMEOUT (300), so
+existing installations will be unaffected. I use 5 for our installations.
+The changes are minor, as seen in the patch below.
+
+>How-To-Repeat:
+
+>Fix:
+diff -ru apache_1.3.22.vanilla/src/include/httpd.h apache_1.3.22/src/include/httpd.h
+--- apache_1.3.22.vanilla/src/include/httpd.h	Tue Oct  9 04:56:05 2001
++++ apache_1.3.22/src/include/httpd.h	Wed Oct 31 20:15:00 2001
+@@ -958,6 +958,7 @@
+ 
+     server_addr_rec *addrs;
+     int timeout;		/* Timeout, in seconds, before we give up */
++    int read_request_timeout;		/* Seconds, we'll wait for an initial request */
+     int keep_alive_timeout;	/* Seconds we'll wait for another request */
+     int keep_alive_max;		/* Maximum requests per connection */
+     int keep_alive;		/* Use persistent connections? */
+diff -ru apache_1.3.22.vanilla/src/main/http_config.c apache_1.3.22/src/main/http_config.c
+--- apache_1.3.22.vanilla/src/main/http_config.c	Fri Jun 22 13:43:54 2001
++++ apache_1.3.22/src/main/http_config.c	Wed Oct 31 20:13:03 2001
+@@ -1417,6 +1417,7 @@
+     s->srm_confname = NULL;
+     s->access_confname = NULL;
+     s->timeout = 0;
++    s->read_request_timeout = 0;
+     s->keep_alive_timeout = 0;
+     s->keep_alive = -1;
+     s->keep_alive_max = -1;
+@@ -1469,6 +1470,9 @@
+ 
+ 	if (virt->timeout == 0)
+ 	    virt->timeout = main_server->timeout;
++  
++	if (virt->read_request_timeout == 0)
++	    virt->read_request_timeout = main_server->read_request_timeout;
+ 
+ 	if (virt->keep_alive_timeout == 0)
+ 	    virt->keep_alive_timeout = main_server->keep_alive_timeout;
+@@ -1537,6 +1541,7 @@
+     s->limit_req_fieldsize = DEFAULT_LIMIT_REQUEST_FIELDSIZE;
+     s->limit_req_fields = DEFAULT_LIMIT_REQUEST_FIELDS;
+     s->timeout = DEFAULT_TIMEOUT;
++    s->read_request_timeout = DEFAULT_TIMEOUT;
+     s->keep_alive_timeout = DEFAULT_KEEPALIVE_TIMEOUT;
+     s->keep_alive_max = DEFAULT_KEEPALIVE;
+     s->keep_alive = 1;
+diff -ru apache_1.3.22.vanilla/src/main/http_core.c apache_1.3.22/src/main/http_core.c
+--- apache_1.3.22.vanilla/src/main/http_core.c	Tue Sep  4 19:15:15 2001
++++ apache_1.3.22/src/main/http_core.c	Wed Oct 31 20:16:42 2001
+@@ -2129,6 +2129,17 @@
+     return NULL;
+ }
+ 
++static const char *set_read_request_timeout(cmd_parms *cmd, void *dummy, char *arg)
++{
++    const char *err = ap_check_cmd_context(cmd, NOT_IN_DIR_LOC_FILE|NOT_IN_LIMIT);
++    if (err != NULL) {
++        return err;
++    }
++
++    cmd->server->read_request_timeout = atoi(arg);
++    return NULL;
++}
++
+ static const char *set_keep_alive_timeout(cmd_parms *cmd, void *dummy,
+ 					  char *arg)
+ {
+@@ -3263,6 +3274,7 @@
+     "'On': enable or default='Off': disable the EBCDIC Debugging MIME Header" },
+ #endif
+ #endif /* CHARSET_EBCDIC */
++{ "ReadRequestTimeout", set_read_request_timeout, NULL, RSRC_CONF, TAKE1, "Initial request timeout duration (sec)" },
+ 
+ { NULL }
+ };
+diff -ru apache_1.3.22.vanilla/src/main/http_main.c apache_1.3.22/src/main/http_main.c
+--- apache_1.3.22.vanilla/src/main/http_main.c	Sat Oct  6 03:21:11 2001
++++ apache_1.3.22/src/main/http_main.c	Wed Oct 31 20:11:18 2001
+@@ -1612,7 +1612,7 @@
+     if (r->connection->keptalive)
+ 	to = r->server->keep_alive_timeout;
+     else
+-	to = r->server->timeout;
++	to = r->server->read_request_timeout;
+     ap_set_callback_and_alarm(timeout, to);
+ }
+ 
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

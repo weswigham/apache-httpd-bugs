@@ -1,0 +1,108 @@
+Received: (qmail 28555 invoked by uid 2012); 28 Oct 1997 12:13:09 -0000
+Message-Id: <19971028121309.28554.qmail@hyperreal.org>
+Date: 28 Oct 1997 12:13:09 -0000
+From: John Line <jml4@cam.ac.uk>
+Reply-To: jml4@cam.ac.uk
+To: apbugs@hyperreal.org
+Subject: mod_rewrite may write log entries even with RewriteLogLevel 0
+X-Send-Pr-Version: 3.2
+
+>Number:         1325
+>Category:       mod_rewrite
+>Synopsis:       mod_rewrite may write log entries even with RewriteLogLevel 0
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 28 04:20:00 PST 1997
+>Last-Modified:  Thu Feb 26 03:08:07 PST 1998
+>Originator:     jml4@cam.ac.uk
+>Organization:
+>Release:        1.3b2
+>Environment:
+SunOS 5.4 Generic_101945-38 sun4m sparc
+Sun C compiler V4.0
+>Description:
+With 
+
+RewriteEngine On
+RewriteLog /logs/rewrite_log
+RewriteLogLevel 0
+
+at "top-level" in httpd.conf, I added a virtualhost section which included
+some rewriting rules, the overall intention being to return an error for any 
+access to that virtual host (wrong hostname used...) via a CGI script. The 
+rewriting rules were an afterthought, and hence overlap the effect of the 
+Directory section in the virtual host definition, which reads:
+
+<VirtualHost cygnus.csx.cam.ac.uk>
+TransferLog /logs/cygnus-access_log
+ErrorLog /logs/cygnus-error_log
+ErrorDocument 403 /cgi-bin/WrongServer
+ErrorDocument 404 /cgi-bin/WrongServer
+<Directory /WrongServerData>
+Order Deny,Allow
+Deny from all
+</Directory>
+# Use rewrite rules to allow access to the WrongServer script but to
+# treat all other paths as forbidden.
+RewriteEngine On
+RewriteRule ^/cgi-bin/WrongServer$ - [L]
+RewriteRule . - [F]
+DocumentRoot /WrongServerData
+</VirtualHost>
+
+That all seems to work, *except* that in spite of the RewriteLogLevel 0 
+definition, rewrite_log still receives one log entry for each access, 
+corresponding to the first ([L]) rule, e.g.
+
+131.111.8.45 - - [28/Oct/1997:12:04:24 +0000] [cygnus.csx.cam.ac.uk/
+sid#7d040][rid#930f0/initial/redir#1] (1) pass through /cgi-bin/WrongServer
+
+(all on one line). 
+
+[Additionally, I was slightly surprised to find that even with rewrite
+log level increased to 9 (and with the <Directory> section commented out in case
+that was taking precedence, nothing was being logged in rewrite_log for the
+second RewriteRule, the one yielding "forbidden" and thus triggering the 
+error document.]
+
+Thus, even with rewrite logging nominally disabled, some entries are written
+to the log, which is presumably a bug. It may also be a bug that 
+the second rule does not result in a log entry when logging is enabled (even
+at the highest level), but there may be some valid reason for that (e.g. 
+as a side-effect of it triggering an ErrorDocument).
+
+I first noticed this with Apache 1.2.3, but subsequently confirmed that
+the behaviour of 1.3b2 is similar.
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: rse
+State-Changed-When: Tue Oct 28 22:57:42 PST 1997
+State-Changed-Why:
+I'll try this out in the next days.
+But although I'm using virtual hosts on all my
+servers (even on those where only one website resists)
+I never encountered this case. And there are websites
+which really have rewrite log disabled. Hmmm...
+I'll investigate...
+State-Changed-From-To: analyzed-closed
+State-Changed-By: rse
+State-Changed-When: Thu Feb 26 03:08:06 PST 1998
+State-Changed-Why:
+Both problems should be now fixed in 1.3b6-dev.
+The problem with the RewriteLoglevel 0 was just a bug.
+The default was set to 1 instead of 0 on init.
+The second problem with the mysterious inheritance
+of directives should be fixed also because the merging
+of config directives between main and virtual servers
+was totally bogus. This was now cleaned up for 1.3b6-dev,too.
+>Unformatted:
+

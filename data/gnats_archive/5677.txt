@@ -1,0 +1,98 @@
+Received: (qmail 7302 invoked by uid 65534); 31 Jan 2000 20:04:34 -0000
+Message-Id: <20000131200434.7301.qmail@locus.apache.org>
+Date: 31 Jan 2000 20:04:34 -0000
+From: Benson Maegulies <benson@basistech.com>
+Reply-To: benson@basistech.com
+To: submit@bugz.apache.org
+Subject: Content_type and content_encoding are lumped together
+X-Send-Pr-Version: 3.110
+
+>Number:         5677
+>Category:       general
+>Synopsis:       Content_type and content_encoding are lumped together
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jan 31 12:10:00 PST 2000
+>Closed-Date:    
+>Last-Modified:  Mon Jan 31 17:30:00 PST 2000
+>Originator:     benson@basistech.com
+>Release:        1.3.11
+>Organization:
+apache
+>Environment:
+Linux, but the env isn't relevant
+>Description:
+mod_mime returned sucess for type_checker, even when it has not established a character set. This stops the chain of calls to type_checker, of course.
+
+For text/ types, it is very possible that another module (like mod_mime_magic) may know the content encoding (by examining the contents) when mod_mime has no idea based on filename. It seems that there should be some way to allow different modules to contribute content_type and content_encoding. Otherwise, the only solution here would be to modify mod_mime to duplicate mod_mime_magic in opening the file and looking for Unicode BOM's.
+>How-To-Repeat:
+
+>Fix:
+treat type_checker as a run_all, or special case it to only stop when both fields are established, or make a new slot (yuck) for a separate method to do the encoding part.
+>Release-Note:
+>Audit-Trail:
+
+From: Benson Margulies <benson@basistech.com>
+To: "'submit@bugz.apache.org'" <submit@bugz.apache.org>, 
+	"'apache-bugdb@apache.org'" <apache-bugdb@apache.org>
+Cc:  
+Subject: RE: general/5677: Content_type and content_encoding are lumped to
+	gether
+Date: Mon, 31 Jan 2000 16:53:29 -0500
+
+ I messed up the terminology in the original bug report. The problem is, in
+ fact, worse than I had originally thought. The problem is not content_type
+ versus content_encoding. The problem is the content type without the
+ charset= and the charset= specification. The current modularity makes it
+ essentially impossible for one module to say "text/plain" and another to say
+ ";charset=UTF-8" or whatever.
+
+From: Benson Margulies <benson@basistech.com>
+To: "'submit@bugz.apache.org'" <submit@bugz.apache.org>, 
+	"'apache-bugdb@apache.org'" <apache-bugdb@apache.org>
+Cc:  
+Subject: RE: general/5677: Content_type and content_encoding are lumped to
+	gether
+Date: Mon, 31 Jan 2000 20:27:27 -0500
+
+ *** /home/benson/apache/apache-1.3.orig/src/main/http_config.c	Thu Jan 27
+ 14:43:05 2000
+ --- http_config.c	Mon Jan 31 13:54:18 2000
+ ***************
+ *** 379,385 ****
+   
+   int ap_find_types(request_rec *r)
+   {
+ !     return run_method(r, offsets_into_method_ptrs.type_checker, 0);
+   }
+   
+   int ap_run_fixups(request_rec *r)
+ --- 379,386 ----
+   
+   int ap_find_types(request_rec *r)
+   {
+ !     /* always run them to allow charset= decoration. */
+ !     return run_method(r, offsets_into_method_ptrs.type_checker, 1);
+   }
+   
+   int ap_run_fixups(request_rec *r)
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

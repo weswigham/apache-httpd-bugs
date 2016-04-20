@@ -1,0 +1,111 @@
+Received: (qmail 75164 invoked by uid 501); 24 Feb 2002 04:58:06 -0000
+Message-Id: <20020224045806.75163.qmail@apache.org>
+Date: 24 Feb 2002 04:58:06 -0000
+From: Joshua Colvin <joshua@computer.org>
+Reply-To: joshua@computer.org
+To: submit@bugz.apache.org
+Subject: ap_psprintf writes outside allocated memory if zero-length string is requested
+X-Send-Pr-Version: 3.110
+
+>Number:         9932
+>Category:       other
+>Synopsis:       ap_psprintf writes outside allocated memory if zero-length string is requested
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Feb 23 21:00:00 PST 2002
+>Closed-Date:    Thu Mar 14 06:46:38 PST 2002
+>Last-Modified:  Thu Mar 14 06:46:38 PST 2002
+>Originator:     joshua@computer.org
+>Release:        1.3.23
+>Organization:
+>Environment:
+Red Hat Linux 7.1 on Intel architecture
+gcc version 2.95.3 20010315 (release)
+>Description:
+IF
+p->last->h.first_avail = p->last->h.endp
+(current blok in memory pool is filled up)
+AND
+ap_psprintf (p, "%s", "") /* create a zero-length string */
+THEN
+ap_pvsprintf will write NUL to p->last->h.endp+1 (modifying unallocated memory)
+>How-To-Repeat:
+CFLAGS="-g -DALLOC_DEBUG" ./configure --prefix=/tmp/apachetest \
+--without-execstrip
+
+Add this code somewhere:
+/* Begin code */
+pool *p;
+char *test;
+
+p = ap_make_sub_pool(NULL);
+test = ap_psprintf(p, "%s", "");
+ap_destroy_pool(p);
+/* End Code */
+
+configure with debugging turned on and ALLOC_DEBUG defined:
+
+# CFLAGS="-g -DALLOC_DEBUG" ./configure --prefix=/tmp/apachetest \
+--without-execstrip
+
+make && make install
+
+Using gdb, set a breakpoint at the ap_psprintf call, and empty the current blok 
+just before ap_psprintf is called:
+(gdb) set p->last->h.first_avail = p->last->h.endp
+
+The program will abort after the call to ap_destroy_pool because ap_pvsprintf
+wrote outside of allocated memory
+>Fix:
+The problem is happening because ap_pvsprintf asks politely for an extra
+character for the NUL terminating byte, but if a zero-length string is created,
+no characters are ever added by ap_vformatter,
+so INS_CHAR macro is never called,
+so flush_func (psprintf_flush in this case) is never called,
+so the extra memory needed is never allocated.
+
+My proposed fix is to call flush_func at the end of ap_vformatter as needed:
+diff -Naur apache_1.3.23/src/ap/ap_snprintf.c apache_1.3.23_fixed/src/ap/ap_snprintf.c
+--- apache_1.3.23/src/ap/ap_snprintf.c  Mon Jan 21 14:56:43 2002
++++ apache_1.3.23_fixed/src/ap/ap_snprintf.c    Sat Feb 23 21:26:53 2002
+@@ -1158,6 +1158,10 @@
+        fmt++;
+     }
+     vbuff->curpos = sp;
++    if (sp >= bep) {
++        if (flush_func(vbuff))
++            return -1;
++    }
+     return cc;
+ }
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: martin
+State-Changed-When: Thu Mar 14 06:46:38 PST 2002
+State-Changed-Why:
+Your patch was committed for Apache-1.3.24.
+Thanks for your help!
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

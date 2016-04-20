@@ -1,0 +1,77 @@
+Received: (qmail 7422 invoked by uid 2012); 14 Dec 1998 20:34:56 -0000
+Message-Id: <19981214203455.7421.qmail@hyperreal.org>
+Date: 14 Dec 1998 20:34:55 -0000
+From: David Kristol <dmk@bell-labs.com>
+Reply-To: dmk@bell-labs.com
+To: apbugs@hyperreal.org
+Subject: Apache proxy confused by superfluous ':' in host part of URL
+X-Send-Pr-Version: 3.2
+
+>Number:         3530
+>Category:       mod_proxy
+>Synopsis:       Apache proxy confused by superfluous ':' in host part of URL
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Dec 14 12:40:01 PST 1998
+>Last-Modified:  Mon Dec 28 05:00:12 PST 1998
+>Originator:     dmk@bell-labs.com
+>Organization:
+>Release:        1.3.1 (also 1.3.3, I think)
+>Environment:
+Solaris 2.6, Sun SUNWspro compiler
+SunOS aleatory.research.bell-labs.com 5.6 Generic_105181-06 sun4m sparc SUNW,SPARCstation-20
+>Description:
+I use Apache as a (pure, non-caching) proxy.  If I try to access a URL of the form
+<http://www.bell-labs.com:/>, Apache reports a Bad Request.  From my reading of
+the URI specification (RFC 2396), this is a valid, albeit quirky, URL:
+	 port          = *digit
+
+The problem would appear to be in proxy_util.c:ap_proxy_canon_netloc(), which
+decrees a null port number (line 266) to be invalid.
+>How-To-Repeat:
+See above.
+>Fix:
+The code that parses hostnames and ports should probably just toss the extra ':',
+but a simple fix is to change the code from:
+        if (i == 0 || strp[i] != '\0')
+            return "Bad port number in URL";
+        *port = atoi(strp);
+        if (*port > 65535)
+            return "Port number in URL > 65535";
+    }
+to
+        if (strp[i] != '\0')
+            return "Bad port number in URL";
+        else {
+            *port = atoi(strp);
+            if (*port > 65535)
+                return "Port number in URL > 65535";
+        }
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: martin
+State-Changed-When: Mon Dec 28 05:00:12 PST 1998
+State-Changed-Why:
+You are right. Thanks for the patch.
+It was added as Rev. 1.73 for apache-1.3.4
+Category-Changed-From-To: general-mod_proxy
+Category-Changed-By: martin
+Category-Changed-When: Mon Dec 28 05:00:12 PST 1998
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

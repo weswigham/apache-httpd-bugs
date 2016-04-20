@@ -1,0 +1,102 @@
+Received: (qmail 20901 invoked by uid 2012); 3 Feb 1999 17:49:19 -0000
+Message-Id: <19990203174919.20900.qmail@hyperreal.org>
+Date: 3 Feb 1999 17:49:19 -0000
+From: Vivek Khera <vivek@khera.org>
+Reply-To: vivek@khera.org
+To: apbugs@hyperreal.org
+Subject: enabling a module as shared does not cause it to link against the necessary extra libraries
+X-Send-Pr-Version: 3.2
+
+>Number:         3823
+>Category:       config
+>Synopsis:       enabling a module as shared does not cause it to link against the necessary extra libraries
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Feb  3 09:50:00 PST 1999
+>Last-Modified:  Wed Mar 10 03:10:00 PST 1999
+>Originator:     vivek@khera.org
+>Organization:
+apache
+>Release:        1.3.4
+>Environment:
+BSD/OS kci.kciLink.com 4.0 BSDI BSD/OS 4.0 Kernel #0: Fri Jan 22 12:17:00 EST 1999     vivek@thingy.kciLink.com:/u/sources/sys/compile/KCI  i386
+>Description:
+Given a module with a configuration like this, APACI configuration finds that it
+does need to link the additional libraries:
+
+ * MODULE-DEFINITION-START
+ * Name: mysql_auth_module
+ * ConfigStart
+     MYSQL_LIB="-L/usr/local/lib/mysql -lmysqlclient -lm"
+     if [ "X$MYSQL_LIB" != "X" ]; then
+         LIBS="$LIBS $MYSQL_LIB"
+         echo " + using $MYSQL_LIB for MySQL support"
+     fi
+ * ConfigEnd
+ * MODULE-DEFINITION-END
+
+This works fine when this module is compiled statically.  However, if you make
+this module --enable-shared during the config, then the resulting .so file does not
+have the additional libraries linked, but those libraries are referenced for linking
+when building httpd.
+
+I believe that the libraries found to be linked for specific modules this way should
+be used when building the .so file, not when linking httpd if that module is marked
+to be shared.
+>How-To-Repeat:
+Configure apache with a dynamic module that needs extra libraries as specified above.
+>Fix:
+Don't configure such modules during the initial build, but afterwards, using apxs.
+>Audit-Trail:
+
+From: "Ralf S. Engelschall" <rse@engelschall.com>
+To: apbugs@apache.org
+Cc:  Subject: Re: config/3823: enabling a module as shared does not cause it to link against the necessary extra libraries
+Date: Wed, 10 Mar 1999 11:57:40 +0100
+
+ In article <19990203174919.20900.qmail@hyperreal.org> you wrote:
+ 
+ > Given a module with a configuration like this, APACI configuration finds that it
+ > does need to link the additional libraries:
+ > 
+ >  * MODULE-DEFINITION-START
+ >  * Name: mysql_auth_module
+ >  * ConfigStart
+ >      MYSQL_LIB="-L/usr/local/lib/mysql -lmysqlclient -lm"
+ >      if [ "X$MYSQL_LIB" != "X" ]; then
+ >          LIBS="$LIBS $MYSQL_LIB"
+ >          echo " + using $MYSQL_LIB for MySQL support"
+ >      fi
+ >  * ConfigEnd
+ >  * MODULE-DEFINITION-END
+ > 
+ > This works fine when this module is compiled statically.  However, if you make
+ > this module --enable-shared during the config, then the resulting .so file does not
+ > have the additional libraries linked, but those libraries are referenced for linking
+ > when building httpd.
+ 
+ It's not such easy because usually you cannot link DSO's against other DSOs
+ (i.e. shared libraries here). To solve the problem you either have to build
+ this MySQL module statically or build on a smart platform (usually all
+ ELF-based platforms are of this type where you can link a DSO against a DSO)
+ and use --enable-rule=SHARED_CHAIN.
+                                        Ralf S. Engelschall
+                                        rse@engelschall.com
+                                        www.engelschall.com
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

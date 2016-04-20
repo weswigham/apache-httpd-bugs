@@ -1,0 +1,537 @@
+Received: (qmail 13165 invoked by uid 2012); 24 Nov 1998 05:28:11 -0000
+Message-Id: <19981124052811.13164.qmail@hyperreal.org>
+Date: 24 Nov 1998 05:28:11 -0000
+From: Paul Ausbeck <paula@alumni.cse.ucsc.edu>
+Reply-To: paula@alumni.cse.ucsc.edu
+To: apbugs@hyperreal.org
+Subject: Accept-Encoding headers not used in mod_negotiation
+X-Send-Pr-Version: 3.2
+
+>Number:         3447
+>Category:       mod_negotiation
+>Synopsis:       Accept-Encoding headers not used in mod_negotiation
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Nov 23 21:30:01 PST 1998
+>Last-Modified:  Sat Feb  6 01:07:22 PST 1999
+>Originator:     paula@alumni.cse.ucsc.edu
+>Organization:
+>Release:        1.3.3
+>Environment:
+Windows 95 binary distribution, version 1.3.3
+>Description:
+The mod_negotiation module currently will deliver an encoded file only if no 
+unencoded variants are available. This occurs even if the user agent has 
+specified that it will accept certain encodings. For example, MS IE 4.01 
+places Accept-Encoding: gzip, deflate headers on all http requests and in 
+fact will accept these encodings. Netscape Navigator versions 3.0 and 4.04 
+do not generate any Accept-Encoding headers and in fact will not handle 
+encoded files (at least on the MS Windows 95 platform).
+
+The apache server currently makes no distinction between agents that explicitly
+state that they will accept certain encodings and agents that say nothing about 
+encodings. This does not allow a site to be configured to provide an encoded
+ file to an agent that states it will accept it and to provide an unencoded 
+file to agents that say nothing about encodings. 
+
+This is a major problem in that it essentially precludes the compression of 
+html files. No site is going to compress all their files and break agents 
+that can't handle compression. This could be worked around through cgi or 
+ssi but it would probably speed acceptance of http compression if more 
+work were done by the server and less by the site administrator.
+
+This problem has been previously reported (3237). This report is just an attempt to 
+raise its visibility.
+>How-To-Repeat:
+
+>Fix:
+To fix the problem, mod_negotiation should be changed to break ties in favor 
+of an encoded variant if the agent has explicitly stated that the encoding 
+will be accepted.
+>Audit-Trail:
+
+From: Paul Ausbeck <paula@alumni.cse.ucsc.edu>
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: mod_negotiation/3447: Accept-Encoding headers not used in mod_negotiation
+Date: Tue, 24 Nov 1998 17:55:54 -0800
+
+ I have hacked up suggested code changes for this problem and tested the
+ changes on a Windows 95 server with the following configuration:
+ 
+ access.conf: Options Indexes FollowSymLinks MultiViews
+ srm.conf: DirectoryIndex index index.html index.htm
+ srm.conf: AddEncoding x-gzip gz
+ 
+ In the home directory of the test server were two files:
+ 
+ index.htm
+ index.htm.gz
+ 
+ The server was browsed with IE 4.01 SP1 and NN 4.04 for Windows 95. IE
+ 4.01 places Accept-Encoding: gzip, deflate headers on all HTTP requests
+ and NN does not. 
+ 
+ BROWSER 	URL			RETURNED
+ IE		site/			index.htm.gz
+ NN		site/			index.htm
+ IE		site/index		index.htm.gz
+ NN		site/index		index.htm
+ IE		site/index.htm		index.htm
+ NN		site/index.htm		index.htm
+ IE		site/index.htm.gz	index.htm.gz
+ NN		site/index.htm.gz	index.htm.gz (garbage display)
+ 
+ I then removed the file index.htm from the server and retested:
+ 
+ BROWSER 	URL			RETURNED
+ IE		site/			index.htm.gz
+ NN		site/			index.htm.gz (garbage display)
+ IE		site/index		index.htm.gz
+ NN		site/index		index.htm.gz (garbage display)
+ IE		site/index.htm		index.htm.gz 
+ NN		site/index.htm		index.htm.gz (garbage display)
+ IE		site/index.htm.gz	index.htm.gz
+ NN		site/index.htm.gz	index.htm.gz (garbage display)
+ 
+ The behavior was as desired. For IE, index.htm.gz was returned unless
+ index.htm was specifically asked for. For NN, index.htm was returned
+ unless index.htm.gz was specifically asked for. 
+ 
+ When index.htm was not present, index.htm.gz was returned for all
+ aliases. This behavior is unchanged from version 1.3.3.
+ 
+ The code changes were made to mod_negotiation.c as follows:
+ 
+ Line 1490 of set_encoding_quality() changed from:
+   variant->encoding_quality = 1;
+ to:
+   variant->encoding_quality = 2; /* Client explicity wants encoded
+ variants. PJA */
+ 
+ Lines 1667 - 1677 of is_variant_better() were changed from:
+     /* encoding -- can only be 1 or 0, and if 0 we eliminated this
+      * variant at the start of this function. However we 
+      * prefer variants with no encoding over those with encoding */
+     if (best->content_encoding == NULL && variant->content_encoding) {
+         return 0;
+     }
+     if (best->content_encoding && variant->content_encoding == NULL) {
+         *p_bestq = q;
+         return 1;
+     }
+ to:
+     if (variant->encoding_quality != 2) /* Client says nothing about
+ encodings. PJA */
+     {
+       /* encoding -- can only be 1 or 0, and if 0 we eliminated this
+        * variant at the start of this function. However we 
+        * prefer variants with no encoding over those with encoding */
+       if (best->content_encoding == NULL && variant->content_encoding) {
+           return 0;
+       }
+       if (best->content_encoding && variant->content_encoding == NULL) {
+           *p_bestq = q;
+           return 1;
+       }
+     }
+     else /* Client explicity wants encoded variants. PJA */
+     {
+       /* encoding -- can only be 1 or 0, and if 0 we eliminated this
+        * variant at the start of this function. However we 
+        * prefer variants with no encoding over those with encoding */
+       if (best->content_encoding && !variant->content_encoding) {
+           return 0;
+       }
+       if (!best->content_encoding && variant->content_encoding) {
+           *p_bestq = q;
+           return 1;
+       }
+     }
+ 
+ The idea is to mark an encoding variant clearly accepted by the client
+ as such in set_encoding_quality(). Later in is_variant_better() the
+ preferred encoded variant is marked as superior to the unencoded
+ variant.
+ 
+ 
+
+From: Dirk-Willem van Gulik <dirk.vangulik@jrc.it>
+To: Paul Ausbeck <paula@alumni.cse.ucsc.edu>
+Cc: apbugs@hyperreal.org, apache-bugdb@apache.org
+Subject: Re: mod_negotiation/3447: Accept-Encoding headers not used in mod_negotiation
+Date: Wed, 25 Nov 1998 08:58:55 +0100 (MET)
+
+ On Tue, 24 Nov 1998, Paul Ausbeck wrote:
+ 
+ > I have hacked up suggested code changes for this problem and tested the
+ > changes on a Windows 95 server with the following configuration:
+ 
+ In principle what is done here seems quite correct; a variant
+ (this time the Encoding dimension) is taken into account; and because it
+ has no decent 'q' you resort to explicit ordering.
+ 
+ Although I have to admit I see no better way of achieving this, things get
+ messier by the day; I tried to combine this with negotiation on language
+ and that certainly is tricky when any of the languages specifies a 'q'
+ (only a few browsers do though).
+ 
+ > access.conf: Options Indexes FollowSymLinks MultiViews
+ > srm.conf: DirectoryIndex index index.html index.htm
+ > srm.conf: AddEncoding x-gzip gz
+  
+ > In the home directory of the test server were two files:
+ > 
+ > index.htm
+ > index.htm.gz
+ > 
+ > The server was browsed with IE 4.01 SP1 and NN 4.04 for Windows 95. IE
+ > 4.01 places Accept-Encoding: gzip, deflate headers on all HTTP requests
+ > and NN does not. 
+ > 
+ > BROWSER 	URL			RETURNED
+ > IE		site/			index.htm.gz
+ > NN		site/			index.htm
+ > IE		site/index		index.htm.gz
+ > NN		site/index		index.htm
+ > IE		site/index.htm		index.htm
+ > NN		site/index.htm		index.htm
+ > IE		site/index.htm.gz	index.htm.gz
+ > NN		site/index.htm.gz	index.htm.gz (garbage display)
+ > 
+ > I then removed the file index.htm from the server and retested:
+ > 
+ > BROWSER 	URL			RETURNED
+ > IE		site/			index.htm.gz
+ > NN		site/			index.htm.gz (garbage display)
+ > IE		site/index		index.htm.gz
+ > NN		site/index		index.htm.gz (garbage display)
+ > IE		site/index.htm		index.htm.gz 
+ > NN		site/index.htm		index.htm.gz (garbage display)
+ > IE		site/index.htm.gz	index.htm.gz
+ > NN		site/index.htm.gz	index.htm.gz (garbage display)
+ > 
+ > The behavior was as desired. For IE, index.htm.gz was returned unless
+ > index.htm was specifically asked for. For NN, index.htm was returned
+ > unless index.htm.gz was specifically asked for. 
+ > 
+ > When index.htm was not present, index.htm.gz was returned for all
+ > aliases. This behavior is unchanged from version 1.3.3.
+ > 
+ > The code changes were made to mod_negotiation.c as follows:
+ > 
+ > Line 1490 of set_encoding_quality() changed from:
+ >   variant->encoding_quality = 1;
+ > to:
+ >   variant->encoding_quality = 2; /* Client explicity wants encoded
+ > variants. PJA */
+ > 
+ > Lines 1667 - 1677 of is_variant_better() were changed from:
+ >     /* encoding -- can only be 1 or 0, and if 0 we eliminated this
+ >      * variant at the start of this function. However we 
+ >      * prefer variants with no encoding over those with encoding */
+ >     if (best->content_encoding == NULL && variant->content_encoding) {
+ >         return 0;
+ >     }
+ >     if (best->content_encoding && variant->content_encoding == NULL) {
+ >         *p_bestq = q;
+ >         return 1;
+ >     }
+ > to:
+ >     if (variant->encoding_quality != 2) /* Client says nothing about
+ > encodings. PJA */
+ >     {
+ >       /* encoding -- can only be 1 or 0, and if 0 we eliminated this
+ >        * variant at the start of this function. However we 
+ >        * prefer variants with no encoding over those with encoding */
+ >       if (best->content_encoding == NULL && variant->content_encoding) {
+ >           return 0;
+ >       }
+ >       if (best->content_encoding && variant->content_encoding == NULL) {
+ >           *p_bestq = q;
+ >           return 1;
+ >       }
+ >     }
+ >     else /* Client explicity wants encoded variants. PJA */
+ >     {
+ >       /* encoding -- can only be 1 or 0, and if 0 we eliminated this
+ >        * variant at the start of this function. However we 
+ >        * prefer variants with no encoding over those with encoding */
+ >       if (best->content_encoding && !variant->content_encoding) {
+ >           return 0;
+ >       }
+ >       if (!best->content_encoding && variant->content_encoding) {
+ >           *p_bestq = q;
+ >           return 1;
+ >       }
+ >     }
+ > 
+ > The idea is to mark an encoding variant clearly accepted by the client
+ > as such in set_encoding_quality(). Later in is_variant_better() the
+ > preferred encoded variant is marked as superior to the unencoded
+ > variant.
+ 
+ 
+
+From: Paul Ausbeck <paula@alumni.cse.ucsc.edu>
+To: Dirk-Willem van Gulik <dirk.vangulik@jrc.it>
+Cc: apbugs@hyperreal.org, apache-bugdb@apache.org
+Subject: Re: mod_negotiation/3447: Accept-Encoding headers not used in mod_negotiation
+Date: Wed, 25 Nov 1998 09:17:37 -0800
+
+ I think that applying a quality factor to Accept-encoding might not make
+ sense. The tie-breaking procedure seemed ok with me when I examined the
+ code. That is why I just inverted the tie-breaking policy for the case
+ where it is clearly more efficient to send the encoded variant.
+ 
+ I am not in the position to spend enough time on this to completely
+ rewrite the code. Below is a description of the algorithm that I sent to
+ the original discoverer of the problem, Adam Costello.
+ 
+ Paul Ausbeck
+ 
+ Adam:
+ 
+ I downloaded NN 4.5 and it handles gzip compression correctly.
+ 
+ I also thought some more on how to describe the negotiation algorithm.
+ The current method is quality factor based. The various variants are
+ ranked according to quality factor without consideration of encoding
+ quality. 
+ 
+ The basic algorithm compares each variant in turn with the best variant
+ found thus far. So if more than two variants exist with the same quality
+ factor, the first considered remains the best. This basic technique is
+ unchanged in my proposed algorithm.
+ 
+ The encoding quality factor comes into play in a tie-breaker. If an
+ unencoded variant exists with the same quality factor as the highest
+ encoded variant, the tie is broken in favor of the unencoded variant.
+ 
+ My change is to this tie-breaking procedure. If two variants exist with
+ the same highest quality factor, the tie is broken in favor of the
+ encoded variant if the client has expressed a preference for that
+ variant throught Accept-Encoding. Otherwise, the tie-breaker reverts to
+ the existing method.
+ 
+ I do this by expanding the number of "states" of the encoding_quality
+ variable. "Zero" indicates the browser says no to a particular type of
+ encoding. This occurs when the browser says it will accept some types of
+ encodings. Any that it doesn't accept are assumed to be rejected. 
+ 
+ "One" indicates the browser is neutral (hasn't sent any Accept-Encoding
+ headers). In the existing algorithm "one" also indicates that the
+ browser has accepted a particular encoding.
+ 
+ In my change the new state "two" indicates that the browser has
+ expressed a preference for an encoding through Accept-Encoding. "One" is
+ not overloaded and only expresses neutrality. The polarity of the
+ encoding tie-breaking procedure is reversed only for variants in state
+ "two".
+ 
+ Paul
+ 
+
+From: Paul Sutton <paul@c2.net>
+To: apbugs@apache.org
+Cc:  Subject: Re: mod_negotiation/3447: Accept-Encoding headers not used in
+ mod_negotiation (fwd)
+Date: Fri, 27 Nov 1998 17:32:07 +0000 (GMT)
+
+ I think this is a valid thing to fix, but I'm a bit concerned about the
+ logic of the patch. Since it is Friday afternoon I might have made a
+ mistake, so let me explain.
+ 
+ This table shows how the first part of the patch will set the values of
+ the content_encoding field for a particular variant:
+ 
+                                  Variant
+                     no encoding            has an encoding X
+ 
+ Request with
+ no A-E:               1                       1
+ 
+ Request with
+ empty A-E:            1                       0
+ 
+ Request with
+ A-E: X                1                       2           }
+                                                           }
+ Request with                                              }
+ A-E: without                                              }
+ X                     1                       0           }
+ 
+ The brackets (}) show that the last two lines can all occur on a single
+ request, if there are variants with both matching an non-matching
+ variants.
+ 
+ Now consider the second part of the patch below, when a request comes in
+ with a non-empty A-E: line. Say A-E: gzip. Consider having variants
+ x.gz and x, which are found _in that order_.
+ 
+ Now the first variant, x.gz gets picked as the best so far (since it is
+ the first, and is acceptable). So best->encoding is non-empty (it would
+ also get picked in preference to any other variants without an encoding,
+ because of encoding_quality = 2, as desired, using the second part of
+ the "if" in the patch below).
+ 
+ Now mod_negotiation looks at variant x. It is acceptable. So it gets to
+ the code in the patch below. This variant's encoding_quality is 1, so the
+ first part of the "if" below gets activated. This says that the best so
+ far _has_ an encoding (which is does) _and_ the new variant does not have
+ an encoding, we should pick the new variant (x) as the best so far. So we
+ flip back to prefering the non-encoded variant.
+ 
+ I think I'd prefer to see the logic of the second part of the patch below
+ changed to:
+ 
+   prefer the variant with the highest value of encoding_quality
+ 
+   if both the best and variant's encoding qualities are the
+   same, prefer the variant without an encoding
+ 
+ The first bit means we prefer the variants with quality 2 over those with
+ quality 1 (which is what this PR is about). The second part comes into
+ play if the request as no A-E: and we have variants with and without
+ encodings (the first line of the table), and prefers unencoded variants
+ (the current default). 
+ 
+ Paul
+ --
+ Paul Sutton, C2Net Europe                    http://www.eu.c2.net/~paul/
+ Editor, Apache Week .. the latest Apache news http://www.apacheweek.com/
+ 
+ 
+ 
+
+From: Paul Ausbeck <paula@alumni.cse.ucsc.edu>
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc: amc@CS.Berkeley.EDU
+Subject: Re: mod_negotiation/3447: Accept-Encoding headers not used in mod_negotiation
+Date: Sat, 28 Nov 1998 09:26:23 -0800
+
+ Since Navigator 4.5 supports gzip compression and 4.04 does not, that
+ indicated that Netscape had done some recent work on compression. Sure
+ enough, they have also done some work on the apache server as well. It
+ doesn't involve mod_negotiation, however. They did a new module. The
+ details are at:
+ 
+ http://www.mozilla.org/projects/apache/gzip/
+ 
+ Does anyone know when an official version of apache will be available
+ that supports compression via any means?
+ 
+ Paul Ausbeck
+ 
+
+From: Paul Sutton <paul@c2.net>
+To: Paul Ausbeck <paula@alumni.cse.ucsc.edu>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_negotiation/3447: Accept-Encoding headers not used in
+ mod_negotiation
+Date: Sat, 28 Nov 1998 18:07:12 +0000 (GMT)
+
+ On Sat, 28 Nov 1998, Paul Ausbeck wrote:
+ > Since Navigator 4.5 supports gzip compression and 4.04 does not, that
+ > indicated that Netscape had done some recent work on compression. Sure
+ > enough, they have also done some work on the apache server as well. It
+ > doesn't involve mod_negotiation, however. They did a new module. The
+ > details are at:
+ > 
+ > http://www.mozilla.org/projects/apache/gzip/
+ > 
+ > Does anyone know when an official version of apache will be available
+ > that supports compression via any means?
+ 
+ How does this differ from using mod_negotiation and negotiating between a
+ compressed and non-compressed variant? All this module does is append .gz
+ to the requested filename, and if it exists and A-E: contains "gzip",
+ redirects to this new filename. That is exactly what mod_negotiation does,
+ except that mod_negotiation does this in a very general (not specific to
+ gzip, and not specific to negotiating on encoding).
+ 
+ This PR points out an artifact of mod_negotiation's current algorithm
+ which means it will actually prefer unencoded versions, but that will be
+ fixed for the next release.
+ 
+ Incidently looking at the gzip-compression module code, I'm not convinced
+ it is correct. For example, if the request is HEAD it gives up (DECLINEs)
+ before looking for the compressed version of the file, so you'll get
+ different header response from a HEAD compared to a GET, for the same file
+ if it exists in an acceptable compressed format.
+ 
+ Paul
+ --
+ Paul Sutton, C2Net Europe                    http://www.eu.c2.net/~paul/
+ Editor, Apache Week .. the latest Apache news http://www.apacheweek.com/
+ 
+ 
+
+From: Paul Sutton <paul@c2.net>
+To: apbugs@apache.org
+Cc:  Subject: Re: mod_negotiation/3447: Accept-Encoding headers not used in
+ mod_negotiation
+Date: Sat, 28 Nov 1998 19:02:37 +0000 (GMT)
+
+ On 28 Nov 1998, Paul Sutton wrote:
+ >  How does this differ from using mod_negotiation and negotiating between a
+ >  compressed and non-compressed variant? All this module does is append .gz
+ 
+ Oh, of course mod_negotiation won't negotiate if the request URI matches a
+ file exactly. There should probably be an option to force negotiation even
+ if there is a file that matches the request, to cover this case. So the
+ Mozilla module does do something that Apache can't.
+ 
+ Paul
+ 
+
+From: Paul Ausbeck <paula@alumni.cse.ucsc.edu>
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc: amc@CS.Berkeley.EDU, Cranstone@worldnet.att.net, paul@c2.net,
+        dirk.vangulik@jrc.it
+Subject: Re: mod_negotiation/3447: Accept-Encoding headers not used in mod_negotiation
+Date: Sat, 28 Nov 1998 23:51:23 -0800
+
+ I have investigated how Microsoft IIS handles Accept-Encoding headers.
+ Some significant detail can be found at:
+ 
+ http://premium.microsoft.com/msdn/library/sdkdoc/iisref/aore4mcz.htm
+ 
+ Both static and dynamic compression are supported. Compression is
+ handled separately from other aspects of content negotiation. There is a
+ mechanism for ranking the "goodness" of various compression methods.
+ Static compression involves the idea of a compression directory.
+ Compressed files are stored there. A lazy compression scheme will
+ service a request for a file with uncompressed data and then compress
+ the file in the background so that it is available in compressed form
+ for subsequent requests.
+ 
+ It appears that the apache content negotiation mechanism may be more
+ flexible than the IIS mechanism in that servers that service multiple
+ accounts can be more flexibly managed.
+ 
+ Paul
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: fielding
+State-Changed-When: Sat Feb  6 01:07:22 PST 1999
+State-Changed-Why:
+
+Fixed in Apache 1.3.4
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

@@ -1,0 +1,313 @@
+Received: (qmail 21397 invoked by uid 2012); 12 Jan 1998 08:14:34 -0000
+Message-Id: <19980112081434.21396.qmail@hyperreal.org>
+Date: 12 Jan 1998 08:14:34 -0000
+From: Michael Shalayeff <mickey@openbsd.org>
+Reply-To: mickey@openbsd.org
+To: apbugs@hyperreal.org
+Subject: fails to fork off a cgi
+X-Send-Pr-Version: 3.2
+
+>Number:         1654
+>Category:       os-other
+>Synopsis:       fails to fork off a cgi
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jan 12 00:20:00 PST 1998
+>Last-Modified:  Wed May 20 19:50:30 PDT 1998
+>Originator:     mickey@openbsd.org
+>Organization:
+>Release:        1.3b3
+>Environment:
+OpenBSD current as of 12/01/98
+>Description:
+n/a
+>How-To-Repeat:
+run apache for a busy site with a lot of cgi calls, hits and vhosts under
+openbsd, experience 'unable to spaw child process' messages
+>Fix:
+--- ../../../1/apache_1.3b3/src/main/alloc.c    Wed Nov 12 18:22:05 1997
++++ alloc.c     Mon Jan 12 02:19:45 1998
+@@ -1145,8 +1145,8 @@
+ 
+ API_EXPORT(int) pclosesocket(pool *a, int sock)
+ {
+-    int res;
+-    int save_errno;
++    register int res;
++    register int save_errno;
+ 
+     block_alarms();
+     res = closesocket(sock);
+@@ -1214,7 +1214,7 @@
+ 
+ API_EXPORT(void) note_subprocess(pool *a, int pid, enum kill_conditions how)
+ {
+-    struct process_chain *new =
++    register struct process_chain *new =
+     (struct process_chain *) palloc(a, sizeof(struct process_chain));
+ 
+     new->pid = pid;
+@@ -1240,18 +1240,23 @@
+                                enum kill_conditions kill_how,
+                                int *pipe_in, int *pipe_out, int *pipe_err)
+ {
+-    int pid;
++    register int pid;
++    register int save_errno;
++    register int i;
+     int in_fds[2];
+     int out_fds[2];
+     int err_fds[2];
+-    int save_errno;
+ 
+     if (pipe_in && os_pipe(in_fds) < 0) {
++       save_errno = errno;
++       aplog_error(APLOG_MARK, APLOG_ERR, NULL, "os_pipe(in_fds) failed");
++       errno = save_errno;
+        return 0;
+     }
+ 
+     if (pipe_out && os_pipe(out_fds) < 0) {
+        save_errno = errno;
++       aplog_error(APLOG_MARK, APLOG_ERR, NULL, "os_pipe(out_fds) failed");
+        if (pipe_in) {
+            close(in_fds[0]);
+            close(in_fds[1]);
+@@ -1262,6 +1267,7 @@
+ 
+     if (pipe_err && os_pipe(err_fds) < 0) {
+        save_errno = errno;
++       aplog_error(APLOG_MARK, APLOG_ERR, NULL, "os_pipe(err_fds) failed");
+        if (pipe_in) {
+            close(in_fds[0]);
+            close(in_fds[1]);
+@@ -1346,8 +1352,11 @@
+     }
+ #else
+ 
+-    if ((pid = fork()) < 0) {
++    for (i = 10; (pid = fork()) < 0 && errno == EAGAIN && i--; usleep(10000));
++
++    if (pid < 0) {
+        save_errno = errno;
++       aplog_error(APLOG_MARK, APLOG_ERR, NULL, "fork() failed");
+        if (pipe_in) {
+            close(in_fds[0]);
+            close(in_fds[1]);
+%0
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Michael Shalayeff <mickey@openbsd.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-other/1654: fails to fork off a cgi
+Date: Mon, 12 Jan 1998 08:23:23 -0700 (MST)
+
+ On 12 Jan 1998, Michael Shalayeff wrote:
+ 
+ > >How-To-Repeat:
+ > run apache for a busy site with a lot of cgi calls, hits and vhosts under
+ > openbsd, experience 'unable to spaw child process' messages
+ 
+ Erm... I'm not really sure why it should be necessary to retry forking.
+ If it fails once, then it is probably due to limits such as the number of
+ file descriptors or processes.  The answer is to fix the limitation, not
+ to keep retrying until you can work around it.  Have you looked at doing
+ this? 
+ 
+ Any OS that requires trying multiple times for no reason before it works
+ would be very broken...
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Mon Jan 12 13:04:27 PST 1998
+State-Changed-Why:
+Awaiting response to query...
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Michael Shalayeff <mickey@openbsd.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-other/1654: fails to fork off a cgi
+Date: Mon, 12 Jan 1998 13:10:12 -0800 (PST)
+
+ On 12 Jan 1998, Michael Shalayeff wrote:
+ 
+ > -    int res;
+ > -    int save_errno;
+ > +    register int res;
+ > +    register int save_errno;
+ 
+ These changes have no effect at all on a modern compiler except for a
+ minor semantic effect:  you can't take the address of a register auto. 
+ Otherwise compilers such as gcc completely ignore the register attribute.
+ 
+ Dean
+ 
+ 
+
+From: Michael Shalayeff <mickey@lucifier.dial-up.user.akula.net>
+To: marcs@znep.com (Marc Slemko)
+Cc: mickey@openbsd.org, apbugs@hyperreal.org
+Subject: Re: os-other/1654: fails to fork off a cgi
+Date: Tue, 13 Jan 1998 21:59:45 -0500 (EST)
+
+ Making, drinking tea and reading an opus magnum from Marc Slemko:
+ > On 12 Jan 1998, Michael Shalayeff wrote:
+ > 
+ > > >How-To-Repeat:
+ > > run apache for a busy site with a lot of cgi calls, hits and vhosts under
+ > > openbsd, experience 'unable to spaw child process' messages
+ > 
+ > Erm... I'm not really sure why it should be necessary to retry forking.
+ > If it fails once, then it is probably due to limits such as the number of
+ > file descriptors or processes.  The answer is to fix the limitation, not
+ > to keep retrying until you can work around it.  Have you looked at doing
+ > this? 
+ when this happens i have not reached 50% limit on file descriptors,
+ processes, memory and all the other system resources.
+ 
+ > Any OS that requires trying multiple times for no reason before it works
+ > would be very broken...
+ maybe...
+ 
+ cu
+
+From: Michael Shalayeff <mickey@lucifier.dial-up.user.akula.net>
+To: dgaudet@arctic.org (Dean Gaudet)
+Cc: mickey@openbsd.org, apbugs@hyperreal.org
+Subject: Re: os-other/1654: fails to fork off a cgi
+Date: Tue, 13 Jan 1998 22:08:54 -0500 (EST)
+
+ Making, drinking tea and reading an opus magnum from Dean Gaudet:
+ > 
+ > 
+ > On 12 Jan 1998, Michael Shalayeff wrote:
+ > 
+ > > -    int res;
+ > > -    int save_errno;
+ > > +    register int res;
+ > > +    register int save_errno;
+ > 
+ > These changes have no effect at all on a modern compiler except for a
+ > minor semantic effect:  you can't take the address of a register auto. 
+ > Otherwise compilers such as gcc completely ignore the register attribute.
+ as far as i can get from disasm listings it does not ignore 'em w/ -O.
+ 
+ cu
+
+From: Marc Slemko <marcs@znep.com>
+To: Michael Shalayeff <mickey@lucifier.dial-up.user.akula.net>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-other/1654: fails to fork off a cgi
+Date: Tue, 13 Jan 1998 21:34:32 -0700 (MST)
+
+ On Tue, 13 Jan 1998, Michael Shalayeff wrote:
+ 
+ > Making, drinking tea and reading an opus magnum from Marc Slemko:
+ > > On 12 Jan 1998, Michael Shalayeff wrote:
+ > > 
+ > > > >How-To-Repeat:
+ > > > run apache for a busy site with a lot of cgi calls, hits and vhosts under
+ > > > openbsd, experience 'unable to spaw child process' messages
+ > > 
+ > > Erm... I'm not really sure why it should be necessary to retry forking.
+ > > If it fails once, then it is probably due to limits such as the number of
+ > > file descriptors or processes.  The answer is to fix the limitation, not
+ > > to keep retrying until you can work around it.  Have you looked at doing
+ > > this? 
+ > when this happens i have not reached 50% limit on file descriptors,
+ > processes, memory and all the other system resources.
+ 
+ Are you sure about this?  Where are you getting this information from.
+ 
+ What does ulimit -a give when run from a shell directly before starting
+ Apache?  
+ 
+ > 
+ > > Any OS that requires trying multiple times for no reason before it works
+ > > would be very broken...
+ > maybe...
+ 
+ Let's put it this way... without a good reason for it, there really isn't
+ any reason to add this.  It is almost certainly something specific to your
+ situation.
+ 
+
+From: Michael Shalayeff <mickey@lucifier.dial-up.user.akula.net>
+To: marcs@znep.com (Marc Slemko)
+Cc: apbugs@hyperreal.org
+Subject: Re: os-other/1654: fails to fork off a cgi
+Date: Tue, 13 Jan 1998 23:59:52 -0500 (EST)
+
+ Making, drinking tea and reading an opus magnum from Marc Slemko:
+ > On Tue, 13 Jan 1998, Michael Shalayeff wrote:
+ > 
+ > > Making, drinking tea and reading an opus magnum from Marc Slemko:
+ > > > On 12 Jan 1998, Michael Shalayeff wrote:
+ > > > 
+ > > > > >How-To-Repeat:
+ > > > > run apache for a busy site with a lot of cgi calls, hits and vhosts under
+ > > > > openbsd, experience 'unable to spaw child process' messages
+ > > > 
+ > > > Erm... I'm not really sure why it should be necessary to retry forking.
+ > > > If it fails once, then it is probably due to limits such as the number of
+ > > > file descriptors or processes.  The answer is to fix the limitation, not
+ > > > to keep retrying until you can work around it.  Have you looked at doing
+ > > > this? 
+ > > when this happens i have not reached 50% limit on file descriptors,
+ > > processes, memory and all the other system resources.
+ > Are you sure about this?  Where are you getting this information from.
+ gdb -k /bsd /dev/mem
+ pstat,fstat,vmstat
+ 
+ > What does ulimit -a give when run from a shell directly before starting
+ > Apache?  
+ cputime 	unlimited
+ filesize 	unlimited
+ datasize 	1048576 kbytes
+ stacksize 	32768 kbytes
+ coredumpsize 	unlimited
+ memoryuse 	119712 kbytes
+ descriptors 	1024 
+ memorylocked 	119712 kbytes
+ maxproc 	4116 
+ 
+ maxfiles=13000, nfiles=1800, maxproc = 4116, processes=120
+ 
+ > > > Any OS that requires trying multiple times for no reason before it works
+ > > > would be very broken...
+ > > maybe...
+ > 
+ > Let's put it this way... without a good reason for it, there really isn't
+ > any reason to add this.  It is almost certainly something specific to your
+ > situation.
+ yep, i guess so.
+ 
+ cu
+State-Changed-From-To: feedback-closed
+State-Changed-By: brian
+State-Changed-When: Wed May 20 19:50:30 PDT 1998
+State-Changed-Why:
+Not to sound like we're putting our head in the sand, but
+this does sound like a local resource exhaustion issue,
+and I concur with others that retrying the fork is simply 
+a very bad idea. You may be only seeing 50% exhaustion as
+an average or a sampling problem; I bet if you're seeing 50%
+average you'll be hitting peaks into 100% fairly frequently.
+Let us know if increasing your resources doesn't alleviate 
+the problem.
+
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

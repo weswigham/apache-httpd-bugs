@@ -1,0 +1,148 @@
+Received: (qmail 3436 invoked from network); 21 Oct 1998 10:28:19 -0000
+Message-Id: <362DB702.D2BEB1F9@ggr.co.uk>
+Date: Wed, 21 Oct 1998 11:27:14 +0100
+From: Lack Mr G M <gml4410@ggr.co.uk>
+Sender: gml4410@ggr.co.uk
+To: apbugs@Apache.Org
+Cc: jeffc@dbix.com.my
+Subject: AuthDBMUserFile - Apache complains 'File not found'
+
+>Number:         3259
+>Category:       pending
+>Synopsis:       AuthDBMUserFile - Apache complains 'File not found'
+>Confidential:   yes
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   unknown
+>Arrival-Date:   Wed Oct 21 03:30:00 PDT 1998
+>Last-Modified:  Fri Oct 23 07:40:00 PDT 1998
+>Originator:     
+>Organization:
+>Release:        
+>Environment:
+>Description:
+>How-To-Repeat:
+>Fix:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Thu Oct 22 10:58:06 PDT 1998
+State-Changed-Why:
+Closing misfiled PR; info has been added to the proper PR.
+Responsible-Changed-From-To: gnats-admin-apache
+Responsible-Changed-By: marc
+Responsible-Changed-When: Thu Oct 22 10:58:06 PDT 1998
+Responsible-Changed-Why:
+.
+
+From: Lack Mr G M <gml4410@ggr.co.uk>
+To: marc@apache.org
+Cc: apache-bugdb@apache.org, gnats-admin@hyperreal.com, apbugs@Apache.Org,
+        jeffc@dbix.com.my
+Subject: Re: pending/3259: AuthDBMUserFile - Apache complains 'File not found'
+Date: Fri, 23 Oct 1998 15:38:36 +0100
+
+ This is a multi-part message in MIME format.
+ --------------9FC062D967E6FEA2BD831A85
+ Content-Type: text/plain; charset=us-ascii
+ Content-Transfer-Encoding: 7bit
+ 
+    Ok, this was *originally* PR 2809.  I expct that my attempt to
+ comemnt on a report that wasn't mine resulted in a new call (3259).
+ 
+    Anwyay, I have tracked down the problem (at least, I;ve tracked down
+ what was *my* problem).
+ 
+    When I build perl, I include the GDBM_FIle extension.  So the perl
+ config end ups including "-lgdbm" in its list of libraries to load.  The
+ mod_perl config picks this up and uses it for *its* load.
+ 
+    However, the gdbm libraries include an ndbm interface - the calls are
+ dbm_open() etc., but the underlyign implementation is a gdbm file.
+ 
+    Consequently, the mod_perl linking ends up using gdbm for AuthDbm
+ files (and yess, the gdbm implementation does open a *.pag file
+ only...).
+ 
+    So, the mod_pelr build needs to get the lgdbm out of the way.  But it
+ can't, as the loading of libperl.a needs it....
+ 
+    So, what I did was to run a little script (appended) from within the
+ apache_1.3.3 directory thus:
+ 
+    ./preempt-gdbm.pl `find . -name Makefile -exec fgrep -l lgdbm {} \;`
+ 
+ to change all "-lgdm" in Makefile to "-lc -lgdbm".  At least it
+ works.....   There might be a neater way to do this within the
+ mod_perl/apapche config - I don't know.
+ 
+ 
+    My personal feeling is that this is a bug in gdbm, for not giving you
+ the option to not have the ndbm entrypoints in your library.
+ --------------9FC062D967E6FEA2BD831A85
+ Content-Type: application/x-perl;
+  name="preempt-gdbm.pl"
+ Content-Transfer-Encoding: 7bit
+ Content-Disposition: inline;
+  filename="preempt-gdbm.pl"
+ 
+ #!/usr/central/bin/perl -swi.bak
+ 
+ use vars qw( $v *ARGVOUT );
+ use File::Copy;
+ 
+ # We need to change all instances of '-lgdbm' to '-lc -lgdbm'
+ #
+ # The original files are kept as .bak is there are changes.
+ # If there are no changes the original is moved back into place.
+ 
+ $changed = 0;
+ while (<>) {
+    if (s/-lgdbm/-lc -lgdbm/g) {
+       $changed = 1;
+    }
+    print;
+    if (eof) {
+ # Close handles to avoid warnings...
+       close ARGV;
+       close ARGVOUT;
+       move "$ARGV.bak", $ARGV if (not $changed);
+       print STDERR "$ARGV done\n" if (defined $v);
+       $changed = 0;
+    }
+ }
+ 
+ --------------9FC062D967E6FEA2BD831A85--
+ 
+>Unformatted:
+>> The problem is not Apache. It is the gdbm library (1.7.3).
+
+   This is not correct.
+
+   I am having the same problem (Apache 1.3.3).  auth_dbm *did* work
+when I first tested it, but now fails.   I am now building in mod_perl,
+which I was not doing previously.
+
+   My suspicion is that, since I include GDB< with perl, the addition of
+-lgdm to the compile options is having a detrimental affect.
+
+   NOTE: That I am having exactly the same probelm on both Solaris2.6
+and irix6.2 systems.  The Apache server succesfully opens the .pag file,
+reads from it, *then* reports "File not found" (checked with truss and
+par respectively).
+
+>> >Fix:
+>> 1. Recompile gdbm library and comment out the ".pag" and ".dir" extensions.
+
+   Thsi is not a fix.  I am not using gdbm (at least I shouldn't be).  I
+*should* be using ndbm (and certainly was when I first tested it, as I
+made my test files with makedbm - they still have the YP stamps in
+them).
+If I may butt in here....
+
+   This is PR 2809.
+
+

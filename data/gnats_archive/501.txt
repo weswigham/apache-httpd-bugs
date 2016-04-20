@@ -1,0 +1,161 @@
+From coar@hyperreal.com  Tue Apr 29 00:07:16 1997
+Received: (from coar@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id AAA13257;
+	Tue, 29 Apr 1997 00:07:16 -0700 (PDT)
+Message-Id: <199704290707.AAA13257@hyperreal.com>
+Date: Tue, 29 Apr 1997 00:07:16 -0700 (PDT)
+From: Dean Gaudet <dgaudet@apache.org>
+Reply-To: dgaudet@apache.org
+To: apbugs@hyperreal.com
+Subject: mod_status doesn't escape printed URLs
+X-Send-Pr-Version: 3.2
+
+>Number:         501
+>Category:       mod_status
+>Synopsis:       mod_status doesn't escape printed URLs
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Apr 29 00:10:01 1997
+>Last-Modified:  Fri May 30 04:58:36 PDT 1997
+>Originator:     dgaudet@apache.org
+>Organization:
+>Release:        1.2b10
+>Environment:
+all
+>Description:
+If a broken browser tries something like "GET /foo<img HTTP/1.0" it'll
+corrupt the status display.  There might be an attack possible this
+way, haven't checked.
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+
+From: coar@decus.org (Rodent of Unusual Size)
+To: apbugs@apache.org, dgaudet@arctic.org, Coar@decus.org
+Subject: Re: mod_status/501: mod_status doesn't escape printed URLs
+Date: Tue, 29 Apr 1997 11:02:05 -0400
+
+ 
+     Please try the following patch to see if it fixes this for you.
+ 
+     #ken    :-)}
+ 
+ Index: mod_status.c
+ ===================================================================
+ RCS file: /export/home/cvs/apache/src/mod_status.c,v
+ retrieving revision 1.46
+ diff -c -r1.46 mod_status.c
+ *** mod_status.c	1997/04/24 23:35:23	1.46
+ --- mod_status.c	1997/04/29 14:54:29
+ ***************
+ *** 108,113 ****
+ --- 108,138 ----
+   
+   module status_module;
+   
+ + /* Turn dangerous characters ("<", ">") into HTML escapes so they don't	    */
+ + /* interfere with our output						    */
+ + 
+ + static char *untagify (pool *p, const char *s) {
+ + 
+ +     char *newstr = "";
+ +     char *frog1 = pstrdup (p, s);
+ +     char *frog2;
+ + 
+ +     while ((frog2 = strchr (frog1, '<')) != NULL) {
+ + 	*frog2 = '\0';
+ + 	newstr = pstrcat (p, newstr, frog1, "&lt;", NULL);
+ + 	frog1 = ++frog2;
+ +     }
+ +     frog1 = pstrcat (p, newstr, frog1, NULL);
+ +     newstr = "";
+ +     while ((frog2 = strchr (frog1, '>')) != NULL) {
+ + 	*frog2 = '\0';
+ + 	newstr = pstrcat (p, newstr, frog1, "&gt;", NULL);
+ + 	frog1 = ++frog2;
+ +     }
+ +     newstr = pstrcat (p, newstr, frog1, NULL);
+ +     return newstr;
+ + }
+ + 
+   /* Format the number of bytes nicely */
+   
+   void format_byte_out(request_rec *r,unsigned long bytes)
+ ***************
+ *** 428,434 ****
+   
+       for (i = 0; i<HARD_SERVER_LIMIT; ++i)
+       {
+ !         score_record=get_scoreboard_info(i);
+           lres = score_record.access_count;
+           my_lres = score_record.my_access_count;
+   	conn_lres = score_record.conn_count;
+ --- 453,462 ----
+   
+       for (i = 0; i<HARD_SERVER_LIMIT; ++i)
+       {
+ ! 	char *current_uri;
+ ! 
+ ! 	score_record=get_scoreboard_info(i);
+ !         current_uri = untagify (r->pool, score_record.request);
+           lres = score_record.access_count;
+           my_lres = score_record.my_access_count;
+   	conn_lres = score_record.conn_count;
+ ***************
+ *** 497,503 ****
+   		    format_byte_out(r,bytes);
+   		    rputs(")\n",r);
+   		    rprintf(r," <i>%s {%s}</i><br>\n\n",
+ ! 			    score_record.client, score_record.request);
+   		}
+   		else /* !no_table_report */
+   		{
+ --- 525,531 ----
+   		    format_byte_out(r,bytes);
+   		    rputs(")\n",r);
+   		    rprintf(r," <i>%s {%s}</i><br>\n\n",
+ ! 			    score_record.client, current_uri);
+   		}
+   		else /* !no_table_report */
+   		{
+ ***************
+ *** 553,559 ****
+   			(float)bytes/MBYTE);
+   		    rprintf(r,"<td>%s<td nowrap>%s<td nowrap>%s</tr>\n\n",
+   			    score_record.client, score_record.vhost,
+ ! 			    score_record.request);
+   		}	/* no_table_report */
+   	    }		/* !short_report */
+   	}		/* if (<active child>) */
+ --- 581,587 ----
+   			(float)bytes/MBYTE);
+   		    rprintf(r,"<td>%s<td nowrap>%s<td nowrap>%s</tr>\n\n",
+   			    score_record.client, score_record.vhost,
+ ! 			    current_uri);
+   		}	/* no_table_report */
+   	    }		/* !short_report */
+   	}		/* if (<active child>) */
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Tue Apr 29 09:36:03 PDT 1997
+State-Changed-Why:
+Solution provided..
+State-Changed-From->To: feedback->closed
+State-Changed-By: coar
+State-Changed-When: Fri May 30 04:58:36 PDT 1997
+State-Changed-Why:
+Fixed in Apache 1.2b11.  Thank you for reporting this,
+and for using Apache!
+
+#ken	:-)}
+>Unformatted:
+
+
+

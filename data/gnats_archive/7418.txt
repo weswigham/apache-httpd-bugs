@@ -1,0 +1,318 @@
+Received: (qmail 431 invoked by uid 501); 15 Mar 2001 17:25:32 -0000
+Message-Id: <20010315172532.426.qmail@apache.org>
+Date: 15 Mar 2001 17:25:32 -0000
+From: Richard Griswold <rgriswol@us.ibm.com>
+Reply-To: rgriswol@us.ibm.com
+To: submit@bugz.apache.org
+Subject: Incorrect reporting of bytes sent by send_file()
+X-Send-Pr-Version: 3.110
+
+>Number:         7418
+>Category:       os-aix
+>Synopsis:       Incorrect reporting of bytes sent by send_file()
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Mar 15 09:30:02 PST 2001
+>Closed-Date:    Wed Mar 21 08:07:27 PST 2001
+>Last-Modified:  Wed Mar 21 08:07:27 PST 2001
+>Originator:     rgriswol@us.ibm.com
+>Release:        2.0.14 Alpha
+>Organization:
+>Environment:
+uname -a output:  AIX engraver 3 4 000669914C00
+Compiler:  xlc
+>Description:
+The apr_sendfile() function in the srclib/apr/network_io/unix/sendrecv.c only
+reports the number of bytes sent by the last call to send_file.  The code also
+only checks for a return code of -1, and not a return code of 1 which indicates
+that send_file() was able to send part of the data, but not all of it.
+
+On AIX this results in a minor performance degradation since Apache has to make
+multiple calls to the apr_sendfile() function to send large files.  However, on
+a version of one of our operating systems currently under developement (I could
+tell you which one, but then I'd have to kill you :)) it causes Apache to fail
+to send files larger than twice the send buffer size.
+>How-To-Repeat:
+
+>Fix:
+Here is the patch for httpd-2_0_14.  It also applies cleanly on apache-2.0a9.
+Use "patch p1 < patchfile" to apply it.
+
+diff -bcr httpd-2_0_14.orig/srclib/apr/network_io/unix/sendrecv.c httpd-2_0_14/srclib/apr/network_io/unix/sendrecv.c
+*** httpd-2_0_14.orig/srclib/apr/network_io/unix/sendrecv.c	Mon Feb 26 06:41:51 2001
+--- httpd-2_0_14/srclib/apr/network_io/unix/sendrecv.c	Thu Mar 15 10:52:59 2001
+***************
+*** 700,710 ****
+          rv = send_file(&(sock->socketdes), /* socket */
+                         &(parms),           /* all data */
+                         flags);             /* flags */
+      } while (rv == -1 && errno == EINTR);
+  
+!     if (rv == -1 &&
+          (errno == EAGAIN || errno == EWOULDBLOCK) &&
+          sock->timeout > 0) {
+          arv = wait_for_io_or_timeout(sock, 0);
+          if (arv != APR_SUCCESS) {
+              *len = 0;
+--- 700,713 ----
+          rv = send_file(&(sock->socketdes), /* socket */
+                         &(parms),           /* all data */
+                         flags);             /* flags */
++         (*len) = parms.bytes_sent;
+      } while (rv == -1 && errno == EINTR);
+  
+!     if (rv != 0 &&
+          (errno == EAGAIN || errno == EWOULDBLOCK) &&
+          sock->timeout > 0) {
++ 
++         do {
+             arv = wait_for_io_or_timeout(sock, 0);
+             if (arv != APR_SUCCESS) {
+                 *len = 0;
+***************
+*** 715,725 ****
+                  rv = send_file(&(sock->socketdes), /* socket */
+                                 &(parms),           /* all data */
+                                 flags);             /* flags */
+              } while (rv == -1 && errno == EINTR);
+          }
+      }
+- 
+-     (*len) = parms.bytes_sent;
+  
+  #if 0
+      /* Clean up after ourselves */
+--- 718,728 ----
+                     rv = send_file(&(sock->socketdes), /* socket */
+                                    &(parms),           /* all data */
+                                    flags);             /* flags */
++                    (*len) += parms.bytes_sent;
+                 } while (rv == -1 && errno == EINTR);
+             }
++         } while ( rv != 0 && (errno == EAGAIN || errno == EWOULDBLOCK) );
+      }
+  
+  #if 0
+      /* Clean up after ourselves */
+>Release-Note:
+>Audit-Trail:
+Comment-Added-By: trawick
+Comment-Added-When: Thu Mar 15 10:48:54 PST 2001
+Comment-Added:
+From your patch, I suspect that you misundersood the intended
+semantics of apr_sendfile().  Hopefully my follow-up questions
+and/or comments below will help sort out where the misunderstanding
+may lie.
+
+
+From: "Rich Griswold" <rgriswol@us.ibm.com>
+To: trawick@apache.org
+Cc: apbugs@apache.org
+Subject: Re: os-aix/7418: Incorrect reporting of bytes sent by send_file()
+Date: Fri, 16 Mar 2001 13:51:24 -0600
+
+ >[In order for any reply to be added to the PR database, you need]
+ >[to include <apbugs@Apache=2EOrg> in the Cc line and make sure the]
+ >[subject line starts with the report component and number, with ]
+ >[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ >["Re: general/1098:")=2E  If the subject doesn't match this       ]
+ >[pattern, your message will be misfiled and ignored=2E  The       ]
+ >["apbugs" address is not added to the Cc line of messages from  ]
+ >[the database automatically because of the potential for mail   ]
+ >[loops=2E  If you do not include this Cc, your reply may be ig-   ]
+ >[nored unless you are responding to an explicit request from a  ]
+ >[developer=2E  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ >
+ >
+ >Synopsis: Incorrect reporting of bytes sent by send_file()
+ >
+ >Comment-Added-By: trawick
+ >Comment-Added-When: Thu Mar 15 10:48:54 PST 2001
+ >Comment-Added:
+ >
+ >From your patch, I suspect that you misundersood the intended
+ >semantics of apr_sendfile()=2E  Hopefully my follow-up questions
+ >and/or comments below will help sort out where the misunderstanding
+ >may lie=2E
+ >
+ >>The apr_sendfile() function in the
+ >>srclib/apr/network_io/unix/sendrecv=2Ec only reports the number of
+ >>bytes sent by the last call to send_file=2E
+ >
+ >What do you think it should report?
+ >
+ >>The code also only checks for a return code of -1, and not a return
+ >>code of 1 which indicates that send_file() was able to send part of
+ >>the data, but not all of it=2E
+ >
+ >Why does apr_sendfile() care?  It merely needs to tell the caller
+ >how much data was sent, and it knows by looking at the updated
+ >parms=2Ebytes_sent field=2E
+ >
+ >>On AIX this results in a minor performance degradation since Apache
+ >>has to make multiple calls to the apr_sendfile() function to send
+ >>large files=2E
+ >
+ >The same is true of other routines which write on a socket=2E We do
+ >not hang around inside APR write-to-the-network routines until all
+ >data has been written=2E
+ >
+ >Note that the socket used by Apache has been marked non-blocking=2E We=
+ 
+ >expect that multiple syscalls will be used to send large files=2E In
+ >return, we are able to control when we give up on send_file() and
+ >decide to drop the connection because of a timeout=2E
+ >
+ >We *could* do the multiple-syscall repeat inside APR but have not
+ >chosen to do so=2E
+ >
+ >>However, on a version of one of our operating systems currently
+ >>under developement (I could tell you which one, but then I'd have
+ >>to kill you :)) it causes Apache to fail to send files larger than
+ >>twice the send buffer size=2E
+ >
+ >Maybe if you can answer my questions above I'll understand=2E Is there=
+ 
+ >a bug in the code which calls apr_sendfile() which prevents it from
+ >being able to call apr_sendfile() enough times?
+ >
+ >About the future AIX change: Does this mean that OS/390 and AIX can
+ >no longer use the same apr_sendfile() implementation at that point?
+ >That would suck=2E
+ >
+ >I look forward to your update=2E
+ 
+ After looking over the Apache code some more and poking around with
+ some testcases on AIX, I think I have a better understand of what's
+ happening=2E
+ 
+ It appears that if send_file() on AIX sends any data at all, the
+ return code will be 1 instead of -1=2E  I'm not sure if the same is
+ true on OS/390 since I don't have access to an OS/390 system=2E
+ 
+ With the system I work on (which isn't AIX or OS/390, but is related
+ to AIX), send_file() returns -1 in cases where AIX returns 1, ie
+ send_file() was not able to send all of the data=2E  I added a check
+ after each call to send_file() that turns the -1 return code to a 1
+ if the errno is EWOULDBLOCK or EAGAIN and parms=2Ebytes_sent wasn't
+ zero, and that worked=2E  With this change to make our send_file()
+ return code behave like AIX's, Apache didn't call send_file() twice
+ while only updating len once=2E
+ 
+ I'll have to work with the sockets developer to have them change
+ send_file() to match AIX's behavior=2E  I'm sorry to bother you about
+ a problem that ended up being our problem=2E
+ 
+ I'm curious about something though=2E  In your reply, you mentioned
+ that apr_sendfile() doesn't loop until it sends all the so that
+ the caller have control over timeouts=2E  However, apr_sendfile()
+ calls wait_for_io_or_timeout() which returns a bad return code if
+ select() times out=2E  If you did loop inside apr_sendfile(),
+ wouldn't wait_for_io_or_timeout() give you the timeout control you
+ need?
+ 
+ 
+ 
+ Rich Griswold - rgriswol@us=2Eibm=2Ecom
+ 
+ "Nothing is real unless we look at it, and it ceases to be real as
+ soon as we stop looking=2E"
+   -- John Gribbin, "In Search of Schr=F6dinger's Cat"
+ =
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: trawick
+State-Changed-When: Wed Mar 21 08:07:23 PST 2001
+State-Changed-Why:
+I'm closing the PR since it didn't turn out to be a problem
+in Apache/APR.  More text follows...
+
+>Unformatted:
+ >I'm curious about something though.  In your reply, you 
+ >mentioned that apr_sendfile() doesn't loop until it sends 
+ >all the so that the caller have control over timeouts.
+ >However, apr_sendfile() calls wait_for_io_or_timeout() 
+ >which returns a bad return code if select() times out
+ >If you did loop inside apr_sendfile(), wouldn't 
+ >wait_for_io_or_timeout() give you the timeout control 
+ >you need?
+ 
+ First, what I should have/meant to say :)
+ 
+ We make multiple syscalls + select to handle the timeout issue.
+ 
+ We make multiple calls to apr_sendfile()/apr_send()/whatever
+ for reasons I probably don't understand/can't explain adequately :(
+ 
+ By the way... after your socket layer is updated try the test
+ program sendfile.c in the apr/test subdirectory.  It does a 
+ pretty decent job of finding problems in apr_sendfile().
+ 
+ Have fun...
+ >The apr_sendfile() function in the srclib/apr/network_io/unix/sendrecv.c 
+ >only reports the number of bytes sent by the last call to send_file.  
+ 
+ What do you think it should report?
+ 
+ >The code also only checks for a return code of -1, and not a return 
+ >code of 1 which indicates that send_file() was able to send part of 
+ >the data, but not all of it.
+ 
+ Why does apr_sendfile() care?  It merely needs to tell the caller
+ how much data was sent, and it knows by looking at the updated
+ parms.bytes_sent field.
+ 
+ >On AIX this results in a minor performance degradation since 
+ >Apache has to make multiple calls to the apr_sendfile() 
+ >function to send large files.  
+ 
+ The same is true of other routines which write on a socket.
+ We do not hang around inside APR write-to-the-network routines
+ until all data has been written.
+ 
+ Note that the socket used by Apache has been marked non-blocking.
+ We expect that multiple syscalls will be used to send large files.
+ In return, we are able to control when we give up on send_file()
+ and decide to drop the connection because of a timeout.
+ 
+ We *could* do the multiple-syscall repeat inside APR but have
+ not chosen to do so.
+ 
+ >However, on a version of one of our operating systems currently under 
+ >developement (I could tell you which one, but then I'd have to kill 
+ >you :)) it causes Apache to fail to send files larger than twice 
+ >the send buffer size.
+ 
+ Maybe if you can answer my questions above I'll understand.
+ Is there a bug in the code which calls apr_sendfile() which
+ prevents it from being able to call apr_sendfile() enough
+ times?
+ 
+ About the future AIX change: Does this mean that OS/390 and AIX 
+ can no longer use the same apr_sendfile() implementation at 
+ that point?  That would suck.
+ 
+ I look forward to your update.
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,130 @@
+Received: (qmail 35361 invoked by uid 501); 18 Nov 2001 20:26:35 -0000
+Message-Id: <20011118202635.35360.qmail@apache.org>
+Date: 18 Nov 2001 20:26:35 -0000
+From: Taketo Kabe <kabe@sra-tohoku.co.jp>
+Reply-To: kabe@sra-tohoku.co.jp
+To: submit@bugz.apache.org
+Subject: [PATCH] <Directory ~ PATH> was silently ignored
+X-Send-Pr-Version: 3.110
+
+>Number:         8798
+>Category:       general
+>Synopsis:       [PATCH] <Directory ~ PATH> was silently ignored
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Nov 18 12:30:01 PST 2001
+>Closed-Date:    Mon Mar 25 23:13:04 PST 2002
+>Last-Modified:  Mon Mar 25 23:13:04 PST 2002
+>Originator:     kabe@sra-tohoku.co.jp
+>Release:        2.0.28
+>Organization:
+>Environment:
+
+SunOS 5.8 Generic_108528-05 sun4u sparc SUNW,Ultra-60
+gcc version 2.95.2 19991024 (release)
+>Description:
+
+*) <Directory ~ PATH> was silently ignored.
+*) <Directory ~> should cause syntax error, but it didn't.
+*) <Directory >  should cause syntax error, but it didn't.
+
+<DirectoryMatch PATH> still works.
+
+I don't quite make out the reason, but <Directory ~> was nullified
+in server/core.c 1.47->1.48 bigpatch.
+
+server/core.c:dirsection() checks for existence after "~" as
+
+	cmd->path = ap_getword_conf(cmd->pool, &arg);
+	if (!cmd->path) 
+		return "<Directory ~ > block must specify a path"
+
+but ap_getword_conf() NEVER returns NULL, so the predicate is always true,
+failing to detect missing PATH.
+
+If there was a PATH, it should compile it by
+	r = ap_pregcomp(cmd->pool, cmd->path ....)
+but mysteriously this line got missing after version 1.48.
+
+We may have to check every locations comparing ap_getword_conf() return
+to NULL to get rid of similar bugs lying around.
+
+>How-To-Repeat:
+
+1) Syntax check (by "httpd -t") with configuration
+	<Directory >
+
+2) Syntax check (by "httpd -t") with configuration
+	<Directory ~>
+
+3) Swap any <DirectoryMatch ...> with <Directory ~ ...>
+   and see if it's still in use.
+>Fix:
+
+#************************************* server/core.c <Directory> error patch
+##dist10
+# Fix:
+#	<Directory > didn't cause error.
+#	<Directory ~> didn't cause error.
+#	<Directory ~ PATH> was silently ignored. (<DirectoryMatch> was valid)
+#
+##find httpd-2_0_28 -name '*.dist10' -exec ./0diff {} \;
+/usr/local/gnu/bin/patch -p1 --backup --suffix=.dist1 << 'EOP'
+=============================== {
+diff -u httpd-2_0_28/server/core.c.dist10 httpd-2_0_28/server/core.c
+--- httpd-2_0_28/server/core.c.dist10	Thu Nov  8 14:29:36 2001
++++ httpd-2_0_28/server/core.c	Sun Nov 18 20:03:58 2001
+@@ -1261,7 +1261,7 @@
+ 
+     arg=apr_pstrndup(cmd->pool, arg, endp-arg);
+ 
+-    if (!arg) {
++    if (!arg || !arg[0]) { /*kabe: make "<Directory >" error*/
+         if (thiscmd->cmd_data)
+             return "<DirectoryMatch > block must specify a path";
+         else
+@@ -1273,8 +1273,9 @@
+ 
+     if (!strcmp(cmd->path, "~")) {
+ 	cmd->path = ap_getword_conf(cmd->pool, &arg);
+-        if (!cmd->path)
++        if (!cmd->path || !cmd->path[0]) /*kabe: make "<Directory ~>" error*/
+             return "<Directory ~ > block must specify a path";
++	r = ap_pregcomp(cmd->pool, cmd->path, REG_EXTENDED|USE_ICASE); /*kabe: (re-)enable "<Directory ~ path>"*/
+     }
+     else if (thiscmd->cmd_data) { /* <DirectoryMatch> */
+ 	r = ap_pregcomp(cmd->pool, cmd->path, REG_EXTENDED|USE_ICASE);
+=============================== }}}}
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Mon Mar 25 23:13:04 PST 2002
+State-Changed-Why:
+IIRC this is fixed in the forthcoming 2.0.34 release.
+
+Thanks for the report and patch!
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

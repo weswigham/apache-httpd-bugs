@@ -1,0 +1,175 @@
+Received: (qmail 20788 invoked by uid 2012); 18 Nov 1998 03:42:35 -0000
+Message-Id: <19981118034235.20787.qmail@hyperreal.org>
+Date: 18 Nov 1998 03:42:35 -0000
+From: Tim Costello <tjcostel@socs.uts.edu.au>
+Reply-To: tjcostel@socs.uts.edu.au
+To: apbugs@hyperreal.org
+Subject: [PATCH] <Directory /> sections ignored
+X-Send-Pr-Version: 3.2
+
+>Number:         3412
+>Category:       os-windows
+>Synopsis:       [PATCH] <Directory /> sections ignored
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Nov 17 19:50:01 PST 1998
+>Closed-Date:    Mon Oct 16 23:28:13 PDT 2000
+>Last-Modified:  Mon Oct 16 23:28:13 PDT 2000
+>Originator:     tjcostel@socs.uts.edu.au
+>Release:        1.3.4-dev
+>Organization:
+>Environment:
+WinNT 4.0, SP4, INTEL; MSVC 5.0, SP3
+>Description:
+WinNT (& 95/98) have no single root directory - they have one per volume. 
+
+Uncomment the lines from the WIN32 distribution version of access.conf, starting
+with "# XXXX disabled because it is currently broken on Win32" for <Directory />.
+"order deny,allow" has no effect. See Help for Win32 section in STATUS. 
+>How-To-Repeat:
+See description, above. 
+>Fix:
+If you think it's a good idea to change, the following patches may help. 
+
+*** ..\..\apache-1.3\src\main\http_request.c	Thu Nov 05 20:11:27 1998
+--- http_request.c	Wed Nov 18 03:25:32 1998
+***************
+*** 417,423 ****
+--- 417,433 ----
+  
+      /* j keeps track of which section we're on, see core_reorder_directories */
+      j = 0;
++ #ifdef WIN32
++     /* Should match <Directory> sections starting from '/', not 'e:/' (for example). 
++      * WIN32 does not have a single root directory - it has one for each filesystem,
++      * Traditionally, Apache has treated <Directory /> permissions as the base for 
++      * the whole server, and this tradition should probably be preserved. 
++      * See also changes to ap_make_dirstr_prefix() in src/main/util.c.
++      */
++     for (i = 0; i <= num_dirs; ++i) {
++ #else
+      for (i = 1; i <= num_dirs; ++i) {
++ #endif /* def WIN32 */
+          int overrides_here;
+          core_dir_config *core_dir = (core_dir_config *)
+              ap_get_module_config(per_dir_defaults, &core_module);
+***************
+*** 455,462 ****
+              entry_dir = entry_core->d;
+  
+              if (entry_core->r
+! 		|| !ap_os_is_path_absolute(entry_dir)
+                  || entry_core->d_components > i)
+                  break;
+  
+              this_conf = NULL;
+--- 465,478 ----
+              entry_dir = entry_core->d;
+  
+              if (entry_core->r
+!         		|| !ap_os_is_path_absolute(entry_dir)
+! #ifdef WIN32 
+!     /* To account for the top-level "/" directory when i == 0 */
+!                 || (entry_core->d_components > 1
+!                 && entry_core->d_components > i))
+! #else
+                  || entry_core->d_components > i)
++ #endif /* def WIN32 */
+                  break;
+  
+              this_conf = NULL;
+***************
+*** 467,473 ****
+              }
+              else if (!strcmp(test_dirname, entry_dir))
+                  this_conf = entry_config;
+- 
+              if (this_conf) {
+                  per_dir_defaults = ap_merge_per_dir_configs(r->pool,
+                                                           per_dir_defaults,
+--- 483,488 ----
+***************
+*** 475,480 ****
+--- 490,501 ----
+                  core_dir = (core_dir_config *)
+                             ap_get_module_config(per_dir_defaults, &core_module);
+              }
++ #ifdef WIN32
++     /* So that other top-level directory sections (e.g. "e:/") aren't
++        skipped when i == 0 */
++             else if (!i)
++                 break;
++ #endif /* def WIN32 */
+          }
+          overrides_here = core_dir->override;
+  
+*** ..\..\apache-1.3\src\main\util.c	Tue Nov 10 03:45:06 1998
+--- util.c	Wed Nov 18 01:04:15 1998
+***************
+*** 464,472 ****
+--- 464,483 ----
+   *    /a/b, 2  ==> /a/
+   *    /a/b, 3  ==> /a/b/
+   *    /a/b, 4  ==> /a/b/
++  *
++  * *** MODIFIED FOR WIN32, so that if n == 0, "/" is returned in d
++  * *** with n == 1 and s == "e:/test.html", "e:/" is returned in d
++  * *** See also directory_walk in src/main/http_request.c
+   */
+  API_EXPORT(char *) ap_make_dirstr_prefix(char *d, const char *s, int n)
+  {
++ #ifdef WIN32
++     if (!n) {
++         *d = '/';
++         *++d = 0;
++         return (d);
++     }
++ #endif /* def WIN32 */
+      for (;;) {
+  	*d = *s;
+  	if (*d == '\0') {
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: wrowe
+State-Changed-When: Sun Jul 16 19:42:04 PDT 2000
+State-Changed-Why:
+
+Jeff Tarwick and I were kicking this around for some time,
+and have yet to agree on the 'right' solution.
+
+The workaround is to define each 'root' path, including
+C:\, D:\, and \\ for network resources.
+
+Thank you for the patch, it is still under consideration
+(and I've tagged it analyzed to keep track of it.)
+
+State-Changed-From-To: analyzed-closed
+State-Changed-By: wrowe
+State-Changed-When: Mon Oct 16 23:28:13 PDT 2000
+State-Changed-Why:
+
+This issue is resolved in Apache 1.3.14, and the patch is
+currently undergoing testing in 2.0a8-dev.  Thank you for
+your report, your patch, and interest in the Apache project!
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

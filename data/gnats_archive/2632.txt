@@ -1,0 +1,195 @@
+Received: (qmail 24538 invoked by uid 2012); 15 Jul 1998 18:32:59 -0000
+Message-Id: <19980715183259.24537.qmail@hyperreal.org>
+Date: 15 Jul 1998 18:32:59 -0000
+From: Whit Blauvelt <whit@transpect.com>
+Reply-To: whit@transpect.com
+To: apbugs@hyperreal.org
+Subject: access.conf "allow from" erratic in domain name reverse lookups
+X-Send-Pr-Version: 3.2
+
+>Number:         2632
+>Category:       config
+>Synopsis:       access.conf "allow from" erratic in domain name reverse lookups
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jul 15 11:40:01 PDT 1998
+>Last-Modified:  Sun Jun 13 04:53:01 PDT 1999
+>Originator:     whit@transpect.com
+>Organization:
+>Release:        1.3
+>Environment:
+RedHat 5.1 stock installation with Apache 1.3 custom compile (including PHP 3.0.1 module).
+Kernel 2.0.34 on an i686.
+>Description:
+For a directory on the server, access permissions were set as follows:
+
+<Location /directory>
+deny from all
+allow from .homedomain.com
+</Location>
+
+The error and access logs showed that some requests from a particular IP in
+.homedomain.com were recognized properly and passed through, logged with the 
+alpha name of the accessing machine, while others (from the same IP/machine!)
+ended up in the error_log as denied, logged with just the IP of the machine.
+Doing an nslookup of that IP number from the system results in the reverse
+lookup happenning flawlessly. More often than not it's failing to let the 
+machine through based on the IP, but sometimes it gets the reverse lookup right 
+and displays the pages in that directory.
+>How-To-Repeat:
+If it's useful, I could set up the same mechanism on a test directory on that 
+machine for you. Would need your domain, of course.
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Wed Jul 15 11:42:02 PDT 1998
+State-Changed-Why:
+This is probably due to some DNS problem somewhere.  What is
+the real IP and hostname of the machine being denied?  Is
+it only happening for one machine, or for multiple ones?
+Is the machine running its own named locally, or is it
+using a remote system?  What is the contents of /etc/resolv.conf?
+
+From: Marc Slemko <marcs@znep.com>
+To: Whit Blauvelt <whit@transpect.com>
+Cc: apbugs@apache.org
+Subject: Re: config/2632: access.conf "allow from" erratic in domain name reverse lookups
+Date: Wed, 15 Jul 1998 17:35:01 -0700 (PDT)
+
+ On Wed, 15 Jul 1998, Whit Blauvelt wrote:
+ 
+ >  Marc, 
+ > 
+ >  This could be it then. Although it wouldn't explain why it works
+ >  sometimes. The IP is 208.203.240.9, and a lookup on that from anywhere
+ >  should produce gtwy1.fftw.com; however going backwards from the name to
+ >  the IP does not work (at least from public space). So you're saying that
+ >  Apache sees the IP, looks up the name, but then won't trust the name
+ >  unless it can then translate it back? This does make sense for security -
+ >  in which case the bug to trace would be that sometimes the get request is
+ >  accepted anyway.
+ 
+ There are two reverse DNS servers listed for 208.203.240 in the outside
+ world:
+ 
+ 240.203.208.in-addr.arpa.       21600   NS      BOND.FFTW.COM.
+ 240.203.208.in-addr.arpa.       21600   NS      AUTH02.NS.UU.NET.
+ 
+ However, auth02 claims to know nothing about that zone while bond.fftw.com
+ does give a reverse lookup.  This could cause what you are seeing.
+ 
+ > 
+ >  Whit
+ > 
+ >  > Apache does both forward and reverse lookups.  It has to be able to
+ >  lookup
+ >  > the name associated with the IP address, and the IP address associated
+ >  > with the name that it gets.
+ >  
+ > 
+ > 
+ >  \/\/ I-I I T 
+ >  Blauvelt
+ >  whit@transpect.com
+ > 
+ > 
+ 
+ 
+ 
+
+From: Whit Blauvelt <whit@transpect.com>
+To: marcs@znep.com
+Cc: apbugs@apache.org
+Subject: Re[2]: config/2632: access.conf "allow from" erratic in domain name reverse lookups
+Date: Wed, 15 Jul 1998 21:08:59 -0400
+
+  Marc,
+ 
+  I still don't see how that would explain the server presenting the page
+  _sometimes_. A lookup against bond.fftw.com goes like this:
+ 
+ \/\/ /etc# nslookup gtwy1.fftw.com bond.fftw.com   
+ Server:  bond.fftw.com
+ Address:  208.203.240.10
+ 
+ *** bond.fftw.com can't find gtwy1.fftw.com: Non-existent host/domain
+ 
+ \/\/ /etc# nslookup 208.203.240.9 bond.fftw.com
+ Server:  bond.fftw.com
+ Address:  208.203.240.10
+ 
+ Name:    gtwy1.fftw.com
+ Address:  208.203.240.9
+ 
+  In other words, it will derive the name from the number just fine, but not
+  the number from the name. Since the secondary name server seems not to be
+  there at all at the moment, I don't expect it's presenting the information
+  that the primary name server won't. So sometimes Apache seems to be
+  accepting the IP without the double lookup. Either that or occassionally
+  bond.fftw.com admits that it knows the number for the name.
+ 
+  Perhaps the real fix is "Use IP's - names aren't reliable." The only
+  limitation here would be when the name is a narrower specification than an
+  class C, and this is desired. 
+ 
+  > There are two reverse DNS servers listed for 208.203.240 in the outside
+  > world:
+  > 
+  > 240.203.208.in-addr.arpa.       21600   NS      BOND.FFTW.COM.
+  > 240.203.208.in-addr.arpa.       21600   NS      AUTH02.NS.UU.NET.
+  > 
+  > However, auth02 claims to know nothing about that zone while
+  bond.fftw.com
+  > does give a reverse lookup.  This could cause what you are seeing.
+  > 
+  
+   
+ 
+ 
+  \/\/ I-I I T 
+  Blauvelt
+  whit@transpect.com
+ 
+State-Changed-From-To: feedback-open
+State-Changed-By: lars
+State-Changed-When: Sat Nov 14 09:10:24 PST 1998
+State-Changed-Why:
+issue is still open...
+
+State-Changed-From-To: open-feedback
+State-Changed-By: lars
+State-Changed-When: Thu Feb 11 13:15:56 PST 1999
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: lars
+State-Changed-When: Sun Jun 13 04:53:00 PDT 1999
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

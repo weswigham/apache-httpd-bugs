@@ -1,0 +1,368 @@
+Received: (qmail 27810 invoked by uid 2012); 19 Oct 1998 23:14:21 -0000
+Message-Id: <19981019231421.27809.qmail@hyperreal.org>
+Date: 19 Oct 1998 23:14:21 -0000
+From: gordon pedersen <gordo@pclink.com>
+Reply-To: gordo@pclink.com
+To: apbugs@hyperreal.org
+Subject: Internal Error 500 - Premature end of script headers  *for every cgi script*
+X-Send-Pr-Version: 3.2
+
+>Number:         3250
+>Category:       general
+>Synopsis:       Internal Error 500 - Premature end of script headers  *for every cgi script*
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Oct 19 16:20:01 PDT 1998
+>Last-Modified:  Tue Oct 20 23:50:00 PDT 1998
+>Originator:     gordo@pclink.com
+>Organization:
+>Release:        1.3.2
+>Environment:
+The output from uname -a is:
+Linux cargo.araz.com 2.0.34 #1 Fri May 8 16:05:57 EDT 1998 i486 unknown
+
+(this is a Redhat 5.1 pretty vanilla installation; apache was compiled using
+these config parms (ie, cat config.status | tail -8)
+
+./configure \
+"--prefix=/usr/local/apache" \
+"--verbose" \
+"--enable-rule=SHARED_CORE" \
+"--enable-module=all" \
+"--enable-shared=max" \
+"$@"
+
+
+>Description:
+To the following summary I will prepend:
+1.	I tried installing once with mod_perl and mod_php activated/loaded, 
+	a second time without.
+2.	I am an apache novice but have looked at faqs, posts and documentation in
+	vain to solve this problem
+
+Subj:  Apache 1.3.2 (DSO), Linux 2.0.34: Premature end of script
+headers
+
+All CGI scripts return the message:  Premature end of script headers
+HTML scripts in the document root work fine.
+
+This is a new apache installation, no prior version has been run on
+this machine.
+-----------------
+Since this is a long post, here are my pleas up front!
+
+1.      What else can a I try/set/unset?
+2. If it seems as mysterious to you as I, where is another place 
+        that I can turn to for help?  Is there a better newsgroup or maybe
+        an apache-specific forum?
+3.      Is there a way for me to get different or more intensive logging
+        that could help resolve the cause of these scripts' failure?
+-----------------
+
+*********************************
+I'm trying to figure out if this is my configuration or if there's an
+apache bug here, so I've included detail on the troubleshooting I've
+done.  I am an apache novice, please forgive me if I miss something
+obvious.  I have read lots of posts on 'Premature end of script
+headers' and only one seems to correspond to my present conundrum, and
+that person has no solution yet.
+
+*********************************
+All CGI scripts are in the standard location for 1.3.2:
+/usr/local/apache/share/cgi-bin.  Permissions are owner, group and 
+world-readable and -executable for every directory in 
+the path and every  file in the cgi-bin directory (except the file
+named '403forbidden', for obvious reasons).
+
+*********************************
+Apache configuration options that I have checked and/or changed:
+
+A. srm.conf
+
+DocumentRoot /pub/intranet/htdocs
+ScriptAlias /cgi-bin/ /usr/local/apache/share/cgi-bin/
+AddHandler cgi-script pl
+AddHandler cgi-script .pl
+
+B.      access.conf
+
+<Directory />
+Options FollowSymLinks
+AllowOverride None
+</Directory>
+
+<Directory /pub/intranet/htdocs>
+Options Indexes FollowSymLinks
+</Directory>
+
+<Directory /usr/local/apache/share/cgi-bin>
+AllowOverride None
+Options         +ExecCGI
+</Directory>
+
+ScriptLog /usr/local/apache/var/log/script_log
+
+C. httpd.conf
+
+User nobody
+LogLevel notice
+
+D. There are no .htaccess files on the system.
+
+*********************************
+I run perl 5.00404, standard out of the box with Redhat 5.1.  It is
+found in /usr/bin/perl (verified using which).
+
+*********************************
+Following are details on some specific scripts that fail.
+
+All scripts used for testing are *unaltered* scripts that come from
+apache (test-cgi, printenv) or Lincoln Stein (plaintext3.pl).
+(Permissions may have been changed to ensure that scripts are 
+readable and executable by owner, group and world.)
+Inspect the example(s) at bottom for script details.
+
+All scripts run without error from the command line, viz:
+./test-cgi
+./printenv
+./plaintext3.pl
+(This holds true even when run as user 'nobody', which according to
+httpd.conf is how apache executes these scripts)
+
+All of them produce as their first line either 
+'Content-type: text/html' or 'Content-type: text/plain'.  In each
+case, the next line is blank.  
+
+This may be a permissions problem of some sort, but it's not obvious
+to me.  I can reproduce the '404 Not found' and '403 Forbidden' server
+error messages by linking to a nonexistent file and a file without
+world-read or -execute permission, respectively.  The latter yields
+the following message from the server (as displayed in the lynx
+browser I use for these tests):
+
+403 Forbidden
+...
+file permissions deny server execution:
+/usr/local/apache/share/cgi-bin/403forbidden
+
+**************************
+'test-cgi' example
+**************************
+A.      ls -l test-cgi:
+
+-r-xr-xr-x   1 root     root          757 Oct  9 00:04 /usr/local/apache/share/cgi-bin/test-cgi
+
+B.      head -10 test-cgi:
+
+#!/bin/sh
+
+# disable filename globbing
+set -f
+
+echo Content-type: text/plain
+echo
+
+echo CGI/1.0 test script report:
+echo
+
+C.      test-cgi output when run from command line (between the
+--start-- and --end-- tags is what's actually printed by script)
+(first 7 lines):
+--start--
+Content-type: text/plain
+
+CGI/1.0 test script report:
+
+argc is 0. argv is .
+
+SERVER_SOFTWARE =
+--end--
+
+D. apache script_log-style CGI-logging output
+
+%% [Mon Oct 19 16:26:37 1998] GET /cgi-bin/test-cgi HTTP/1.0
+%% 500 /usr/local/apache/share/cgi-bin/test-cgi
+%request
+Accept: text/html, text/plain, audio/x-pn-realaudio, application/applefile, application/x-metamail-patch, sun-deskset-message, mail-file, default, postscript-file, audio-file, x-sun-attachment, text/enriched, text/richtext, application/andrew-inset, x-be2, application/postscript, message/external-body, message/partial, application/pgp, application/pgp, video/mpeg, video/*, image/*, audio/*, audio/mod, text/sgml, */*;q=0.01
+Accept-Encoding: gzip, compress
+Accept-Language: en
+Host: localhost
+Negotiate: trans
+Referer: http://localhost/test.html
+User-Agent: Lynx/2.8rel.3 libwww-FM/2.14
+%response
+
+(As you can see, the response is null--always.)
+
+E. apache error_log output
+
+[Mon Oct 19 16:26:37 1998] [error] [client 127.0.0.1] Premature end of script headers: /usr/local/apache/share/cgi-bin/test-cgi
+
+**************************
+end test-cgi example
+**************************
+
+I also included a script or two stolen verbatim (with only 
+a change in permissions and ownership) from Lincoln Stein's 
+scripts at www.wiley.com/compbooks/stein/source.html.  
+I have installed version 2.42 of CGI.pm.
+
+**************************
+'plaintext3.pl' example
+**************************
+A.      ls -l plaintext3.pl:
+
+-rwxrwxrwx   1 root     root          278 Oct 15 18:13 /usr/local/apache/share/cgi-bin/plaintext3.pl
+
+B.      cat plaintext3.pl:
+
+#!/usr/bin/perl
+# Script: plaintext3.pl
+use CGI ':standard';
+$header = header('text/plain');
+print <<END_OF_TEXT;
+$header
+Jabberwock
+
+'Twas brillig, and the slithy toves
+Did gyre and gimbol in the wave.
+All mimsy were the borogroves,
+And the mome raths outgrabe....
+END_OF_TEXT
+
+C.      plaintext3.pl output when run from command line (between the
+--start-- and --end-- tags is what's actually printed by script)
+
+--start--
+Content-Type: text/plain
+
+
+Jabberwock
+
+'Twas brillig, and the slithy toves
+Did gyre and gimbol in the wave.
+All mimsy were the borogroves,
+And the mome raths outgrabe....
+--end--
+
+D. apache script_log-style CGI-logging output
+
+%% [Mon Oct 19 14:54:06 1998] GET /cgi-bin/plaintext3.pl HTTP/1.0
+%% 500 /usr/local/apache/share/cgi-bin/plaintext3.pl
+%request
+Accept: text/html, text/plain, audio/x-pn-realaudio, application/applefile, application/x-metamail-patch, sun-deskset-message, mail-file, default, postscript-file, audio-file, x-sun-attachment, text/enriched, text/richtext, application/andrew-inset, x-be2, application/postscript, message/external-body, message/partial, application/pgp, application/pgp, video/mpeg, video/*, image/*, audio/*, audio/mod, text/sgml, */*;q=0.01
+Accept-Encoding: gzip, compress
+Accept-Language: en
+Host: localhost
+Negotiate: trans
+Referer: http://localhost/test.html
+User-Agent: Lynx/2.8rel.3 libwww-FM/2.14
+%response
+
+E. apache error_log output
+
+[Mon Oct 19 14:54:06 1998] [error] [client 127.0.0.1] Premature end of script headers: /usr/local/apache/share/cgi-bin/plaintext3.pl
+
+**************************
+end plaintext3.pl example
+**************************
+>How-To-Repeat:
+Not sure what would help you here.  Our server is non-public at this point.
+>Fix:
+No!
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: gordon pedersen <gordo@pclink.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/3250: Internal Error 500 - Premature end of script
+ headers  *for every cgi script*
+Date: Mon, 19 Oct 1998 16:29:10 -0700 (PDT)
+
+ On 19 Oct 1998, gordon pedersen wrote:
+ 
+ > apache
+ > >Release:        1.3.2
+ 
+ As always, you should use the latest version when you can't make something
+ work.
+ 
+ > >Environment:
+ > The output from uname -a is:
+ > Linux cargo.araz.com 2.0.34 #1 Fri May 8 16:05:57 EDT 1998 i486 unknown
+ > 
+ > (this is a Redhat 5.1 pretty vanilla installation; apache was compiled using
+ > these config parms (ie, cat config.status | tail -8)
+ > 
+ > ./configure \
+ > "--prefix=/usr/local/apache" \
+ > "--verbose" \
+ > "--enable-rule=SHARED_CORE" \
+ > "--enable-module=all" \
+ > "--enable-shared=max" \
+ > "$@"
+ 
+ Are you _sure_ you are running the right copy of the binary and it is
+ compiled without mod_perl?  Unpack a completely new tree and try just
+ running "configure --prefix=/usr/local/apache" without enable-shared=max
+ or SHARED_CORE.
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Tue Oct 20 23:45:39 PDT 1998
+State-Changed-Why:
+mod_perl configuration issue.
+
+From: Marc Slemko <marcs@znep.com>
+To: Gordon Pedersen <gordo@pclink.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: general/3250: Internal Error 500 - Premature end of scriptheaders
+ *for every cgi script*]
+Date: Tue, 20 Oct 1998 23:45:47 -0700 (PDT)
+
+ On Tue, 20 Oct 1998, Gordon Pedersen wrote:
+ 
+ > Thanks for your suggestion, Marc.  Here's what works so far:
+ > 
+ > I downloaded and used apache 1.3.3 (although my guess is that scenarios
+ > below hold also for 1.3.2).
+ > 
+ > I can compile apache 1.3.3 either static or DSO and it will execute
+ > scripts ok.
+ > 
+ > But when I add mod_perl in as DSO module during the initial build, it
+ > will not execute scripts.  I got a fresh mod_perl-1.16.tar.gz from
+ > perl.apache.org today.  Used these parms to configure mod_perl:
+ > #!/bin/bash
+ > # 981020
+ > # make command for mod_perl.1.16
+ > perl Makefile.PL \
+ >    APACHE_SRC=../apache_1.3.3/src \
+ >    DO_HTTPD=1 \
+ >    USE_APACI=1 \
+ >    PREP_HTTPD=1 \
+ >    EVERYTHING=1
+ > 
+ >  I haven't tried mod_perl statically yet, nor adding it as module after
+ > building and testing apache without it.
+ 
+ Then that is a configuration issue with mod_perl and needs to be 
+ addressed there, not here.
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

@@ -1,0 +1,137 @@
+Received: (qmail 13165 invoked by uid 2012); 11 Mar 1999 01:13:36 -0000
+Message-Id: <19990311011336.13164.qmail@hyperreal.org>
+Date: 11 Mar 1999 01:13:36 -0000
+From: Rich Wales <richw@leland.stanford.edu>
+Reply-To: richw@leland.stanford.edu
+To: apbugs@hyperreal.org
+Subject: htpasswd uses small salt
+X-Send-Pr-Version: 3.2
+
+>Number:         4034
+>Category:       mod_auth-any
+>Synopsis:       htpasswd uses small salt
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Mar 10 17:20:01 PST 1999
+>Last-Modified:  Thu Mar 11 07:19:12 PST 1999
+>Originator:     richw@leland.stanford.edu
+>Organization:
+>Release:        1.3.4
+>Environment:
+FreeBSD wyattearp.stanford.edu 3.1-RELEASE FreeBSD 3.1-RELEASE #1: Sat Mar  6 11:20:34 PST 1999     richw@wyattearp.stanford.edu:/misc/3.1/usr/src/sys/compile/WYATTEARP  i386
+>Description:
+Encrypted passwords created by "htpasswd" use 12-bit (two-byte) salts, even on
+systems (such as FreeBSD) that use improved password hashing algorithms and can
+support longer salts.
+>How-To-Repeat:
+On a FreeBSD 2.x / 3.x system, configured to use MD5-based password hashing,
+create a password file with "htpasswd -c" and note that the salt (between the
+second and third dollar signs) is only two bytes long.  Compare with the pass-
+word strings in /etc/master.passwd, which use longer salts.
+>Fix:
+The "add_password" routine in htpasswd.c can be enhanced to generate a longer
+salt string.  Here is a patch that worked for me.  Alternatively, the author-
+ization code could be rewritten to use a different password scheme altogether.
+
+*** src/support/htpasswd.c.orig Mon Jul 13 04:32:58 1998
+--- src/support/htpasswd.c      Mon Sep 21 16:21:26 1998
+***************
+*** 12,17 ****
+--- 12,18 ----
+  
+  #include "ap_config.h"
+  #include <sys/types.h>
++ #include <sys/time.h>
+  #include <signal.h>
+  
+  #ifndef CHARSET_EBCDIC
+***************
+*** 114,120 ****
+  
+  static void add_password(char *user, FILE *f)
+  {
+!     char *pw, *cpw, salt[3];
+  
+      pw = strd((char *) getpass("New password:"));
+      if (strcmp(pw, (char *) getpass("Re-type new password:"))) {
+--- 115,122 ----
+  
+  static void add_password(char *user, FILE *f)
+  {
+!     char *pw, *cpw, salt[7];
+!     struct timeval tv;
+  
+      pw = strd((char *) getpass("New password:"));
+      if (strcmp(pw, (char *) getpass("Re-type new password:"))) {
+***************
+*** 123,131 ****
+            unlink(tn);
+        exit(1);
+      }
+!     (void) srand((int) time((time_t *) NULL));
+!     to64(&salt[0], rand(), 2);
+!     salt[2] = '\0';
+      cpw = (char *)crypt(pw, salt);
+      free(pw);
+      fprintf(f, "%s:%s\n", user, cpw);
+--- 125,138 ----
+            unlink(tn);
+        exit(1);
+      }
+! 
+!     /* generate longer salt (in case enhanced password code can use it) */
+!     gettimeofday(&tv, 0);
+!     srand((unsigned) tv.tv_sec);
+!     to64(&salt[0], rand(), 3);
+!     to64(&salt[3], tv.tv_usec, 3);
+!     salt[6] = '\0';
+! 
+      cpw = (char *)crypt(pw, salt);
+      free(pw);
+      fprintf(f, "%s:%s\n", user, cpw);
+***************
+*** 220,225 ****
+--- 227,236 ----
+          {
+                  fputs(command,f);
+          } 
++ 
++       /* get rid of any excess leftover text in password file */
++       fflush(f);
++       ftruncate(fileno(f), ftell(f));
+  
+      fclose(f);
+      fclose(tfp);
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Thu Mar 11 07:19:12 PST 1999
+State-Changed-Why:
+
+This has already been changed for the next release after
+1.3.4.  The '-m' flag will result in the use of an MD5
+hash based upon FreeBSD's, and the use of a 64-bit salt
+in all cases.
+Thanks for the report and for using Apache!
+
+Class-Changed-From-To: sw-bug-change-request
+Class-Changed-By: coar
+Class-Changed-When: Thu Mar 11 07:19:12 PST 1999
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

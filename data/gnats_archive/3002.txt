@@ -1,0 +1,125 @@
+Received: (qmail 13175 invoked by uid 2012); 14 Sep 1998 14:06:27 -0000
+Message-Id: <19980914140627.13174.qmail@hyperreal.org>
+Date: 14 Sep 1998 14:06:27 -0000
+From: Paul Courbis <Paul.Courbis@crm.mot.com>
+Reply-To: Paul.Courbis@crm.mot.com
+To: apbugs@hyperreal.org
+Subject: When using apache as a proxy, Proxy-authorization not passed to local CGI
+X-Send-Pr-Version: 3.2
+
+>Number:         3002
+>Category:       mod_cgi
+>Synopsis:       When using apache as a proxy, Proxy-authorization not passed to local CGI
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Sep 14 18:10:01 PDT 1998
+>Last-Modified:  Sun Sep 27 09:15:48 PDT 1998
+>Originator:     Paul.Courbis@crm.mot.com
+>Organization:
+>Release:        1.3.0
+>Environment:
+Operating system : HPUX 10.20
+Compiler gcc
+>Description:
+My problem is a little bit complex :
+I wanna setup apache to be a proxy before another proxies that request an
+ authentification and to run a cgi for each query for statistics purposes.
+I defined "www.crm.mot.com" to be the proxy of my Netscape client, added a
+rewrite rule :
+ 
+RewriteRule  ^proxy:(.*) http://www.crm.mot.com/cgi-bin/proxy.cgi?$1 [P]
+
+My problem is that my CGI does not receive the Proxy-authorization from the 
+client even if I enabled the -DSECURITY_HOLE_PASS_AUTHORIZATION at compile time.
+
+What is strange is that it works for direct queries but not for queries using
+the server as a proxy... Peharps the [P] (force proxy flag) does not forward
+all the headers to the proxy module ? But as, as far as I understand, this
+header is parsed into env variables (main/util_script.c:ap_add_common_vars()),
+it should be ?
+
+Actually, if I manually query the server for the local cgi and passing the proxy 
+authentification, the script get it :
+GET /cgi-bin/proxy.cgi HTTP/1.0  
+Proxy-Connection: Keep-Alive  
+User-Agent: Mozilla/4.05 [en] (X11; I; Linux 2.0.32 i586)  
+Host: www.courbis.com  
+Accept: image/gif, image/x-xbitmap, image/jpeg, image/pjpeg, image/png, */*  
+Accept-Language: en   
+Accept-Charset: iso-8859-1,*,utf-8  
+Proxy-authorization: Basic XXXXXXXXXXXXXXXXX
+
+=> proxy.cgi receives the authentification HTTP_PROXY_AUTHORIZATION
+
+If I ask for :
+GET http://www.courbis.com/ HTTP/1.0  
+Proxy-Connection: Keep-Alive  
+User-Agent: Mozilla/4.05 [en] (X11; I; Linux 2.0.32 i586)  
+Host: www.courbis.com  
+Accept: image/gif, image/x-xbitmap, image/jpeg, image/pjpeg, image/png, */*  
+Accept-Language: en   
+Accept-Charset: iso-8859-1,*,utf-8  
+Proxy-authorization: Basic XXXXXXXXXXXXXXXXXXXXX
+
+then proxy.cgi doesn't receive it !
+
+(I thought I'd find it in HTTP_PROXY_AUTHORIZATION or REDIRECTED_HTTP_PROXY_AUTHORIZATION)
+
+Could you help please ?
+>How-To-Repeat:
+I can send you the CGI code, despite a simple shell script :
+#!/bin/sh
+echo Content-type: text/plain
+echo
+env | sort
+
+can show you the problem. The easied way to reproduce it is to  use a version
+of apache compiled with proxy/module & -DSECURITY_HOLE_PASS_AUTHORIZATION. Then
+to setup the abose RewriteRule and to telnet the above queries to the
+server...
+>Fix:
+Well, I'd like to, but...
+>Audit-Trail:
+Comment-Added-By: coar
+Comment-Added-When: Sun Sep 27 09:15:48 PDT 1998
+Comment-Added:
+[More information from submitter]
+Ok a little follow up :
+-----------------------
+
+I solved the problem by using the following directive :
+RewriteRule  ^proxy:(http:.*) /cgi-bin/proxy.cgi?$1 [PT]
+
+But, it showed me another problem. We have the followin config
+
+
+Network===apache proxy======>proxy WITH authentification====internet
+                \\
+                  ==========>proxy WITHOUT authentification===other intranet
+
+When we try to go out to the internet, the client receives an authentification
+request. But when it answers, the Proxy-authorization field is blocked by
+the apache proxy (modules/proxy/proxy_http.c). There should be a flag in
+the ProxyRemote directive telling if a remote proxy should get the
+authorization field or not... As a temporary patch, I removed some
+code from modules/proxy/proxy_http.c, but ANY remote server receives the
+authorization field which is NOT secure at all !
+
+        Paul
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

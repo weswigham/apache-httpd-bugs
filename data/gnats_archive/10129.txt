@@ -1,0 +1,128 @@
+Received: (qmail 5800 invoked by uid 501); 11 Mar 2002 13:15:47 -0000
+Message-Id: <20020311131546.5799.qmail@apache.org>
+Date: 11 Mar 2002 13:15:46 -0000
+From: David Begley <d.begley@uws.edu.au>
+Reply-To: d.begley@uws.edu.au
+To: submit@bugz.apache.org
+Subject: "ExtendedStatus On" causes Apache to crash on startup
+X-Send-Pr-Version: 3.110
+
+>Number:         10129
+>Category:       general
+>Synopsis:       "ExtendedStatus On" causes Apache to crash on startup
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Mar 11 05:20:00 PST 2002
+>Closed-Date:    Wed Mar 13 08:37:46 PST 2002
+>Last-Modified:  Wed Mar 13 08:37:46 PST 2002
+>Originator:     d.begley@uws.edu.au
+>Release:        2.0.32
+>Organization:
+>Environment:
+Operating System:
+  Sun Solaris 2.7 (SPARC)
+Compiler:
+  GNU CC (gcc) 2.8.1
+Additional Third-Party Apache Modules:
+  (none)
+>Description:
+Apache configured/built as per:
+
+$ CC="gcc" ; CFLAGS="-O -pipe -g" ; LDFLAGS="-g" ; export CC CFLAGS LDFLAGS
+$ ./configure \
+> --disable-shared --enable-so --enable-info --enable-status \
+> --enable-dav --enable-dav-fs --enable-expires --enable-rewrite \
+> --prefix=/opt/cwis
+
+With "ExtendedStatus On" in httpd.conf, Apache/2.0.28 works but 2.0.32 core
+dumps;  error_log reports:
+
+  seg fault or similar nasty error detected in the parent process
+
+Running GDB over the core file reports:
+
+#0  0x6b0dc in ap_update_child_status_from_indexes (child_num=0, thread_num=0,
+    status=1, r=0x0) at scoreboard.c:415
+415             if (status == SERVER_READY || status == SERVER_DEAD) {
+(gdb) backtrace
+#0  0x6b0dc in ap_update_child_status_from_indexes (child_num=0, thread_num=0,
+    status=1, r=0x0) at scoreboard.c:415
+#1  0x5cc78 in make_child (s=0x17d6c0, slot=0) at prefork.c:756
+#2  0x5cd90 in startup_children (number_to_start=5) at prefork.c:830
+#3  0x5d0c0 in ap_mpm_run (_pconf=0x5, plog=0x128680, s=0x17d6c0)
+    at prefork.c:1021
+#4  0x62b1c in main (argc=1562304, argv=0xe8600) at main.c:501
+
+The (for now) work-around is to disable extended status reporting - Apache is
+then able to successfully fire-up and start answering queries.
+
+Basic Apache compilation/configuration information:
+
+# ./httpd -V
+Server version: Apache/2.0.32
+Server built:   Mar 11 2002 23:05:40
+Server's Module Magic Number: 20020128:0
+Architecture:   32-bit
+Server compiled with....
+ -D APACHE_MPM_DIR="server/mpm/prefork"
+ -D APR_HAS_MMAP
+ -D APR_USE_FCNTL_SERIALIZE
+ -D APR_USE_PTHREAD_SERIALIZE
+ -D APR_HAS_OTHER_CHILD
+ -D AP_HAVE_RELIABLE_PIPED_LOGS
+ -D HTTPD_ROOT="/opt/cwis"
+ -D SUEXEC_BIN="/opt/cwis/bin/suexec"
+ -D DEFAULT_ERRORLOG="logs/error_log"
+ -D SERVER_CONFIG_FILE="conf/httpd.conf"
+
+Any additional information required?
+>How-To-Repeat:
+No URL necessary - Apache doesn't even manage to start-up in the first place.
+>Fix:
+As above - the temporary work-around is to disable extended status reporting;
+longer-term, however, this is an unacceptable "solution".
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: trawick
+State-Changed-When: Wed Mar 13 08:37:46 PST 2002
+State-Changed-Why:
+I was able to readily reproduce the problem with vanilla 2.0.32 on Solaris, but the problem is no longer present in the current code.
+
+I think that these three patches, committed after 2.0.32, are sufficient for solving the problem:
+
+http://cvs.apache.org/viewcvs.cgi/apr/shmem/unix/shm.c.diff?r1=1.14&r2=1.15
+
+http://cvs.apache.org/viewcvs.cgi/apr/include/apr_general.h.diff?r1=1.65&r2=1.66
+
+http://cvs.apache.org/viewcvs.cgi/apr/memory/unix/apr_pools.c.diff?r1=1.154&r2=1.155
+
+(I have not verified that they are the only post-2.0.32 fixes needed; it seems simpler/safer to me to grab CVS HEAD
+if you want to test the fix before the next release of
+Apache 2.0.)
+
+Thanks for your report, and thanks for using Apache 2.0!
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

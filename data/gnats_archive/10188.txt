@@ -1,0 +1,112 @@
+Received: (qmail 16128 invoked by uid 501); 15 Mar 2002 02:38:38 -0000
+Message-Id: <20020315023838.16127.qmail@apache.org>
+Date: 15 Mar 2002 02:38:38 -0000
+From: Eli White <ewhite@stsci.edu>
+Reply-To: ewhite@stsci.edu
+To: submit@bugz.apache.org
+Subject: Vary header not always set/sent when it should be
+X-Send-Pr-Version: 3.110
+
+>Number:         10188
+>Category:       mod_rewrite
+>Synopsis:       Vary header not always set/sent when it should be
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Mar 14 18:40:00 PST 2002
+>Closed-Date:
+>Last-Modified:
+>Originator:     ewhite@stsci.edu
+>Release:        1.3.22
+>Organization:
+apache
+>Environment:
+> uname -a
+SunOS forge.stsci.edu 5.5.1 Generic_103640-34 sun4m sparc SUNW,SPARCstation-4
+
+> gcc -v
+Reading specs from /opt/gnu/lib/gcc-lib/sparc-sun-solaris2.4/2.7.2/specs
+gcc version 2.7.2
+>Description:
+In a case with a Rewrite rule based upon a header, it of course, should send a 'Vary' header to let caches know that it cna change as the header changes.
+
+However, it seems (at least in this one case), that it only is sending the 'Vary' header if the RewriteCond actually matches.  This defeats the purpose, as now someone (a proxy-cache perhaps) can request the page, not happen to 'this time' trigger the RewriteCond, and not realize that it can 'Vary'.
+
+Example, the following rules:
+  RewriteCond %{HTTP_USER_AGENT} X11
+  RewriteRule ^/ingest/ingest.css$ /ingest/unix.css
+
+The above rules, obviously, are meant to be a redementary way to send a different stylesheet to Unix browsers, than other Browsers.
+
+But by the logic of the 'Vary' header.  This means that ANY TIME /ingest/ingest.css is requested, a 'Vary: User-Agent' should be sent to inform the client that the content could change, should a different User-Agent be sent.
+
+However, let's test the following now via telnet:
+> telnet host.host.com 80
+Trying xxx.xxx.xxx.xx ...
+Connected to host.host.com.
+Escape character is '^]'.
+GET /ingest/ingest.css HTTP/1.0
+User-Agent: Blah Blah (X11; Blah)
+ 
+HTTP/1.1 200 OK
+Date: Fri, 15 Mar 2002 02:32:46 GMT
+Server: Apache/1.3.22 (Unix) mod_gzip/1.3.19.1a PHP/4.1.2
+Vary: User-Agent
+Last-Modified: Fri, 15 Mar 2002 02:11:29 GMT
+ETag: "e7b712-387-3c915851"
+Accept-Ranges: bytes
+Content-Length: 903
+Connection: close
+Content-Type: text/css
+
+<Content Follows>
+
+In this case, the Vary is correctly set.
+However, now let's try a 'non-matching case':
+
+forge> telnet host.host.com 80
+Trying xxx.xxx.xxx.xx...
+Connected to host.host.com.
+Escape character is '^]'.
+GET /ingest/ingest.css HTTP/1.0
+User-Agent: My Own Browser that is on a PC
+ 
+HTTP/1.1 200 OK
+Date: Fri, 15 Mar 2002 02:34:51 GMT
+Server: Apache/1.3.22 (Unix) mod_gzip/1.3.19.1a PHP/4.1.2
+Last-Modified: Sun, 30 Dec 2001 22:00:00 GMT
+ETag: "e7b70a-386-3c2f8e60"
+Accept-Ranges: bytes
+Content-Length: 902
+Connection: close
+Content-Type: text/css
+
+Now this time, the RewriteCond didn't catch, and the 'Vary' didn't get set.  Again, this is a bad thing, because this file DOES in fact vary with the User-Agent, and therefore it should be reported as such.  A cache giving the last request would have thought it ok to cache it, causing problems when the X11 browser grabs a version from the cache.
+>How-To-Repeat:
+See Above.
+>Fix:
+The 'Vary' needs to be set upon any files the RewriteRule matches, irregardless of whether the RewriteCond matches.  The RewriteCond should only be used to note what it 'can vary on', not to determine whether to send the 'Vary'.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

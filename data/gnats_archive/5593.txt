@@ -1,0 +1,97 @@
+Received: (qmail 74897 invoked by uid 65534); 15 Jan 2000 22:11:26 -0000
+Message-Id: <20000115221126.74896.qmail@locus.apache.org>
+Date: 15 Jan 2000 22:11:26 -0000
+From: Sotiris Tsimbonis <apache@rosehill-1.irc.gr>
+Reply-To: apache@rosehill-1.irc.gr
+To: submit@bugz.apache.org
+Subject: Apache generated strange messages in system's logfile
+X-Send-Pr-Version: 3.110
+
+>Number:         5593
+>Category:       general
+>Synopsis:       Apache generated strange messages in system's logfile
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Jan 15 14:20:00 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     apache@rosehill-1.irc.gr
+>Release:        1.3.9
+>Organization:
+apache
+>Environment:
+> uname -a
+Linux nana 2.0.38 #2 Tue Aug 31 17:03:48 EET DST 1999 i586 unknown
+> gcc -v
+Reading specs from /usr/lib/gcc-lib/i486-unknown-linux-gnulibc1/2.7.2.3/specs
+gcc version 2.7.2.3 
+> uptime
+ 12:06am  up 67 days, 15:20,  1 user,  load average: 0.37, 0.57, 0.65
+>Description:
+Some time ago httpd died generating this in error_log
+[Sun Jan  2 18:00:22 2000] [emerg] (14)Bad address: fcntl: F_SETLKW: Error freeing accept lock, exiting!  Perhaps you need to use the LockFile directive to place your lock file on a local disk!
+[Sun Jan  2 18:00:22 2000] [alert] Child 13132 returned a Fatal error...
+Apache is exiting!
+[Sun Jan  2 18:30:21 2000] [error] (32)Broken pipe: accept: (client socket)
+
+Although no filesystems are NFS mounted, I defined LockFile and restarted the httpd.
+It didn't generate the var/log/httpd.lock, but it seemed to work just fine.
+
+The unusual thing is that today, this came up in the system's message log:
+Jan 15 18:34:26 nana kernel: general protection: 0000 
+Jan 15 18:34:26 nana kernel: CPU:    0 
+Jan 15 18:34:26 nana kernel: EIP:    0010:[posix_locks_deadlock+52/88] 
+Jan 15 18:34:26 nana kernel: EFLAGS: 00010282 
+Jan 15 18:34:26 nana kernel: eax: f000ef6f   ebx: 0301ec0c   ecx: 014bbc0c   edx: 017327d8 
+Jan 15 18:34:26 nana kernel: esi: 011d4f60   edi: 033d872c   ebp: 00000001   esp: 011d4ef4 
+Jan 15 18:34:26 nana kernel: ds: 0018   es: 0018   fs: 002b   gs: 002b   ss: 0018 
+Jan 15 18:34:26 nana kernel: Process httpd (pid: 779, process nr: 21, stackpage=011d4000) 
+Jan 15 18:34:26 nana kernel: Stack: 017327d8 001316d7 0301ec0c 014bbc0c 00000000 080ce288 033d872c 080ce288  
+Jan 15 18:34:26 nana kernel:        ffffffdd 033d872c 080ce288 00000000 00000000 00000000 033615d8 03d19958  
+Jan 15 18:34:26 nana kernel:        00130f6d 033d872c 011d4f60 00000001 033d872c 4000630c 0000001a 00000001  
+Jan 15 18:34:26 nana kernel: Call Trace: [posix_lock_file+191/836] [fcntl_setlk+409/452] [sys_fcntl+684/848] [system_call+85/128]  
+Jan 15 18:34:26 nana kernel: Code: 39 48 14 75 0b 8b 42 14 39 d8 74 cd 89 c1 eb c5 8b 40 0c 39  
+Jan 15 18:35:11 nana kernel: Unable to handle kernel paging request at virtual address e3000000 
+Jan 15 18:35:11 nana kernel: current->tss.cr3 = 01be1000, %cr3 = 01be1000 
+Jan 15 18:35:11 nana kernel: *pde = 00000000 
+Jan 15 18:35:11 nana kernel: Oops: 0000 
+Jan 15 18:35:11 nana kernel: CPU:    0 
+Jan 15 18:35:11 nana kernel: EIP:    0010:[wake_up+44/244] 
+Jan 15 18:35:11 nana kernel: EFLAGS: 00010216 
+Jan 15 18:35:11 nana kernel: eax: 0101733f   ebx: 23000000   ecx: 0101733f   edx: 017327d8 
+Jan 15 18:35:11 nana kernel: esi: 017327d8   edi: 0101733b   ebp: 03382ed0   esp: 03382ec4 
+Jan 15 18:35:11 nana kernel: ds: 0018   es: 0018   fs: 002b   gs: 002b   ss: 0018 
+Jan 15 18:35:11 nana kernel: Process httpd (pid: 712, process nr: 5, stackpage=03382000) 
+Jan 15 18:35:11 nana kernel: Stack: 01017327 017327d8 00000000 0396de50 00130b89 0101733f 017327d8 03382f60  
+Jan 15 18:35:11 nana kernel:        7fffffff 00131a1c 017327d8 00000000 017327d8 0013183f 0396de50 00000000  
+Jan 15 18:35:11 nana kernel:        00000000 080ce298 033d872c 080ce298 7fffffff 7fffffff 080ce202 00000001  
+Jan 15 18:35:11 nana kernel: Call Trace: [locks_wake_up_blocks+25/64] [locks_delete_lock+52/124] [posix_lock_file+551/836] [fcntl_setlk+409/452] [sys_fcntl+684/848] [system_call+85/128]  
+Jan 15 18:35:11 nana kernel: Code: 8b 13 8b 5b 04 85 d2 74 76 8b 02 83 f8 02 74 07 8b 02 83 f8  
+
+httpd seems to still serve clients normally, and the system seems normal as well.
+>How-To-Repeat:
+
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

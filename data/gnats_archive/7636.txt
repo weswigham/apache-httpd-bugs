@@ -1,0 +1,295 @@
+Received: (qmail 40923 invoked by uid 501); 26 Apr 2001 18:17:31 -0000
+Message-Id: <20010426181731.40922.qmail@apache.org>
+Date: 26 Apr 2001 18:17:31 -0000
+From: Taketo Kabe <kabe@sra-tohoku.co.jp>
+Reply-To: kabe@sra-tohoku.co.jp
+To: submit@bugz.apache.org
+Subject: byterange on SSI puts excess buckets after error response
+X-Send-Pr-Version: 3.110
+
+>Number:         7636
+>Category:       mod_include
+>Synopsis:       byterange on SSI puts excess buckets after error response
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Apr 26 11:20:00 PDT 2001
+>Closed-Date:    Fri Jul 13 08:22:24 PDT 2001
+>Last-Modified:  Fri Jul 13 08:22:24 PDT 2001
+>Originator:     kabe@sra-tohoku.co.jp
+>Release:        2.0.17-alpha
+>Organization:
+>Environment:
+
+SunOS masamune 5.8 Generic_108528-05 sun4u sparc SUNW,Ultra-60
+gcc version 2.95.2 19991024 (release)
+
+httpd-2_0_17-alpha --enable-include --enable-cgid
+
+>Description:
+
+When you request a byterange on SSI file, the response will
+put excess things after proper response head/body on
+"416 Request not satisfiable" error.
+
+This will screw Keepalive byte syncronization, as the excess
+are not included in Content-Length.
+
+
+One problem is that for byterange range checking, the BYTERANGE
+filter uses original file's size (not the size after SSI process)
+for upper bound checking...but it's not a big deal for now
+(This is because (request_rec*)r->clength is set to filesize by
+ default_hander() and mod_include/INCLUDE filter didn't reset this)
+
+When you request a byterange starting beyond the filesize,
+byterange filter correctly (or incorrectly, whatever) detects this
+as out-of-bound and responds 416, sending out an error bucket and EOS
+down the filter chain.
+
+(Now for my guessing, not proved)
+After the byterange filter returns from ap_pass_brigade(),
+INCLUDE filter which is an upstream, continues to push on
+the remaining contents.
+This appears as the excess things after the error response body.
+
+INCLUDE -------------> BYTERANGE --------> CONTENT_LENGTH .....
+	pass initial bucket
+	(likely things before
+	 SSI tags)
+		checks for byterange;
+		it's out of range
+		so send out 416 error bucket,
+		remove itself from filter chain
+
+					error bucket propagated down,
+					returning 416 error response
+
+		return from ap_pass_brigade()
+
+	return from ap_pass_brigade()
+	continue to push remaining
+	buckets (the #exec and
+	other trailing things)
+
+	                (removed)
+					excess things tacked after
+					error response
+
+
+To fix this, I guess we need to have a way to notify the UPSTREAM filters,
+not just downstream filters by sending down EOS, that the filter chain
+has stuck.
+((request_rec*)r->eos_sent is not designed for this so you can't use it)
+
+CGI and plain files also could have suffered from this, but fortunately
+these currently only use a single bucket and had nothing to push 
+after the error.
+
+>How-To-Repeat:
+
+* Prepare an SSI file with perhaps #execs
+  (having mod_include split it into multiple buckets is important I guess)
+
+	<HTML>
+	<BODY>
+	<!-- doublequote needed for cmd param for Apache1 -->
+	<!--#exec cmd="/usr/ucb/printenv" -->
+	</BODY>
+	</HTML>
+
+* Then retrieve this with a byterange request, which starts
+  beyond the size of the original file:
+	GET /whereever/youve/putit.shtml HTTP/1.0
+	Range: bytes=200-
+
+* The result will be 416 (for roughly the same reason for PR#7635),
+  but excess things (likely everything after #exec) will be 
+  appended to the response after the error body.
+
+Example:
+
+kabe% telnet 130.34.233.159 80
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+GET /~kabe/t/c.shtml HTTP/1.0
+Range: bytes=200-
+
+HTTP/1.1 416 Requested Range Not Satisfiable
+Date: Thu, 26 Apr 2001 17:34:21 GMT
+Server: Apache/2.0.16 (Unix)
+Content-Length: 387
+Connection: close
+Content-Type: text/html; charset=iso-8859-1
+
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<HTML><HEAD>
+<TITLE>416 Requested Range Not Satisfiable</TITLE>
+</HEAD><BODY>
+<H1>Requested Range Not Satisfiable</H1>
+None of the range-specifier values in the Range
+request-header field overlap the current extent
+of the selected resource.
+<HR>
+<ADDRESS>Apache/2.0.16 Server at www.bio.is.tohoku.ac.jp Port 80</ADDRESS>
+</BODY></HTML>
+DATE_GMT=Thursday, 26-Apr-2001 17:34:21 GMT
+DATE_LOCAL=Friday, 27-Apr-2001 02:34:21 JST
+DOCUMENT_NAME=c.shtml
+DOCUMENT_PATH_INFO=
+....
+
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+
+From: <kabe@sra-tohoku.co.jp>
+To: submit@bugz.apache.org, apache-bugdb@apache.org, apbugs@apache.org
+Cc: kabe@sra-tohoku.co.jp
+Subject: mod_include/7636: [PATCH] byterange on SSI puts excess buckets after error response
+Date: Tue, 8 May 2001 06:48:00 +0900 (JST)
+
+ After some investigating, I finally came up to a patch that is small enough
+ to remedy the problem;
+ but this is really a hack. This patch only fixes those filter chain stops
+ by an error bucket.
+ 
+ The Real Solution probably is to
+ . objectify output_filter chain (not relying on (ap_filter_t*)f->next )
+ . don't reuse the output_filter chain (by reset_filters()) for error response
+ . provide a way to notify upstream filters that the chain has stuck
+ 
+ Some filters, including mod_include filter doesn't check the return
+ of ap_pass_brigade(), so we couldn't rely on returning errors from
+ intermediate filter; upstream filters still try to push on.
+ 
+ ##dist5
+ #
+ #****** modules/http/http_protocol.c SSI/Range excess bucket elimination patch
+ #
+ # When using byterange requests on SSI documents,
+ # the SSI(INCLUDE) filter tries to push on things even after
+ # the byterange filter passed down the error bucket.
+ # This patch will nullify all (ap_filter_t*)f->next in reset_filter()
+ # on reusing filter chain for error response,
+ # which will disable existing filters including the upstream INCLUDE
+ # filter, pass down excess things via ap_pass_brigade().
+ #
+ # This is a hack; not all filter-chain-stuck circumstances may
+ # come to ap_send_error_response()->reset_filters() process.
+ #
+ /usr/local/gnu/bin/patch -p1 --backup --suffix=.dist6 << 'EOP'
+ =============================== {{{
+ diff -u httpd-2_0_17/modules/http/http_protocol.c.dist6 httpd-2_0_17/modules/http/http_protocol.c
+ --- httpd-2_0_17/modules/http/http_protocol.c.dist6	Wed Apr 25 20:05:01 2001
+ +++ httpd-2_0_17/modules/http/http_protocol.c	Mon May  7 21:26:45 2001
+ @@ -1698,6 +1698,7 @@
+          }
+          else {
+              ap_remove_output_filter(f);
+ +	    f->next = NULL;	/* don't let upstream filters push on */
+              f = f->next;
+          }
+      }
+ =============================== }
+ EOP
+ 
+ 
+
+From: <kabe@sra-tohoku.co.jp>
+To: submit@bugz.apache.org, apache-bugdb@apache.org, apbugs@apache.org
+Cc: kabe@sra-tohoku.co.jp
+Subject: mod_include/7636: [PATCH] byterange on SSI puts excess buckets after error response
+Date: Tue, 8 May 2001 06:48:00 +0900 (JST)
+
+ After some investigating, I finally came up to a patch that is small enough
+ to remedy the problem;
+ but this is really a hack. This patch only fixes those filter chain stops
+ by an error bucket.
+ 
+ The Real Solution probably is to
+ . objectify output_filter chain (not relying on (ap_filter_t*)f->next )
+ . don't reuse the output_filter chain (by reset_filters()) for error response
+ . provide a way to notify upstream filters that the chain has stuck
+ 
+ Some filters, including mod_include filter doesn't check the return
+ of ap_pass_brigade(), so we couldn't rely on returning errors from
+ intermediate filter; upstream filters still try to push on.
+ 
+ ##dist5
+ #
+ #****** modules/http/http_protocol.c SSI/Range excess bucket elimination patch
+ #
+ # When using byterange requests on SSI documents,
+ # the SSI(INCLUDE) filter tries to push on things even after
+ # the byterange filter passed down the error bucket.
+ # This patch will nullify all (ap_filter_t*)f->next in reset_filter()
+ # on reusing filter chain for error response,
+ # which will disable existing filters including the upstream INCLUDE
+ # filter, pass down excess things via ap_pass_brigade().
+ #
+ # This is a hack; not all filter-chain-stuck circumstances may
+ # come to ap_send_error_response()->reset_filters() process.
+ #
+ /usr/local/gnu/bin/patch -p1 --backup --suffix=.dist6 << 'EOP'
+ =============================== {{{
+ diff -u httpd-2_0_17/modules/http/http_protocol.c.dist6 httpd-2_0_17/modules/http/http_protocol.c
+ --- httpd-2_0_17/modules/http/http_protocol.c.dist6	Wed Apr 25 20:05:01 2001
+ +++ httpd-2_0_17/modules/http/http_protocol.c	Mon May  7 21:26:45 2001
+ @@ -1698,6 +1698,7 @@
+          }
+          else {
+              ap_remove_output_filter(f);
+ +	    f->next = NULL;	/* don't let upstream filters push on */
+              f = f->next;
+          }
+      }
+ =============================== }
+ EOP
+ 
+ 
+
+From: <kabe@sra-tohoku.co.jp>
+To: apbugs@Apache.Org
+Cc:  
+Subject: Re: mod_include/7636: byterange on SSI puts excess buckets after error response
+Date: Fri, 13 Jul 2001 19:42:46 +0900 (JST)
+
+ This bug is fixed by optimization of the above region (reset_filters())
+ in 2.0.20. Please close this report.
+ 
+ (The upstream INCLUDES still do push excess buckets onto the filters
+  now detached from request_rec, but not a big deal unless the SSI
+  expands really large)
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: rbb
+State-Changed-When: Fri Jul 13 08:22:20 PDT 2001
+State-Changed-Why:
+User reports problem has been solved in version 2.0.20.
+
+Thank you for using Apache.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

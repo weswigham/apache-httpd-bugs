@@ -1,0 +1,143 @@
+Received: (qmail 28386 invoked by uid 2012); 3 Mar 1999 01:11:24 -0000
+Message-Id: <19990303011124.28385.qmail@hyperreal.org>
+Date: 3 Mar 1999 01:11:24 -0000
+From: Rajesh Kamath <rajesh_r_kamath@hotmail.com>
+Reply-To: rajesh_r_kamath@hotmail.com
+To: apbugs@hyperreal.org
+Subject: Problem with loading a class in a jar file with a directory structure
+X-Send-Pr-Version: 3.2
+
+>Number:         3987
+>Category:       mod_jserv
+>Synopsis:       Problem with loading a class in a jar file with a directory structure
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    jserv
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Mar  2 17:20:01 PST 1999
+>Closed-Date:    Mon Sep 03 13:03:41 PDT 2001
+>Last-Modified:  Mon Sep 03 13:03:41 PDT 2001
+>Originator:     rajesh_r_kamath@hotmail.com
+>Release:        1.3.4
+>Organization:
+>Environment:
+Apache 1.3.4 , JServ 1.0b3, Windows NT, VC 5.0 compiler
+>Description:
+Assume a class in a jar/zip file (foo1.jar) with the following 
+directory structure:
+foo/Test.class
+
+assume a servlet zone: test
+
+assume the following entries in the jserv.properties:
+zones=test
+test.properties=C:\Program Files\Apache Group\Apache JServ\conf\test.properties
+
+assume that the repository of the servlet zone contains the 
+jar/zip file - namely foo1.jar. viz. the following entries in 
+the test.properties:
+repositories=C:\...\foo1.jar
+
+assume the entry in the httpd.conf: 
+ApJServMount /servlets/test /test
+
+assume the servername: http://www.cheeroot.com
+
+When I place this jar/zip file in the repository of a servlet zone and try to 
+access it with a URL: 
+http://www.cheeroot.com/servlets/test/foo/Test
+This gives the ClassNotFoundException: class foo not found
+
+I tried all combinations of the URL: foo.Test, etc. but got the same exception.
+
+The problem does not exist if the class does not reside within a directory in 
+the jar/zip file. I did not test it with a jar file with more directory depths 
+(ex: foo/foo1/Test.class), but i think that it could give more information 
+about the problem. (please look at the suggestion for more input)
+>How-To-Repeat:
+Refer to the full description.
+>Fix:
+I could not debug it fully since I couldn't spend enough time on it... but 
+this is what i found from debugging the C and the Java module... hope it is 
+helpful.
+
+The java part of the code gets the wrong information. It gets servlet 
+name as "foo" and path info as "Test" and the correct servlet zone "test". 
+This can be verified via the request headers in the jserv log file. or in 
+(JServConnection.java -- readData at switch(id) 
+when id == C for servlet zone/name and 
+when id == E for path info)
+
+I believe that the error lies in jserv_translate_match:
+When a match is found for a servlet zone, in this case: 
+mountpoint = "/servlets/test/" 
+URI = "/servlets/test/foo/Test"
+
+it enters the "else if ((uri[x-1]=='/') & (mnt[y]=='\0')) { " block 
+and since mount->zone == "/servlets/test" finally comes to the following 
+point:
+
+        x = 0;
+        while (tmp[x] != '/' && tmp[x] != 0)
+            x++;
+        if (tmp[x] == '/') {
+            r->path_info = ap_pstrdup(r->pool,tmp+x);
+            tmp[x] = 0;
+        }
+        req->zone=mount->zone;
+        req->servlet=ap_pstrdup(r->pool,tmp);
+        return req;
+
+I could not understand what was done here, but this generated the incorrect 
+servlet name and the path info for the servlet. 
+The error as I perceive it:
+The servlet name :
+should be:
+the string from end of uri to the last / in uri (or the start of uri whichever 
+occurs first)
+as opposed to:
+the string from beginning of uri to the next / in uri (or the end of uri 
+whichever occurs first). This is one of the reasons why the class which does 
+not have a directory depth does not produce an error.
+
+the path info:
+should be:
+the string from the start of uri to the last / in uri (if one exists else "")
+as opposed to:
+the string from the first / in uri to the end of uri
+
+I did not debug this in complete detail but this loop definitely seemed out of 
+place. I would really appreciate it if you could check this out and drop me a 
+line in case you find something out or point any mistakes that I might have 
+made.
+
+Thanks in advance,
+Cheeroot
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Mon Sep  3 13:03:40 PDT 2001
+State-Changed-Why:
+JServ 1.1.2 and Apache 1.3.20 solved many, many bugs.
+Assuming this specific issue is resolved, please reply
+if it must be reopened for the current release.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

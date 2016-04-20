@@ -1,0 +1,149 @@
+Received: (qmail 2431 invoked by uid 501); 23 Jan 2002 14:15:56 -0000
+Message-Id: <20020123141556.2430.qmail@apache.org>
+Date: 23 Jan 2002 14:15:56 -0000
+From: Greg King <gking@packetstorm.org>
+Reply-To: gking@packetstorm.org
+To: submit@bugz.apache.org
+Subject: multiple include files lead to data corruption
+X-Send-Pr-Version: 3.110
+
+>Number:         9570
+>Category:       mod_include
+>Synopsis:       multiple include files lead to data corruption
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan 23 06:20:00 PST 2002
+>Closed-Date:    
+>Last-Modified:  Thu Jan 24 05:20:01 PST 2002
+>Originator:     gking@packetstorm.org
+>Release:        1.3.22
+>Organization:
+apache
+>Environment:
+Solaris 8 x86, latest patch cluster. Compiler GCC 2.95.3. Apache 1.3.22 with mod_ssl, and php 4
+>Description:
+I am mirroring a site that uses includes. The directory settings are
+
+<Directory /home/somedir>
+    Options IncludesNOEXEC SymLinksIfOwnerMatch
+    AllowOverride None
+    Order Allow,Deny
+    Allow from all
+</Directory>
+
+Virtual Host settings are
+
+<VirtualHost    x.x.x.x>
+DirectoryIndex index.html index.htm index.shtml
+AddType text/html .shtml
+AddHandler server-parsed .shtml
+DocumentRoot    /home/somedir
+ServerName      foo.bar
+LogLevel warn
+LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
+LogFormat "%h %l %u %t \"%r\" %>s %b" common
+LogFormat "%{Referer}i -> %U" referer
+LogFormat "%{User-agent}i" agent
+CustomLog /var/log/weblogs/pss.access_log combined
+ErrorLog  /var/log/weblogs/pss.error_log
+php_admin_value doc_root "/home/somedir"
+php_admin_flag safe_mode on
+php_admin_value open_basedir "."
+</VirtualHost>
+
+The main page, index.shtml calls multiple include files like so:
+
+<table border=0 cellpadding=2 cellspacing=1 width="100%">
+<!--#include file="page1.html" -->
+</table>
+
+...
+
+<table border=0 cellpadding=2 cellspacing=1 width="100%">
+<!--#include file="page7.html" -->
+</table>
+
+Inlcude file pages 1-3 work fine. Pages 4 and on are in some wierd encoding. Exmaple
+
+‹Ì”]K1†ïû+”êÎ§»°Ë$²J +h…Š—'3 ›I†äŒ²ÿ¾3ÚVAï»ïËIòä¼! ¡pž­"ÃÊ¢ø"D¥#+@jçTÊúŽ•/* (_•èdp!2áPîù—†"oHý³Ÿ% èlç™Ó-t˜kÿeØQã¼/Âáûù-ZwÙˆø§Î'~iµ†Ü ‡rU½®—ëê®wPEÕä¤ø4Å_‹¢®—ËOÔTŒE&ê–¢açU±Ê¦dUYe‹\vö\XŸKÑË¼ qìS6y—£Ç^3ôÁú0¦ÉìõáãPhÇROƒ óÈªÕ¢^œ]û¿#Uüqb£zëm¢ˆâÑÀÕüÁhøqµ=1lAJ0¡ª£a¼xa¼Þn½‚»Ýæ Ô88+‘ægNFÛºŽ¤t4Ð‹×Ô¯BJ§ ¦¥Sòa¯Á…®ÓÇ“ÿ’oœƒÐÎ]áI¿C{û~ÿÿˆle«Ê 
+
+>How-To-Repeat:
+please email me for the url (email in this form) this is a mirror and until working properly i do not want to open it to potential attacks if this is more than a minor issue.
+>Fix:
+no idea ive tried setting options all in the httpd.conf file with no affect. Also checking google showed nothing. Though in the apache bug report database there are two other include issues one being PR 9473 that is similar sounding but with another dependency (proxypass) which is not being used here.
+>Release-Note:
+>Audit-Trail:
+
+From: gking <gking@packetstorm.org>
+To: apbugs@Apache.Org
+Cc: apbugs@Apache.Org
+Subject: mod_include/9570:
+Date: Thu, 24 Jan 2002 06:52:43 -0600 (CST)
+
+ I also have tried making the shtml configurations global and removed them
+ from the directory and virtual settings of the site area only.
+ 
+ same results
+ 
+ Also the browsers testing are IE6 and Netscape 6
+ 
+ -Greg
+ 
+ 
+ On 23 Jan 2002 submit@bugz.apache.org wrote:
+ 
+ > Thank you very much for your problem report.
+ > It has the internal identification `mod_include/9570'.
+ > The individual assigned to look at your
+ > report is: apache.
+ >
+ > >Category:       mod_include
+ > >Responsible:    apache
+ > >Synopsis:       multiple include files lead to data corruption
+ > >Arrival-Date:   Wed Jan 23 06:20:00 PST 2002
+ >
+ 
+
+From: gking <gking@packetstorm.org>
+To: apbugs@Apache.Org
+Cc: apbugs@Apache.Org
+Subject: mod_include/9570:
+Date: Thu, 24 Jan 2002 07:36:03 -0600 (CST)
+
+ ok found the cause. i dont know if its apache or just something i wasnt
+ aware of.
+ 
+ the includes that didnt come up were files with the execute bits set. some
+ of the files didnt have those bits set and would work.
+ 
+ strange since they arent executing anything. they were just simple
+ includes.
+ 
+ this occured with options Includes and with IncludesNoexec as well
+ 
+ -Greg
+ 
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

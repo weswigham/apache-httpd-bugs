@@ -1,0 +1,101 @@
+From nobody@hyperreal.com  Thu May 22 15:00:22 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id PAA25023;
+	Thu, 22 May 1997 15:00:22 -0700 (PDT)
+Message-Id: <199705222200.PAA25023@hyperreal.com>
+Date: Thu, 22 May 1997 15:00:22 -0700 (PDT)
+From: Bryan Hart <bryan@eai.com>
+Reply-To: bryan@eai.com
+To: apbugs@hyperreal.com
+Subject: CGI processes that run certain outside programs hang indefinately
+X-Send-Pr-Version: 3.2
+
+>Number:         607
+>Category:       mod_cgi
+>Synopsis:       ScriptLog and stderr don't work well together
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          analyzed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu May 22 15:10:00 1997
+>Last-Modified:  Sat Feb 14 04:43:31 PST 1998
+>Originator:     bryan@eai.com
+>Organization:
+>Release:        1.2 and 1.3
+>Environment:
+IRIX 5.3 IP22 mips
+>Description:
+when certain process as run via `` in perl5.003 scripts, the first couple instances will run, but the rest will hang until the server timeout.
+
+A specific example is a program called image alchemy running under the environment above.
+calling successive instances of this program with backticks(``) works fine under 1.1.1
+but fails under all 1.2 betas I've tried (b4-10).
+>How-To-Repeat:
+unfortunately my script only runs inside my company's firewall :(
+>Fix:
+I haven't found any workarounds and there is nothing in the error or cgi logs.
+Could I be running into resource limits??  (These processes are very CPU and memory intense).
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sun Jun 22 21:25:43 PDT 1997
+State-Changed-Why:
+Yep I really would suspect resource limits.  Long running programs
+aren't really suited for running inside CGI ... it's not the most stable
+interface.  Apache sets up a "daemon" environment for CGIs, and it's
+possible that some of your programs are expecting something like
+a controlling tty and barfing when they can't get it.  Or some
+similar problem... at any rate this probably isn't an apache
+problem.
+
+Thanks for using Apache!
+Dean
+State-Changed-From-To: closed-suspended
+State-Changed-By: dgaudet
+State-Changed-When: Wed Jul 23 10:26:15 PDT 1997
+State-Changed-Why:
+This does turn out to be an apache bug.  The user was running
+ScriptLog.  ScriptLog is broken -- it creates a deadlock situation
+with any CGI that generates a lot of stderr output.  For example,
+if the CGI generates enough to fill the stderr pipe() then the CGI
+will block writing that pipe.  But the webserver is probably blocked
+reading the stdout pipe from the CGI and deadlock occurs.
+
+The solution to this (and other problems) is do to full event
+style select() processing for CGIs.  Roy suggests this wait
+until 2.0 and SFIO... Dean pretty much agrees with that.
+
+Dean
+Release-Changed-From-To: 1.2b10 IRIX-1.2
+Release-Changed-By: dgaudet
+Release-Changed-When: Wed Jul 23 10:26:15 PDT 1997
+Category-Changed-From-To: general-mod_cgi
+Category-Changed-By: dgaudet
+Category-Changed-When: Wed Jul 23 10:26:15 PDT 1997
+
+State-Changed-From-To: suspended-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sun Nov  9 01:48:41 PST 1997
+State-Changed-Why:
+This scriptlog bug should be dealt with, which means it
+should be in "analysed" not "suspended".
+
+The fix is ugly, it involves doing full async i/o on 5
+descriptors ... but it's something that mod_cgi needs to
+have done for other good reasons.
+
+Dean
+Synopsis-Changed-From: CGI processes that run certain outside programs hang indefinately
+Synopsis-Changed-To: ScriptLog and stderr don't work well together
+Synopsis-Changed-By: dgaudet
+Synopsis-Changed-When: Sat Feb 14 04:43:31 PST 1998
+Release-Changed-From-To: 1.2-1.2 and 1.3
+Release-Changed-By: dgaudet
+Release-Changed-When: Sat Feb 14 04:43:31 PST 1998
+>Unformatted:
+
+

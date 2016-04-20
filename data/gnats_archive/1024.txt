@@ -1,0 +1,175 @@
+From apwww@hyperreal.org  Wed Aug 20 11:49:57 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id LAA09783;
+	Wed, 20 Aug 1997 11:49:57 -0700 (PDT)
+Message-Id: <199708201849.LAA09783@hyperreal.org>
+Date: Wed, 20 Aug 1997 11:49:57 -0700 (PDT)
+From: Lars Eilebrecht <sfx@unix-ag.org>
+Reply-To: sfx@unix-ag.org
+To: apbugs@hyperreal.org
+Subject: SSL CONNECT does not work, when ProxyRemote is used.
+X-Send-Pr-Version: 3.2
+
+>Number:         1024
+>Category:       mod_proxy
+>Synopsis:       SSL CONNECT does not work, when ProxyRemote is used.
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Aug 20 11:50:01 1997
+>Last-Modified:  Thu Sep  4 17:38:29 PDT 1997
+>Originator:     sfx@unix-ag.org
+>Organization:
+>Release:        1.3a2
+>Environment:
+any
+
+>Description:
+It seems that mod_proxy is not able to
+handle a CONNECT request if a remote proxy is specified via
+ProxyRemote. The request is forwarded to the remote proxy,
+but always runs into a timeout.
+
+Someone needs to take a closer look at the SSL tunneling
+implementation in proxy_connect.c
+>How-To-Repeat:
+
+>Fix:
+No, I tried to find the bug myself but failed..
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Lars Eilebrecht <sfx@unix-ag.org>
+Subject: Re: mod_proxy/1024: SSL CONNECT does not work, when ProxyRemote is used.
+Date: Wed, 20 Aug 1997 14:38:33 -0600 (MDT)
+
+ 
+ On Wed, 20 Aug 1997, Lars Eilebrecht wrote:
+ 
+ > >Description:
+ > It seems that mod_proxy is not able to
+ > handle a CONNECT request if a remote proxy is specified via
+ > ProxyRemote. The request is forwarded to the remote proxy,
+ > but always runs into a timeout.
+ 
+ Correct.  The correct behavior as it is now would be to not allow
+ ProxyRemotes for CONNECTs since we don't support them; it is a one line
+ change to do that, but it doesn't help if you need to use ProxyRemote.
+ 
+ The problem is that the proxy doesn't send the response until the whole
+ connection is complete. 
+ 
+ Does the below patch make it work for you?  Note that some of the code is
+ mildly bogus, completely untested, and written by someone who has never
+ used the CONNECT method in his life.  I think the below is the right
+ track, anyway.
+ 
+ Index: mod_proxy.c
+ ===================================================================
+ RCS file: /export/home/cvs/apachen/src/modules/proxy/mod_proxy.c,v
+ retrieving revision 1.21
+ diff -u -r1.21 mod_proxy.c
+ --- mod_proxy.c	1997/08/01 04:58:01	1.21
+ +++ mod_proxy.c	1997/08/20 20:34:19
+ @@ -332,7 +332,10 @@
+  	       strncmp(url, ents[i].scheme, strlen(ents[i].scheme)) == 0))
+  	{
+  /* we only know how to handle communication to a proxy via http */
+ -	    if (strcmp(ents[i].protocol, "http") == 0)
+ +	    if (r->method_number == M_CONNECT)
+ +		rc = proxy_connect_handler(r, cr, url, ents[i].hostname,
+ +		    ents[i].port);
+ +	    else if (strcmp(ents[i].protocol, "http") == 0)
+  		rc = proxy_http_handler(r, cr, url, ents[i].hostname,
+  		    ents[i].port);
+  	    else rc = DECLINED;
+ @@ -349,7 +352,7 @@
+   */
+      /* handle the scheme */
+      if (r->method_number == M_CONNECT)
+ -	return proxy_connect_handler(r, cr, url);
+ +	return proxy_connect_handler(r, cr, url, NULL, 0);
+      if (strcmp(scheme, "http") == 0)
+  	return proxy_http_handler(r, cr, url, NULL, 0);
+      if (strcmp(scheme, "ftp") == 0)
+ Index: mod_proxy.h
+ ===================================================================
+ RCS file: /export/home/cvs/apachen/src/modules/proxy/mod_proxy.h,v
+ retrieving revision 1.18
+ diff -u -r1.18 mod_proxy.h
+ --- mod_proxy.h	1997/08/17 13:56:26	1.18
+ +++ mod_proxy.h	1997/08/20 20:34:20
+ @@ -237,7 +237,8 @@
+  
+  /* proxy_connect.c */
+  
+ -int proxy_connect_handler(request_rec *r, struct cache_req *c, char *url);
+ +int proxy_connect_handler(request_rec *r, struct cache_req *c, char *url, 
+ +    const char *proxyhost, int proxyport);
+  
+  /* proxy_ftp.c */
+  
+ Index: proxy_connect.c
+ ===================================================================
+ RCS file: /export/home/cvs/apachen/src/modules/proxy/proxy_connect.c,v
+ retrieving revision 1.13
+ diff -u -r1.13 proxy_connect.c
+ --- proxy_connect.c	1997/08/17 13:56:27	1.13
+ +++ proxy_connect.c	1997/08/20 20:34:23
+ @@ -90,7 +90,8 @@
+   */ 
+   
+  int
+ -proxy_connect_handler(request_rec *r, struct cache_req *c, char *url)
+ +proxy_connect_handler(request_rec *r, struct cache_req *c, char *url,
+ +    const char *proxyhost, int proxyport)
+  {
+      struct sockaddr_in server;
+      struct in_addr destaddr;
+ @@ -142,8 +143,8 @@
+  
+      Explain2("CONNECT to %s on port %d", host, port);
+   
+ -    server.sin_port = htons(port);
+ -    err = proxy_host2addr(host, &server_hp);
+ +    server.sin_port = proxyport ? htons(proxyport) : htons(port);
+ +    err = proxy_host2addr(proxyhost ? proxyhost : host, &server_hp);
+      if (err != NULL)
+  	return proxyerror(r, err); /* give up */
+   
+ @@ -170,9 +171,17 @@
+   
+      Explain0("Returning 200 OK Status");
+   
+ -    rvputs(r, "HTTP/1.0 200 Connection established\015\012", NULL);
+ -    rvputs(r, "Proxy-agent: ", SERVER_VERSION, "\015\012\015\012", NULL);
+ -    bflush(r->connection->client);
+ +    if (proxyport) {
+ +	ap_snprintf(buffer, sizeof(buffer), "%s\015\012", r->the_request);
+ +	write(sock, buffer, strlen(buffer));
+ +	ap_snprintf(buffer, sizeof(buffer), 
+ +	    "Proxy-agent: %s\015\012\015\012", SERVER_VERSION);
+ +	write(sock, buffer, strlen(buffer));
+ +    } else {
+ +	rvputs(r, "HTTP/1.0 200 Connection established\015\012", NULL);
+ +	rvputs(r, "Proxy-agent: ", SERVER_VERSION, "\015\012\015\012", NULL);
+ +	bflush(r->connection->client);
+ +    }
+  
+      while (1) /* Infinite loop until error (one side closes the connection) */
+      {
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Thu Sep  4 17:38:28 PDT 1997
+State-Changed-Why:
+Patch applied to 1.3-dev source to fix this problem.
+>Unformatted:
+
+
+

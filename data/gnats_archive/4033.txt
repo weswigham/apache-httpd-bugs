@@ -1,0 +1,434 @@
+Received: (qmail 25106 invoked by uid 2012); 10 Mar 1999 23:10:04 -0000
+Message-Id: <19990310231004.25105.qmail@hyperreal.org>
+Date: 10 Mar 1999 23:10:04 -0000
+From: John-Mark Gurney <gurney_j@4j.lane.edu>
+Reply-To: gurney_j@4j.lane.edu
+To: apbugs@hyperreal.org
+Subject: HTTP/0.9 requests yield invalid response
+X-Send-Pr-Version: 3.2
+
+>Number:         4033
+>Category:       general
+>Synopsis:       HTTP/0.9 requests yield invalid response
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Mar 10 15:20:00 PST 1999
+>Last-Modified:  Fri Mar 12 11:41:44 PST 1999
+>Originator:     gurney_j@4j.lane.edu
+>Organization:
+>Release:        1.3.[34]
+>Environment:
+doesn't matter, it's a problem with the resquest parser/response generator:
+FreeBSD sapphire.edcenter.lane.edu 3.0-RELEASE FreeBSD 3.0-RELEASE #4: Tue Jan  5 14:14:55 PST 1999     jmg@sapphire.edcenter.lane.edu:/usr/src/sys/compile/sapphire  i386
+>Description:
+if you generate a HTTP request using the HTTP/0.9 protocol it will send a Full
+HTTP/1.1 response instead of the simple response as mandated by rfc1945...
+the fix is to return a simple request when you recieve a HTTP version of 0.9.
+>How-To-Repeat:
+telnet somehostrunningapache 80
+GET /somefile HTTP/0.9
+
+<here is where it should dump then entity body but instead it returns a full response>
+>Fix:
+I haven't looked at the code, but simply don't send the headers when you recieve
+a HTTP/0.9 request.
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Wed Mar 10 15:21:51 PST 1999
+State-Changed-Why:
+Erm... a HTTP/0.9 request, by definition, doesn't have
+a version number in the request but is just in the form
+"GET /foo".  Do you have some reason for thinking that
+specifying it should work?
+
+From: Marc Slemko <marcs@znep.com>
+To: John-Mark Gurney <gurney_j@4j.lane.edu>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: general/4033: HTTP/0.9 requests yield invalid response
+Date: Thu, 11 Mar 1999 11:43:23 -0800 (PST)
+
+ On Thu, 11 Mar 1999, John-Mark Gurney wrote:
+ 
+ > > Synopsis: HTTP/0.9 requests yield invalid response
+ > > 
+ > > State-Changed-From-To: open-feedback
+ > > State-Changed-By: marc
+ > > State-Changed-When: Wed Mar 10 15:21:51 PST 1999
+ > > State-Changed-Why:
+ > > Erm... a HTTP/0.9 request, by definition, doesn't have
+ > > a version number in the request but is just in the form
+ > > "GET /foo".  Do you have some reason for thinking that
+ > > specifying it should work?
+ > 
+ > yes, the rfc specificly states this (section 6.1):
+ >    A Simple-Response should only be sent in response to an HTTP/0.9
+ >    Simple-Request or if the server only supports the more limited
+ >    HTTP/0.9 protocol.
+ > 
+ > also, earlier it is stated that you can't upgrade the major version
+ > of a http request only the minor, meaning you should AT LEAST return
+ > an error and not service the request...
+ 
+ Except that a HTTP/0.9 request, by definition, is NOT a request that says
+ "GET /foo HTTP/0.9".
+ 
+ It is arguable that perhaps you should special case things to allow the
+ invalid "GET /adf HTTP/0.9" request, but... that is NOT a HTTP/0.9
+ request.
+ 
+
+From: John-Mark Gurney <gurney_j@4j.lane.edu>
+To: Marc Slemko <marcs@znep.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: general/4033: HTTP/0.9 requests yield invalid response
+Date: Thu, 11 Mar 1999 12:09:18 -0800
+
+ Marc Slemko scribbled this message on Mar 11:
+ > On Thu, 11 Mar 1999, John-Mark Gurney wrote:
+ > 
+ > > > Synopsis: HTTP/0.9 requests yield invalid response
+ > > > 
+ > > > State-Changed-From-To: open-feedback
+ > > > State-Changed-By: marc
+ > > > State-Changed-When: Wed Mar 10 15:21:51 PST 1999
+ > > > State-Changed-Why:
+ > > > Erm... a HTTP/0.9 request, by definition, doesn't have
+ > > > a version number in the request but is just in the form
+ > > > "GET /foo".  Do you have some reason for thinking that
+ > > > specifying it should work?
+ > > 
+ > > yes, the rfc specificly states this (section 6.1):
+ > >    A Simple-Response should only be sent in response to an HTTP/0.9
+ > >    Simple-Request or if the server only supports the more limited
+ > >    HTTP/0.9 protocol.
+ > > 
+ > > also, earlier it is stated that you can't upgrade the major version
+ > > of a http request only the minor, meaning you should AT LEAST return
+ > > an error and not service the request...
+ > 
+ > Except that a HTTP/0.9 request, by definition, is NOT a request that says
+ > "GET /foo HTTP/0.9".
+ > 
+ > It is arguable that perhaps you should special case things to allow the
+ > invalid "GET /adf HTTP/0.9" request, but... that is NOT a HTTP/0.9
+ > request.
+ 
+ oh well, you can close it, but it doesn't matter, the spec says that
+ a difference of major version numbers isn't transport compatible, and
+ apache is assuming that major version 0 of http is transport compatible
+ with major version 1...  it doesn't matter that it's a malformed HTTP/0.9
+ request, apache shouldn't return an HTTP/1.x response as it either should
+ return a simple request or return an invalid request...
+ 
+ -- 
+ John-Mark Gurney
+ Eugene 4J School District
+
+From: Rodent of Unusual Size <Ken.Coar@Golux.Com>
+To: John-Mark Gurney <gurney_j@4j.lane.edu>
+Cc: Apache bug database <apbugs@Apache.Org>
+Subject: Re: general/4033: HTTP/0.9 requests yield invalid response
+Date: Thu, 11 Mar 1999 15:23:24 -0500
+
+ John-Mark Gurney wrote:
+ > 
+ >  oh well, you can close it, but it doesn't matter, the spec says that
+ >  a difference of major version numbers isn't transport compatible, and
+ >  apache is assuming that major version 0 of http is transport compatible
+ >  with major version 1...  it doesn't matter that it's a malformed HTTP/0.9
+ >  request, apache shouldn't return an HTTP/1.x response as it either should
+ >  return a simple request or return an invalid request...
+ 
+ You're missing the point, I think.  It *isn't* a 'malformed HTTP/0.9
+ request,' because HTTP/0.9 requests *never* have a version number.
+ If anything, it's a malformed HTTP/1.0 request by virtue of having
+ included the version number at all, and the malformation is an
+ unrecognised version string.  In which case an HTTP/1.0 response
+ is perfectly valid.  If a request doesn't include a version
+ identifier, it's HTTP/0.9 by definition.  If it does, it *has*
+ to be something other than HTTP/0.9.
+ -- 
+ #ken    P-)}
+ 
+ Ken Coar                    <http://Web.Golux.Com/coar/>
+ Apache Group member         <http://www.apache.org/>
+ "Apache Server for Dummies" <http://Web.Golux.Com/coar/ASFD/>
+
+From: John-Mark Gurney <gurney_j@4j.lane.edu>
+To: Rodent of Unusual Size <Ken.Coar@Golux.Com>
+Cc: Apache bug database <apbugs@Apache.Org>
+Subject: Re: general/4033: HTTP/0.9 requests yield invalid response
+Date: Thu, 11 Mar 1999 13:35:31 -0800
+
+ Rodent of Unusual Size scribbled this message on Mar 11:
+ > John-Mark Gurney wrote:
+ > > 
+ > >  oh well, you can close it, but it doesn't matter, the spec says that
+ > >  a difference of major version numbers isn't transport compatible, and
+ > >  apache is assuming that major version 0 of http is transport compatible
+ > >  with major version 1...  it doesn't matter that it's a malformed HTTP/0.9
+ > >  request, apache shouldn't return an HTTP/1.x response as it either should
+ > >  return a simple request or return an invalid request...
+ > 
+ > You're missing the point, I think.  It *isn't* a 'malformed HTTP/0.9
+ > request,' because HTTP/0.9 requests *never* have a version number.
+ 
+ even though the specs say this (section 6):
+ "A Simple-Response should only be sent in response [or case deleted] if
+ the server only supports the more limited HTTP/0.9 protocol."
+ 
+ > If anything, it's a malformed HTTP/1.0 request by virtue of having
+ > included the version number at all, and the malformation is an
+ 
+ yes if I generate a request of:
+ GET /somefile HTTP/1293.398
+ 
+ then you are ligitimate in returning a HTTP/1.x response if that is
+ the "highest" major version of the speficiation...  but you server
+ understands the HTTP/0.9 spec, so if you recieve a request that says
+ it's HTTP/0.9, you have to respond with an HTTP/0.9 response...
+ 
+ > unrecognised version string.  In which case an HTTP/1.0 response
+ > is perfectly valid.  If a request doesn't include a version
+ > identifier, it's HTTP/0.9 by definition.  If it does, it *has*
+ > to be something other than HTTP/0.9.
+ 
+ where in the specification does it say that HTTP/0.9 can not generate
+ a full-request?
+ 
+ oh well, until you can state in the spec that I am not correct, I'll
+ still feel the way I do...  you might as well close the pr as it
+ seems that we are not going to come to an agreement... lets agree
+ to disagree...
+ 
+ and thanks for all the work on Apache... it's a great product and will
+ continue to use it...
+ 
+ -- 
+ John-Mark Gurney
+ Eugene 4J School District
+
+From: Rodent of Unusual Size <Ken.Coar@Golux.Com>
+To: John-Mark Gurney <gurney_j@4j.lane.edu>
+Cc: Apache bug database <apbugs@Apache.Org>
+Subject: Re: general/4033: HTTP/0.9 requests yield invalid response
+Date: Thu, 11 Mar 1999 17:47:18 -0500
+
+ John-Mark Gurney wrote:
+ > 
+ >  > You're missing the point, I think.  It *isn't* a 'malformed HTTP/0.9
+ >  > request,' because HTTP/0.9 requests *never* have a version number.
+ > 
+ >  even though the specs say this (section 6):
+ >  "A Simple-Response should only be sent in response [or case deleted] if
+ >  the server only supports the more limited HTTP/0.9 protocol."
+ 	:
+ >  where in the specification does it say that HTTP/0.9 can not generate
+ >  a full-request?
+ 
+ It is made clear by implication throughout RFC 1945 that 'simple-request'
+ and 'simple-response' refer to HTTP/0.9.  It is not explicitly stated,
+ but there are several specific cases supporting this interpretation.
+ 
+ RFC 1945, section 3.1:
+ 
+    The version of an HTTP message is indicated by an HTTP-Version field
+    in the first line of the message. If the protocol version is not
+    specified, the recipient must assume that the message is in the
+    simple HTTP/0.9 format.
+ 
+ Contrariwise, if there *is* a version, the request is *not* in
+ the simple HTTP/0.9 format.  Arguable, I suppose.. but:
+ 
+ Section 4.1:
+ 
+    HTTP messages consist of requests from client to server and responses
+    from server to client.
+ 
+        HTTP-message   = Simple-Request           ; HTTP/0.9 messages
+                       | Simple-Response
+                       | Full-Request             ; HTTP/1.0 messages
+                       | Full-Response
+ 
+ Section 5:
+ 
+    A request message from a client to a server includes, within the
+    first line of that message, the method to be applied to the resource,
+    the identifier of the resource, and the protocol version in use. For
+    backwards compatibility with the more limited HTTP/0.9 protocol,
+    there are two valid formats for an HTTP request:
+ 
+        Request        = Simple-Request | Full-Request
+ 
+        Simple-Request = "GET" SP Request-URI CRLF
+ 
+        Full-Request   = Request-Line             ; Section 5.1
+                         *( General-Header        ; Section 4.3
+                          | Request-Header        ; Section 5.2
+                          | Entity-Header )       ; Section 7.1
+                         CRLF
+                         [ Entity-Body ]          ; Section 7.2
+ 
+    If an HTTP/1.0 server receives a Simple-Request, it must respond with
+    an HTTP/0.9 Simple-Response.
+ 
+ Section 6:
+ 
+    A Simple-Response should only be sent in response to an HTTP/0.9
+    Simple-Request or if the server only supports the more limited
+    HTTP/0.9 protocol.
+ -- 
+ #ken    P-)}
+ 
+ Ken Coar                    <http://Web.Golux.Com/coar/>
+ Apache Group member         <http://www.apache.org/>
+ "Apache Server for Dummies" <http://Web.Golux.Com/coar/ASFD/>
+
+From: John-Mark Gurney <gurney_j@4j.lane.edu>
+To: Rodent of Unusual Size <Ken.Coar@Golux.Com>
+Cc: Apache bug database <apbugs@Apache.Org>
+Subject: Re: general/4033: HTTP/0.9 requests yield invalid response
+Date: Thu, 11 Mar 1999 15:53:36 -0800
+
+ Rodent of Unusual Size scribbled this message on Mar 11:
+ > John-Mark Gurney wrote:
+ > > 
+ > >  > You're missing the point, I think.  It *isn't* a 'malformed HTTP/0.9
+ > >  > request,' because HTTP/0.9 requests *never* have a version number.
+ > > 
+ > >  even though the specs say this (section 6):
+ > >  "A Simple-Response should only be sent in response [or case deleted] if
+ > >  the server only supports the more limited HTTP/0.9 protocol."
+ > 	:
+ > >  where in the specification does it say that HTTP/0.9 can not generate
+ > >  a full-request?
+ > 
+ > It is made clear by implication throughout RFC 1945 that 'simple-request'
+ > and 'simple-response' refer to HTTP/0.9.  It is not explicitly stated,
+ > but there are several specific cases supporting this interpretation.
+ 
+ they implied that it should be the fact, but they then contradicted their
+ implication in words which makes the implication invalid...  it's the
+ statement in section 6 that is the statement the contradicts their
+ implication...  if the second clause (after the or) didn't exist, I would
+ completely agree with you...
+ 
+ > RFC 1945, section 3.1:
+ > 
+ >    The version of an HTTP message is indicated by an HTTP-Version field
+ >    in the first line of the message. If the protocol version is not
+ >    specified, the recipient must assume that the message is in the
+ >    simple HTTP/0.9 format.
+ > 
+ > Contrariwise, if there *is* a version, the request is *not* in
+ > the simple HTTP/0.9 format.  Arguable, I suppose.. but:
+ 
+ nope, go back to logic 101...  we can ONLY assume that the message is in
+ the simple HTTP/0.9 format iff (if and only if) the protocol version is
+ not specified...  the only other thing that we can assume in the
+ contrapositive, that if the message is not in a simple HTTP/0.9 format
+ that it has a version specified...  you cannot always assume that the
+ converse on a statement is true...
+ 
+ > Section 4.1:
+ > 
+ >    HTTP messages consist of requests from client to server and responses
+ >    from server to client.
+ > 
+ >        HTTP-message   = Simple-Request           ; HTTP/0.9 messages
+ >                       | Simple-Response
+ >                       | Full-Request             ; HTTP/1.0 messages
+ >                       | Full-Response
+ 
+ those are comments, they are not formal specifications...  they are
+ there to help the reader understand what is going on in the text...
+ 
+ section 2.1:
+    ; comment
+ 
+        A semi-colon, set off some distance to the right of rule text,
+        starts a comment that continues to the end of line. This is a
+        simple way of including useful notes in parallel with the
+        specifications.
+ 
+ > Section 5:
+ > 
+ >    A request message from a client to a server includes, within the
+ >    first line of that message, the method to be applied to the resource,
+ >    the identifier of the resource, and the protocol version in use. For
+ >    backwards compatibility with the more limited HTTP/0.9 protocol,
+ >    there are two valid formats for an HTTP request:
+ > 
+ >        Request        = Simple-Request | Full-Request
+ > 
+ >        Simple-Request = "GET" SP Request-URI CRLF
+ > 
+ >        Full-Request   = Request-Line             ; Section 5.1
+ >                         *( General-Header        ; Section 4.3
+ >                          | Request-Header        ; Section 5.2
+ >                          | Entity-Header )       ; Section 7.1
+ >                         CRLF
+ >                         [ Entity-Body ]          ; Section 7.2
+ > 
+ >    If an HTTP/1.0 server receives a Simple-Request, it must respond with
+ >    an HTTP/0.9 Simple-Response.
+ > 
+ > Section 6:
+ > 
+ >    A Simple-Response should only be sent in response to an HTTP/0.9
+ >    Simple-Request or if the server only supports the more limited
+ >    HTTP/0.9 protocol.
+ 
+ re-read this last section, starting at if, why would you not send a
+ simple-request if you only support the HTTP/0.9 spec?  this implies
+ that the simple-request is NOT the only method that indicates a HTTP/0.9
+ transaction...
+ 
+ I'm glad that you finally quoted that I had been quoting and re-reading...
+ 
+ until you quote text that SPECIFICLY states that HTTP/0.9 shall never
+ send a full-request or that you CAN NOT specify a HTTP/0.9 response by
+ the version field, you will never convince me...  and considering that
+ I have just read the complete RFC, that will be hard to do...
+ 
+ -- 
+ John-Mark Gurney
+ Eugene 4J School District
+State-Changed-From-To: feedback-closed
+State-Changed-By: fielding
+State-Changed-When: Fri Mar 12 11:41:42 PST 1999
+State-Changed-Why:
+
+HTTP/0.9 is the name associated with an HTTP request that
+has no version information at all.  RFC 1945 does define
+what that means in sections 3.1 and 5.  Regardless, any
+HTTP/1.0 response is in fact a syntactically valid and
+complete HTTP/0.9 response -- raw data.
+
+Please do not continue this discussion here.  It is pointless
+to argue about the theoretical implications of language
+structuring in an English specification that will never be
+changed again.  Suffice it to say that there is no possibility
+whatsoever that Apache will be changed in response to this
+concern.
+
+....Roy Fielding
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

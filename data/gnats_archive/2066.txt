@@ -1,0 +1,167 @@
+Received: (qmail 24311 invoked by uid 2012); 16 Apr 1998 03:03:13 -0000
+Message-Id: <19980416030313.24310.qmail@hyperreal.org>
+Date: 16 Apr 1998 03:03:13 -0000
+From: Ronald Tschalaer <Ronald.Tschalaer@psi.ch>
+Reply-To: Ronald.Tschalaer@psi.ch
+To: apbugs@hyperreal.org
+Subject: JDK1.2beta[23] have a bug in the URLConnection - here is simple server side workaround
+X-Send-Pr-Version: 3.2
+
+>Number:         2066
+>Category:       other
+>Synopsis:       JDK1.2beta[23] have a bug in the URLConnection - here is simple server side workaround
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Apr 15 20:10:00 PDT 1998
+>Last-Modified:  Tue May 19 18:23:16 PDT 1998
+>Originator:     Ronald.Tschalaer@psi.ch
+>Organization:
+>Release:        1.3beta
+>Environment:
+All
+>Description:
+This is NOT an Apache bug, but there is simple BrowseMatch to workaround the
+problem.
+
+The http client in the JDK1.2beta2 and beta3 will throw away the first part of
+the response body when both the headers and the first part of the body are sent
+in the same network packet AND keep-alive's are being used. If either condition
+is not met then it works fine.
+
+See also Bug-ID's 4124329 and 4125538 at the java developer connection.
+>How-To-Repeat:
+The following trivial piece of client code will demonstrate it. Run with
+"java URLConnectionBug http://the.server/something"
+
+------ URLConnectionBug.java -----------------------------------------------
+/*
+ * Run this trivial code against a server which sends the headers and the
+ * body in the same packet and which does keep-alive's. This will cause
+ * the body to be discarded (truss shows this nicely).
+ *
+ * See also Bug-ID 4124329 4125538
+ */
+
+import java.net.URL;
+import java.net.URLConnection;
+import java.io.InputStream;
+
+public class URLConnectionBug
+{
+    public static void main(String args[])  throws Exception
+    {
+        URL url = new URL(args[0]);
+        URLConnection con = url.openConnection();
+        con.setRequestProperty("Connection", "close");
+        InputStream in = con.getInputStream();
+
+        byte[] buffer = new byte[10000];
+        int len = in.read(buffer);
+
+        System.out.println("Got " + len + " bytes in first read:");
+        if (len > 0)  System.out.println(new String(buffer, 0, len));
+    }
+}
+
+----------------------------------------------------------------------------
+>Fix:
+Add to srm.conf(-dist):
+
+# JDK 1.2beta[23] are broken in that if keep-alive is enabled and the
+# header and (part of) the entity arrive in the same packet, then the
+# entity data in that packet is discarded. Since Apache tries to send
+# these in the same packet (and who knows what the network will do) we
+# need to disable keep-alive's
+
+BrowserMatch "Java1\.2beta[23]" nokeepalive
+%0
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: other/2066: JDK1.2beta[23] have a bug in the URLConnection (fwd)
+Date: Tue, 28 Apr 1998 20:39:45 -0600 (MDT)
+
+ ---------- Forwarded message ----------
+ Date: Tue, 28 Apr 1998 05:12:38 +0200
+ From: "Life is hard... and then you die." <Ronald.Tschalaer@psi.ch>
+ To: MARCS@znep.com
+ Subject: Re: other/2066: JDK1.2beta[23] have a bug in the URLConnection
+ 
+ 
+   Hi Marc,
+ 
+ in an effort to close PR's:
+ 
+ >Number:         2066
+ >Category:       other
+ >Synopsis:       JDK1.2beta[23] have a bug in the URLConnection - here is simple server side workaround
+ [snip]
+ 
+ > I really don't think we should be adding workarounds for beta software
+ > since they should just fix it in the next release.
+ > 
+ > If they end up being too dumb to fix it by the time they release a
+ > non-beta version, we may need to add it.  But I don't know that we want to
+ > at this point...
+ 
+ Fine by me. However, how about adding a short note to the "Broken
+ keepalive" section in known_client_problems page? And then this PR can
+ be closed.
+ 
+ 
+   Cheers,
+ 
+   Ronald
+ 
+State-Changed-From-To: open-analyzed
+State-Changed-By: martin
+State-Changed-When: Thu May 14 14:25:08 PDT 1998
+State-Changed-Why:
+Excellent analysis.
+Responsible-Changed-From-To: apache-martin
+Responsible-Changed-By: martin
+Responsible-Changed-When: Thu May 14 14:25:08 PDT 1998
+Responsible-Changed-Why:
+I'll have another look at the cache
+source, but your fix looks very good.
+Category-Changed-From-To: other-mod_proxy
+Category-Changed-By: martin
+Category-Changed-When: Thu May 14 14:25:08 PDT 1998
+
+State-Changed-From-To: analyzed-open
+State-Changed-By: martin
+State-Changed-When: Thu May 14 14:29:00 PDT 1998
+State-Changed-Why:
+I'm terribly sorry. I edited the wrong PR#.
+
+Responsible-Changed-From-To: martin-apache
+Responsible-Changed-By: martin
+Responsible-Changed-When: Thu May 14 14:29:00 PDT 1998
+Responsible-Changed-Why:
+Undo wrong PR-Edit
+Category-Changed-From-To: mod_proxy-other
+Category-Changed-By: martin
+Category-Changed-When: Thu May 14 14:29:00 PDT 1998
+
+State-Changed-From-To: open-closed
+State-Changed-By: brian
+State-Changed-When: Tue May 19 18:23:16 PDT 1998
+State-Changed-Why:
+the appropriate change to the known client problems page
+has been made.  Thanks!
+
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

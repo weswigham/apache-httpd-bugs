@@ -1,0 +1,266 @@
+From apwww@hyperreal.org  Mon Sep  1 11:49:31 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id LAA05066;
+	Mon, 1 Sep 1997 11:49:31 -0700 (PDT)
+Message-Id: <199709011849.LAA05066@hyperreal.org>
+Date: Mon, 1 Sep 1997 11:49:31 -0700 (PDT)
+From: David Pisoni <david@cnation.com>
+Reply-To: david@cnation.com
+To: apbugs@hyperreal.org
+Subject: SIGHUP causes web server to quit instead of restart
+X-Send-Pr-Version: 3.2
+
+>Number:         1082
+>Category:       os-unixware
+>Synopsis:       SIGHUP causes web server to quit instead of restart
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Sep  1 11:50:01 1997
+>Last-Modified:  Wed Jan 21 16:00:56 PST 1998
+>Originator:     david@cnation.com
+>Organization:
+>Release:        1.2.4
+>Environment:
+# uname -a
+UNIX_SV brahms 4.2MP 2.1 i386 x86at
+
+proprietary cc compiler
+officially "UnixWare 2.1.2"
+>Description:
+Sending SIGHUP to the httpd process causes the web server to quit.  It is logged correctly :
+[Mon Sep  1 11:34:54 1997] SIGHUP received.  Attempting to restart
+
+But it never succeeds.  If you are on the controlling terminal, you see the following output :
+bind: Invalid argument
+httpd: could not bind to port 80
+
+Here are the compiler warnings from a make, in case you want them :
+
+UX:acomp: WARNING: "http_main.c", line 1799: argument is incompatible with proto
+type: arg #3
+UX:acomp: WARNING: "http_main.c", line 1844: argument is incompatible with proto
+type: arg #3
+UX:acomp: WARNING: "http_main.c", line 2468: argument is incompatible with proto
+type: arg #3
+UX:acomp: WARNING: "http_main.c", line 2476: argument is incompatible with proto
+type: arg #3
+UX:acomp: WARNING: "util.c", line 1167: argument is incompatible with prototype:
+ arg #1
+UX:acomp: WARNING: "util.c", line 1175: argument is incompatible with prototype:
+ arg #1
+UX:acomp: WARNING: "mod_include.c", line 1174: end-of-loop code not reached
+UX:acomp: WARNING: "mod_include.c", line 1281: end-of-loop code not reached
+
+Also FYI, I was also having HUP problems with 1.2.1 (the reason why I upgraded.)  In 1.2.1, the
+HUP would seem to work correctly, but would not re-open log files.  I encountered this because
+my weekly log cycling script ran normally, finishing it's job by sending a HUP to httpd (I use
+this same script on a Linux server I am running, it works fine.)  I noticed that the logs did not
+resume after that point.
+
+For now, I'm going to try to use SIGUSR1 and see if that works.  But I imagine a HUP makes
+more sense with log cycling.
+>How-To-Repeat:
+Compile apache on a clean UW 2.1.2 install.  Configure, run, and try to send a SIGHUP.
+>Fix:
+No
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: David Pisoni <david@cnation.com>
+Subject: Re: os-unixware/1082: SIGHUP causes web server to quit instead of restart
+Date: Thu, 4 Sep 1997 17:39:27 -0700 (PDT)
+
+ 
+ Grr.  I wonder if UW has the same bugs that Solaris 2.5.1 does.  Try
+ editing src/http_main.c, search for make_socket() and look at the SOLARIS2
+ tests, change them to UW tests and rebuild.  See if that helps.
+ 
+ Dean
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: David Alan Pisoni <david@cnation.com>
+Subject: Re: os-unixware/1082: SIGHUP causes web server to quit instead of restart
+Date: Mon, 8 Sep 1997 16:14:24 -0700 (PDT)
+
+ 
+ Sorry it's called "make_sock" I goofed, but you did get the right two
+ conditionals.
+ 
+ No SIGUSR1 should reopen the log files ... I use it a lot.  But see the
+ caveat mentioned in htdocs/manual/stopping.html. 
+ 
+ Ok does adding -DNO_SLACK to EXTRA_CFLAGS and recompiling help? 
+ 
+ Dean
+ 
+ On Mon, 8 Sep 1997, David Alan Pisoni wrote:
+ 
+ > >Grr.  I wonder if UW has the same bugs that Solaris 2.5.1 does.  Try
+ > >editing src/http_main.c, search for make_socket() and look at the SOLARIS2
+ > >tests, change them to UW tests and rebuild.  See if that helps.
+ > >
+ > >Dean
+ > 
+ > Hmm... I couldn't find make_socket in said source file.  I did change the two refernces to SOLARIS2 to UW (one was an ifndef, one an ifdef)  No apparent change -- HUP still fails.
+ > 
+ > FYI, my log cycling script ran this weekend, and I checked this morning to find empty log files again.  I though that sending SIGUSR1 would re-open the files, but I guess not.  I guess that means I really need a working SIGHUP, no?
+ > 
+ > Thanks for your help,
+ > 
+ > David
+ > 
+ > 
+ > 
+ > 
+ > 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: David Alan Pisoni <david@cnation.com>
+Subject: Re: os-unixware/1082: SIGHUP causes web server to quit instead of restart
+Date: Mon, 8 Sep 1997 17:33:30 -0700 (PDT)
+
+ 
+ 
+ 
+ On Mon, 8 Sep 1997, David Alan Pisoni wrote:
+ 
+ > Okay, that nailed it.  Should I but the IFDEF's back, or did both changes make the fix?
+ 
+ You can put the ifdefs back probably ... the NO_SLACK thing probably fixes
+ the problem alone.  But we should try to find a better solution.  NO_SLACK
+ disables a useful feature for large webservers (lots of log files). 
+ 
+ > Also a question... on the issue of log cycling.  Is there any reason why this sequence shouldn't work?  The following code is perl (hoping you know perl!), and the variable $filename refers to a log file name.  This code is re run with every log file t he web server creates.  Under some conditions, I found (in earlier versions) that too many HUP's too close together caused the server parent to die, but left many children alive (they would continue live for awhile.  I had to individually TERM them, then  re-open the server, because they had control of the HTTP port.  This problem went away when I put the 'sleep 5;' line in.)
+ 
+ This bug should be fixed in 1.2.4 as well -- HUPs and such in quick
+ succession that is.
+ 
+ > hmm.. linewraps make it real ugly... I'll just explain the logic.
+ > 
+ > rename older files (i.e., $filename.0.gz becomes $filename.1.gz)
+ > remove oldest file
+ > if not access_log :
+ > 	rename $filename $filename.0
+ 
+ I'm confused ... should access_log be $filename?  I'm still confused.  Oh
+ I think I understand you're special casing the access_log.  This should be
+ a fine method of rotating logs, assuming signal 1 is SIGHUP on your box. 
+ 
+ Dean
+ 
+ > 	touch $filename
+ > 	kill 1, $HTTPD_PID
+ > 	sleep 5
+ > if access log
+ > 	rename $filename $filename.tmp
+ > 	touch $filename
+ > 	kill 1, $HTTPD_PID
+ > 	sleep 5
+ > 	logresolve < $filename.tmp > $filename.0
+ > gzip $filename.0
+ > 
+ > This logic looks okay to me, and I've been using it for over a year.  Do you see any reason why it would cause Apache for SVR4 to not open the log file?  Or do you think it was all the SLACK/descriptor problem?
+ > 
+ > Thanks,
+ > 
+ > David
+ > 
+ > 
+ > 
+ > 
+ 
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Sep 12 17:47:42 PDT 1997
+State-Changed-Why:
+NO_SLACK is interim fix.
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Subject: Re: os-unixware/1082: SIGHUP causes web server to quit instead of restart (fwd)
+Date: Thu, 25 Sep 1997 00:19:08 -0700 (PDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Wed, 24 Sep 1997 20:50:15 -0700
+ From: David Alan Pisoni <david@cnation.com>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: os-unixware/1082: SIGHUP causes web server to quit instead of restart
+ 
+ >On Mon, 8 Sep 1997, David Alan Pisoni wrote:
+ >
+ >> Okay, that nailed it.  Should I but the IFDEF's back, or did both
+ >>changes make the fix?
+ >
+ >You can put the ifdefs back probably ... the NO_SLACK thing probably fixes
+ >the problem alone.  But we should try to find a better solution.  NO_SLACK
+ >disables a useful feature for large webservers (lots of log files).
+ >
+ 
+ Well, I suppose I'll look forward to that in the next release! :-)  (Okay,
+ I can hope...)  I don't expect it will be a problem, as I only have a few
+ sites on this host.  Most of my sites are on a Linux host (which has always
+ compiled Apache with 0 warnings since 1.0.  Kudos to the team on that!)
+ 
+ >>> Also a question... on the issue of log cycling.  Is there any reason
+ >>>why this sequence shouldn't work?  The following code is perl (hoping
+ >>>you know perl!), and the variable $filename refers to a log file name.
+ >>>This code is re run with every log file the web server creates.  Under
+ >>>some conditions, I found (in earlier versions) that too many HUP's too
+ >>>close together caused the server parent to die, but left many children
+ >>>alive (they would continue live for awhile.  I had to individually TERM
+ >>>them, then re-open the server, because they had control of the HTTP
+ >>>port.  This problem went away when I put the 'sleep 5;' line in.)
+ 
+ >
+ >This bug should be fixed in 1.2.4 as well -- HUPs and such in quick
+ >succession that is.
+ >
+ >> hmm.. linewraps make it real ugly... I'll just explain the logic.
+ >>
+ >> rename older files (i.e., $filename.0.gz becomes $filename.1.gz)
+ >> remove oldest file
+ >> if not access_log :
+ >> 	rename $filename $filename.0
+ >
+ >I'm confused ... should access_log be $filename?  I'm still confused.  Oh
+ >I think I understand you're special casing the access_log.  This should be
+ >a fine method of rotating logs, assuming signal 1 is SIGHUP on your box.
+ >
+ >Dean
+ >
+ 
+ Ahh, it was my bad.  I looked at the script again, and saw that I was
+ looking for PID in '/var/run/httpd.pid' (which is a symlink I have on
+ another host of mine.)  No such symlink was there on this host.  So
+ (sheepishly) oops...
+ 
+ Thanks again for your help,
+ David
+ 
+ 
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Wed Jan 21 16:00:56 PST 1998
+State-Changed-Why:
+A patch has been committed to 1.3b4-dev which should clear this
+problem up.
+
+Dean
+>Unformatted:
+
+
+
+
+
+

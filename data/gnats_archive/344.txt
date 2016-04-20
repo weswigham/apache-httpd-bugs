@@ -1,0 +1,300 @@
+From nobody@hyperreal.com  Wed Mar 26 13:55:24 1997
+Received: by taz.hyperreal.com (8.8.4/V2.0) id NAA19454; Wed, 26 Mar 1997 13:55:24 -0800 (PST)
+Message-Id: <199703262155.NAA19454@taz.hyperreal.com>
+Date: Wed, 26 Mar 1997 13:55:24 -0800 (PST)
+From: "Uwe F. Mayer" <mayer@math.vanderbilt.edu>
+Reply-To: mayer@math.vanderbilt.edu
+To: apbugs@hyperreal.com
+Subject: don't store 64 bit pointers in 32 bit integers
+X-Send-Pr-Version: 3.2
+
+>Number:         344
+>Category:       os-osf
+>Synopsis:       don't store 64 bit pointers in 32 bit integers
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Apr  9 18:20:11 1997
+>Last-Modified:  Fri Aug  1 03:18:25 PDT 1997
+>Originator:     mayer@math.vanderbilt.edu
+>Organization:
+>Release:        1.2b7
+>Environment:
+OS: DEC UNIX 4.0, DEC OSF1
+Comp: DEC cc, GNU cc
+>Description:
+Various source files store 64 bit pointers (this is an alpha I am
+talking about) in 32 bit integers. Also 32 bit integers are stored
+in 64 bit pointers (less of a problem). 
+>How-To-Repeat:
+Compile your source on an alpha and use gcc or some other compiler
+that gives a decent set of warnings.
+>Fix:
+Here is a diff file that applies as a patch and changes what was
+needed to compile cleanly.
+
+diff -cr apache_1.2b7/src/alloc.c httpd/src/alloc.c
+*** apache_1.2b7/src/alloc.c    Sun Jan 19 11:43:27 1997
+--- httpd/src/alloc.c   Mon Mar 24 22:32:45 1997
+
+***************
+*** 727,739 ****
+   * generic cleanup interface.
+   */
+  
+! static void fd_cleanup (void *fdv) { close ((int)fdv); }
+  
+! void note_cleanups_for_fd (pool *p, int fd) {
+    register_cleanup (p, (void *)fd, fd_cleanup, fd_cleanup);
+  }
+  
+! void kill_cleanups_for_fd(pool *p,int fd)
+      {
+      kill_cleanup(p,(void *)fd,fd_cleanup);
+      }
+--- 727,739 ----
+   * generic cleanup interface.
+   */
+  
+! static void fd_cleanup (void *fdv) { close ((long)fdv); }
+  
+! void note_cleanups_for_fd (pool *p, long fd) {
+    register_cleanup (p, (void *)fd, fd_cleanup, fd_cleanup);
+  }
+
+  
+! void kill_cleanups_for_fd(pool *p,long fd)
+      {
+      kill_cleanup(p,(void *)fd,fd_cleanup);
+      }
+***************
+*** 749,755 ****
+    return fd;
+  }
+  
+! int pclosef(pool *a, int fd)
+  {
+    int res;
+    
+--- 749,755 ----
+    return fd;
+  }
+  
+! int pclosef(pool *a, long fd)
+  {
+    int res;
+    
+diff -cr apache_1.2b7/src/alloc.h httpd/src/alloc.h
+*** apache_1.2b7/src/alloc.h    Wed Jan  1 12:10:14 1997
+--- httpd/src/alloc.h   Mon Mar 24 22:32:45 1997
+***************
+*** 205,212 ****
+  int popenf(struct pool *, const char *name, int flg, int mode); 
+  
+  void note_cleanups_for_file (pool *, FILE *);
+! void note_cleanups_for_fd (pool *, int);
+! void kill_cleanups_for_fd (pool *p, int fd);
+  
+  regex_t *pregcomp(pool *p, const char *pattern, int cflags);
+  
+--- 205,212 ----
+  int popenf(struct pool *, const char *name, int flg, int mode); 
+  
+  void note_cleanups_for_file (pool *, FILE *);
+! void note_cleanups_for_fd (pool *, long);
+! void kill_cleanups_for_fd (pool *p, long fd);
+  
+  regex_t *pregcomp(pool *p, const char *pattern, int cflags);
+  
+***************
+*** 215,221 ****
+   */
+  
+  int pfclose(struct pool *, FILE *);
+! int pclosef(struct pool *, int fd);
+  
+  /* ... even child processes (which we may want to wait for,
+   * or to kill outright, on unexpected termination).
+--- 215,221 ----
+   */
+  
+  int pfclose(struct pool *, FILE *);
+! int pclosef(struct pool *, long fd);
+  
+  /* ... even child processes (which we may want to wait for,
+   * or to kill outright, on unexpected termination).
+diff -cr apache_1.2b7/src/http_config.c httpd/src/http_config.c
+*** apache_1.2b7/src/http_config.c      Sat Jan 25 19:15:11 1997
+--- http_config.c       Mon Mar 24 22:32:45 1997
+***************
+*** 696,702 ****
+  {
+      /* This one's pretty generic... */
+    
+!     int offset = (int)cmd->info; 
+      *(char **)(struct_ptr + offset) = pstrdup (cmd->pool, arg);
+      return NULL;
+  }
+--- 696,702 ----
+  {
+      /* This one's pretty generic... */
+    
+!     long offset = (long)cmd->info; 
+      *(char **)(struct_ptr + offset) = pstrdup (cmd->pool, arg);
+      return NULL;
+  }
+***************
+*** 705,711 ****
+  {
+      /* This one's pretty generic too... */
+    
+!     int offset = (int)cmd->info; 
+      *(int *)(struct_ptr + offset) = arg ? 1 : 0;
+      return NULL;
+  }
+--- 705,711 ----
+  {
+      /* This one's pretty generic too... */
+    
+!     long offset = (long)cmd->info; 
+      *(int *)(struct_ptr + offset) = arg ? 1 : 0;
+      return NULL;
+  }
+diff -cr apache_1.2b7/src/http_core.c httpd/src/http_core.c
+*** apache_1.2b7/src/http_core.c        Mon Feb 17 04:46:06 1997
+--- httpd/src/http_core.c       Mon Mar 24 22:32:46 1997
+***************
+*** 837,843 ****
+  {
+      /* This one's pretty generic... */
+    
+!     int offset = (int)cmd->info;
+      char *struct_ptr = (char *)cmd->server;
+      
+      *(char **)(struct_ptr + offset) = pstrdup (cmd->pool, arg);
+--- 837,843 ----
+  {
+      /* This one's pretty generic... */
+    
+!     long offset = (long)cmd->info;
+      char *struct_ptr = (char *)cmd->server;
+      
+      *(char **)(struct_ptr + offset) = pstrdup (cmd->pool, arg);
+diff -cr apache_1.2b7/src/mod_alias.c httpd/src/mod_alias.c
+*** apache_1.2b7/src/mod_alias.c        Wed Jan  1 12:10:25 1997
+--- httpd/src/mod_alias.c       Mon Mar 24 22:32:46 1997
+***************
+*** 137,143 ****
+      server_rec *s = cmd->server;
+      alias_server_conf *serverconf =
+          (alias_server_conf *)get_module_config(s->module_config,&alias_module);
+!     int status = (int)cmd->info;
+      char *f = arg2;
+      char *url = arg3;
+  
+--- 137,143 ----
+      server_rec *s = cmd->server;
+      alias_server_conf *serverconf =
+          (alias_server_conf *)get_module_config(s->module_config,&alias_module);
+!     long status = (long)cmd->info;
+      char *f = arg2;
+      char *url = arg3;
+  
+diff -cr apache_1.2b7/src/mod_browser.c httpd/src/mod_browser.c
+*** apache_1.2b7/src/mod_browser.c      Sat Jan  4 09:10:17 1997
+--- httpd/src/mod_browser.c     Mon Mar 24 22:32:47 1997
+***************
+*** 98,104 ****
+        get_module_config (cmd->server->module_config, &browser_module);
+      browser_entry *new, *entries = (browser_entry *)sconf->browsers->elts;
+      char *var;
+!     int i, cflags = (int)cmd->info;
+  
+      /* First, try to merge into an existing entry */
+  
+--- 98,105 ----
+        get_module_config (cmd->server->module_config, &browser_module);
+      browser_entry *new, *entries = (browser_entry *)sconf->browsers->elts;
+      char *var;
+!     int i;
+!     long cflags = (long)cmd->info;
+  
+      /* First, try to merge into an existing entry */
+  
+diff -cr apache_1.2b7/src/mod_dir.c httpd/src/mod_dir.c
+*** apache_1.2b7/src/mod_dir.c  Tue Feb 18 08:41:29 1997
+--- httpd/src/mod_dir.c Mon Mar 24 22:32:47 1997
+***************
+*** 175,181 ****
+  
+  
+  const char *add_opts_int(cmd_parms *cmd, void *d, int opts) {
+!     push_item(((dir_config_rec *)d)->opts_list, (char*)opts, NULL,
+              cmd->path, NULL);
+      return NULL;
+  }
+--- 175,181 ----
+  
+  
+  const char *add_opts_int(cmd_parms *cmd, void *d, int opts) {
+!     push_item(((dir_config_rec *)d)->opts_list, (char*)(long)opts, NULL,
+              cmd->path, NULL);
+      return NULL;
+  }
+***************
+*** 382,388 ****
+      return 0;
+  }
+  
+! int find_opts(dir_config_rec *d, request_rec *r) {
+      char *path = r->filename;
+      array_header *list = d->opts_list;
+      struct item *items = (struct item *)list->elts;
+--- 382,388 ----
+      return 0;
+  }
+  
+! long find_opts(dir_config_rec *d, request_rec *r) {
+      char *path = r->filename;
+      array_header *list = d->opts_list;
+      struct item *items = (struct item *)list->elts;
+***************
+*** 392,398 ****
+          struct item *p = &items[i];
+  
+          if(!strcmp_match(path,p->apply_path))
+!             return (int)p->type;
+      }
+      return 0;
+  }
+--- 392,398 ----
+          struct item *p = &items[i];
+  
+          if(!strcmp_match(path,p->apply_path))
+!             return (long)p->type;
+      }
+      return 0;
+  }%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Apr 19 14:36:17 PDT 1997
+State-Changed-Why:
+Thanks for the patch.  I have submitted it for consideration
+in 1.2b9.
+
+Dean
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Aug  1 03:18:25 PDT 1997
+State-Changed-Why:
+This has been cleaned up in the 1.3 tree.
+
+Dean
+>Unformatted:
+
+

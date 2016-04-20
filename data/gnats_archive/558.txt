@@ -1,0 +1,105 @@
+From nobody@hyperreal.com  Wed May  7 19:57:28 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id TAA28534;
+	Wed, 7 May 1997 19:57:28 -0700 (PDT)
+Message-Id: <199705080257.TAA28534@hyperreal.com>
+Date: Wed, 7 May 1997 19:57:28 -0700 (PDT)
+From: Doke Scott <doke@delmarva.com>
+Reply-To: doke@delmarva.com
+To: apbugs@hyperreal.com
+Subject: except internal servers from ProxyRemote * http://myfirewall
+X-Send-Pr-Version: 3.2
+
+>Number:         558
+>Category:       mod_proxy
+>Synopsis:       except internal servers from ProxyRemote * http://myfirewall
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed May  7 20:00:02 1997
+>Last-Modified:  Wed Dec 10 16:13:04 PST 1997
+>Originator:     doke@delmarva.com
+>Organization:
+>Release:        1.2b10
+>Environment:
+solaris 2.5.1
+gcc 2.7.2
+>Description:
+My users seem to be incapable of correctly using the "no proxy" browser 
+setting.  I need an internal proxy that forwards most requests out the firewall,
+and sends direct requests to internal servers.  My internet firewall proxy
+can't forward to internal servers.  This works for most of the internal
+servers:
+
+ProxyRemote http://www.internal-dept1.mydomain http://www.internal-dept1.mydomain
+ProxyRemote http://www.internal-dept2.mydomain http://www.internal-dept2.mydomain
+ProxyRemote * http://myfirewall.mydomain
+
+The internal servers receive "GET http://www.internal-dept1.mydomain/path",
+recognize their own hostname, and strip it off.  Unfortunately, I have 
+an application (Concord Nethealth) with an integral web server that's 
+too stupid to do that.  I need the proxy to send to it in direct mode.
+
+>How-To-Repeat:
+
+>Fix:
+Change the ProxyRemote parser to accept "direct" as the remote proxy.
+
+ProxyRemote http://www.internal-dept1.mydomain direct
+ProxyRemote http://www.internal-dept2.mydomain direct
+ProxyRemote * http://myfirewall.mydomain
+
+--- mod_proxy.c_orig    Wed May  7 22:12:41 1997
++++ mod_proxy.c Wed May  7 22:16:15 1997
+@@ -224,6 +224,8 @@
+            if (strcmp(ents[i].protocol, "http") == 0)
+                rc = proxy_http_handler(r, cr, url, ents[i].hostname,
+                    ents[i].port);
++           else if (strcmp(ents[i].protocol, "direct") == 0)
++               break;
+            else rc = DECLINED;
+ 
+  /* an error or success */
+@@ -282,6 +284,16 @@
+     struct proxy_remote *new;
+     char *p, *q;
+     int port;
++
++    if (! strcmp(r, "direct")) 
++    {
++       new = push_array (conf->proxies);
++       new->scheme = f;
++       new->protocol = r;
++       new->hostname = r;
++       new->port = 0;
++       return NULL;
++    }
+ 
+     p = strchr(r, ':');
+     if (p == NULL || p[1] != '/' || p[2] != '/' || p[3] == '\0')
+%0
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: coar
+State-Changed-When: Tue May 13 11:20:50 PDT 1997
+State-Changed-Why:
+Thank you for the suggestion; we will consider it for
+a version of Apache after 1.2 (which is in feature
+freeze right now).
+State-Changed-From-To: suspended-closed
+State-Changed-By: Lars.Eilebrecht@unix-ag.org
+State-Changed-When: Wed Dec 10 16:13:03 PST 1997
+State-Changed-Why:
+
+Apache 1.3a1 (and higher versions) contain a new
+directive called "NoProxy" which can be used
+to list hosts/domains that should be queried
+directly without going through a remote proxy.
+
+>Unformatted:
+
+

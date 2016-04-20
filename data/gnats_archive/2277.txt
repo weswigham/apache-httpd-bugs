@@ -1,0 +1,641 @@
+Received: (qmail 28817 invoked by uid 2012); 25 May 1998 08:24:17 -0000
+Message-Id: <19980525082417.28816.qmail@hyperreal.org>
+Date: 25 May 1998 08:24:17 -0000
+From: Glen Parker <glenebob@nwlink.com>
+Reply-To: glenebob@nwlink.com
+To: apbugs@hyperreal.org
+Subject: PATCH: cache completion of partially loaded documents
+X-Send-Pr-Version: 3.2
+
+>Number:         2277
+>Category:       mod_proxy
+>Synopsis:       PATCH: cache completion of partially loaded documents
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon May 25 01:30:00 PDT 1998
+>Last-Modified:  Sun Jul 12 03:06:25 PDT 1998
+>Originator:     glenebob@nwlink.com
+>Organization:
+>Release:        1.3b6
+>Environment:
+Winnt4.0, SP3
+Linux, Redhat 5.0
+
+Based on 1.3b6 standard tarball, no patches.
+>Description:
+patch
+>How-To-Repeat:
+patch
+>Fix:
+This patch will cause the proxy module to finish loading a file to the
+cache in the event that the client cancels the transfer, provided that
+the configured percentage of the file has already been transfered.
+It works for http transfers only.
+
+The new httpd.conf directive is:
+CacheForceCompletion <percentage>
+
+which can be a number between 1 and 100, or 0 to use the default, 90%.
+I like to use 70 or 80 here.  Obviously, this could be dangerous, I'd
+recommend a number AT LEAST over 50 here, otherwise you may bring your
+Internet connection to its knees.
+
+I have compiled this on WinNT 4.0 and Redhat Linux 5.0 (2.0.32 kernel).
+I tested *briefly* on NT, and I'm using it on 3 different Linux servers
+with good results.
+
+There's actually two patches, one for the source, and the other for the
+html docs.
+
+Affected files in src/modules/proxy are:
+mod_proxy.h
+mod_proxy.c
+proxy_cache.c
+proxy_http.c
+proxy_ftp.c
+proxy_util.c
+
+Affected files in htdocs/manual/mod are:
+directives.html
+mod_proxy.html
+
+PLEASE! send email to glenebob@nwlink.com if you have problems or comments.
+
+So, here they are...
+
+=== source patch ========================================================
+
+diff -C3 apache_1.3b6/src/modules/proxy.orig/mod_proxy.c apache_1.3b6/src/modules/proxy/mod_proxy.c
+*** apache_1.3b6/src/modules/proxy.orig/mod_proxy.c	Sat Apr 11 05:00:39 1998
+--- apache_1.3b6/src/modules/proxy/mod_proxy.c	Sun May 24 17:40:20 1998
+***************
+*** 406,411 ****
+--- 406,412 ----
+      /* at these levels, the cache can have 2^18 directories (256,000)  */
+      ps->cache.dirlevels = 3;
+      ps->cache.dirlength = 1;
++     ps->cache.cache_completion = DEFAULT_CACHE_COMPLETION;
+  
+      return ps;
+  }
+***************
+*** 742,747 ****
+--- 743,763 ----
+      return NULL;
+  }
+  
++ static const char*
++     set_cache_completion(cmd_parms *parms, void *dummy, char *arg)
++ {
++     proxy_server_conf *psf =
++     ap_get_module_config(parms->server->module_config, &proxy_module);
++     int s = atoi(arg);
++     if (s > 100 || s < 0) {
++ 	return "CacheForceCompletion must be <= 100 perent, or 0 for system default.";
++     }
++ 
++     if (s > 0)
++       psf->cache.cache_completion = ((float)s / 100);
++     return NULL;    
++ }
++ 
+  static const handler_rec proxy_handlers[] =
+  {
+      {"proxy-server", proxy_handler},
+***************
+*** 784,789 ****
+--- 800,807 ----
+       "The number of characters in subdirectory names"},
+      {"NoCache", set_cache_exclude, NULL, RSRC_CONF, ITERATE,
+       "A list of names, hosts or domains for which caching is *not* provided"},
++     {"CacheForceCompletion", set_cache_completion, NULL, RSRC_CONF, TAKE1,
++      "Force a http cache completion after this percentage is loaded"},
+      {NULL}
+  };
+  
+diff -C3 apache_1.3b6/src/modules/proxy.orig/mod_proxy.h apache_1.3b6/src/modules/proxy/mod_proxy.h
+*** apache_1.3b6/src/modules/proxy.orig/mod_proxy.h	Sat Apr 11 05:00:39 1998
+--- apache_1.3b6/src/modules/proxy/mod_proxy.h	Sun May 24 17:44:48 1998
+***************
+*** 184,189 ****
+--- 184,190 ----
+  #define DEFAULT_CACHE_MAXEXPIRE SEC_ONE_DAY
+  #define DEFAULT_CACHE_EXPIRE    SEC_ONE_HR
+  #define DEFAULT_CACHE_LMFACTOR (0.1)
++ #define DEFAULT_CACHE_COMPLETION (0.9)
+  
+  /* static information about the local cache */
+  struct cache_conf {
+***************
+*** 195,200 ****
+--- 196,202 ----
+      int gcinterval;		/* garbage collection interval, in seconds */
+      int dirlevels;		/* Number of levels of subdirectories */
+      int dirlength;		/* Length of subdirectory names */
++     float cache_completion;	/* Force cache completion after this point */
+  };
+  
+  typedef struct {
+***************
+*** 232,237 ****
+--- 234,241 ----
+      unsigned int len;		/* content length */
+      char *protocol;		/* Protocol, and major/minor number, e.g. HTTP/1.1 */
+      int status;			/* the status of the cached file */
++     unsigned int written;	/* total *content* bytes written to cache */
++     float cache_completion;	/* specific to this request */
+      char *resp_line;		/* the whole status like (protocol, code + message) */
+      array_header *hdrs;		/* the HTTP headers of the file */
+  };
+diff -C3 apache_1.3b6/src/modules/proxy.orig/proxy_cache.c apache_1.3b6/src/modules/proxy/proxy_cache.c
+*** apache_1.3b6/src/modules/proxy.orig/proxy_cache.c	Wed Apr 15 10:09:29 1998
+--- apache_1.3b6/src/modules/proxy/proxy_cache.c	Sat May 23 17:36:55 1998
+***************
+*** 551,557 ****
+--- 551,560 ----
+  	}
+      }
+      if (cachefp == NULL)
++ /* fixed?  in this case, we want to get the headers from the remote server
++    it will be handled later if we don't do this (I hope ;-)
+  	c->hdrs = ap_make_array(r->pool, 2, sizeof(struct hdr_entry));
++ */
+      /* FIXME: Shouldn't we check the URL somewhere? */
+      now = time(NULL);
+  /* Ok, have we got some un-expired data? */
+***************
+*** 886,892 ****
+--- 889,898 ----
+      if (c->fp == NULL)
+  	return;
+  
++ /* don't care how much was sent, but rather how much was written to cache
+      ap_bgetopt(c->req->connection->client, BO_BYTECT, &bc);
++  */
++     bc = c->written;
+  
+      if (c->len != -1) {
+  /* file lengths don't match; don't cache it */
+***************
+*** 896,906 ****
+  	    return;
+  	}
+      }
+      else if (c->req->connection->aborted) {
+! 	ap_pclosef(c->req->pool, c->fp->fd);	/* no need to flush */
+  	unlink(c->tempfile);
+  	return;
+      }
+      else {
+  /* update content-length of file */
+  	char buff[9];
+--- 902,914 ----
+  	    return;
+  	}
+      }
++ /* don't care if aborted, cache it if fully retrieved from host!
+      else if (c->req->connection->aborted) {
+! 	ap_pclosef(c->req->pool, c->fp->fd);	/ no need to flush /
+  	unlink(c->tempfile);
+  	return;
+      }
++ */
+      else {
+  /* update content-length of file */
+  	char buff[9];
+diff -C3 apache_1.3b6/src/modules/proxy.orig/proxy_ftp.c apache_1.3b6/src/modules/proxy/proxy_ftp.c
+*** apache_1.3b6/src/modules/proxy.orig/proxy_ftp.c	Sun May 24 15:46:11 1998
+--- apache_1.3b6/src/modules/proxy/proxy_ftp.c	Sun May 24 17:35:47 1998
+***************
+*** 990,995 ****
+--- 990,997 ----
+      r->status_line = "200 OK";
+  
+      resp_hdrs = ap_make_array(p, 2, sizeof(struct hdr_entry));
++     c->hdrs = resp_hdrs;
++ 
+      if (parms[0] == 'd')
+  	ap_proxy_add_header(resp_hdrs, "Content-Type", "text/html", HDR_REP);
+      else {
+***************
+*** 1021,1028 ****
+--- 1023,1033 ----
+  	ap_bclose(f);
+  	return i;
+      }
++ 
+      cache = c->fp;
+  
++     c->hdrs = resp_hdrs;
++ 
+      if (!pasvmode) {		/* wait for connection */
+  	ap_hard_timeout("proxy ftp data connect", r);
+  	clen = sizeof(struct sockaddr_in);
+***************
+*** 1087,1095 ****
+      r->sent_bodyct = 1;
+  /* send body */
+      if (!r->header_only) {
+! 	if (parms[0] != 'd')
+  	    ap_proxy_send_fb(data, r, cache, c);
+! 	else
+  	    send_dir(data, r, cache, c, url);
+  
+  	if (rc == 125 || rc == 150)
+--- 1092,1102 ----
+      r->sent_bodyct = 1;
+  /* send body */
+      if (!r->header_only) {
+! 	if (parms[0] != 'd') {
+! /* we need to set this for ap_proxy_send_fb()... */
+! 	    c->cache_completion = 0;
+  	    ap_proxy_send_fb(data, r, cache, c);
+! 	} else
+  	    send_dir(data, r, cache, c, url);
+  
+  	if (rc == 125 || rc == 150)
+diff -C3 apache_1.3b6/src/modules/proxy.orig/proxy_http.c apache_1.3b6/src/modules/proxy/proxy_http.c
+*** apache_1.3b6/src/modules/proxy.orig/proxy_http.c	Sat Apr 11 05:00:40 1998
+--- apache_1.3b6/src/modules/proxy/proxy_http.c	Sun May 24 17:52:36 1998
+***************
+*** 369,374 ****
+--- 369,376 ----
+  	resp_hdrs = ap_make_array(p, 2, sizeof(struct hdr_entry));
+      }
+  
++     c->hdrs = resp_hdrs;
++ 
+      ap_kill_timeout(r);
+  
+  /*
+***************
+*** 457,464 ****
+  /* send body */
+  /* if header only, then cache will be NULL */
+  /* HTTP/1.0 tells us to read to EOF, rather than content-length bytes */
+!     if (!r->header_only)
+  	ap_proxy_send_fb(f, r, cache, c);
+  
+      ap_proxy_cache_tidy(c);
+  
+--- 459,469 ----
+  /* send body */
+  /* if header only, then cache will be NULL */
+  /* HTTP/1.0 tells us to read to EOF, rather than content-length bytes */
+!     if (!r->header_only) {
+! /* we need to set this for ap_proxy_send_fb()... */
+! 	c->cache_completion = conf->cache.cache_completion;
+  	ap_proxy_send_fb(f, r, cache, c);
++     }
+  
+      ap_proxy_cache_tidy(c);
+  
+diff -C3 apache_1.3b6/src/modules/proxy.orig/proxy_util.c apache_1.3b6/src/modules/proxy/proxy_util.c
+*** apache_1.3b6/src/modules/proxy.orig/proxy_util.c	Sat Apr 11 05:00:40 1998
+--- apache_1.3b6/src/modules/proxy/proxy_util.c	Sun May 24 18:26:21 1998
+***************
+*** 442,453 ****
+  
+  long int ap_proxy_send_fb(BUFF *f, request_rec *r, BUFF *f2, struct cache_req *c)
+  {
+      char buf[IOBUFSIZE];
+!     long total_bytes_sent;
+      register int n, o, w;
+      conn_rec *con = r->connection;
+  
+!     total_bytes_sent = 0;
+  
+  #ifdef CHARSET_EBCDIC
+      /* The cache copy is ASCII, not EBCDIC, even for text/html) */
+--- 442,457 ----
+  
+  long int ap_proxy_send_fb(BUFF *f, request_rec *r, BUFF *f2, struct cache_req *c)
+  {
++     int  ok = 1;
+      char buf[IOBUFSIZE];
+!     long total_bytes_rcv;
+      register int n, o, w;
+      conn_rec *con = r->connection;
++     int alt_to = 1;
+  
+!     total_bytes_rcv = 0;
+!     if (c)
+!         c->written = 0;
+  
+  #ifdef CHARSET_EBCDIC
+      /* The cache copy is ASCII, not EBCDIC, even for text/html) */
+***************
+*** 461,470 ****
+       * it is unsafe to do a soft_timeout here, at least until the proxy
+       * has its own timeout handler which can set both buffers to EOUT.
+       */
+      ap_hard_timeout("proxy send body", r);
+  
+-     while (!con->aborted && f != NULL) {
+  	n = ap_bread(f, buf, IOBUFSIZE);
+  	if (n == -1) {		/* input error */
+  	    if (f2 != NULL)
+  		f2 = ap_proxy_cache_error(c);
+--- 465,507 ----
+       * it is unsafe to do a soft_timeout here, at least until the proxy
+       * has its own timeout handler which can set both buffers to EOUT.
+       */
++ 
++     ap_kill_timeout(r);
++ 
++ #ifdef WIN32
++     /* works fine under win32, so leave it */
+      ap_hard_timeout("proxy send body", r);
++     alt_to = 0;
++ #else
++     /* CHECKME! Since hard_timeout won't work in unix on sends with partial
++      * cache completion, we have to alternate between hard_timeout
++      * for reads, and soft_timeout for send.  This is because we need
++      * to get a return from ap_bwrite to be able to continue caching.
++      * BUT, if we *can't* continue anyway, just use hard_timeout.
++      */
++ 
++     if (c) {
++         if (c->len <= 0 || c->cache_completion == 1) {
++             ap_hard_timeout("proxy send body", r);
++             alt_to = 0;
++         }
++     } else {
++         ap_hard_timeout("proxy send body", r);
++         alt_to = 0;
++     }
++ #endif
++ 
++     while (ok && f != NULL) {
++         if (alt_to)
++             ap_hard_timeout("proxy send body", r);
+  
+  	n = ap_bread(f, buf, IOBUFSIZE);
++ 
++         if (alt_to)
++             ap_kill_timeout(r);
++         else
++             ap_reset_timeout(r);
++ 
+  	if (n == -1) {		/* input error */
+  	    if (f2 != NULL)
+  		f2 = ap_proxy_cache_error(c);
+***************
+*** 473,506 ****
+  	if (n == 0)
+  	    break;		/* EOF */
+  	o = 0;
+! 	total_bytes_sent += n;
+  
+! 	if (f2 != NULL)
+! 	    if (ap_bwrite(f2, buf, n) != n)
+! 		f2 = ap_proxy_cache_error(c);
+! 
+! 	while (n && !con->aborted) {
+! 	    w = ap_bwrite(con->client, &buf[o], n);
+! 	    if (w <= 0) {
+! 		if (f2 != NULL) {
+! 		    ap_pclosef(c->req->pool, c->fp->fd);
+! 		    c->fp = NULL;
+! 		    f2 = NULL;
+! 		    con->aborted = 1;
+! 		    unlink(c->tempfile);
+! 		}
+! 		break;
+! 	    }
+! 	    ap_reset_timeout(r);	/* reset timeout after successful write */
+! 	    n -= w;
+! 	    o += w;
+! 	}
+      }
+      if (!con->aborted)
+  	ap_bflush(con->client);
+  
+      ap_kill_timeout(r);
+!     return total_bytes_sent;
+  }
+  
+  /*
+--- 510,566 ----
+  	if (n == 0)
+  	    break;		/* EOF */
+  	o = 0;
+! 	total_bytes_rcv += n;
+  
+!         if (f2 != NULL) {
+!             if (ap_bwrite(f2, &buf[0], n) != n) {
+!                 f2 = ap_proxy_cache_error(c);
+!             } else {
+!                 c->written += n;
+!             }
+!         }
+! 
+!         while (n && !con->aborted) {
+!             if (alt_to)
+!                 ap_soft_timeout("proxy send body", r);
+! 
+!             w = ap_bwrite(con->client, &buf[o], n);
+! 
+!             if (alt_to)
+!                 ap_kill_timeout(r);
+!             else
+!                 ap_reset_timeout(r);
+! 
+!             if (w <= 0) {
+!                 if (f2 != NULL) {
+!                     /* when a send failure occurs, we need to decide
+!                      * whether to continue loading and caching the
+!                      * document, or to abort the whole thing
+!                      */
+!                     ok = (c->len > 0) &&
+!                          (c->cache_completion > 0) &&
+!                          (c->len * c->cache_completion < total_bytes_rcv);
+! 
+!                     if (! ok) {
+!                         ap_pclosef(c->req->pool, c->fp->fd);
+!                         c->fp = NULL;
+!                         f2 = NULL;
+!                         unlink(c->tempfile);
+!                     }
+!                 }
+!                 con->aborted = 1;
+!                 break;
+!             }
+!             n -= w;
+!             o += w;
+!         }
+      }
++ 
+      if (!con->aborted)
+  	ap_bflush(con->client);
+  
+      ap_kill_timeout(r);
+!     return total_bytes_rcv;
+  }
+  
+  /*
+
+=========================================================================
+
+=== documentation patch =================================================
+
+diff -C3 apache_1.3b6/htdocs/manual/mod.orig/directives.html apache_1.3b6/htdocs/manual/mod/directives.html
+*** apache_1.3b6/htdocs/manual/mod.orig/directives.html	Sun May 24 18:38:45 1998
+--- apache_1.3b6/htdocs/manual/mod/directives.html	Sun May 24 19:31:11 1998
+***************
+*** 76,81 ****
+--- 76,82 ----
+  <LI><A HREF="mod_proxy.html#cachedefaultexpire">CacheDefaultExpire</A>
+  <LI><A HREF="mod_proxy.html#cachedirlength">CacheDirLength</A>
+  <LI><A HREF="mod_proxy.html#cachedirlevels">CacheDirLevels</A>
++ <LI><A HREF="mod_proxy.html#cacheforcecompletion">CacheForceCompletion</A>
+  <LI><A HREF="mod_proxy.html#cachegcinterval">CacheGcInterval</A>
+  <LI><A HREF="mod_proxy.html#cachelastmodifiedfactor">CacheLastModifiedFactor</A>
+  <LI><A HREF="mod_proxy.html#cachemaxexpire">CacheMaxExpire</A>
+diff -C3 apache_1.3b6/htdocs/manual/mod.orig/mod_proxy.html apache_1.3b6/htdocs/manual/mod/mod_proxy.html
+*** apache_1.3b6/htdocs/manual/mod.orig/mod_proxy.html	Sun May 24 18:39:27 1998
+--- apache_1.3b6/htdocs/manual/mod/mod_proxy.html	Sun May 24 18:58:00 1998
+***************
+*** 62,67 ****
+--- 62,68 ----
+  <LI><A HREF="#cachegcinterval">CacheGcInterval</A>
+  <LI><A HREF="#cachedirlevels">CacheDirLevels</A>
+  <LI><A HREF="#cachedirlength">CacheDirLength</A>
++ <LI><A HREF="#cacheforcecompletion">CacheForceCompletion</A>
+  <LI><A
+  HREF="#nocache">NoCache</A>
+  </UL>
+***************
+*** 555,560 ****
+--- 556,602 ----
+    NoProxy         .mycompany.com 192.168.112.0/21 
+    ProxyDomain     .mycompany.com
+  </PRE>
++ 
++ <HR>
++ 
++ <H2><A NAME="cacheforcecompletion">CacheForceCompletion</A></H2>
++ <A
++  HREF="directive-dict.html#Syntax"
++  REL="Help"
++ ><STRONG>Syntax:</STRONG></A> CacheForceCompletion <EM>&lt;percentage&gt;</EM><BR>
++ <A
++  HREF="directive-dict.html#Default"
++  REL="Help"
++ ><STRONG>Default:</STRONG></A> <EM>90</EM><BR>
++ <A
++  HREF="directive-dict.html#Context"
++  REL="Help"
++ ><STRONG>Context:</STRONG></A> server config, virtual host<BR>
++ <A
++  HREF="directive-dict.html#Override"
++  REL="Help"
++ ><STRONG>Override:</STRONG></A> <EM>Not applicable</EM><BR>
++ <A
++  HREF="directive-dict.html#Status"
++  REL="Help"
++ ><STRONG>Status:</STRONG></A> Base<BR>
++ <A
++  HREF="directive-dict.html#Module"
++  REL="Help"
++ ><STRONG>Module:</STRONG></A> mod_proxy<BR>
++ <A
++  HREF="directive-dict.html#Compatibility"
++  REL="Help"
++ ><STRONG>Compatibility:</STRONG></A> CacheForceCompletion is only available in
++ Apache 1.3 and later.<P>
++ 
++ If an http transfer that is being cached is cancelled, the proxy module will
++ complete the transfer to cache if more than the percentage specified has already
++ been transferred.<P>
++ 
++ This is a percentage, and must be a number between 1 and 100, or 0 to use
++ the default.  100 will cause a document to be cached only if the transfer
++ was allowed to complete.  A number between 60 and 90 is recommended.
+  
+  <HR>
+  
+=========================================================================
+>Audit-Trail:
+
+From: Brian Behlendorf <brian@hyperreal.org>
+To: glenebob@nwlink.com, apbugs@hyperreal.org
+Cc:  Subject: Re: mod_proxy/2277: PATCH: cache completion of partially
+  loaded documents
+Date: Thu, 28 May 1998 18:01:14 -0700
+
+ At 08:24 AM 5/25/98 -0000, Glen Parker wrote:
+ >This patch will cause the proxy module to finish loading a file to the
+ >cache in the event that the client cancels the transfer, provided that
+ >the configured percentage of the file has already been transfered.
+ >It works for http transfers only.
+ 
+ Great, since this is a bug (the proxy module will cache incomplete
+ transfers currently as if it were the whole file) I do want to see this
+ resolved in the 1.3.0 timeframe.  This is the correct way to fix it too.
+ 
+ >I have compiled this on WinNT 4.0 and Redhat Linux 5.0 (2.0.32 kernel).
+ >I tested *briefly* on NT, and I'm using it on 3 different Linux servers
+ >with good results.
+ 
+ The more NT testing the better, we've found this to be our most troublesome
+ platform.
+ 
+ In looking at your patches I saw something which seemed incorrect:
+ 
+ >=== source patch ========================================================
+ >
+ >diff -C3 apache_1.3b6/src/modules/proxy.orig/proxy_cache.c
+ apache_1.3b6/src/modules/proxy/proxy_cache.c
+ >*** apache_1.3b6/src/modules/proxy.orig/proxy_cache.c	Wed Apr 15 10:09:29
+ 1998
+ >--- apache_1.3b6/src/modules/proxy/proxy_cache.c	Sat May 23 17:36:55 1998
+ >***************
+ >*** 551,557 ****
+ >--- 551,560 ----
+ >  	}
+ >      }
+ >      if (cachefp == NULL)
+ >+ /* fixed?  in this case, we want to get the headers from the remote server
+ >+    it will be handled later if we don't do this (I hope ;-)
+ >  	c->hdrs = ap_make_array(r->pool, 2, sizeof(struct hdr_entry));
+ >+ */
+ >      /* FIXME: Shouldn't we check the URL somewhere? */
+ >      now = time(NULL);
+ >  /* Ok, have we got some un-expired data? */
+ 
+ Shouldn't the "if(cachefp == NULL)" be commented out as well?  Otherwise
+ "now" might not get initialized.
+ 
+ Other than that I didn't see anything wrong, but this isn't a part of the
+ code I understand fully.  I'm going to give it some testing, and if it
+ looks good commit it.
+ 
+ 	Brian
+ 
+ 
+ 
+ --=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=--
+ pure chewing satisfaction                                  brian@apache.org
+                                                         brian@hyperreal.org
+State-Changed-From-To: open-closed
+State-Changed-By: martin
+State-Changed-When: Sun Jul 12 03:06:25 PDT 1998
+State-Changed-Why:
+Your patch has been committed to the 1.3.1-dev version.
+I included Brian's proposed fix and tested it on my
+Linux box. Your patch is a very useful addition indeed.
+Thanks for using Apache!
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

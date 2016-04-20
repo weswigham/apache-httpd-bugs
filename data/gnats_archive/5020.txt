@@ -1,0 +1,82 @@
+Received: (qmail 13572 invoked by uid 2012); 16 Sep 1999 13:07:23 -0000
+Message-Id: <19990916130723.13571.qmail@hyperreal.org>
+Date: 16 Sep 1999 13:07:23 -0000
+From: Jan Wedekind <jw@de.uu.net>
+Reply-To: jw@de.uu.net
+To: apbugs@hyperreal.org
+Subject: Modules list to long for Solaris' awk
+X-Send-Pr-Version: 3.2
+
+>Number:         5020
+>Category:       config
+>Synopsis:       Modules list to long for Solaris' awk
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Sep 16 06:10:01 PDT 1999
+>Last-Modified:
+>Originator:     jw@de.uu.net
+>Organization:
+apache
+>Release:        1.3.9
+>Environment:
+Solaris 2.6, gcc
+>Description:
+within src/Configure an awk expression is formed from the modules list
+to include all static modules into the MODULES= definition of the Makefile
+
+src/Configure:1932
+$CAT > $awkfile <<EOF1
+    BEGIN {
+      split ("$AUTODIRS", tmp, " ")
+
+The formed line from $AUTODIRS is just to long for Solaris' awk version
+
+This results into a malformed Makefile (missing MODULES= definition line)
+so that configure reports that gcc is not an ANSI compiler due to 
+failed tests. A similar problem might have caused PR#4960.
+
+>How-To-Repeat:
+Configure Apache with as much modules (e.g. modules-directories)
+as possible; here the problem occured with:
+
+split (" modules/experimental modules/standard modules/extra modules/proxy 
+modules/example modules/ssl modules/auth_mysql modules/zmod
+modules/perl modules/php3", tmp, " ")
+>Fix:
+list each modules directory as a string itself,
+patch included:
+
+1932,1934c1932,1939
+< $CAT > $awkfile <<EOF1
+<     BEGIN {
+<       split ("$AUTODIRS", tmp, " ")
+---
+> # create plain library list due to awk's string length restriction (Solaris)
+> echo "    BEGIN {" > $awkfile
+> echo "        split ( \\" >> $awkfile
+> for lib in $AUTOLIBS; do
+>   echo "              \"$lib \" \\" >> $awkfile
+> done
+> $CAT >> $awkfile <<EOF1
+>               , tmp, " ")
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

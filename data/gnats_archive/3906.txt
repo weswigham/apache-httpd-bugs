@@ -1,0 +1,1364 @@
+Received: (qmail 4801 invoked by uid 2012); 16 Feb 1999 18:56:04 -0000
+Message-Id: <19990216185604.4793.qmail@hyperreal.org>
+Date: 16 Feb 1999 18:56:04 -0000
+From: Derek Andree <dxandr2@uswest.com>
+Reply-To: dxandr2@uswest.com
+To: apbugs@hyperreal.org
+Subject: Servers hang on either Keepalive or on Read (if keepalive is turned off)
+X-Send-Pr-Version: 3.2
+
+>Number:         3906
+>Category:       config
+>Synopsis:       Servers hang on either Keepalive or on Read (if keepalive is turned off)
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Feb 16 12:10:00 PST 1999
+>Closed-Date:    Mon Oct 30 18:57:20 PST 2000
+>Last-Modified:  Mon Oct 30 18:57:20 PST 2000
+>Originator:     dxandr2@uswest.com
+>Release:        1.3.4
+>Organization:
+>Environment:
+SunOS 5.6 Generic_105181-08 sun4u sparc sun4u
+gcc version egcs-2.91.60 19981201 (egcs-1.1.1 release)
+>Description:
+When viewing server-status, many servers are "hung" and the SS field shows
+extremely high seconds since last request (some like >72000).  Giving it a good 
+slap (reload) seems to fix it for awhile, but eventually servers start to hang 
+up again.  With Keepalive turned on, the servers will hang in "K" or Keepalive 
+mode.  After turning this feature off, the servers hang in "R" mode saying ..reading..
+
+Here is our server config:
+
+ServerType standalone
+
+#
+# ServerRoot: The top of the directory tree under which the server's
+# configuration, error, and log files are kept.
+#
+# NOTE!  If you intend to place this on an NFS (or otherwise network)
+# mounted filesystem then please read the LockFile documentation
+# (available at <URL:http://www.apache.org/docs/mod/core.html#lockfile>);
+# you will save yourself a lot of trouble.
+#
+# Do NOT add a slash at the end of the directory path.
+#
+ServerRoot /usr/local/etc/httpd
+
+#
+# The LockFile directive sets the path to the lockfile used when Apache
+# is compiled with either USE_FCNTL_SERIALIZED_ACCEPT or
+# USE_FLOCK_SERIALIZED_ACCEPT. This directive should normally be left at
+# its default value. The main reason for changing it is if the logs
+# directory is NFS mounted, since the lockfile MUST BE STORED ON A LOCAL
+# DISK. The PID of the main server process is automatically appended to
+# the filename. 
+#
+#LockFile logs/accept.lock
+
+#
+# PidFile: The file in which the server should record its process
+# identification number when it starts.
+#
+PidFile logs/httpd.pid
+
+#
+# ScoreBoardFile: File used to store internal server process information.
+# Not all architectures require this.  But if yours does (you'll know because
+# this file will be  created when you run Apache) then you *must* ensure that
+# no two invocations of Apache share the same scoreboard file.
+#
+ScoreBoardFile logs/apache_runtime_status
+
+#
+# In the standard configuration, the server will process httpd.conf,
+# srm.conf, and access.conf in that order.  The latter two files are
+# now distributed empty, as it is recommended that all directives
+# be kept in a single file for simplicity.  The commented-out values
+# below are the built-in defaults.  You can have the server ignore
+# these files altogether by using "/dev/null" (for Unix) or
+# "nul" (for Win32) for the arguments to the directives.
+#
+ResourceConfig /dev/null
+AccessConfig /dev/null
+
+#
+# Timeout: The number of seconds before receives and sends time out.
+#
+##Timeout 300
+Timeout 40
+
+#
+# KeepAlive: Whether or not to allow persistent connections (more than
+# one request per connection). Set to "Off" to deactivate.
+#
+KeepAlive Off
+#KeepAlive On
+
+#
+# MaxKeepAliveRequests: The maximum number of requests to allow
+# during a persistent connection. Set to 0 to allow an unlimited amount.
+# We recommend you leave this number high, for maximum performance.
+#
+MaxKeepAliveRequests 100
+
+#
+# KeepAliveTimeout: Number of seconds to wait for the next request from the
+# same client on the same connection.
+#
+KeepAliveTimeout 15
+##KeepAliveTimeout 5
+
+#
+# Server-pool size regulation.  Rather than making you guess how many
+# server processes you need, Apache dynamically adapts to the load it
+# sees --- that is, it tries to maintain enough server processes to
+# handle the current load, plus a few spare servers to handle transient
+# load spikes (e.g., multiple simultaneous requests from a single
+# Netscape browser).
+#
+# It does this by periodically checking how many servers are waiting
+# for a request.  If there are fewer than MinSpareServers, it creates
+# a new spare.  If there are more than MaxSpareServers, some of the
+# spares die off.  The default values in httpd.conf-dist are probably OK
+# for most sites.
+#
+MinSpareServers 5
+MaxSpareServers 10
+#MinSpareServers 15
+#MaxSpareServers 15
+
+#
+# Number of servers to start initially --- should be a reasonable ballpark
+# figure.
+#
+StartServers 5
+#StartServers 15
+
+#
+# Limit on total number of servers running, i.e., limit on the number
+# of clients who can simultaneously connect --- if this limit is ever
+# reached, clients will be LOCKED OUT, so it should NOT BE SET TOO LOW.
+# It is intended mainly as a brake to keep a runaway server from taking
+# the system with it as it spirals down...
+#
+MaxClients 150
+##MaxClients 15
+
+#
+# MaxRequestsPerChild: the number of requests each child process is
+# allowed to process before the child dies.  The child will exit so
+# as to avoid problems after prolonged use when Apache (and maybe the
+# libraries it uses) leak memory or other resources.  On most systems, this
+# isn't really needed, but a few (such as Solaris) do have notable leaks
+# in the libraries.
+#
+MaxRequestsPerChild 30
+##MaxRequestsPerChild 100
+
+#
+# Listen: Allows you to bind Apache to specific IP addresses and/or
+# ports, in addition to the default. See also the <VirtualHost>
+# directive.
+#
+#Listen 3000
+#Listen 12.34.56.78:80
+
+#
+# BindAddress: You can support virtual hosts with this option. This directive
+# is used to tell the server which IP address to listen to. It can either
+# contain "*", an IP address, or a fully qualified Internet domain name.
+# See also the <VirtualHost> and Listen directives.
+#
+#BindAddress *
+
+#
+# Dynamic Shared Object (DSO) Support
+#
+# To be able to use the functionality of a module which was built as a DSO you
+# have to place corresponding `LoadModule' lines at this location so the
+# directives contained in it are actually available _before_ they are used.
+# Please read the file README.DSO in the Apache 1.3 distribution for more
+# details about the DSO mechanism and run `httpd -l' for the list of already
+# built-in (statically linked and thus always available) modules in your httpd
+# binary.
+#
+# Note: The order is which modules are loaded is important.  Don't change
+# the order below without expert advice.
+#
+# Example:
+# LoadModule foo_module libexec/mod_foo.so
+
+#
+# ExtendedStatus controls whether Apache will generate "full" status
+# information (ExtendedStatus On) or just basic information (ExtendedStatus
+# Off) when the "server-status" handler is called. The default is Off.
+#
+ExtendedStatus On
+
+### Section 2: 'Main' server configuration
+#
+# The directives in this section set up the values used by the 'main'
+# server, which responds to any requests that aren't handled by a
+# <VirtualHost> definition.  These values also provide defaults for
+# any <VirtualHost> containers you may define later in the file.
+#
+# All of these directives may appear inside <VirtualHost> containers,
+# in which case these default settings will be overridden for the
+# virtual host being defined.
+#
+
+#
+# If your ServerType directive (set earlier in the 'Global Environment'
+# section) is set to "inetd", the next few directives don't have any
+# effect since their settings are defined by the inetd configuration.
+# Skip ahead to the ServerAdmin directive.
+#
+
+#
+# Port: The port to which the standalone server listens. For
+# ports < 1023, you will need httpd to be run as root initially.
+#
+Port 80
+
+#
+# If you wish httpd to run as a different user or group, you must run
+# httpd as root initially and it will switch.  
+#
+# User/Group: The name (or #number) of the user/group to run httpd as.
+#  . On SCO (ODT 3) use "User nouser" and "Group nogroup".
+#  . On HPUX you may not be able to use shared memory as nobody, and the
+#    suggested workaround is to create a user www and use that user.
+#  NOTE that some kernels refuse to setgid(Group) or semctl(IPC_SET)
+#  when the value of (unsigned)Group is above 60000; 
+#  don't use Group #-1 on these systems!
+#
+User httpd
+Group httpd
+
+#
+# ServerAdmin: Your address, where problems with the server should be
+# e-mailed.  This address appears on some server-generated pages, such
+# as error documents.
+#
+ServerAdmin mobilev@uswest.com
+
+#
+# ServerName allows you to set a host name which is sent back to clients for
+# your server if it's different than the one the program would get (i.e., use
+# "www" instead of the host's real name).
+#
+# Note: You cannot just invent host names and hope they work. The name you 
+# define here must be a valid DNS name for your host. If you don't understand
+# this, ask your network administrator.
+# If your host doesn't have a registered DNS name, enter its IP address here.
+# You will have to access it by its address (e.g., http://123.45.67.89/)
+# anyway, and this will make redirections work in a sensible way.
+#
+##ServerName infogate.uswc.uswest.com
+ServerName infogate.uswc.uswest.com
+
+#
+# DocumentRoot: The directory out of which you will serve your
+# documents. By default, all requests are taken from this directory, but
+# symbolic links and aliases may be used to point to other locations.
+#
+DocumentRoot /usr/local/etc/httpd/htdocs
+
+#
+# Each directory to which Apache has access, can be configured with respect
+# to which services and features are allowed and/or disabled in that
+# directory (and its subdirectories). 
+#
+# First, we configure the "default" to be a very restrictive set of 
+# permissions.  
+#
+<Directory />
+    Options FollowSymLinks
+    AllowOverride None
+</Directory>
+
+#
+# Note that from this point forward you must specifically allow
+# particular features to be enabled - so if something's not working as
+# you might expect, make sure that you have specifically enabled it
+# below.
+#
+
+<Directory /usr/local/etc/Wireless>
+Options ALL
+</Directory>
+
+#
+# This should be changed to whatever you set DocumentRoot to.
+#
+<Directory /usr/local/etc/httpd/htdocs>
+#
+# This may also be "None", "All", or any combination of "Indexes",
+# "Includes", "FollowSymLinks", "ExecCGI", or "MultiViews".
+#
+# Note that "MultiViews" must be named *explicitly* --- "Options All"
+# doesn't give it to you.
+#
+##    Options Indexes FollowSymLinks
+    Options All
+#
+# This controls which options the .htaccess files in directories can
+# override. Can also be "All", or any combination of "Options", "FileInfo", 
+# "AuthConfig", and "Limit"
+#
+    AllowOverride None
+#
+# Controls who can get stuff from this server.
+#
+    Order allow,deny
+    Allow from all
+</Directory>
+
+#
+# UserDir: The name of the directory which is appended onto a user's home
+# directory if a ~user request is received.
+#
+UserDir public_html
+
+#
+# Control access to UserDir directories.  The following is an example
+# for a site where these directories are restricted to read-only.
+#
+#<Directory /*/public_html>
+#    AllowOverride FileInfo AuthConfig Limit
+#    Options MultiViews Indexes SymLinksIfOwnerMatch IncludesNoExec
+#    <Limit GET POST OPTIONS PROPFIND>
+#        Order allow,deny
+#        Allow from all
+#    </Limit>
+#    <Limit PUT DELETE PATCH PROPPATCH MKCOL COPY MOVE LOCK UNLOCK>
+#        Order deny,allow
+#        Deny from all
+#    </Limit>
+#</Directory>
+
+#
+# DirectoryIndex: Name of the file or files to use as a pre-written HTML
+# directory index.  Separate multiple entries with spaces.
+#
+DirectoryIndex index.html .index.html .index.cgi index.cgi
+
+#
+# AccessFileName: The name of the file to look for in each directory
+# for access control information.
+#
+AccessFileName .htaccess
+
+#
+# The following lines prevent .htaccess files from being viewed by
+# Web clients.  Since .htaccess files often contain authorization
+# information, access is disallowed for security reasons.  Comment
+# these lines out if you want Web visitors to see the contents of
+# .htaccess files.  If you change the AccessFileName directive above,
+# be sure to make the corresponding changes here.
+#
+<Files .htaccess>
+    Order allow,deny
+    Deny from all
+</Files>
+
+#
+# CacheNegotiatedDocs: By default, Apache sends "Pragma: no-cache" with each
+# document that was negotiated on the basis of content. This asks proxy
+# servers not to cache the document. Uncommenting the following line disables
+# this behavior, and proxies will be allowed to cache the documents.
+#
+#CacheNegotiatedDocs
+
+#
+# UseCanonicalName:  (new for 1.3)  With this setting turned on, whenever
+# Apache needs to construct a self-referencing URL (a URL that refers back
+# to the server the response is coming from) it will use ServerName and
+# Port to form a "canonical" name.  With this setting off, Apache will
+# use the hostname:port that the client supplied, when possible.  This
+# also affects SERVER_NAME and SERVER_PORT in CGI scripts.
+#
+UseCanonicalName On
+
+#
+# TypesConfig describes where the mime.types file (or equivalent) is
+# to be found.
+#
+TypesConfig conf/mime.types
+
+#
+# DefaultType is the default MIME type the server will use for a document
+# if it cannot otherwise determine one, such as from filename extensions.
+# If your server contains mostly text or HTML documents, "text/plain" is
+# a good value.  If most of your content is binary, such as applications
+# or images, you may want to use "application/octet-stream" instead to
+# keep browsers from trying to display binary files as though they are
+# text.
+#
+DefaultType text/plain
+
+#
+# The mod_mime_magic module allows the server to use various hints from the
+# contents of the file itself to determine its type.  The MIMEMagicFile
+# directive tells the module where the hint definitions are located.
+# mod_mime_magic is not part of the default server (you have to add
+# it yourself with a LoadModule [see the DSO paragraph in the 'Global
+# Environment' section], or recompile the server and include mod_mime_magic
+# as part of the configuration), so it's enclosed in an <IfModule> container.
+# This means that the MIMEMagicFile directive will only be processed if the
+# module is part of the server.
+#
+<IfModule mod_mime_magic.c>
+    MIMEMagicFile conf/magic
+</IfModule>
+
+#
+# HostnameLookups: Log the names of clients or just their IP addresses
+# e.g., www.apache.org (on) or 204.62.129.132 (off).
+# The default is off because it'd be overall better for the net if people
+# had to knowingly turn this feature on, since enabling it means that
+# each client request will result in AT LEAST one lookup request to the
+# nameserver.
+#
+HostnameLookups Off
+
+#
+# ErrorLog: The location of the error log file.
+# If you do not specify an ErrorLog directive within a <VirtualHost>
+# container, error messages relating to that virtual host will be
+# logged here.  If you *do* define an error logfile for a <VirtualHost>
+# container, that host's errors will be logged there and not here.
+#
+ErrorLog logs/error_log
+
+#
+# LogLevel: Control the number of messages logged to the error_log.
+# Possible values include: debug, info, notice, warn, error, crit,
+# alert, emerg.
+#
+LogLevel warn
+
+#
+# The following directives define some format nicknames for use with
+# a CustomLog directive (see below).
+#
+LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
+LogFormat "%h %l %u %t \"%r\" %>s %b" common
+LogFormat "%{Referer}i -> %U" referer
+LogFormat "%{User-agent}i" agent
+
+#
+# The location and format of the access logfile (Common Logfile Format).
+# If you do not define any access logfiles within a <VirtualHost>
+# container, they will be logged here.  Contrariwise, if you *do*
+# define per-<VirtualHost> access logfiles, transactions will be
+# logged therein and *not* in this file.
+#
+CustomLog logs/access_log common
+
+#
+# If you would like to have agent and referer logfiles, uncomment the
+# following directives.
+#
+#CustomLog logs/referer_log referer
+#CustomLog logs/agent_log agent
+
+#
+# If you prefer a single logfile with access, agent, and referer information
+# (Combined Logfile Format) you can use the following directive.
+#
+#CustomLog logs/access_log combined
+
+#
+# Optionally add a line containing the server version and virtual host
+# name to server-generated pages (error documents, FTP directory listings,
+# mod_status and mod_info output etc., but not CGI generated documents).
+# Set to "EMail" to also include a mailto: link to the ServerAdmin.
+# Set to one of:  On | Off | EMail
+#
+##ServerSignature On
+ServerSignature EMail
+
+#
+# Aliases: Add here as many aliases as you need (with no limit). The format is 
+# Alias fakename realname
+#
+# Note that if you include a trailing / on fakename then the server will
+# require it to be present in the URL.  So "/icons" isn't aliased in this
+# example, only "/icons/"..
+#
+Alias /icons/ /usr/local/etc/httpd/icons/
+Alias /perl/ /usr/local/etc/httpd/perl/
+
+<Directory /usr/local/etc/httpd/icons>
+    Options Indexes MultiViews
+    AllowOverride None
+    Order allow,deny
+    Allow from all
+</Directory>
+
+#
+# ScriptAlias: This controls which directories contain server scripts.
+# ScriptAliases are essentially the same as Aliases, except that
+# documents in the realname directory are treated as applications and
+# run by the server when requested rather than as documents sent to the client.
+# The same rules about trailing "/" apply to ScriptAlias directives as to
+# Alias.
+#
+ScriptAlias /cgi-bin/ /usr/local/etc/httpd/cgi-bin/
+
+#
+# "@@ServerRoot@@/cgi-bin" should be changed to whatever your ScriptAliased
+# CGI directory exists, if you have that configured.
+#
+<Directory /usr/local/etc/httpd/cgi-bin>
+    AllowOverride None
+    Options None
+    Order allow,deny
+    Allow from all
+</Directory>
+
+#
+# Redirect allows you to tell clients about documents which used to exist in
+# your server's namespace, but do not anymore. This allows you to tell the
+# clients where to look for the relocated document.
+# Format: Redirect old-URI new-URL
+#
+
+#
+# Directives controlling the display of server-generated directory listings.
+#
+
+#
+# FancyIndexing is whether you want fancy directory indexing or standard
+#
+IndexOptions FancyIndexing
+
+#
+# AddIcon* directives tell the server which icon to show for different
+# files or filename extensions.  These are only displayed for
+# FancyIndexed directories.
+#
+AddIconByEncoding (CMP,/icons/compressed.gif) x-compress x-gzip
+
+AddIconByType (TXT,/icons/text.gif) text/*
+AddIconByType (IMG,/icons/image2.gif) image/*
+AddIconByType (SND,/icons/sound2.gif) audio/*
+AddIconByType (VID,/icons/movie.gif) video/*
+
+AddIcon /icons/binary.gif .bin .exe
+AddIcon /icons/binhex.gif .hqx
+AddIcon /icons/tar.gif .tar
+AddIcon /icons/world2.gif .wrl .wrl.gz .vrml .vrm .iv
+AddIcon /icons/compressed.gif .Z .z .tgz .gz .zip
+AddIcon /icons/a.gif .ps .ai .eps
+AddIcon /icons/layout.gif .html .shtml .htm .pdf
+AddIcon /icons/text.gif .txt
+AddIcon /icons/c.gif .c
+AddIcon /icons/p.gif .pl .py
+AddIcon /icons/f.gif .for
+AddIcon /icons/dvi.gif .dvi
+AddIcon /icons/uuencoded.gif .uu
+AddIcon /icons/script.gif .conf .sh .shar .csh .ksh .tcl
+AddIcon /icons/tex.gif .tex
+AddIcon /icons/bomb.gif core
+
+AddIcon /icons/back.gif ..
+AddIcon /icons/hand.right.gif README
+AddIcon /icons/folder.gif ^^DIRECTORY^^
+AddIcon /icons/blank.gif ^^BLANKICON^^
+
+#
+# DefaultIcon is which icon to show for files which do not have an icon
+# explicitly set.
+#
+DefaultIcon /icons/unknown.gif
+
+#
+# AddDescription allows you to place a short description after a file in
+# server-generated indexes.  These are only displayed for FancyIndexed
+# directories.
+# Format: AddDescription "description" filename
+#
+#AddDescription "GZIP compressed document" .gz
+#AddDescription "tar archive" .tar
+#AddDescription "GZIP compressed tar archive" .tgz
+
+#
+# ReadmeName is the name of the README file the server will look for by
+# default, and append to directory listings.
+#
+# HeaderName is the name of a file which should be prepended to
+# directory indexes. 
+#
+# The server will first look for name.html and include it if found.
+# If name.html doesn't exist, the server will then look for name.txt
+# and include it as plaintext if found.
+#
+ReadmeName README
+HeaderName HEADER
+
+#
+# IndexIgnore is a set of filenames which directory indexing should ignore
+# and not include in the listing.  Shell-style wildcarding is permitted.
+#
+IndexIgnore .??* *~ *# HEADER* README* RCS CVS *,v *,t
+
+#
+# AddEncoding allows you to have certain browsers (Mosaic/X 2.1+) uncompress
+# information on the fly. Note: Not all browsers support this.
+# Despite the name similarity, the following Add* directives have nothing
+# to do with the FancyIndexing customization directives above.
+#
+AddEncoding x-compress Z
+AddEncoding x-gzip gz
+
+#
+# AddLanguage allows you to specify the language of a document. You can
+# then use content negotiation to give a browser a file in a language
+# it can understand.  Note that the suffix does not have to be the same
+# as the language keyword --- those with documents in Polish (whose
+# net-standard language code is pl) may wish to use "AddLanguage pl .po" 
+# to avoid the ambiguity with the common suffix for perl scripts.
+#
+AddLanguage en .en
+AddLanguage fr .fr
+AddLanguage de .de
+AddLanguage da .da
+AddLanguage el .el
+AddLanguage it .it
+
+#
+# LanguagePriority allows you to give precedence to some languages
+# in case of a tie during content negotiation.
+# Just list the languages in decreasing order of preference.
+#
+LanguagePriority en fr de
+
+#
+# AddType allows you to tweak mime.types without actually editing it, or to
+# make certain files to be certain types.
+#
+# For example, the PHP3 module (not part of the Apache distribution)
+# will typically use:
+#
+#AddType application/x-httpd-php3 .phtml
+#AddType application/x-httpd-php3-source .phps
+
+# Hope this works. Need the following for Olander hdml stuff
+AddType text/x-hdml .hdml
+
+#
+# AddHandler allows you to map certain file extensions to "handlers",
+# actions unrelated to filetype. These can be either built into the server
+# or added with the Action command (see below)
+#
+# If you want to use server side includes, or CGI outside
+# ScriptAliased directories, uncomment the following lines.
+#
+# To use CGI scripts:
+#
+AddHandler cgi-script .cgi
+
+#
+# To use server-parsed HTML files
+#
+#AddType text/html .shtml
+#AddHandler server-parsed .shtml
+
+#
+# Uncomment the following line to enable Apache's send-asis HTTP file
+# feature
+#
+#AddHandler send-as-is asis
+
+#
+# If you wish to use server-parsed imagemap files, use
+#
+#AddHandler imap-file map
+
+#
+# To enable type maps, you might want to use
+#
+#AddHandler type-map var
+
+#
+# Action lets you define media types that will execute a script whenever
+# a matching file is called. This eliminates the need for repeated URL
+# pathnames for oft-used CGI file processors.
+# Format: Action media/type /cgi-script/location
+# Format: Action handler-name /cgi-script/location
+#
+
+#
+# MetaDir: specifies the name of the directory in which Apache can find
+# meta information files. These files contain additional HTTP headers
+# to include when sending the document
+#
+#MetaDir .web
+
+#
+# MetaSuffix: specifies the file name suffix for the file containing the
+# meta information.
+#
+#MetaSuffix .meta
+
+#
+# Customizable error response (Apache style)
+#  these come in three flavors
+#
+#    1) plain text
+#ErrorDocument 500 "The server made a boo boo.
+#  n.b.  the (") marks it as text, it does not get output
+#
+#    2) local redirects
+#ErrorDocument 404 /missing.html
+#  to redirect to local URL /missing.html
+#ErrorDocument 404 /cgi-bin/missing_handler.pl
+#  N.B.: You can redirect to a script or a document using server-side-includes.
+##ErrorDocument 404 /.index.html
+
+#
+#    3) external redirects
+#ErrorDocument 402 http://some.other_server.com/subscription_info.html
+#  N.B.: Many of the environment variables associated with the original
+#  request will *not* be available to such a script.
+
+#
+# The following directives modify normal HTTP response behavior.
+# The first directive disables keepalive for Netscape 2.x and browsers that
+# spoof it. There are known problems with these browser implementations.
+# The second directive is for Microsoft Internet Explorer 4.0b2
+# which has a broken HTTP/1.1 implementation and does not properly
+# support keepalive when it is used on 301 or 302 (redirect) responses.
+#
+BrowserMatch "Mozilla/2" nokeepalive
+BrowserMatch "MSIE 4\.0b2;" nokeepalive downgrade-1.0 force-response-1.0
+
+#
+# The following directive disables HTTP/1.1 responses to browsers which
+# are in violation of the HTTP/1.0 spec by not being able to grok a
+# basic 1.1 response.
+#
+BrowserMatch "RealPlayer 4\.0" force-response-1.0
+BrowserMatch "Java/1\.0" force-response-1.0
+BrowserMatch "JDK/1\.0" force-response-1.0
+
+#
+# Allow server status reports, with the URL of http://servername/server-status
+# Change the ".your_domain.com" to match your domain to enable.
+#
+<Location /server-status>
+        SetHandler server-status
+        Order deny,allow
+        Deny from all
+        allow from 137.106.191.38
+        allow from 137.106.191.39
+        allow from 137.106.191.52
+        allow from 137.106.191.50
+        allow from 137.106.191.51
+</Location>
+
+#
+# Allow remote server configuration reports, with the URL of
+#  http://servername/server-info (requires that mod_info.c be loaded).
+# Change the ".your_domain.com" to match your domain to enable.
+#
+<Location /server-info>
+        SetHandler server-info
+        Order deny,allow
+        Deny from all
+        allow from 137.106.191.38
+        allow from 137.106.191.39
+        allow from 137.106.191.52
+        allow from 137.106.191.50
+        allow from 137.106.191.51
+</Location>
+
+
+<Location /perl>
+        SetHandler perl-script
+        PerlHandler Apache::Registry
+        Options ExecCGI
+        ##DJB#PerlSendHeader On
+</Location>
+
+<Files *.cgi>
+        SetHandler perl-script
+        PerlHandler Apache::Registry
+        Options ExecCGI
+        PerlSendHeader Off
+</Files>
+
+#
+# There have been reports of people trying to abuse an old bug from pre-1.1
+# days.  This bug involved a CGI script distributed as a part of Apache.
+# By uncommenting these lines you can redirect these attacks to a logging 
+# script on phf.apache.org.  Or, you can record them yourself, using the script
+# support/phf_abuse_log.cgi.
+#
+#<Location /cgi-bin/phf*>
+#    Deny from all
+#    ErrorDocument 403 http://phf.apache.org/phf_abuse_log.cgi
+#</Location>
+
+#
+# Proxy Server directives. Uncomment the following lines to
+# enable the proxy server:
+#
+#<IfModule mod_proxy.c>
+#ProxyRequests On
+#
+#<Directory proxy:*>
+#    Order deny,allow
+#    Deny from all
+#    Allow from .your_domain.com
+#</Directory>
+
+#
+# Enable/disable the handling of HTTP/1.1 "Via:" headers.
+# ("Full" adds the server version; "Block" removes all outgoing Via: headers)
+# Set to one of: Off | On | Full | Block
+#
+#ProxyVia On
+
+#
+# To enable the cache as well, edit and uncomment the following lines:
+# (no cacheing without CacheRoot)
+#
+#CacheRoot "@@ServerRoot@@/proxy"
+#CacheSize 5
+#CacheGcInterval 4
+#CacheMaxExpire 24
+#CacheLastModifiedFactor 0.1
+#CacheDefaultExpire 1
+#NoCache a_domain.com another_domain.edu joes.garage_sale.com
+
+#</IfModule>
+# End of proxy directives.
+
+### Section 3: Virtual Hosts
+#
+# VirtualHost: If you want to maintain multiple domains/hostnames on your
+# machine you can setup VirtualHost containers for them.
+# Please see the documentation at <URL:http://www.apache.org/docs/vhosts/>
+# for further details before you try to setup virtual hosts.
+# You may use the command line option '-S' to verify your virtual host
+# configuration.
+
+#
+# If you want to use name-based virtual hosts you need to define at
+# least one IP address (and port number) for them.
+#
+#NameVirtualHost 12.34.56.78:80
+#NameVirtualHost 12.34.56.78
+#
+## New Salt Lake IP
+NameVirtualHost 148.157.122.79
+##NameVirtualHost 137.106.191.50
+
+#
+# VirtualHost example:
+# Almost any Apache directive may go into a VirtualHost container.
+#
+#<VirtualHost ip.address.of.host.some_domain.com>
+#    ServerAdmin webmaster@host.some_domain.com
+#    DocumentRoot /www/docs/host.some_domain.com
+#    ServerName host.some_domain.com
+#    ErrorLog logs/host.some_domain.com-error_log
+#    CustomLog logs/host.some_domain.com-access_log common
+#</VirtualHost>
+#
+#
+##<VirtualHost mvdev1.uswc.uswest.com>
+<VirtualHost infogate.uswc.uswest.com>
+        ServerAdmin mobilev@uswest.com
+        DocumentRoot /usr/local/etc/httpd/htdocs
+##      ServerName mvdev1.uswc.uswest.com
+        ServerName infogate.uswc.uswest.com
+##      ServerAlias mvdev1
+        ServerAlias infogate
+        ErrorLog logs/error_log
+        CustomLog logs/access_log common
+        ##ErrorDocument 404 http://mvdev1.uswc.uswest.com/
+        ErrorDocument 404 http://infogate.uswc.uswest.com/
+</VirtualHost>
+
+#<VirtualHost wireless.uswc.uswest.com>
+#       ServerAdmin wireless@uswest.com
+#       DocumentRoot /usr/local/etc/Wireless
+#       ServerName wireless.uswc.uswest.com
+#       ServerAlias wireless
+#       ErrorLog /usr/local/etc/Wireless/logs/error_log
+#       CustomLog /usr/local/etc/Wireless/logs/access_log common
+#       ErrorDocument 404 http://wireless.uswc.uswest.com/
+#</VirtualHost>
+
+#<VirtualHost _default_:*>
+#</VirtualHost>
+
+>How-To-Repeat:
+Unfortunately, this is on a corporate intranet, so you can't access it, but here
+is the /server-status HTML code, snip n' view w/fav browser
+
+---------8<------------
+<HTML><HEAD>
+<TITLE>Apache Status</TITLE>
+</HEAD><BODY>
+<H1>Apache Server Status for infogate.uswc.uswest.com</H1>
+
+Server Version: Apache/1.3.4 (Unix) mod_perl/1.18<br>
+Server Built: Feb  3 1999 15:06:13<br>
+<hr>
+Current Time: Tuesday, 16-Feb-1999 11:37:58 MST<br>
+Restart Time: Sunday, 14-Feb-1999 14:17:02 MST<br>
+Server uptime:  1 day 21 hours 20 minutes 56 seconds<br>
+Total accesses: 79596 - Total Traffic: 19.3 MB<br>
+CPU Usage: u44.9 s7.38 cu.75 cs3.13 - .0344% CPU load<br>
+.488 requests/sec - 123 B/second - 254 B/request<br>
+
+35 requests currently being processed, 8 idle servers
+<PRE>RR_RRRRRRRRRRWRRRRRRRRRRRRRRRRRRR_RR____W__.....................
+................................................................
+................................................................
+................................................................
+</PRE>
+Scoreboard Key: <br>
+"<B><code>_</code></B>" Waiting for Connection, 
+"<B><code>S</code></B>" Starting up, 
+"<B><code>R</code></B>" Reading Request,<BR>
+"<B><code>W</code></B>" Sending Reply, 
+"<B><code>K</code></B>" Keepalive (read), 
+"<B><code>D</code></B>" DNS Lookup,<BR>
+"<B><code>L</code></B>" Logging, 
+"<B><code>G</code></B>" Gracefully finishing, 
+"<B><code>.</code></B>" Open slot with no current process<P>
+<P>
+<p>
+
+<table border=0><tr><th>Srv<th>PID<th>Acc<th>M<th>CPU
+<th>SS<th>Req<th>Conn<th>Child<th>Slot<th>Client<th>VHost<th>Request</tr>
+
+<tr><td><b>0</b><td>26198<td>0/11/4471<td><b>R</b>
+<td>0.80<td>11138<td>1679<td>0.0<td>0.00<td>1.18
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>1</b><td>20502<td>0/15/2815<td><b>R</b>
+<td>1.03<td>72478<td>252<td>0.0<td>0.000<td>0.56
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>2</b><td>1335<td>0/27/3232<td>_
+<td>1.53<td>3<td>2<td>0.0<td>0.00<td>0.67
+<td>151.116.172.142<td nowrap>infogate.uswc.uswest.com<td nowrap>GET / HTTP/1.0</tr>
+
+<tr><td><b>3</b><td>1284<td>0/22/427<td><b>R</b>
+<td>1.88<td>101334<td>791<td>0.0<td>0.00<td>0.05
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>4</b><td>16179<td>0/10/1320<td><b>R</b>
+<td>0.98<td>94375<td>1<td>0.0<td>0.00<td>0.41
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>5</b><td>2687<td>0/20/482<td><b>R</b>
+<td>1.47<td>100210<td>294<td>0.0<td>0.00<td>0.06
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>6</b><td>17749<td>0/19/1374<td><b>R</b>
+<td>1.29<td>93655<td>1492<td>0.0<td>0.01<td>0.49
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>7</b><td>29547<td>0/12/300<td><b>R</b>
+<td>1.04<td>102337<td>1<td>0.0<td>0.00<td>0.05
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>8</b><td>27321<td>0/8/2983<td><b>R</b>
+<td>0.90<td>1300<td>2<td>0.0<td>0.000<td>0.64
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>9</b><td>18755<td>0/21/1872<td><b>R</b>
+<td>1.67<td>73340<td>1774<td>0.0<td>0.000<td>0.32
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>10</b><td>8684<td>0/15/471<td><b>R</b>
+<td>1.35<td>97386<td>286<td>0.0<td>0.00<td>0.09
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>11</b><td>17794<td>0/5/3868<td><b>R</b>
+<td>0.75<td>73949<td>370<td>0.0<td>0.00<td>0.82
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>12</b><td>12768<td>0/18/649<td><b>R</b>
+<td>1.16<td>95746<td>1518<td>0.0<td>0.00<td>0.12
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>13</b><td>1444<td>0/20/2876<td><b>W</b>
+<td>1.02<td>6<td>0<td>0.0<td>0.00<td>0.66
+<td>137.106.191.52<td nowrap>infogate.uswc.uswest.com<td nowrap>GET /server-status HTTP/1.0</tr>
+
+<tr><td><b>14</b><td>12808<td>0/10/529<td><b>R</b>
+<td>0.91<td>95763<td>1470<td>0.0<td>0.00<td>0.24
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>15</b><td>18793<td>0/17/3632<td><b>R</b>
+<td>1.27<td>73329<td>1441<td>0.0<td>0.000<td>1.13
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>16</b><td>10943<td>0/8/268<td><b>R</b>
+<td>0.98<td>96479<td>0<td>0.0<td>0.000<td>0.05
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>17</b><td>12944<td>0/15/334<td><b>R</b>
+<td>1.07<td>95690<td>187<td>0.0<td>0.00<td>0.19
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>18</b><td>12464<td>0/26/271<td><b>R</b>
+<td>1.11<td>95781<td>1522<td>0.0<td>0.01<td>0.10
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>19</b><td>12465<td>0/27/192<td><b>R</b>
+<td>1.70<td>95770<td>2<td>0.0<td>0.000<td>0.02
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>20</b><td>16421<td>0/13/3128<td><b>R</b>
+<td>1.00<td>74314<td>2<td>0.0<td>0.00<td>1.06
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>21</b><td>21972<td>0/4/6369<td><b>R</b>
+<td>0.68<td>3064<td>1<td>0.0<td>0.000<td>1.49
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>22</b><td>16186<td>0/11/214<td><b>R</b>
+<td>1.07<td>94368<td>1<td>0.0<td>0.00<td>0.09
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>23</b><td>12739<td>0/15/1458<td><b>R</b>
+<td>1.09<td>50493<td>360<td>0.0<td>0.00<td>0.36
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>24</b><td>12780<td>0/18/4134<td><b>R</b>
+<td>1.19<td>50133<td>0<td>0.0<td>0.02<td>1.08
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>25</b><td>16251<td>0/3/35<td><b>R</b>
+<td>0.67<td>94391<td>1569<td>0.0<td>0.01<td>0.01
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>26</b><td>27014<td>0/8/6148<td><b>R</b>
+<td>0.82<td>1365<td>353<td>0.0<td>0.00<td>1.51
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>27</b><td>16867<td>0/13/42<td><b>R</b>
+<td>1.06<td>94061<td>1<td>0.0<td>0.000<td>0.00
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>28</b><td>17012<td>0/7/37<td><b>R</b>
+<td>0.90<td>94038<td>1<td>0.0<td>0.00<td>0.01
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>29</b><td>25985<td>0/25/4308<td><b>R</b>
+<td>1.33<td>11137<td>1466<td>0.0<td>0.00<td>1.24
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>30</b><td>27005<td>0/16/5507<td><b>R</b>
+<td>1.13<td>1290<td>1<td>0.0<td>0.000<td>1.34
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>31</b><td>27050<td>0/15/4178<td><b>R</b>
+<td>1.10<td>1303<td>2106<td>0.0<td>0.00<td>0.84
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>32</b><td>1401<td>0/22/1823<td><b>R</b>
+<td>1.20<td>9193<td>0<td>0.0<td>0.00<td>0.37
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>33</b><td>1494<td>0/17/2650<td>_
+<td>1.46<td>2<td>240<td>0.0<td>0.000<td>0.51
+<td>172.28.53.192<td nowrap>infogate.uswc.uswest.com<td nowrap>POST /perl/MVWhatToDo.pl HTTP/1.1</tr>
+
+<tr><td><b>34</b><td>27085<td>0/9/2159<td><b>R</b>
+<td>1.03<td>1303<td>1876<td>0.0<td>0.00<td>0.53
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>35</b><td>27088<td>0/19/1722<td><b>R</b>
+<td>1.13<td>1292<td>0<td>0.0<td>0.000<td>0.40
+<td>?<td nowrap>?<td nowrap>..reading.. </tr>
+
+<tr><td><b>36</b><td>2070<td>0/6/1163<td>_
+<td>1.23<td>2<td>417<td>0.0<td>0.00<td>0.23
+<td>137.106.26.39<td nowrap>infogate.uswc.uswest.com<td nowrap>POST /perl/MVWhatToDo.pl HTTP/1.0</tr>
+
+<tr><td><b>37</b><td>1508<td>0/18/527<td>_
+<td>1.12<td>10<td>0<td>0.0<td>0.00<td>0.08
+<td>172.28.53.192<td nowrap>infogate.uswc.uswest.com<td nowrap>GET /image/ok.gif HTTP/1.1</tr>
+
+<tr><td><b>38</b><td>1524<td>0/18/350<td>_
+<td>1.17<td>37<td>1760<td>0.0<td>0.00<td>0.10
+<td>148.156.9.53<td nowrap>infogate.uswc.uswest.com<td nowrap>POST /perl/MVWhatToDo.pl HTTP/1.0</tr>
+
+<tr><td><b>39</b><td>2053<td>0/7/258<td>_
+<td>0.90<td>0<td>1688<td>0.0<td>0.00<td>0.05
+<td>151.116.39.133<td nowrap>infogate.uswc.uswest.com<td nowrap>POST /perl/MVWhatToDo.pl HTTP/1.0</tr>
+
+<tr><td><b>40</b><td>1998<td>0/7/231<td><b>W</b>
+<td>0.83<td>7<td>0<td>0.0<td>0.000<td>0.01
+<td>151.116.37.157<td nowrap>infogate.uswc.uswest.com<td nowrap>POST /perl/MVWhatToDo.pl HTTP/1.0</tr>
+
+<tr><td><b>41</b><td>2090<td>0/6/225<td>_
+<td>0.82<td>18<td>2036<td>0.0<td>0.00<td>0.02
+<td>137.108.40.138<td nowrap>infogate.uswc.uswest.com<td nowrap>POST /perl/MVWhatToDo.pl HTTP/1.0</tr>
+
+<tr><td><b>42</b><td>1745<td>0/12/234<td>_
+<td>1.03<td>10<td>0<td>0.0<td>0.00<td>0.02
+<td>172.28.53.192<td nowrap>infogate.uswc.uswest.com<td nowrap>GET /image/over.gif HTTP/1.1</tr>
+
+<tr><td><b>43</b><td>-<td>0/0/151<td>.
+<td>0.73<td>27<td>257<td>0.0<td>0.00<td>0.07
+<td>148.155.27.22<td nowrap>infogate.uswc.uswest.com<td nowrap>POST /perl/MVWhatToDo.pl HTTP/1.0</tr>
+
+<tr><td><b>44</b><td>-<td>0/0/76<td>.
+<td>0.69<td>16<td>1331<td>0.0<td>0.00<td>0.01
+<td>148.158.21.22<td nowrap>infogate.uswc.uswest.com<td nowrap>POST /perl/MVWhatToDo.pl HTTP/1.0</tr>
+
+<tr><td><b>45</b><td>-<td>0/0/37<td>.
+<td>0.87<td>26<td>0<td>0.0<td>0.00<td>0.00
+<td>148.155.60.143<td nowrap>(unavailable)<td nowrap>GET /image/over.gif HTTP/1.0</tr>
+
+<tr><td><b>46</b><td>-<td>0/0/22<td>.
+<td>0.88<td>312<td>1820<td>0.0<td>0.00<td>0.01
+<td>137.106.211.14<td nowrap>infogate.uswc.uswest.com<td nowrap>POST /perl/MVWhatToDo.pl HTTP/1.0</tr>
+
+<tr><td><b>47</b><td>-<td>0/0/10<td>.
+<td>0.63<td>313<td>7713<td>0.0<td>0.00<td>0.000
+<td>151.116.21.248<td nowrap>infogate.uswc.uswest.com<td nowrap>POST /perl/MVWhatToDo.pl HTTP/1.0</tr>
+
+<tr><td><b>48</b><td>-<td>0/0/6<td>.
+<td>0.01<td>490<td>1<td>0.0<td>0.00<td>0.000
+<td>148.155.152.223<td nowrap>infogate.uswc.uswest.com<td nowrap>GET /image/ok.gif HTTP/1.0</tr>
+
+<tr><td><b>49</b><td>-<td>0/0/5<td>.
+<td>0.02<td>1174<td>1<td>0.0<td>0.00<td>0.000
+<td>151.117.132.249<td nowrap>infogate.uswc.uswest.com<td nowrap>GET /image/over.gif HTTP/1.0</tr>
+
+<tr><td><b>50</b><td>-<td>0/0/6<td>.
+<td>0.67<td>1174<td>2842<td>0.0<td>0.00<td>0.000
+<td>151.116.68.76<td nowrap>(unavailable)<td nowrap>POST /perl/MVWhatToDo.pl HTTP/1.0</tr>
+
+<tr><td><b>51</b><td>-<td>0/0/3<td>.
+<td>0.74<td>8123<td>1410<td>0.0<td>0.00<td>0.000
+<td>151.118.120.12<td nowrap>infogate.uswc.uswest.com<td nowrap>POST /perl/MVWhatToDo.pl HTTP/1.0</tr>
+
+<tr><td><b>52</b><td>-<td>0/0/1<td>.
+<td>0.69<td>8101<td>970<td>0.0<td>0.00<td>0.00
+<td>151.119.65.170<td nowrap>infogate.uswc.uswest.com<td nowrap>POST /perl/MVWhatToDo.pl HTTP/1.0</tr>
+
+<tr><td><b>53</b><td>-<td>0/0/1<td>.
+<td>0.02<td>8103<td>3<td>0.0<td>0.00<td>0.00
+<td>148.156.58.88<td nowrap>infogate.uswc.uswest.com<td nowrap>GET / HTTP/1.0</tr>
+
+<tr><td><b>54</b><td>-<td>0/0/2<td>.
+<td>0.74<td>8124<td>1307<td>0.0<td>0.00<td>0.00
+<td>137.108.91.224<td nowrap>infogate.uswc.uswest.com<td nowrap>POST /perl/MVWhatToDo.pl HTTP/1.0</tr>
+
+<tr><td><b>55</b><td>-<td>0/0/1<td>.
+<td>0.02<td>8122<td>1<td>0.0<td>0.00<td>0.00
+<td>151.116.68.76<td nowrap>infogate.uswc.uswest.com<td nowrap>GET /image/ok.gif HTTP/1.0</tr>
+
+<tr><td><b>56</b><td>-<td>0/0/2<td>.
+<td>0.03<td>8122<td>0<td>0.0<td>0.00<td>0.000
+<td>137.106.208.201<td nowrap>infogate.uswc.uswest.com<td nowrap>GET /image/over.gif HTTP/1.0</tr>
+
+<tr><td><b>57</b><td>-<td>0/0/1<td>.
+<td>0.80<td>8120<td>1089<td>0.0<td>0.00<td>0.00
+<td>148.155.12.49<td nowrap>infogate.uswc.uswest.com<td nowrap>POST /perl/MVWhatToDo.pl HTTP/1.0</tr>
+
+<tr><td><b>58</b><td>-<td>0/0/1<td>.
+<td>0.02<td>8121<td>3<td>0.0<td>0.00<td>0.00
+<td>151.116.146.116<td nowrap>infogate.uswc.uswest.com<td nowrap>GET / HTTP/1.0</tr>
+
+<tr><td><b>59</b><td>-<td>0/0/1<td>.
+<td>0.02<td>8120<td>1<td>0.0<td>0.00<td>0.000
+<td>130.13.31.154<td nowrap>infogate.uswc.uswest.com<td nowrap>GET /image/ok.gif HTTP/1.1</tr>
+
+<tr><td><b>60</b><td>-<td>0/0/1<td>.
+<td>0.02<td>8120<td>3<td>0.0<td>0.00<td>0.00
+<td>137.106.150.136<td nowrap>infogate.uswc.uswest.com<td nowrap>GET / HTTP/1.0</tr>
+
+<tr><td><b>61</b><td>-<td>0/0/1<td>.
+<td>0.66<td>8120<td>2198<td>0.0<td>0.00<td>0.00
+<td>148.155.27.171<td nowrap>infogate.uswc.uswest.com<td nowrap>POST /perl/MVWhatToDo.pl HTTP/1.0</tr>
+
+<tr><td><b>62</b><td>-<td>0/0/1<td>.
+<td>0.02<td>8119<td>1<td>0.0<td>0.00<td>0.000
+<td>130.13.31.154<td nowrap>infogate.uswc.uswest.com<td nowrap>GET /image/over.gif HTTP/1.1</tr>
+
+<tr><td><b>63</b><td>-<td>0/0/1<td>.
+<td>0.01<td>8118<td>3<td>0.0<td>0.00<td>0.00
+<td>137.106.208.201<td nowrap>infogate.uswc.uswest.com<td nowrap>GET / HTTP/1.0</tr>
+
+</table>
+ <hr> <table>
+ <tr><th>Srv<td>Server number
+ <tr><th>PID<td>OS process ID
+ <tr><th>Acc<td>Number of accesses this connection / this child / this slot
+ <tr><th>M<td>Mode of operation
+ <tr><th>CPU<td>CPU usage, number of seconds
+ <tr><th>SS<td>Seconds since beginning of most recent request
+ <tr><th>Req<td>Milliseconds required to process most recent request
+ <tr><th>Conn<td>Kilobytes transferred this connection
+ <tr><th>Child<td>Megabytes transferred this child
+ <tr><th>Slot<td>Total megabytes transferred this slot
+ </table>
+<HR>
+<ADDRESS>Apache/1.3.4 Server at <A HREF="mailto:mobilev@uswest.com">infogate.uswc.uswest.com</A> Port 80</ADDRESS>
+</BODY></HTML>
+
+------------8<---------------------
+>Fix:
+Unfortunately, no... i'm suspecting this is a Solaris issue, as I have essentially
+the same server config and version running on a Linux box with absolutely 
+no problems, but I have come to expect such things from Linux :)  My only other 
+idea is that it could be something with our client software, the entire company 
+uses a custom compiled version of Netscape, but with my browser I cannot seem to 
+replicate the problem... it seems to happen randomly and on random url's.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 16:43:25 PDT 1999
+State-Changed-Why:
+Does this happen for you without mod_perl?
+
+I can't reproduce it using apache-1.3.7-dev on solaris 2.6...
+(no related changes since 1.3.6)
+
+Dean
+Release-Changed-From-To: 1.3.4 mod_perl-1.3.4
+Release-Changed-By: coar
+Release-Changed-When: Thu Apr 29 13:08:00 PDT 1999
+
+From: Derek Andree <dxandr2@uswest.com>
+To: dgaudet@Apache.Org
+Cc: apbugs@Apache.Org
+Subject: Re: config/3906: Servers hang on either Keepalive or on Read (if 
+ keepalive is turned off)
+Date: Thu, 27 May 1999 10:25:16 -0700
+
+ > Does this happen for you without mod_perl?
+ 
+ it only happens when it's on production.  I've noticed that i cannot get
+ connections to hang if I try connecting from localhost, yet i _can_ get
+ them to hang if I telnet host 80 from another machine and just leave the
+ session up... the timeout value is ignored and the connection is left
+ open indefinitely.
+  
+ > I can't reproduce it using apache-1.3.7-dev on solaris 2.6...
+ > (no related changes since 1.3.6)
+ 
+ the only way i have been able to reproduce it reliably is on our
+ production machine :(  on our test machine (identical to production in
+ every aspect including hardware) i have been able to get a hung
+ connection (stuck in Read when keepalives are turned off) by doing a
+ telnet from a different host to port 80 of the webserver.  This doesn't
+ seem to be consistent... some connections hang and some do not. 
+ 
+ our machines have the latest patches from sun installed.
+ 
+ i received a patch from you which i will try now and let you know if it
+ works or not...
+ 
+ thanks for the help!
+ 
+ 
+ -- 
+ Derek Andree
+ Mobile Village Development
+ dxandr2@uswest.com
+ 
+ Diplomacy is the art of saying "nice doggy" until you can find a rock.
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: config/3906: Servers hang on either Keepalive or on Read (if  keepalive is turned off) (fwd)
+Date: Tue, 1 Jun 1999 23:14:36 -0700 (PDT)
+
+ ---------- Forwarded message ----------
+ Date: Thu, 27 May 1999 13:52:35 -0700
+ From: Derek Andree <dxandr2@uswest.com>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: config/3906: Servers hang on either Keepalive or on Read (if  keepalive is turned off)
+ 
+ Dean,
+ 
+ Yes indeed, this seems to fix the problem!  I'll let you know if read or
+ keepalives get stuck, but the server has been running now under heavy
+ load for over 3 hours without a hitch...
+ 
+ 
+ Thanks for your help!
+ 
+ 
+ Dean Gaudet wrote:
+ > 
+ > BTW, here's a patch you may want to try.  It's just a wild guess though...
+ > 
+ > Dean
+ > 
+ > Index: main/http_main.c
+ > ===================================================================
+ > RCS file: /home/cvs/apache-1.3/src/main/http_main.c,v
+ > retrieving revision 1.430
+ > diff -u -r1.430 http_main.c
+ > --- http_main.c 1999/04/20 19:15:39     1.430
+ > +++ http_main.c 1999/04/21 00:07:43
+ > @@ -3601,6 +3601,7 @@
+ >  #endif
+ >  #endif
+ >      signal(SIGALRM, alrm_handler);
+ > +    signal(SIGUSR2, alrm_handler);
+ > 
+ >  #ifdef OS2
+ >  /* Stop Ctrl-C/Ctrl-Break signals going to child processes */
+ > @@ -4105,7 +4106,7 @@
+ >                 else if (ps->last_rtime + ss->timeout_len < now) {
+ >                     /* no progress, and the timeout length has been exceeded */
+ >                     ss->timeout_len = 0;
+ > -                   kill(ps->pid, SIGALRM);
+ > +                   kill(ps->pid, SIGUSR2);
+ >                 }
+ >             }
+ >  #endif
+ 
+ -- 
+ Derek Andree
+ Mobile Village Development
+ dxandr2@uswest.com
+ 
+ Diplomacy is the art of saying "nice doggy" until you can find a rock.
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: slive
+State-Changed-When: Mon Oct 30 18:57:20 PST 2000
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

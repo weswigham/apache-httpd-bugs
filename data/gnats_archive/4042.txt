@@ -1,0 +1,210 @@
+Received: (qmail 16294 invoked from network); 11 Mar 1999 16:09:35 -0000
+Message-Id: <199903111610.LAA00415@siam.gensym.com>
+Date: Thu, 11 Mar 1999 11:10:10 -0500 (EST)
+From: bhyde@pobox.com
+To: bhyde@pobox.com
+Cc: apbugs@Apache.Org
+Subject: os/unix/os.c dlclose()s objects before module cleanups are complete
+
+>Number:         4042
+>Category:       pending
+>Synopsis:       os/unix/os.c dlclose()s objects before module cleanups are complete
+>Confidential:   yes
+>Severity:       serious
+>Priority:       medium
+>Responsible:    gnats-admin
+>State:          closed
+>Class:          duplicate
+>Submitter-Id:   unknown
+>Arrival-Date:   Thu Mar 11 08:10:03 PST 1999
+>Last-Modified:  Thu Mar 11 12:47:50 PST 1999
+>Originator:     
+>Organization:
+>Release:        
+>Environment:
+>Description:
+>How-To-Repeat:
+See "mod_perl interfering with `regular' CGI?" recent thread on the
+modperl list.  E-mail if you need further details.
+
+I'm sorry a few quick moments of looking and I couldn't find the
+modperl list's archives online.
+
+How confident are you that this was actually what happened?  Can
+you identify the "cleanup" operation that triggered the segv so
+I can admit both that such a cleanup can happen after the module
+is unloaded and that the module had was using it approprately.
+
+ - ben hyde
+
+
+--- Mail #2 ---
+
+Subject: Re: os/unix/os.c dlclose()s objects before module cleanups are
+ complete
+From: Todd Vierling <tv@pobox.com>
+Cc: apbugs@Apache.Org
+To: bhyde@pobox.com
+
+On Wed, 10 Mar 1999 bhyde@pobox.com wrote:
+
+: > When a file is loaded via LoadFile or LoadModule on UN*X, it is
+: > dlopen()ed into memory.  
+: 
+: And a cleanup to unload it is registered in the config. pool.  This
+: is then invoked when the server is restarted or shutdown gracefully.
+
+Right, but:
+
+: >During cleanups (such as a CGI child calling
+: >ap_cleanup_for_exec()), the dlclose() hooks are called, but in no
+: >particular order with respect to other registered cleanup hooks.
+: 
+: The order is well defined: LIFO, last in first out order (aka stack).
+
+>Fix:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: bhyde
+State-Changed-When: Thu Mar 11 12:47:45 PST 1999
+State-Changed-Why:
+[This is a standard response.]
+This issue has been reported before;
+please search the FAQ and the bug database.
+Thanks for using Apache!
+Class-Changed-From-To: sw-bug-duplicate
+Class-Changed-By: bhyde
+Class-Changed-When: Thu Mar 11 12:47:45 PST 1999
+>Unformatted:
+>During cleanups (such as a CGI child calling
+>ap_cleanup_for_exec()), the dlclose() hooks are called, but in no
+>particular order with respect to other registered cleanup hooks.
+
+The order is well defined: LIFO, last in first out order (aka stack).
+The only exceptions are that subpools are cleared before any parent
+pool cleanups, and subprocesses of a pool are shutdown after the pools
+are cleared.
+
+The ap_cleanup_for_exec cleanups mod_so registered don't do anything,
+so the code is not unloaded as a side effect of ap_cleanup_for_exec
+
+>This is bad, because a module which is loaded with LoadModule may
+>register cleanups that Apache attempts to run _after_ it has dlclose()d
+>that module.  
+
+To have this happens you need to load the module and then have
+the module register a callback (not necessarily a cleanup) that
+can be invoked after the server is next reset.
+
+I can imagine, but it's hard, doing that but not within the usual Apache
+framework.
+
+>This results in a hard to trace back SIGSEGV.
+>From what I saw, this wasn't exactly true, and I'll have to get back to you;
+I don't have time to search sources for a few days.
+
+>From memory, Apache was calling dlclose() on LoadFile'd shared objects
+before calling the cleanup handlers for dependent modules, i.e. (short
+form):
+
+LoadFile .../libm.so
+LoadFile .../libperl.so
+LoadModule .../mod_perl.so
+AddModule ...mod_perl...
+
+For some reason, dlclose() was called for libperl BEFORE doing all cleanups
+for mod_perl.  If each library was registered as a separate cleanup, LIFO
+would probably work, but I don't think that's how it worked.
+
+Just as a test case, try hooking into the cleanups for a module which is
+LoadModule'd and AddModule'd later in the config file than an arbitrary
+LoadFile'd shared object, say, libintl.so or libz.so or something else not
+normally linked to Apache.  If you put printf()s in the appropriate places,
+you should see Apache call dlclose() on the LoadFile'd file first, before
+the module cleanups (and eventual dlclose() of the module too).
+
+: so the code is not unloaded as a side effect of ap_cleanup_for_exec
+
+Um, that isn't quite true.  I specifically saw Apache call dlclose() on the
+LoadModule/LoadFile'd files when execing a CGI.  
+
+-- 
+-- Todd Vierling (Personal tv@pobox.com; Bus. todd_vierling@xn.xerox.com)
+
+
+--- Mail #3 ---
+From bhyde Thu Mar 11 11:05:24 1999
+Date: Thu, 11 Mar 99 11:05:24 EST
+From: bhyde (Ben Hyde)
+To: Todd Vierling <tv@pobox.com>
+Cc: apbugs@Apache.Org
+Subject: Re: os/unix/os.c dlclose()s objects before module cleanups are complete
+In-Reply-To: <Pine.NEB.4.05.9903101631560.12716-100000@duhnet.net>
+References: <199903102123.QAA18308@siam.gensym.com>
+	<Pine.NEB.4.05.9903101631560.12716-100000@duhnet.net>
+
+
+Todd Vierling writes:
+> Just as a test case, try hooking into the cleanups for a module which is
+> LoadModule'd and AddModule'd later in the config file than an arbitrary
+...
+
+Ok I took a stab at reproducing the "random pattern."
+
+I have a config file like so:
+
+    $ grep '^Load' local/conf/httpd.conf
+    LoadFile /usr/local/lib/libz.so
+    LoadFile /usr/lib/libw.so
+    LoadModule env_module         libexec/mod_env.so
+    LoadModule config_log_module  libexec/mod_log_config.so
+    LoadModule access_module      libexec/mod_access.so
+    LoadModule setenvif_module    libexec/mod_setenvif.so
+    
+and I added some fprintf into mod_so at the calls it makes
+to load and unload things and then I get this in my
+error log.  A quick glance suggests the order is fine.
+
+... 
+httpd: [Thu Mar 11 10:53:03 1999] [notice] SIGHUP received.  Attempting to restart
+Calling ap_os_dso_unload for module module: setenvif_module at ef641db0
+Calling ap_os_dso_unload for module module: access_module at ef6416f4
+Calling ap_os_dso_unload for module module: config_log_module at ef6409cc
+Calling ap_os_dso_unload for module module: env_module at ef491d94
+Calling ap_os_dso_unload to unload file at ef4907f4
+Calling ap_os_dso_unload to unload file at ef490490
+Loaded file /usr/local/lib/libz.so at ef490624
+Loaded file /usr/lib/libw.so at ef490ad4
+Loaded module env_module at ef640284
+Loaded module config_log_module at ef4d01f0
+Loaded module access_module at ef4d083c
+Loaded module setenvif_module at ef4d0e40
+httpd: [Thu Mar 11 10:53:03 1999] [notice] Apache/1.3.4 (Unix) configured -- resuming normal operations
+...
+
+I have no idea why the handle addresses don't match,
+but it's unlikely that is anything other than a typo
+on my part.
+
+So... I remain unconvinced.
+ 
+  - ben
+
+Piffle - I can't seem to get gnats to absorbe the mail discussing this
+bug ... try again. - ben
+
+--- Mail #1 ---
+From bhyde Wed Mar 10 16:22:59 1999
+Date: Wed, 10 Mar 99 16:22:59 EST
+From: bhyde (Ben Hyde)
+To: tv@pobox.com
+Cc: apbugs@Apache.Org
+Subject: os/unix/os.c dlclose()s objects before module cleanups are complete
+
+
+> When a file is loaded via LoadFile or LoadModule on UN*X, it is
+> dlopen()ed into memory.  
+
+And a cleanup to unload it is registered in the config. pool.  This
+is then invoked when the server is restarted or shutdown gracefully.
+

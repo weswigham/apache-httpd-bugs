@@ -1,0 +1,177 @@
+Received: (qmail 4485 invoked by uid 2012); 10 May 1998 19:54:10 -0000
+Message-Id: <19980510195410.4484.qmail@hyperreal.org>
+Date: 10 May 1998 19:54:10 -0000
+From: Darrell Kidnred <dkindred=apachebug@cs.cmu.edu>
+Reply-To: dkindred=apachebug@cs.cmu.edu
+To: apbugs@hyperreal.org
+Subject: CGI script with last-modified gives empty 200 response
+X-Send-Pr-Version: 3.2
+
+>Number:         2209
+>Category:       general
+>Synopsis:       CGI script with last-modified gives empty 200 response
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun May 10 14:10:00 PDT 1998
+>Last-Modified:  Mon Jun 21 14:20:01 PDT 1999
+>Originator:     dkindred=apachebug@cs.cmu.edu
+>Organization:
+>Release:        1.3b6
+>Environment:
+Digital Unix 4.0, gcc
+(but that's irrelevant)
+>Description:
+When an If-Modified-Since request for a CGI script is processed,
+and the I-M-S date matches the Last-Modified date provided by the
+script, apache transmits the normal status line as given by the script
+(e.g., "200 OK") but doesn't transmit the body.  This causes browsers
+to choke with "document contains no data" or the like.
+>How-To-Repeat:
+Write a CGI script that provides a last-modified header like
+  Last-Modified: Sun, 04 Jun 1995 17:36:33 GMT
+along with a normal document and status "200 OK".
+Then send a request like this:
+  GET /cgi-bin/testscript HTTP/1.0
+  If-Modified-Since: Sun, 04 Jun 1995 17:36:33 GMT
+
+Apache will respond with
+  HTTP/1.1 200 OK
+  Date: Sun, 10 May 1998 18:50:47 GMT
+  Server: Apache/1.3b6
+  Connection: close
+
+and no further data.  The correct behavior would be to give a
+"304 Not Modified" header.
+>Fix:
+The following patch takes care of it, and looks right to me.
+I haven't worked with this code before, so someone familiar with
+the code should sanity-check my fix.
+
+Basically, what's happening is that ap_die is setting the request's status
+to 304 but it doesn't change the status_line accordingly.  The fixed version
+sets the status_line to NULL so it will be provided automatically by
+ap_basic_http_header.
+
+--- src/main/http_request.c.orig        Mon Apr 13 14:05:11 1998
++++ src/main/http_request.c     Sun May 10 14:58:46 1998
+@@ -889,6 +889,7 @@
+     }
+ 
+     r->status = type;
++    r->status_line = NULL;    /* ap_basic_http_header will fill this in. */
+ 
+     /*
+      * This test is done here so that none of the auth modules needs to know
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: brian
+State-Changed-When: Tue May 19 20:19:12 PDT 1998
+State-Changed-Why:
+Weird, I am not seeing this bug with 1.3b7-dev (i.e. the
+current CVS tree) and I don't see anything in the recent 
+commits since 1.3b6 that would have affected this.  
+
+E.g., try 
+
+http://www.apache.org/~brian/aptest/last-mod.cgi
+
+You'll see it behaves as expected.  If you could pull
+down a CVS snapshot from http://dev.apache.org/from-cvs/
+and let me know if the problem still exists for some
+reason (I'm on freebsd) I would appreciate it.
+
+
+
+From: Darrell Kindred <dkindred@cmu.edu>
+To: brian@hyperreal.org
+Cc: apbugs@apache.org, brian@apache.org
+Subject: Re: general/2209: CGI script with last-modified gives empty 200 response
+Date: Sat, 19 Jun 1999 21:44:23 -0400 (EDT)
+
+ --Il4XVe1FT+
+ Content-Type: text/plain; charset=us-ascii
+ Content-Transfer-Encoding: 7bit
+ 
+ Sorry it's taken me a long time to get back to you.
+ 
+ This problem still exists in 1.3.6, and the patch I provided 
+ in PR2209 still works.  To reproduce, install the attached
+ script as /cgi/imsbug, then send the following request to
+ the server:
+ 
+   GET /cgi-bin/testscript HTTP/1.0
+   If-Modified-Since: Sun, 04 Jun 1995 17:36:33 GMT
+ 
+ Apache will respond with
+ 
+   HTTP/1.1 200 OK 
+   Date: Sun, 20 Jun 1999 01:34:46 GMT 
+   Server: Apache/1.3.6 (Unix) 
+   Connection: close 
+ 
+ and no further data.  The correct behavior would be to give an
+ "HTTP/1.1 304 Not Modified" header.
+ 
+ - Darrell
+ 
+ --Il4XVe1FT+
+ Content-Type: text/plain
+ Content-Disposition: inline;
+ 	filename="imsbug"
+ Content-Transfer-Encoding: 7bit
+ 
+ #!/usr/bin/perl
+ print <<EOF;
+ Status: 200 OK
+ Last-Modified: Sun, 04 Jun 1995 17:36:33 GMT
+ Content-type: text/plain
+ 
+ testing 1 2 3
+ EOF
+ 
+ --Il4XVe1FT+--
+
+From: Rodent of Unusual Size <Ken.Coar@Golux.Com>
+To: Apache bug database <apbugs@Apache.Org>
+Cc:  Subject: Re: general/2209: CGI script with last-modified gives empty 200 response
+Date: Mon, 21 Jun 1999 17:10:59 -0400
+
+ Darrell Kindred wrote:
+ > 
+ >    GET /cgi-bin/testscript HTTP/1.0
+ >    If-Modified-Since: Sun, 04 Jun 1995 17:36:33 GMT
+ > 
+ >  Apache will respond with
+ > 
+ >    HTTP/1.1 200 OK
+ >    Date: Sun, 20 Jun 1999 01:34:46 GMT
+ >    Server: Apache/1.3.6 (Unix)
+ >    Connection: close
+ > 
+ >  and no further data.  The correct behavior would be to give an
+ >  "HTTP/1.1 304 Not Modified" header.
+ > 
+ >  #!/usr/bin/perl
+ >  print <<EOF;
+ >  Status: 200 OK
+ >  Last-Modified: Sun, 04 Jun 1995 17:36:33 GMT
+ >  Content-type: text/plain
+ > 
+ >  testing 1 2 3
+ >  EOF
+ 
+ What does it return if your script *doesn't* have a Status field
+ in its response header?
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,112 @@
+Received: (qmail 25217 invoked by uid 2012); 13 Aug 1999 17:30:04 -0000
+Message-Id: <19990813173004.25216.qmail@hyperreal.org>
+Date: 13 Aug 1999 17:30:04 -0000
+From: Ronald "Tschalär" <ronald@trustpoint.com>
+Reply-To: ronald@trustpoint.com
+To: apbugs@hyperreal.org
+Subject: [PATCH:] jserv_status: Multiple engines in different vhosts are not displayed
+X-Send-Pr-Version: 3.2
+
+>Number:         4857
+>Category:       mod_jserv
+>Synopsis:       [PATCH:] jserv_status: Multiple engines in different vhosts are not displayed
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    jserv
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Aug 13 10:40:00 PDT 1999
+>Last-Modified:  Fri Aug 13 11:17:24 PDT 1999
+>Originator:     ronald@trustpoint.com
+>Organization:
+>Release:        all, ApacheJserv-1.0
+>Environment:
+All
+>Description:
+If you set up multiple different engines with the same protocol, host, or
+port then the jserv status page only lists the last one.
+
+The problem is that jserv_status_add_host() compares the mount point to be
+added with any already added mount points using an OR instead of an AND on
+the various elements (protocol, host, port). Also, when generating the menu
+the engine counter is not incremenented (well it is, but it's getting reset).
+See patch below for details.
+>How-To-Repeat:
+I have
+
+<IfModule mod_jserv.c>
+  ApJServMount /servlets/ ajpv11://host1.somewhere.com/
+
+  <Location /status/jserv/>
+    SetHandler jserv-status
+    ...
+  </Location>
+</IfModule>
+
+in multiple virtual hosts, using a different host for the engine.
+>Fix:
+Here's the patch:
+
+--- jserv_status.c.orig Sun Apr 25 17:41:11 1999
++++ jserv_status.c      Fri Aug 13 08:46:33 1999
+@@ -166,8 +166,8 @@
+         if (cur->mount==mount) return;
+ 
+         /* Check protocol,host and port */
+-        if ((cur->mount->protocol==mount->protocol) |
+-            (cur->mount->hostaddr==mount->hostaddr) |
++        if ((cur->mount->protocol==mount->protocol) &&
++            (cur->mount->hostaddr==mount->hostaddr) &&
+             (cur->mount->port==mount->port)) return;
+ 
+         cur=cur->next;
+@@ -256,6 +256,7 @@
+                                   request_rec *r) {
+     jserv_config *cur=jserv_servers;
+     jserv_status_host *rcur=jserv_status_hosts;
++    int count = 0;
+ 
+     /* Set type and evaluate if this is a handler-only request */
+     r->content_type = "text/html";
+@@ -294,7 +295,7 @@
+     /* Examine list of Apache virtualhosts currently configured for Apache JServ */
+     ap_reset_timeout(r);
+     while (cur!=NULL) {
+-    char *name=cur->server->server_hostname;
++       char *name=cur->server->server_hostname;
+         ap_rprintf(r,"<a href=\"./status?module=%s\">%s</a>",name,name);
+         if (cur==cfg) ap_rputs(" <font size=-1><i>(current)</i></font>",r);
+         ap_rputs("<br>\n",r);
+@@ -306,7 +307,6 @@
+     
+     /* List of JServ hosts */
+     while (rcur!=NULL) {
+-        int count = 0;
+         ap_rprintf(r,"<a href=\"./engine/%d/\">%s</a>", count++, rcur->url);
+         ap_rputs("<br>\n",r);
+         rcur=rcur->next;
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: jon@clearink.com
+State-Changed-When: Fri Aug 13 11:17:23 PDT 1999
+State-Changed-Why:
+hmmm...this patch already has been applied to the latest cvs.
+
+thanks though.
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

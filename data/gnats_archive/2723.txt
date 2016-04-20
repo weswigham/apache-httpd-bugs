@@ -1,0 +1,404 @@
+Received: (qmail 3394 invoked by uid 2012); 28 Jul 1998 04:47:04 -0000
+Message-Id: <19980728044704.3393.qmail@hyperreal.org>
+Date: 28 Jul 1998 04:47:04 -0000
+From: Jeffrey Baker <jwb@tamu.edu>
+Reply-To: jwb@tamu.edu
+To: apbugs@hyperreal.org
+Subject: HTTPD dies complaining "error getting accept lock"
+X-Send-Pr-Version: 3.2
+
+>Number:         2723
+>Category:       os-linux
+>Synopsis:       HTTPD dies complaining "error getting accept lock"
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jul 27 21:50:00 PDT 1998
+>Last-Modified:  Tue Mar 16 08:25:38 PST 1999
+>Originator:     jwb@tamu.edu
+>Organization:
+>Release:        1.3.1
+>Environment:
+Linux 2.0.34 i686 pgcc/egcs 2.90.29 glibc 5.4.44, also a problem with straight
+egcs.
+>Description:
+Apache 1.3.1 dies unexpectedly with the following error:
+[emerg] (9)Bad file number: flock: LOCK_EX: Error getting accept lock. Exiting!
+[alert] Child nnnnn returned a Fatal error
+
+This brings down the entire httpd.  There are no other error messages, console
+output, or core dumps.
+
+My apache is configured very minimally: it does not include cgi, actions, include, or any non-standard module except for mod_perl 1.15.
+>How-To-Repeat:
+Compile and install Apache 1.3.1 + mod_perl 1.15 + Apache::Session, then use ab
+to hammer example.perl until it dies.
+>Fix:
+Nope
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Jeffrey Baker <jwb@tamu.edu>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-linux/2723: HTTPD dies complaining "error getting accept
+ lock"
+Date: Mon, 27 Jul 1998 21:57:02 -0700 (PDT)
+
+ On 28 Jul 1998, Jeffrey Baker wrote:
+ 
+ > >Release:        1.3.1
+ > >Environment:
+ > Linux 2.0.34 i686 pgcc/egcs 2.90.29 glibc 5.4.44, also a problem with straight
+ > egcs.
+ > >Description:
+ > Apache 1.3.1 dies unexpectedly with the following error:
+ > [emerg] (9)Bad file number: flock: LOCK_EX: Error getting accept lock. Exiting!
+ > [alert] Child nnnnn returned a Fatal error
+ 
+ Does this happen all the time?  Just once in a while?  How long does it
+ take for it to happen?
+ 
+ Are you using NFS at all?  
+ 
+ Can you try without modperl?
+ 
+ Please also try compiling it not using egcs.
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: lars
+State-Changed-When: Thu Jul 30 12:54:49 PDT 1998
+State-Changed-Why:
+(Waiting for feedback from submitter.)
+
+Severity-Changed-From-To: serious-non-critical
+Severity-Changed-By: lars
+Severity-Changed-When: Thu Jul 30 12:54:49 PDT 1998
+
+From: Jeffrey William Baker <jwb@tamu.edu>
+To: lars@apache.org
+Cc: apache-bugdb@apache.org, apbugs@apache.org
+Subject: Re: os-linux/2723: HTTPD dies complaining "error getting accept lock"
+Date: Thu, 30 Jul 1998 19:10:45 -0500
+
+ Hi Lars,
+ 
+ Sorry it took me a few days to fool with this.  To answer the original
+ questions: I am not using any NFS, nor mandatory kernel file locking.  I
+ have experienced this problem with gcc, egcs/glibc1, and pgcc/glibc[12],
+ all on Linux 2.0.34.  I am also finding this problem with Apache 1.3.1
+ and 1.3.0, with mod_perl verisions 1.12, 1.14, and 1.15
+ 
+ I tried to reproduce the problem using CGI instead of mod_perl, and I
+ could not.  When the server dies under mod_perl, it is answering over
+ 100 requests per second.  Under CGI, I simply cannot reproduce that
+ connection rate, and it loafs along at ~4 requests per second.  This may
+ indicate that it is a mod_perl problem.
+ 
+ The problem also seems to crop up when I issue 'apachectl stop'. 
+ Witness this entry in my error_log, when I started the httpd, then
+ stopped it b/c I stuffed up my code.  The only intervening step was a
+ mod_perl program which returned 500.
+ 
+ [Tue Jul 21 20:50:40 1998] [notice] Apache/1.3.0 (Unix) mod_perl/1.12
+ configured -- resuming normal operations
+ [Tue Jul 21 20:50:44 1998] [emerg] (9)Bad file number: flock: LOCK_EX: 
+ Error getting accept lock. Exiting!
+ [Tue Jul 21 20:50:44 1998] [emerg] (9)Bad file number: flock: LOCK_EX: 
+ Error getting accept lock. Exiting!
+ [Tue Jul 21 20:50:44 1998] [emerg] (9)Bad file number: flock: LOCK_EX:
+ Error getting accept lock. Exiting!
+ [Tue Jul 21 20:50:44 1998] [emerg] (9)Bad file number: flock: LOCK_EX: 
+ Error getting accept lock. Exiting!
+ [Tue Jul 21 20:50:44 1998] [emerg] (9)Bad file number: flock: LOCK_EX: 
+ Error getting accept lock. Exiting!
+ [Tue Jul 21 20:50:44 1998] [notice] httpd: caught SIGTERM, shutting down
+ 
+ I was hoping to attach gdb to this sucker, but I haven't been able to
+ get Apache to do this lately, despite my attempts to make its life
+ difficult.  If I come up with anything I'll get it to you.
+ 
+ Thanks,
+ Jeffrey
+Comment-Added-By: coar
+Comment-Added-When: Sun Sep 27 09:03:30 PDT 1998
+Comment-Added:
+[Note from another person]
+Hoping this gets added to PR 2723.
+
+My system is experiencing the same problem.  The lock file is *not*
+on an NFS-mounted volume.
+
+  * System is a 4-CPU P6-200 running SMP-aware Linux 2.0.30. 
+  * Apache 1.3.1
+  * Compiled with gcc 2.7.2.1
+  * mod_perl 1.15 and mod_ssl (2.06) have been incorporated.
+  * The optional rewrite, status, and info modules have been enabled.
+
+I wrote a health monitor to help me pinpoint the spot in the error
+log that is closest to the error by tacking some extra entries in
+the error_log immediately when it notices that the parent has died
+(note the '###' lines below).  The health monitor checks when the
+process referenced in httpd.pid disappears, and finally restarts the
+server when a connection to port 80 is refused.
+
+For whatever reason, connections would *continue* to be accepted even
+though the root process died for a short period (presumably until
+children exhaust their request limit), but I haven't investigated
+that aspect of the problem.  However, that masked the time that the
+parent was exiting since loads of the accept() failures would show
+up afterwards until connections were refused.
+
+It appears that the parent is exiting when a child gets a
+LOCK_EX failure on the accept lockfile.  The child exits
+with APEXIT_CHILDFATAL, which triggers the parent to die
+(main/http_main.c:3970).  Since there's a host of things that can
+cause children to die (especially with mod_perl thrown in the mix),
+this seems like inappropriate behavior.
+
+I'll try to dig in a bit more tomorrow to see if I can figure out
+what's up with the accept() problem.  "Bad file number" ain't tellin'
+me much.  I haven't figured out what conditions cause it to show
+up--it exits pretty randomly through the day.  Our entire site is
+delivered via mod_perl content, so I doubt I can test without that.
+
+Jeffrey- If you haven't hacked something up already, I'll send you
+         my health monitor/keeper-aliver script.  That'll keep you
+         going until the bug's been fixed.
+
+ -Scott Hutton, Information Technology Security Office
+                Indiana University
+  For PGP Key:  finger shutton@pobox.com ...or...
+                https://www.itso.iu.edu/staff/shutton/
+
+                      ***** BEGIN error_log ENTRIES *****
+
+[Wed Sep  2 17:46:12 1998] [emerg] (9)Bad file number: flock: LOCK_EX: Error getting accept lock. Exiting!
+[Wed Sep  2 17:46:13 1998] [alert] Child 24684 returned a Fatal error...
+Apache is exiting!
+### (check_apache) apache root process died at 09/02/98 17:46:26
+[Wed Sep  2 17:46:44 1998] ctime.pl: Prototype mismatch: sub Apache::ROOTwww_2eitso_2eiu_2eedu::services::itrack::view_2epl::ctime ($;$) vs none at /usr/lib/perl5/ctime.pl line 50.
+[Wed Sep  2 17:48:55 1998] ctime.pl: Prototype mismatch: sub Apache::ROOTwww_2eitso_2eiu_2eedu::services::itrack::view_2epl::ctime ($;$) vs none at /usr/lib/perl5/ctime.pl line 50.
+### (check_apache) restarting apache at 09/02/98 21:26:57
+
+                       ***** END error_log ENTRIES *****
+Comment-Added-By: lars
+Comment-Added-When: Fri Nov  6 07:41:13 PST 1998
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+Comment-Added-By: lars
+Comment-Added-When: Fri Nov  6 08:12:14 PST 1998
+Comment-Added:
+
+(See PR#3262 for additional info)
+
+
+From: "Jeffrey W. Baker" <jwb@tca.net>
+To: lars@apache.org
+Cc: apbugs@apache.org, lstein@cshl.org
+Subject: Re: os-linux/2723: HTTPD dies complaining "error getting accept lock"
+Date: Fri, 06 Nov 1998 09:56:17 -0600
+
+ lars@apache.org wrote:
+ 
+ > Comment-Added-By: lars
+ > Comment-Added-When: Fri Nov  6 07:41:13 PST 1998
+ > Comment-Added:
+ > [This is a standard response.]
+ > This Apache problem report has not been updated recently.
+ > Please reply to this message if you have any additional
+ > information about this issue, or if you have answers to
+ > any questions that have been posed to you.  If there are
+ > no outstanding questions, please consider this a request
+ > to try to reproduce the problem with the latest software
+ > release, if one has been made since last contact.  If we
+ > don't hear from you, this report will be closed.
+ > If you have information to add, BE SURE to reply to this
+ > message and include the apbugs@Apache.Org address so it
+ > will be attached to the problem report!
+ 
+ Lars et al,
+ 
+ It was a mere 17 days ago when Lincoln Stein contacted me to reveal that
+ he has the same problem with the very latest and greatest versions of
+ Apache and mod_perl (1.3.3/1.16, respectively).  I have included our email
+ exchange to add to this bug report.
+ 
+ Subject: Bad file number: flock: LOCK_EX
+    Date: Tue, 20 Oct 1998 11:03:14 -0400
+    From: Lincoln Stein <lstein@cshl.org>
+      To: jwb@tamu.edu
+ 
+ Hi Jeffrey,
+ 
+ I see from the Apache bug database that you're seeing this problem:
+ 
+ [emerg] (9)Bad file number: flock: LOCK_EX: Error getting accept lock.
+ Exiting!
+ [emerg] (9)Bad file number: flock: LOCK_EX: Error getting accept lock.
+ Exiting!
+ 
+ All of a sudden (as of last week) I'm seeing it too!  Every so often
+ it brings down the root web server...arrgh!
+ 
+ Did you ever find a solution or workaround for this?  I'm running
+ Linux 2.0.33, with Apache/1.3.3 mod_perl/1.16.
+ 
+ Lincoln
+ 
+ Subject: Re: Bad file number: flock: LOCK_EX
+    Date: Tue, 20 Oct 1998 10:30:14 -0500
+    From: "Jeffrey W. Baker" <jwb@tamu.edu>
+      To: lstein@cshl.org
+ 
+ Lincoln,
+ 
+ I haven't had this problem in a while, I was hoping it had quietly gone
+ away. 
+ My success could be due to an upgrade to libc6, but I am not sure.  I have
+ received several emails from people with the same problem.
+ 
+ I am interested in this bit from the CHANGES file:
+ 
+ *) PORT: Apache has need for mutexes to serialize its children around
+    accept.  In prior versions either fcntl file locking or flock file
+    locking were used.  The method is chosen by the definition of
+    USE_xxx_SERIALIZED_ACCEPT in conf.h.  xxx is FCNTL for fcntl(),
+    and FLOCK for flock().  New options have been added:
+       - SYSVSEM to use System V style semaphores
+       - PTHREAD to use POSIX threads (appears to work on Solaris only)
+       - USLOCK to use IRIX uslock
+    Based on timing various techniques, the following changes were made
+    to the defaults:
+       - Linux 2.x uses flock instead of fcntl
+       - Solaris 2.x uses pthreads
+       - IRIX uses SysV semaphores -- however multiprocessor IRIX boxes
+           work far faster if you -DUSE_USLOCK_SERIALIZED_ACCEPT
+ 
+ Since flock() is failing, perhaps it would be useful to modify conf.h to
+ use
+ fcntl() instead, or even pthread if your linuxpthread library is recent.
+ 
+ Good Luck,
+ Jeffrey
+ 
+ Subject: Re: Bad file number: flock: LOCK_EX
+    Date: Tue, 20 Oct 1998 11:46:49 -0400
+    From: Lincoln Stein <lstein@cshl.org>
+      To: jwb@tamu.edu
+ 
+ pthread didn't work -- some constants aren't defined in pthread.h.
+ I'll try the fcntl... or maybe upgrade to glibc, which is something I
+ have to do anyway.
+ 
+ Lincoln
+ 
+ END OF QUOTED MESSAGES
+ 
+ You can see that the problem has not gone away.
+ 
+ Jeffrey
+ -- 
+ Jeffrey William Baker 
+ jwb@tca.net
+State-Changed-From-To: feedback-open
+State-Changed-By: lars
+State-Changed-When: Sat Nov 14 09:19:29 PST 1998
+State-Changed-Why:
+issue is still open...
+
+
+From: "Jeffrey W. Baker" <jwbaker@iname.com>
+To: apbugs@apache.org
+Cc: Brad Cox <bcox@vs2.gmu.edu>
+Subject: Re: os-linux/2723: HTTPD dies complaining "error getting accept lock"
+Date: Tue, 15 Dec 1998 09:37:14 -0800
+
+ According To Brad Cox <bcox@vs2.gmu.edu>, recompiling Apache to use
+ ioctl corrects this bug on linux.  Performance implications of this have
+ not been quantified.
+ 
+ --Jeffrey
+ 
+ Brad Cox wrote:
+ > 
+ > Lincoln was right. Recompiling apache to use ioctl locking made this
+ > problem go away.
+ > 
+ > Everybody beware. This one bites hard once it decides to act up.
+ > 
+ > The fix is to simply modify src/include ap_config.h (LINUX section) as
+ > follows; eg use USE_FCNTL_SERIALIZED_ACCEPT instead of
+ > USE_FLOCK_SERIALIZED_ACCEPT
+ > 
+ > /* flock is faster ... but hasn't been tested on 1.x systems */
+ > /* bjc: #define USE_FLOCK_SERIALIZED_ACCEPT */
+ > #define USE_FCNTL_SERIALIZED_ACCEPT
+
+From: Brad Cox <bcox@vs2.gmu.edu>
+To: "Jeffrey W. Baker" <jwbaker@iname.com>, apbugs@apache.org
+Cc:  Subject: Re: os-linux/2723: HTTPD dies complaining "error getting accept
+ lock"
+Date: Tue, 15 Dec 1998 16:02:55 -0500
+
+ I just measured it. It serves requests more than 1,000,000 times faster
+ running with ioctl than crashed with flock. See for yourself.
+ http://virtualschool.edu/
+ 
+ 
+ At 12:37 PM -0500 12/15/1998, Jeffrey W. Baker wrote:
+ >According To Brad Cox <bcox@vs2.gmu.edu>, recompiling Apache to use
+ >ioctl corrects this bug on linux.  Performance implications of this have
+ >not been quantified.
+ >
+ >--Jeffrey
+ >
+ >Brad Cox wrote:
+ >>
+ >> Lincoln was right. Recompiling apache to use ioctl locking made this
+ >> problem go away.
+ >>
+ >> Everybody beware. This one bites hard once it decides to act up.
+ >>
+ >> The fix is to simply modify src/include ap_config.h (LINUX section) as
+ >> follows; eg use USE_FCNTL_SERIALIZED_ACCEPT instead of
+ >> USE_FLOCK_SERIALIZED_ACCEPT
+ >>
+ >> /* flock is faster ... but hasn't been tested on 1.x systems */
+ >> /* bjc: #define USE_FLOCK_SERIALIZED_ACCEPT */
+ >> #define USE_FCNTL_SERIALIZED_ACCEPT
+ 
+ 
+ ------------------------------------------------
+ Dr. Brad Cox; 703 361 4751; bcox@virtualschool.edu (update your address book)
+ http://virtualschool.edu/mon A Project with Paradoxical Goals
+ PGP Signature: E194 C6E5 92D8 B8FB 20E8  8667 929A 95A0 FCB6 7C62
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Mar 16 08:25:38 PST 1999
+State-Changed-Why:
+I've switched the default back to fcntl locking on linux.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,77 @@
+Received: (qmail 9432 invoked by uid 2012); 19 May 1998 01:29:25 -0000
+Message-Id: <19980519012925.9431.qmail@hyperreal.org>
+Date: 19 May 1998 01:29:25 -0000
+From: Matt Braithwaite <mab@alink.net>
+Reply-To: mab@alink.net
+To: apbugs@hyperreal.org
+Subject: FD_SET should not be called without bounds checking
+X-Send-Pr-Version: 3.2
+
+>Number:         2247
+>Category:       general
+>Synopsis:       FD_SET should not be called without bounds checking
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon May 18 18:30:01 PDT 1998
+>Last-Modified:  Mon May 25 10:44:36 PDT 1998
+>Originator:     mab@alink.net
+>Organization:
+>Release:        1.2.6
+>Environment:
+BSDI 3.1
+>Description:
+so, FD_SET sets a bit in a statically sized array.  at least under BSDI, its
+behavior is documented to be undefined if the bit being set is outside what's
+allowed by FD_SETSIZE.  although of course one may increase FD_SETSIZE, this
+doesn't really solve the problem.  the right thing is to check all calls to 
+FD_SET, so that apache doesn't indiscriminately twiddle bits on the stack.
+the symptoms of this problem can include failing to answer on some Listen
+directives, and SEGVs.
+
+it is really a separate subject, but, under OSes like BSDI that support
+more or less arbitrary FD_SETSIZEes, it would win big if apache used something
+like FD_REALLOC, rather than forcing you to compile in (and hence hardcode) the
+FD_SETSIZE you want.
+>How-To-Repeat:
+try lots of listen statements under BSDI (~200 and some).
+>Fix:
+i would send a patch, but i don't know how to do error exits cleanly from
+some of the places where FD_SET is called, such as the lingering close
+handler.  conceptually the fix is simple:  just compare every call to FD_SET
+with FD_SETSIZE on OSes that don't support arbitrary setsizes, and allocate a
+sufficiently large set on those that do.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon May 25 10:44:35 PDT 1998
+State-Changed-Why:
+Apache 1.3 already has the FD_SETSIZE tests... and I'd rather
+see apache use poll() rather than the lame select() interface,
+and especially not a hacked FD_REALLOC interface which doesn't
+exist everywhere... but we're unlikely to make that change
+because the next version of apache is likely to hide all these
+details in a portability library.  (Currently we're doing work
+with NSPR -- netscape's portable runtime.)
+
+I think you need to compile apache with the correct -DFD_SETSIZE
+on *BSD systems in order to get it to behave correctly.  Like
+I said, the entire select() interface is broken.  The only reason
+I never rewrote it to use poll() was that I didn't feel like
+figuring out which systems support it... almost everything new
+does, but our configuration tool is a pain to do these things
+with.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

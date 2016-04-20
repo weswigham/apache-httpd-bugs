@@ -1,0 +1,80 @@
+Received: (qmail 98073 invoked by uid 65534); 26 Jan 2000 02:10:20 -0000
+Message-Id: <20000126021020.98072.qmail@locus.apache.org>
+Date: 26 Jan 2000 02:10:20 -0000
+From: Brian Degenhardt <bmd@mp3.com>
+Reply-To: bmd@mp3.com
+To: submit@bugz.apache.org
+Subject: read doesn't stop prematurely if caching is off
+X-Send-Pr-Version: 3.110
+
+>Number:         5646
+>Category:       mod_proxy
+>Synopsis:       read doesn't stop prematurely if caching is off
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jan 25 18:20:00 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     bmd@mp3.com
+>Release:        1.3.11
+>Organization:
+apache
+>Environment:
+Linux 2.2.12 i686 unknown
+RH6.1
+>Description:
+This bug only occurs in mod_proxy when CacheRoot is not set.
+When a client aborts a transfer prematurely, mod_proxy should abort reading
+the proxied content.
+
+Instead, it keeps reading (for the non-existant cache) which just lands in the
+bit bucket.
+>How-To-Repeat:
+Download a very large proxied file, and abort the connection prematurely.
+Watch mod_proxy continue recieving it.
+>Fix:
+--- D/src/modules/proxy/proxy_util.c    Sun Sep 12 12:15:57 1999
++++ D/src/modules/proxy/proxy_util-modified.c   Thu Dec 16 19:22:33 1999
+@@ -530,7 +530,7 @@
+      * (Also, if no cache file is written, use hard timeouts)
+      */
+ 
+-    if (c == NULL || c->len <= 0 || c->cache_completion == 1.0) {
++    if (c == NULL || c->len <= 0 || c->cache_completion == 1.0 || c->fp == NULL ) {
+         ap_hard_timeout("proxy send body", r);
+         alternate_timeouts = 0;
+     }
+@@ -606,6 +606,11 @@
+                        c = NULL;
+                     }
+                 }
++                else
++                    /* else something is horribly wrong, or we are
++                     * not caching so we might as well stop here */
++                    ok = 0;
++                
+                 con->aborted = 1;
+                 break;
+             }
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

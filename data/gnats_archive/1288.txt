@@ -1,0 +1,166 @@
+Received: (qmail 15984 invoked by uid 2012); 21 Oct 1997 08:25:03 -0000
+Message-Id: <19971021082503.15983.qmail@hyperreal.org>
+Date: 21 Oct 1997 08:25:03 -0000
+From: frederic corne <frederic.corne@erli.fr>
+Reply-To: frederic.corne@erli.fr
+To: apbugs@hyperreal.org
+Subject: Cgi with tcp sockets don't works
+X-Send-Pr-Version: 3.2
+
+>Number:         1288
+>Category:       mod_cgi
+>Synopsis:       Cgi with tcp sockets don't works
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          duplicate
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 21 01:30:00 PDT 1997
+>Last-Modified:  Tue Oct 21 08:19:26 PDT 1997
+>Originator:     frederic.corne@erli.fr
+>Organization:
+>Release:        1.3b2
+>Environment:
+NT4 Server (SP2)(build 1381)
+VC++ 5.0
+Netscape 3 browser
+Apache 1.3b2 Win32 release build.
+>Description:
+I have already posted this problem for 1.3a1. (PR 951)
+
+We have developped a product with cgi which are connected to a external 
+tcp server (not a web server). This works on unix (solaris, aix) with 
+apache 1.2 and on NT with Microsoft IIS, Netscape, Website...
+
+With apache 1.3a1 and now 1.3b2 on NT, the cgis start but are not able to 
+connect to the server. The error pages that we have prepared in this case
+ are correctly displayed.
+>How-To-Repeat:
+here is a exemple in perl. 
+Launch the server and try the client first as a sample program, then as a cgi.
+
+the result is a sample "socket ok bind ok connect ok packet 1 packet 2 Close"
+#### the server ####
+#!/Perl/bin/perl
+($port) = @ARGV;
+$port = 2345 unless $port;
+
+$AF_INET = 2;
+$SOCK_STREAM = 1;
+
+$sockaddr = 'S n a4 x8';
+
+($name, $aliases, $proto) = getprotobyname('tcp');
+if ($port !~ /^\d+$/) {
+    ($name, $aliases, $port) = getservbyport($port, 'tcp');
+}
+
+print "Port = $port\n";
+
+$this = pack($sockaddr, $AF_INET, $port, "\0\0\0\0");
+
+select(NS); $| = 1; select(stdout);
+
+socket(S, $AF_INET, $SOCK_STREAM, $proto) || die "socket: $!";
+bind(S,$this) || die "bind: $!";
+listen(S,5) || die "connect: $!";
+
+select(S); $| = 1; select(stdout);
+
+print "Listening for connection....\n";
+
+($addr = accept(NS,S)) || die $!;
+
+print "accept ok\n";
+
+($af,$port,$inetaddr) = unpack($sockaddr,$addr);
+@inetaddr = unpack('C4',$inetaddr);
+print "$af $port @inetaddr\n";
+
+while (<NS>) {
+    print;
+    
+}
+close(NS);
+########## end of the server #########
+
+######### the client ############
+#!/Perl/bin/perl
+print "Content-type: text/html\n\n";
+
+print "<HTML><head><title>TCP Client</title><head><BODY>\n";
+
+$port = 2345;
+$them = 'localhost' ;
+
+$AF_INET = 2;
+$SOCK_STREAM = 1;
+
+$SIG{'INT'} = 'dokill';
+sub dokill {
+    kill 9,$child if $child;
+}
+
+$sockaddr = 'S n a4 x8';
+
+$hostname = "localhost";
+
+($name,$aliases,$proto) = getprotobyname('tcp');
+($name,$aliases,$port) = getservbyname($port,'tcp')
+    unless $port =~ /^\d+$/;;
+($name,$aliases,$type,$len,$thisaddr) = gethostbyname($hostname);
+($name,$aliases,$type,$len,$thataddr) = gethostbyname($them);
+
+$this = pack($sockaddr, $AF_INET, 0, $thisaddr);
+$that = pack($sockaddr, $AF_INET, $port, $thataddr);
+
+if (socket(S, $AF_INET, $SOCK_STREAM, $proto)) { 
+    print "socket ok\n";
+}
+else {
+    die $!;
+}
+
+if (bind(S, $this)) {
+    print "bind ok\n";
+}
+else {
+    die $!;
+}
+
+if (connect(S,$that)) {
+    print "connect ok\n";
+}
+else {
+    die $!;
+}
+
+select(S); $| = 1; select(STDOUT);
+
+print "packet 1\n";
+print S "packet 1\n";
+
+print "packet 2\n";
+print S "packet 2\n";
+
+print "Close\n";
+close (S);
+
+print " </BODY></HTML>\n";
+#########end of the client ########
+>Fix:
+N
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Tue Oct 21 08:19:26 PDT 1997
+State-Changed-Why:
+The additional text has been added to the original PR,
+#951.
+Class-Changed-From-To: sw-bug-duplicate
+Class-Changed-By: coar
+Class-Changed-When: Tue Oct 21 08:19:26 PDT 1997
+>Unformatted:
+

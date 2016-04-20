@@ -1,0 +1,98 @@
+Received: (qmail 60714 invoked by uid 501); 21 May 2001 17:21:26 -0000
+Message-Id: <20010521172126.60713.qmail@apache.org>
+Date: 21 May 2001 17:21:26 -0000
+From: Eric Sit <esit@mit.edu>
+Reply-To: esit@mit.edu
+To: submit@bugz.apache.org
+Subject: handling of standard pipes set to -1 when apache started by a win32 service
+X-Send-Pr-Version: 3.110
+
+>Number:         7758
+>Category:       os-windows
+>Synopsis:       handling of standard pipes set to -1 when apache started by a win32 service
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon May 21 10:30:04 PDT 2001
+>Closed-Date:    Wed May 30 10:33:40 PDT 2001
+>Last-Modified:  Wed May 30 10:33:40 PDT 2001
+>Originator:     esit@mit.edu
+>Release:        1.3.19
+>Organization:
+>Environment:
+Win32 environment, NT 4.0 SP6, VC++ 6
+>Description:
+If apache is started by a windows service, it inherits standard pipes stdin, stdout, stderr as -1.  This causes apache to fail.  What should really be done is if the pipe is -1, then set the pipe to the appropriate.  Now Apache can be spawned properly by a win32 service.
+>How-To-Repeat:
+Create a windows service and have that service start apache.
+>Fix:
+Enclosed is a patch from 1.3.19 that will fix this bug.
+
+--- alloc-orig.c        Mon Jan 15 10:04:56 2001
++++ alloc.c     Mon May 21 13:16:59 2001
+@@ -2138,21 +2138,21 @@
+        /* Now do the right thing with your pipes */
+        if (pipe_in) {
+            hStdIn = dup(fileno(stdin));
+-           if(dup2(in_fds[0], fileno(stdin)))
+-               ap_log_error(APLOG_MARK, APLOG_ERR, NULL, "dup2(stdin) failed");
++               if(dup2(in_fds[0], fileno(stdin)==-1 ? 0:fileno(stdin)) )
++                       ap_log_error(APLOG_MARK, APLOG_ERR, NULL, "dup2(stdin) failed");
+            close(in_fds[0]);
+        }
+        if (pipe_out) {
+            hStdOut = dup(fileno(stdout));
+            close(fileno(stdout));
+-           if(dup2(out_fds[1], fileno(stdout)))
+-               ap_log_error(APLOG_MARK, APLOG_ERR, NULL, "dup2(stdout) failed");
++               if(dup2(out_fds[1], fileno(stdout)==-1 ? 1:fileno(stdout)) )
++                       ap_log_error(APLOG_MARK, APLOG_ERR, NULL, "dup2(stdout) failed");
+            close(out_fds[1]);
+        }
+        if (pipe_err) {
+            hStdErr = dup(fileno(stderr));
+-           if(dup2(err_fds[1], fileno(stderr)))
+-               ap_log_error(APLOG_MARK, APLOG_ERR, NULL, "dup2(stderr) failed");
++               if(dup2(err_fds[1], fileno(stderr)==-1 ? 2:fileno(stderr)) )
++                       ap_log_error(APLOG_MARK, APLOG_ERR, NULL, "dup2(stderr) failed");
+            close(err_fds[1]);
+        }
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Wed May 30 10:33:40 PDT 2001
+State-Changed-Why:
+
+This is not a bug in the Apache code, but a failure of the
+executive (the application launching the apache parent
+process) to pass appropriate handles.
+
+Apache 1.3.20 now opens the appropriate handles that the
+Windows SCM (Service Control Manager) failed to create.
+However, that doesn't affect the responsibility of whatever
+'helper app' might be starting apache to create appropriate
+handles if you bypass running Apache by itself as a service.
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

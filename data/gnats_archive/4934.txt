@@ -1,0 +1,76 @@
+Received: (qmail 10454 invoked by uid 2012); 30 Aug 1999 22:38:13 -0000
+Message-Id: <19990830223813.10444.qmail@hyperreal.org>
+Date: 30 Aug 1999 22:38:13 -0000
+From: Ron Newman <rnewman@thecia.net>
+Reply-To: rnewman@thecia.net
+To: apbugs@hyperreal.org
+Subject: LoadModule "loaded module %s" message never written to log file, regardless of LogLevel
+X-Send-Pr-Version: 3.2
+
+>Number:         4934
+>Category:       general
+>Synopsis:       LoadModule "loaded module %s" message never written to log file, regardless of LogLevel
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Aug 30 15:40:00 PDT 1999
+>Last-Modified:
+>Originator:     rnewman@thecia.net
+>Organization:
+apache
+>Release:        1.3.9
+>Environment:
+SunOS joplin 5.6 Generic_105181-10 sun4u sparc SUNW,Ultra-5_10
+using GCC
+>Description:
+Although load_module() [in file mod_so.c] is calling 
+  ap_log_error(..., APLOG_DEBUG|APLOG_NOERROR, NULL, "loaded module %s", ...) 
+the log message never appears in the actual "error_log" file.
+
+This is because load_module() is passing a NULL server_rec * pointer to 
+ap_log_error() [in file http_log.c].  ap_log_error() calls log_error_core() which 
+does the following:
+
+    if (s == NULL) {
+	/*
+	 * If we are doing stderr logging (startup), don't log messages that are
+	 * above the default server log level unless it is a startup/shutdown
+	 * notice
+	 */
+	if (((level & APLOG_LEVELMASK) != APLOG_NOTICE) &&
+	    ((level & APLOG_LEVELMASK) > DEFAULT_LOGLEVEL))
+	    return;
+
+Since DEFAULT_LOGLEVEL is defined [in http_log.h] to be APLOG_WARNING (== 4),
+and we're calling log_error_core() with s==NULL and level==APLOG_DEBUG(== 7),
+log_error_core() returns immediately without actually logging the message.
+>How-To-Repeat:
+Put these lines into httpd.conf (in this order):
+
+LogLevel debug
+LoadModule hello_module libexec/mod_hello.so
+
+[where mod_hello.so is the one supplied with the O'Reilly "Writing Apache Modules" book]
+
+>Fix:
+
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

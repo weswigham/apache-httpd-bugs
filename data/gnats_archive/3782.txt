@@ -1,0 +1,124 @@
+Received: (qmail 3074 invoked from network); 27 Jan 1999 14:16:26 -0000
+Message-Id: <3.0.5.32.19990127151917.00799640@planet.it>
+Date: Wed, 27 Jan 1999 15:19:17 +0100
+From: "Corrado B." <techinfo@tecnoconvert.it>
+To: apbugs@hyperreal.org
+Cc: apbugs@apache.org
+Subject: GetExtensionVersion failed
+
+>Number:         3782
+>Category:       os-windows
+>Synopsis:       GetExtensionVersion failed
+>Confidential:   yes
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          duplicate
+>Submitter-Id:   unknown
+>Arrival-Date:   Wed Jan 27 06:20:01 PST 1999
+>Last-Modified:  Wed Jan 27 10:40:09 PST 1999
+>Originator:     "Corrado B." <techinfo@tecnoconvert.it>
+>Organization:
+>Release:        
+>Environment:
+>Description:
+>How-To-Repeat:
+>Fix:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Wed Jan 27 10:40:09 PST 1999
+State-Changed-Why:
+
+Duplicate of message entered by sending mail rather than
+using Web page.
+
+Originator-Changed-From-To: -"Corrado B." <techinfo@tecnoconvert.it>
+Originator-Changed-By: coar
+Originator-Changed-When: Wed Jan 27 10:40:09 PST 1999
+Class-Changed-From-To: sw-bug-duplicate
+Class-Changed-By: coar
+Class-Changed-When: Wed Jan 27 10:40:09 PST 1999
+Responsible-Changed-From-To: gnats-admin-apache
+Responsible-Changed-By: coar
+Responsible-Changed-When: Wed Jan 27 10:40:09 PST 1999
+Responsible-Changed-Why:
+
+Putting into mainstream bugdb.
+
+Category-Changed-From-To: pending-os-windows
+Category-Changed-By: coar
+Category-Changed-When: Wed Jan 27 10:40:09 PST 1999
+
+>Unformatted:
+PR os-windows/3597
+
+I have tested my ISAPI Dll with a Borland C++ program and I figured out
+that the problem should be in the boolean value returned by the
+GetExtensionVersion function called from the Dll .
+Borland C++ (I think MS C does the same) expects 1 for TRUE
+and 0 for FALSE.
+ISAPI DLL written in Delphi 3 and 4 (what I used) return 
+0 for FALSE and -1 (0xFFFFFFFF) for TRUE.
+An expression of the type 
+
+    if ((*isapi_version)(pVer) != TRUE) { return ERROR ....
+  
+will always return an error because -1 is never equal to 1 (TRUE)
+so GetExtensionVersion will always fails when it returns non-zero
+for TRUE.	
+
+I tried with the code that follows :
+
+   if ((*isapi_version(pVer)))
+	printf("success !\n")
+   else 
+	printf("failed!\n")
+
+or :
+
+   if (!(*isapi_version(pVer)))
+	printf("failed!\n")
+   else 
+	printf("success !\n")
+
+and everything works fine.		      
+ 
+The code in mod_isapi.c should be changed from :   
+   
+      /* Run GetExtensionVersion() */
+    if ((*isapi_version)(pVer) !=
+TRUE) {
+	ap_log_rerror(APLOG_MARK, APLOG_ALERT, r,
+		    "ISAPI
+GetExtensionVersion() failed: %s", r->filename);
+
+FreeLibrary(isapi_handle);
+	return SERVER_ERROR;
+    }
+
+to :
+
+      /* Run GetExtensionVersion() */
+    if (!((*isapi_version)(pVer))) {
+
+ap_log_rerror(APLOG_MARK, APLOG_ALERT, r,
+		    "ISAPI
+GetExtensionVersion() failed: %s", r->filename);
+
+FreeLibrary(isapi_handle);
+	return SERVER_ERROR;
+    }
+
+In this way the program will return an error when the GetExtensionVersion
+function returns FALSE (0) and
+succeed when the GetExtensioVersion function
+returns TRUE (1 or -1 or non-zero)
+
+I hope that this is a good way to solve the matter, but
+please tell me if not so.
+Thanks & Bye
+Corrado
+
+

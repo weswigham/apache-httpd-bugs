@@ -1,0 +1,187 @@
+Received: (qmail 20055 invoked by uid 2012); 18 Mar 1998 18:25:05 -0000
+Message-Id: <19980318182505.20054.qmail@hyperreal.org>
+Date: 18 Mar 1998 18:25:05 -0000
+From: David Pisoni <david@cnation.com>
+Reply-To: david@cnation.com
+To: apbugs@hyperreal.org
+Subject: Server parent process fails when multiple SIGUSR1's caught
+X-Send-Pr-Version: 3.2
+
+>Number:         1967
+>Category:       general
+>Synopsis:       Server parent process fails when multiple SIGUSR1's caught
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Mar 18 10:30:00 PST 1998
+>Last-Modified:  Thu Jun  4 13:03:43 PDT 1998
+>Originator:     david@cnation.com
+>Organization:
+>Release:        1.2.5
+>Environment:
+uname -a : Linux brahms 2.0.33 #11 Tue Feb 3 18:57:05 PST 1998 i686 unknown
+gcc version 2.7.2.3
+libc.so.5.4.33
+>Description:
+My daily log cycling program follows this procedure :
+rename logfile
+touch file in logfile's place
+kill SIGUSR1 server
+sleep 5
+
+Even with the sleep in place, a few USR1's will cause the parent server process to disappear, though leaving some children hanging around.
+This even baffled my test script (which goes in and attempts to restart the server), because those processes were still bound to the HTTP port.  I had to put in a caveat to kill that process group.
+
+Here is the error log excerpt :
+[Wed Mar 18 09:48:25 1998] SIGUSR1 received.  Doing graceful restart
+[Wed Mar 18 09:48:26 1998] Server configured -- resuming normal operations
+[Wed Mar 18 09:48:27 1998] accept: (client socket): Connection reset by peer
+[Wed Mar 18 09:48:38 1998] accept: (client socket): Connection reset by peer
+[Wed Mar 18 09:48:42 1998] accept: (client socket): Broken pipe
+[Wed Mar 18 09:48:44 1998] accept: (client socket): Connection reset by peer
+[Wed Mar 18 09:48:44 1998] accept: (client socket): Connection reset by peer
+[Wed Mar 18 09:48:44 1998] accept: (client socket): Connection reset by peer
+[Wed Mar 18 09:48:46 1998] accept: (client socket): Connection reset by peer
+[Wed Mar 18 09:48:51 1998] accept: (client socket): Connection reset by peer
+[Wed Mar 18 09:48:53 1998] accept: (client socket): Connection reset by peer
+[Wed Mar 18 09:48:56 1998] accept: (client socket): Connection reset by peer
+[Wed Mar 18 09:49:01 1998] accept: (client socket): Connection reset by peer
+[Wed Mar 18 09:49:02 1998] accept: (client socket): Connection reset by peer
+[Wed Mar 18 09:49:09 1998] SIGUSR1 received.  Doing graceful restart
+[Wed Mar 18 09:49:09 1998] Server configured -- resuming normal operations
+[Wed Mar 18 09:49:15 1998] SIGUSR1 received.  Doing graceful restart
+[Wed Mar 18 09:49:15 1998] Server configured -- resuming normal operations
+[Wed Mar 18 09:49:22 1998] accept: (client socket): Connection reset by peer
+[Wed Mar 18 09:49:32 1998] accept: (client socket): Connection reset by peer
+[Wed Mar 18 09:49:34 1998] SIGUSR1 received.  Doing graceful restart
+[Wed Mar 18 09:49:34 1998] Server configured -- resuming normal operations
+[Wed Mar 18 09:49:43 1998] accept: (client socket): Connection reset by peer
+[Wed Mar 18 09:49:46 1998] accept: (client socket): Connection reset by peer
+[Wed Mar 18 09:49:46 1998] accept: (client socket): Connection reset by peer
+[Wed Mar 18 09:49:46 1998] accept: (client socket): Connection reset by peer
+[Wed Mar 18 09:49:53 1998] accept: (client socket): Invalid argument
+[Wed Mar 18 09:50:02 1998] accept: (client socket): Invalid argument
+[Wed Mar 18 09:50:03 1998] accept: (client socket): Connection reset by peer
+[Wed Mar 18 09:50:03 1998] accept: (client socket): Connection reset by peer
+[Wed Mar 18 09:50:04 1998] SIGUSR1 received.  Doing graceful restart
+[Wed Mar 18 09:52:20 1998] created shared memory segment #4352
+[Wed Mar 18 09:52:20 1998] Server configured -- resuming normal operations
+
+The last two lines occured after I manually called 'killall' on the remaining httpd processes, and then relaunched the server.
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: David Pisoni <david@cnation.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/1967: Server parent process fails when multiple SIGUSR1's caught
+Date: Wed, 18 Mar 1998 11:13:01 -0800 (PST)
+
+ On 18 Mar 1998, David Pisoni wrote:
+ 
+ > My daily log cycling program follows this procedure :
+ > rename logfile
+ > touch file in logfile's place
+ > kill SIGUSR1 server
+ > sleep 5
+ 
+ I am able to do:
+ 
+ while 1
+     kill -USR1 pid-of-parent
+ end
+ 
+ Without a problem... on various kernels and libc combos.  So I'm having a
+ hard time believing this report is as simple as you suggest...  I don't
+ know if I've ever done it with libc 5.4.33, but I know 5.4.44 works fine. 
+ 
+ Do you have any non-standard modules installed?
+ 
+ Is this a redhat system?  Have you removed all the crap killall stuff that
+ redhat's tools do?  Look in /etc/rc.d/init.d for an apache script which
+ does a killall -9 (yup, a -9).  Look in /etc/logrotate.d for another
+ script which does a killall -HUP... and so on.
+ 
+ Dean
+ 
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Mar 23 14:47:10 PST 1998
+State-Changed-Why:
+The problem appears to be that the user's kernel file table is
+overflowing, and the error isn't making it to the error log...
+bogusness happens when the referer_log is being opened.  It's
+in the same class as "configuration error" as far as USR1 is
+concerned, and the end result is predictable... anyhow, we should
+at least be a bit more graceful and get the error to the error
+log.  I'll check 1.3 for this.
+
+Dean
+Comment-Added-By: coar
+Comment-Added-When: Thu May 28 05:03:00 PDT 1998
+Comment-Added:
+[Seems to be specific to Linux from Dean's remarks]
+Category-Changed-From-To: general-os-linux
+Category-Changed-By: coar
+Category-Changed-When: Thu May 28 05:03:00 PDT 1998
+
+Comment-Added-By: dgaudet
+Comment-Added-When: Thu May 28 17:21:34 PDT 1998
+Comment-Added:
+Nope it's not a linux specific problem.  It's an apache
+problem.  It's just like I described:  if there's an
+error opening the referer_log it doesn't appear to be
+logged in the error_log before the thing bails.  This
+may be fixed in 1.3b8-dev by Ralf's recent patch which
+cleaned up a few perror()s turning them into
+ap_log_error()s.
+Category-Changed-From-To: os-linux-general
+Category-Changed-By: dgaudet
+Category-Changed-When: Thu May 28 17:21:34 PDT 1998
+
+Comment-Added-By: brian
+Comment-Added-When: Thu May 28 18:14:24 PDT 1998
+Comment-Added:
+If the submitter could try the current 1.3b8-dev CVS tree 
+(obtainable from http://dev.apache.org/from-cvs/) in a few 
+hours when it gets flushed to that directory, and let us 
+know if it solves their problem, we would appreciate it.
+
+Or you could simply try applying the patch you'll find
+at 
+
+http://www.apache.org/websrc/cvsweb.cgi/apache-1.3/src/modules/standard/mod_log_referer.c
+
+We realize your report is against 1.2.5.  If we have the time
+and inclination we may backport it to the 1.2 tree, but I
+want to make sure this is the real fix first, so please see
+if you get this problem with the 1.3b8 tree.  1.3 is definitely
+production-quality code and I would not be afraid to 
+replace a 1.2 installation with it.  Once 1.3.0 is
+released we will no longer be fully supporting 1.2.x.
+
+
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Jun  4 13:03:42 PDT 1998
+State-Changed-Why:
+Apache at least now diagnoses the error in the error_log
+(as of 1.3.0) ... there's not much we can do about your
+file tables filling up though.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

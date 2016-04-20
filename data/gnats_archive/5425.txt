@@ -1,0 +1,169 @@
+Received: (qmail 6109 invoked by uid 2012); 6 Dec 1999 11:52:51 -0000
+Message-Id: <19991206115251.6108.qmail@hyperreal.org>
+Date: 6 Dec 1999 11:52:51 -0000
+From: Satoshi Tatsuoka <satoshi@softagency.co.jp>
+Reply-To: satoshi@softagency.co.jp
+To: apbugs@hyperreal.org
+Subject: [PATCH] new function for rotatelogs
+X-Send-Pr-Version: 3.2
+
+>Number:         5425
+>Category:       other
+>Synopsis:       [PATCH] new function for rotatelogs
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Dec  6 05:10:00 PST 1999
+>Last-Modified:
+>Originator:     satoshi@softagency.co.jp
+>Organization:
+apache
+>Release:        1.3.9
+>Environment:
+Linux sv1 2.2.13 #2 Sat Oct 30 11:40:47 JST 1999 i686 unknown
+>Description:
+I made new functions for rotatelogs program of apache as bellow:
+
+TransferLog "|./rotatelogs /some/where monthly"
+the name will be /some/where.YYYYMM
+
+and
+
+TransferLog "|./rotatelogs /some/where daily"
+the name will be /some/where.YYYYMMDD
+
+Local time is used for generating new files.
+>How-To-Repeat:
+
+>Fix:
+--- rotatelogs.c.org    Fri Dec  3 16:23:08 1999
++++ rotatelogs.c        Mon Dec  6 20:48:30 1999
+@@ -4,6 +4,7 @@
+  * Contributed by Ben Laurie <ben@algroup.co.uk>
+  *
+  * 12 Mar 1996
++ * 03 Dec 1999 modified by Satoshi Tatsuoka <satoshi@softagency.co.jp>
+  */
+
+
+@@ -22,11 +23,12 @@
+     time_t tRotation;
+     int nLogFD = -1;
+     int nRead;
++    int ch = 0;
+     char *szLogRoot;
+
+     if (argc != 3) {
+        fprintf(stderr,
+-               "%s <logfile> <rotation time in seconds>\n\n",
++               "%s <logfile> <rotation time in seconds>|monthly|daily\n\n",
+                argv[0]);
+ #ifdef OS2
+        fprintf(stderr,
+@@ -34,23 +36,36 @@
+                argv[0]);
+ #else
+        fprintf(stderr,
+-               "Add this:\n\nTransferLog \"|%s /some/where 86400\"\n\n",
+-               argv[0]);
++               "Add this:\n\nTransferLog \"|%s /some/where 86400\"\n\nor\n\n"
++               "TransferLog \"|%s /some/where monthly\"\n\nor\n\n"
++               "TransferLog \"|%s /some/where daily\"\n\n",
++               argv[0],argv[0],argv[0]);
+ #endif
+        fprintf(stderr,
+                "to httpd.conf. The generated name will be /some/where.nnnn "
+                "where nnnn is the\nsystem time at which the log nominally "
+                "starts (N.B. this time will always be a\nmultiple of the "
+                "rotation time, so you can synchronize cron scripts with it).\n"
++               "the name will be /home/where.YYYYMM by 'monthly' and"
++               " /home/where.YYYYMMDD by\n 'daily'. "
+                "At the end of each rotation time a new log is started.\n");
+        exit(1);
+     }
+
+     szLogRoot = argv[1];
+-    tRotation = atoi(argv[2]);
+-    if (tRotation <= 0) {
+-       fprintf(stderr, "Rotation time must be > 0\n");
+-       exit(6);
++    if (strcmp("monthly",argv[2]) == 0) {
++       ch = 2;
++    }
++    else if (strcmp("daily",argv[2]) == 0) {
++       ch = 1;
++    }
++    else {
++       ch = 0;
++       tRotation = atoi(argv[2]);
++       if (tRotation <= 0) {
++           fprintf(stderr, "Rotation time must be > 0\n");
++           exit(6);
++       }
+     }
+
+     for (;;) {
+@@ -65,9 +80,40 @@
+            nLogFD = -1;
+        }
+        if (nLogFD < 0) {
+-           time_t tLogStart = (time(NULL) / tRotation) * tRotation;
+-           sprintf(buf2, "%s.%010d", szLogRoot, (int) tLogStart);
+-           tLogEnd = tLogStart + tRotation;
++           switch (ch) {
++               time_t tLogStart;
++               struct tm *tmLocalTime;
++               char suffix[10];
++           case 0:
++               /* normal */
++               tLogStart = (time(NULL) / tRotation) * tRotation;
++               sprintf(buf2, "%s.%010d", szLogRoot, (int) tLogStart);
++               tLogEnd = tLogStart + tRotation;
++               break;
++           case 1:
++               /* localtime daily */
++               tLogStart = time(NULL);
++               tmLocalTime = localtime(&tLogStart);
++               strftime(suffix, 10, "%Y%m%d", tmLocalTime);
++               sprintf(buf2, "%s.%s", szLogRoot, suffix);
++               tmLocalTime->tm_mday++;
++               tmLocalTime->tm_min = 0;
++               tmLocalTime->tm_sec = 0;
++               tLogEnd = mktime(tmLocalTime);
++               break;
++           case 2:
++               /* localtime monthly */
++               tLogStart = time(NULL);
++               tmLocalTime = localtime(&tLogStart);
++               strftime(suffix, 10, "%Y%m", tmLocalTime);
++               sprintf(buf2, "%s.%s", szLogRoot, suffix);
++               tmLocalTime->tm_mon++;
++               tmLocalTime->tm_mday = 1;
++               tmLocalTime->tm_min = 0;
++               tmLocalTime->tm_sec = 0;
++               tLogEnd = mktime(tmLocalTime);
++               break;
++           }
+            nLogFD = open(buf2, O_WRONLY | O_CREAT | O_APPEND, 0666);
+            if (nLogFD < 0) {
+                perror(buf2);
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

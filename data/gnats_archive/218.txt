@@ -1,0 +1,66 @@
+From nobody@hyperreal.com  Tue Mar  4 09:10:39 1997
+Received: by taz.hyperreal.com (8.8.4/V2.0) id JAA02107; Tue, 4 Mar 1997 09:10:39 -0800 (PST)
+Message-Id: <199703041710.JAA02107@taz.hyperreal.com>
+Date: Tue, 4 Mar 1997 09:10:39 -0800 (PST)
+From: Dan Astoorian <djast@cs.toronto.edu>
+Reply-To: djast@cs.toronto.edu
+To: apbugs@hyperreal.com
+Subject: suexec fails to close log file before execv()
+X-Send-Pr-Version: 3.2
+
+>Number:         218
+>Category:       suexec
+>Synopsis:       suexec fails to close log file before execv()
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Mar  4 09:20:01 1997
+>Last-Modified:  Mon Apr  7 20:17:32 PDT 1997
+>Originator:     djast@cs.toronto.edu
+>Organization:
+>Release:        1.2b7
+>Environment:
+any/all
+>Description:
+suexec opens the log file LOG_EXEC, but never closes it.  As a result, the file
+descriptor is inherited by the child process (the CGI program).  This allows any
+user on the system permitted to use suexec to arbitrarily modify the contents of
+the log file.
+>How-To-Repeat:
+Compile and set up as a suexec target, then invoke via suexec:
+
+#include <fcntl.h>
+#define LOGFD 3
+main() {
+	fcntl(LOGFD,F_SETFL,0);		/* turn off append flag */
+	lseek(LOGFD,0,0);		/* start of log */
+	write(LOGFD,"Gotcha\n",7);
+}
+>Fix:
+Two ways:
+	1) close the log file before the execv().  (If the execv() fails, the
+following log_err() will re-open the log file.)
+or:
+	2) set the close-on-exec flag on the file descriptor when the file is
+opened.
+
+(1) is easier and more portable, (2) is insignificantly more efficient...
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Sun Apr  6 13:02:11 PDT 1997
+State-Changed-Why:
+Problem verified, will get a fix in.
+State-Changed-From-To: analyzed-closed
+State-Changed-By: marc
+State-Changed-When: Mon Apr  7 20:17:32 PDT 1997
+State-Changed-Why:
+Fixed; will be available in the next beta.  Thanks for
+the report.
+>Unformatted:
+
+

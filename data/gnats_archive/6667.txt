@@ -1,0 +1,114 @@
+Received: (qmail 41434 invoked by uid 501); 13 Oct 2000 10:14:37 -0000
+Message-Id: <20001013101436.41432.qmail@locus.apache.org>
+Date: 13 Oct 2000 10:14:36 -0000
+From: Petter "Måhlén" <petter.mahlen@chello.se>
+Reply-To: petter.mahlen@chello.se
+To: submit@bugz.apache.org
+Subject: Additional space in chunk size for chunked transfer encoding (same as 4367)
+X-Send-Pr-Version: 3.110
+
+>Number:         6667
+>Category:       general
+>Synopsis:       Additional space in chunk size for chunked transfer encoding (same as 4367)
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Oct 13 03:20:01 PDT 2000
+>Closed-Date:    Thu Oct 19 01:38:16 PDT 2000
+>Last-Modified:  Thu Oct 19 01:38:16 PDT 2000
+>Originator:     petter.mahlen@chello.se
+>Release:        1.3.12
+>Organization:
+>Environment:
+The www.apache.org server
+>Description:
+This is the same as problem 4367, only I believe I have found where the problem occurs. I couldn't figure out a way to attach a comment to that report, so I filed another one instead.
+
+The problem occurs when using chunked transfer-encoding, and the situation is that for small chunk sizes (needing less than 3 hex digits - or rather less than CHUNK_HEADER_SIZE-2), spaces are tacked on to the end, making sure that the whole chunk header is always 5 bytes. This doesn't seem to agree with the spec (rfc 2616, section 3.6.1), where my interpretation is that LWS is forbidden unless there is a chunk-extension present (the implied LWS rule is only valid between words and separators, and CRLF is not a word or separator).
+
+Grepping through the code without really analysing anything, I think the following function in buff.c is where the problem happens:
+
+/*
+ * end a chunk -- tweak the chunk_header from start_chunk, and add a trailer
+ */
+static void end_chunk(BUFF *fb)
+{
+    int i;
+    unsigned char *strp;
+
+    if (fb->outchunk == -1) {
+	/* not chunking */
+	return;
+    }
+
+    if (fb->outchunk + CHUNK_HEADER_SIZE == fb->outcnt) {
+	/* nothing was written into this chunk, and we can't write a 0 size
+	 * chunk because that signifies EOF, so just erase it
+	 */
+	fb->outcnt = fb->outchunk;
+	fb->outchunk = -1;
+	return;
+    }
+
+    /* we know this will fit because of how we wrote it in start_chunk() */
+    i = ap_snprintf((char *) &fb->outbase[fb->outchunk], CHUNK_HEADER_SIZE,
+		"%x", fb->outcnt - fb->outchunk - CHUNK_HEADER_SIZE);
+
+    /* we may have to tack some trailing spaces onto the number we just wrote
+     * in case it was smaller than our estimated size.  We've also written
+     * a \0 into the buffer with ap_snprintf so we might have to put a
+     * \r back in.
+     */
+    strp = &fb->outbase[fb->outchunk + i];
+    while (i < CHUNK_HEADER_SIZE - 2) {
+	*strp++ = ' ';
+	++i;
+    }
+    *strp++ = CR;
+    *strp = LF;
+
+    /* tack on the trailing CRLF, we've reserved room for this */
+    fb->outbase[fb->outcnt++] = CR;
+    fb->outbase[fb->outcnt++] = LF;
+
+#ifdef CHARSET_EBCDIC
+    /* Chunks are an HTTP/1.1 Protocol feature. They must ALWAYS be in ASCII */
+    ebcdic2ascii(&fb->outbase[fb->outchunk], &fb->outbase[fb->outchunk], CHUNK_HEADER_SIZE);
+    ebcdic2ascii(&fb->outbase[fb->outcnt-2], &fb->outbase[fb->outcnt-2], 2);
+#endif /*CHARSET_EBCDIC*/
+
+    fb->outchunk = -1;
+}
+>How-To-Repeat:
+
+>Fix:
+Make it possible to have a dynamic length of the chunk-size line (up to CHUNK_HEADER_SIZE, if necessary), and instead of tacking spaces on to the end, add CRLF and use zero-termination.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: fanf
+State-Changed-When: Thu Oct 19 01:38:16 PDT 2000
+State-Changed-Why:
+This problem will be fixed in 2.0
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

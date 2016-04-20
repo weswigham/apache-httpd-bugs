@@ -1,0 +1,60 @@
+Received: (qmail 13364 invoked by uid 2012); 6 Nov 1998 02:09:04 -0000
+Message-Id: <19981106020904.13363.qmail@hyperreal.org>
+Date: 6 Nov 1998 02:09:04 -0000
+From: Marc Slemko <marcs@znep.com>
+Reply-To: marcs@znep.com
+To: apbugs@hyperreal.org
+Subject: race condition between graceful restart and child opening PID
+X-Send-Pr-Version: 3.2
+
+>Number:         3352
+>Category:       general
+>Synopsis:       race condition between graceful restart and child opening PID
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Nov  5 18:10:00 PST 1998
+>Last-Modified:
+>Originator:     marcs@znep.com
+>Organization:
+apache
+>Release:        1.3.3
+>Environment:
+Linux lerkim 2.1.107 #6 SMP Wed Sep 9 22:14:15 PDT 1998 i686 unknown
+
+Should happen on all systems that use USE_FLOCK_SERIALIZED_ACCEPT
+>Description:
+[Thu Nov  5 18:00:08 1998] [notice] SIGUSR1 received.  Doing graceful restart
+[Thu Nov  5 18:00:08 1998] [emerg] (2)No such file or directory: Child cannot open lock file: /home/marcs/proxy/var/apache/run/httpd.lock.1797
+[Thu Nov  5 18:00:08 1998] [notice] Apache/1.3.3-dev (Unix) configured -- resuming normal operations
+
+When the parent removes the lock file, new children that are still in the 
+startup phase from a previous restart will get an error trying to open it.
+>How-To-Repeat:
+ab -c 10 -t 60 http://server/ & ; while true; do apachectl graceful; done
+>Fix:
+This may or may not be something that needs fixing, but it could be indicative
+of race conditions that could cause two processes to be in accept() on the
+same socket at the same time due to locking the old file and the new file, possibly
+causing problems on systems that can't handle such things.  This should be looked
+at; I haven't verified if that can actually happen.
+
+Special casing the code to not remove the file on a restart may or may not
+be a possible solution.
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

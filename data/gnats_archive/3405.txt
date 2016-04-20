@@ -1,0 +1,232 @@
+Received: (qmail 4128 invoked by uid 2012); 16 Nov 1998 14:32:05 -0000
+Message-Id: <19981116143205.4127.qmail@hyperreal.org>
+Date: 16 Nov 1998 14:32:05 -0000
+From: John Kelly <John.Kelly@bellhow.com>
+Reply-To: John.Kelly@bellhow.com
+To: apbugs@hyperreal.org
+Subject: LoadLibrary with relative paths assumes libraries are relative to ap_server_root.
+X-Send-Pr-Version: 3.2
+
+>Number:         3405
+>Category:       mod_so
+>Synopsis:       LoadLibrary with relative paths assumes libraries are relative to ap_server_root.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Nov 16 06:40:01 PST 1998
+>Closed-Date:    Fri Sep 29 22:56:53 PDT 2000
+>Last-Modified:  Fri Sep 29 22:56:53 PDT 2000
+>Originator:     John.Kelly@bellhow.com
+>Release:        Apache 1.3.3
+>Organization:
+>Environment:
+Windows NT 4.0 Service Pack 3
+Apache 1.3.3
+MSVC 6.0
+Apache-JServ-19981109
+>Description:
+When using LoadModule directive with no path for the module name, mod_so assumes
+the module is relative to the server_root (uses ap_server_root_relative).  In
+other words, the server root must contain all the files that apache will 
+reference including shared modules not just the application specific files,
+such as document root and cgi-bin, etc.
+
+This behavior causes a problem when running Apache from a hard disk with the 
+Server Root being a CDROM with ISO level 1 (8.3 naming convention).  For 
+example,  the following directive: "LoadModule jserv_module ApacheModuleJServ.dll"
+ will fail if the server root is pointing to a CDROM ISO Level 1 even if 
+apache is started from the hard disk with all the share modules co-located.  
+The basic problem is that Apache assumes all it's resources, such as, shared 
+modules are relative to the server root when relative paths are used.  Apache 
+should be able to support loading it's from both an absolute path and the 
+standard search path.  
+executables, etc from the location from which it is started.   
+>How-To-Repeat:
+Yes.  Install apache and point it's server root to a location which doesnot
+contain the share modules (ie. ApacheModuleJServ.dll).  You will get a 
+can not load "Server root"/ApacheModuleJserv.dll" into server error.
+>Fix:
+Yes.  Update mod_so.c so it will check the full path for the shared module and
+it that fails, strip the path and use the default system search algorithm to
+find the module.  A context diff for a potential fix follows:
+
+*** mod_so.c	Sat Sep 19 08:27:24 1998
+--- /kelly/apache_1.3.3/src/modules/standard/mod_so.c	Wed Nov 11 12:29:59 1998
+***************
+*** 232,238 ****
+       */
+      if (!(modhandle = ap_os_dso_load(szModuleFile))) {
+  	const char *my_error = ap_os_dso_error();
+! 	return ap_pstrcat (cmd->pool, "Cannot load ", szModuleFile,
+  			" into server: ", 
+  			my_error ? my_error : "(reason unknown)",
+  			NULL);
+--- 232,242 ----
+       */
+      if (!(modhandle = ap_os_dso_load(szModuleFile))) {
+  	const char *my_error = ap_os_dso_error();
+! 	char *cPtr;
+! 	if ((cPtr=strrchr(szModuleFile, (int) '/')) || 
+! 	    (cPtr=strrchr(szModuleFile,(int) '\\')))
+! 	  if (!(modhandle = ap_os_dso_load(cPtr+1)))
+! 	     return ap_pstrcat (cmd->pool, "Cannot load ", szModuleFile,
+  			" into server: ", 
+  			my_error ? my_error : "(reason unknown)",
+  			NULL);
+***************
+*** 293,299 ****
+      
+      if (!(handle = ap_os_dso_load(file))) {
+  	const char *my_error = ap_os_dso_error();
+! 	return ap_pstrcat (cmd->pool, "Cannot load ", filename, 
+  			" into server:", 
+  			my_error ? my_error : "(reason unknown)",
+  			NULL);
+--- 297,307 ----
+      
+      if (!(handle = ap_os_dso_load(file))) {
+  	const char *my_error = ap_os_dso_error();
+! 	char *cPtr;
+! 	if ((cPtr=strrchr(file, (int) '/')) || 
+! 	    (cPtr=strrchr(file,(int) '\\')))
+! 	  if (!(handle = ap_os_dso_load(cPtr+1)))
+! 	     return ap_pstrcat (cmd->pool, "Cannot load ", filename, 
+  			" into server:", 
+  			my_error ? my_error : "(reason unknown)",
+  			NULL);
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Mon Nov 16 09:12:12 PST 1998
+State-Changed-Why:
+Magically looking for DLLs in any which directory is bad.
+We want to avoid that.
+
+Why don't you just give the proper path to it in the
+LoadModule line?  That works fine for me.
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: mod_so/3405: LoadLibrary with relative paths assumes libraries
+ are relative to ap_server_root. (fwd)
+Date: Mon, 16 Nov 1998 13:25:10 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ Date: Mon, 16 Nov 1998 14:49:28 -0500
+ From: John Kelly <John.Kelly@bellhow.com>
+ To: marc@apache.org
+ Subject: Re: mod_so/3405: LoadLibrary with relative paths assumes libraries are
+     relative to ap_server_root.
+ 
+ Marc,
+ 
+ I would like to use static configuration files on all systems where document
+ root is a CDROM.  The drive
+ letter of the CDROM can be different from system to system and even
+ different on the same system with
+ multiple CDROMs.  Tying the server root to the support modules appears to be
+ arbitrary and not very
+ intuitive.  I would like to thing the generic components of Apache could
+ reside anywhere and the servlets,
+ cgi-bin scripts, etc that are tied to the data are in the server root
+ directory.  The current implememtation
+ requires each server root to have all the apache components present,
+ therefore, one can not simply
+ change the server root to point to a new "data set".   Note: the proposal
+ did not change the current
+ behavior,  but extended it to allow the dlls to reside with apache.exe
+ independent of the server root.
+ 
+ This proposal may not conform to the design philosophy of the Apache
+ product, however, the current approach arbitarily loads dlls from where
+ apache was loaded (ApacheCore.dll) and other dlls from
+ DocumentRoot/modules/ such as ApacheModuleJServ.dll which seems to be a
+ combination of  "any which directory". The search order of dlls is
+ well-documented, although it is magical based upon you current
+ directory.
+ 
+ I don't mean to cause a lot of trouble, I already made the change, however,
+ I thought others may want to
+ perform the same type of thing - switching between multiple "data sets"
+ without requiring all the apache
+ components to be available on each one.  This was just an attempt at
+ providing some useful feedback
+ on the Apache product.  You can take it or leave it.
+ 
+ John.
+ 
+ 
+ 
+ -----Original Message-----
+ From: marc@apache.org <marc@apache.org>
+ To: apache-bugdb@apache.org <apache-bugdb@apache.org>;
+ john.kelly@bellhow.com <john.kelly@bellhow.com>; marc@apache.org
+ <marc@apache.org>
+ Date: Monday, November 16, 1998 12:13 PM
+ Subject: Re: mod_so/3405: LoadLibrary with relative paths assumes libraries
+ are relative to ap_server_root.
+ 
+ 
+ >[In order for any reply to be added to the PR database, ]
+ >[you need to include <apbugs@Apache.Org> in the Cc line ]
+ >[and leave the subject line UNCHANGED.  This is not done]
+ >[automatically because of the potential for mail loops. ]
+ >[If you do not include this Cc, your reply may be ig-   ]
+ >[nored unless you are responding to an explicit request ]
+ >[from a developer.                                      ]
+ >[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+ >
+ >
+ >Synopsis: LoadLibrary with relative paths assumes libraries are relative to
+ ap_server_root.
+ >
+ >State-Changed-From-To: open-feedback
+ >State-Changed-By: marc
+ >State-Changed-When: Mon Nov 16 09:12:12 PST 1998
+ >State-Changed-Why:
+ >Magically looking for DLLs in any which directory is bad.
+ >We want to avoid that.
+ >
+ >Why don't you just give the proper path to it in the
+ >LoadModule line?  That works fine for me.
+ >
+ >
+ 
+Comment-Added-By: wrowe
+Comment-Added-When: Fri Sep 29 22:56:24 PDT 2000
+Comment-Added:
+
+Specify the full path... this should be working.
+
+Win32 is very picky about using true backslashes '\' in
+LoadLibrary calls.  This may have posed this problem.
+
+State-Changed-From-To: feedback-closed
+State-Changed-By: wrowe
+State-Changed-When: Fri Sep 29 22:56:52 PDT 2000
+State-Changed-Why:
+
+Whoops... ment to close.
+
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

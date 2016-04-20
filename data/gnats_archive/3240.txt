@@ -1,0 +1,228 @@
+Received: (qmail 17368 invoked by uid 2012); 19 Oct 1998 12:49:22 -0000
+Message-Id: <19981019124922.17367.qmail@hyperreal.org>
+Date: 19 Oct 1998 12:49:22 -0000
+From: Hermann Lauer <Hermann.Lauer@iwr.uni-heidelberg.de>
+Reply-To: Hermann.Lauer@iwr.uni-heidelberg.de
+To: apbugs@hyperreal.org
+Subject: Mishandling of -DSERVER_SUBVERSION="PHP/3.0.3 AuthMySQL/2.20" in src/Configure
+X-Send-Pr-Version: 3.2
+
+>Number:         3240
+>Category:       config
+>Synopsis:       Mishandling of -DSERVER_SUBVERSION="PHP/3.0.3 AuthMySQL/2.20" in src/Configure
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Oct 19 05:50:00 PDT 1998
+>Last-Modified:  Sun Dec  6 07:22:29 PST 1998
+>Originator:     Hermann.Lauer@iwr.uni-heidelberg.de
+>Organization:
+>Release:        1.3.3
+>Environment:
+Linux xxx 2.0.35 #1 Wed Aug 12 14:04:31 CEST 1998 i686 unknown
+glibc-2.0.7-19
+RedHat-5.1
+>Description:
+Configuration of apache with two additional Modules stop with an weird error
+message:
+
+Configuring for Apache, Version 1.3.3
+ + activated php3 module (modules/php3/libphp3.a)
+ + activated auth_mysql module (modules/auth_mysql/libauth_mysql.a)
+Creating Makefile
+Creating Configuration.apaci in src
+Creating Makefile in src
+ + configured for Linux platform
+ + setting C compiler to gcc
+ + setting C pre-processor to gcc -E
+ + checking for system header files
+ + adding selected modules
+    o php3_module uses ConfigStart/End
+    o auth_mysql_module uses ConfigStart/End
+gcc: AuthMySQL/2.20": No such file or directory
+helpers/dummy.c:0: unterminated string or character constant
+helpers/dummy.c:0: possible real start of unterminated constant
+make: *** [dummy] Error 1
+ + doing sanity check on compiler and options
+** A test compilation with your Makefile configuration
+** failed. This is most likely because your C compiler
+** is not ANSI. Apache requires an ANSI C Compiler, such
+** as gcc. The above error message from your compiler
+** will also provide a clue.
+ Aborting!
+
+
+The reason seems to be the mishandling of -DSERVER_SUBVERSION="PHP/3.0.3 AuthMySQL/2.20"
+ in src/Configure:
+
+It's given as -DSERVER_SUBVERSION=\"PHP/3.0.3 AuthMySQL/2.20\" to the commandline, so
+gcc doesn't found: AuthMySQL/2.20"
+
+It's misparsed at a "for ... in $CFLAGS" construct, which breaks at every space,
+so it divides the define above in two unusable parts.
+>How-To-Repeat:
+Use two modules which set $SUBVERSION,
+if you wish, I can email you the rpm spec file with which I'm building apache. 
+>Fix:
+Correct handling of -DSERVER_SUBVERSION="PHP/3.0.3 AuthMySQL/2.20" in src/Configure
+
+My hack is (working on Linux, eg. with bash and GNU sed, will probably fail on
+others):
+
+--- apache_1.3.3/src/Configure.confpatch        Mon Oct 19 11:30:30 1998
++++ apache_1.3.3/src/Configure  Mon Oct 19 13:54:16 1998
+@@ -1693,7 +1693,7 @@
+ ##
+ if [ "x$SUBVERSION" != "x" ] ; then
+         SUBVERSION=`echo $SUBVERSION | sed 's/^ +//'`
+-       CFLAGS="$CFLAGS -DSERVER_SUBVERSION=\\\"$SUBVERSION\\\""
++       CFLAGS="$CFLAGS -DSERVER_SUBVERSION=\"$SUBVERSION\""
+ fi
+ 
+ ####################################################################
+@@ -1766,6 +1766,7 @@
+ ## ap_config_auto.h so they are available to external modules needing to
+ ## include Apache header files.
+ ##
++#MUST replace space in -Dxxx="test1 test2" !
+ for cflag in $(echo $CFLAGS | sed 's/[ \t]-D/@@/g;s/[ ]/_/g;s/@@/ -D/g'); do
+        echo $cflag | sed 's/\\\"/\"/g' >>$tmpconfig ;
+ done
+>Audit-Trail:
+
+From: "Ralf S. Engelschall" <rse@engelschall.com>
+To: Hermann.Lauer@iwr.uni-heidelberg.de
+Cc: apbugs@apache.org
+Subject: Re: config/3240: Mishandling of -DSERVER_SUBVERSION="PHP/3.0.3 AuthMySQL/2.20" in src/Configure
+Date: Tue, 27 Oct 1998 12:39:24 +0100
+
+ In article <19981019124922.17367.qmail@hyperreal.org> you wrote:
+ 
+ >[...]
+ >>Synopsis:       Mishandling of -DSERVER_SUBVERSION="PHP/3.0.3 AuthMySQL/2.20" in src/Configure
+ >[...]
+ >     o php3_module uses ConfigStart/End
+ >     o auth_mysql_module uses ConfigStart/End
+ > gcc: AuthMySQL/2.20": No such file or directory
+ > helpers/dummy.c:0: unterminated string or character constant
+ > helpers/dummy.c:0: possible real start of unterminated constant
+ > make: *** [dummy] Error 1
+ >  + doing sanity check on compiler and options
+ > ** A test compilation with your Makefile configuration
+ > ** failed. This is most likely because your C compiler
+ > ** is not ANSI. Apache requires an ANSI C Compiler, such
+ > ** as gcc. The above error message from your compiler
+ > ** will also provide a clue.
+ >  Aborting!
+ >[...]
+ 
+ I've investigated some time and figured out that it's a lot more complicated
+ than it looks. Nevertheless I hope I've now a patch available which fixes all
+ problems. I append you the patch below. Please try it out yourself and give me
+ feedback whether it works or works not for you, too.
+ 
+                                        Ralf S. Engelschall
+                                        rse@engelschall.com
+                                        www.engelschall.com
+ 
+ Index: src/CHANGES
+ ===================================================================
+ RCS file: /e/apache/REPOS/apache-1.3/src/CHANGES,v
+ retrieving revision 1.1125
+ diff -u -r1.1125 CHANGES
+ --- CHANGES	1998/10/27 10:20:00	1.1125
+ +++ CHANGES	1998/10/27 11:37:24
+ @@ -1,5 +1,9 @@
+  Changes with Apache 1.3.4
+  
+ +  *) Fix CFLAGS parsing for ap_config_auto.h: Whitespaces in the value of -D
+ +     options let the configuration mechanism completely fall down.
+ +     [Ralf S. Engelschall] PR#3240
+ +
+    *) Add APACI --permute-module=foo:bar option which can be used to
+       on-the-fly/batch permute the order of two modules (mod_foo and mod_bar)
+       in the Configuration[.apaci] file. Two special and important variants are
+ Index: src/Configure
+ ===================================================================
+ RCS file: /e/apache/REPOS/apache-1.3/src/Configure,v
+ retrieving revision 1.303
+ diff -u -r1.303 Configure
+ --- Configure	1998/10/27 10:37:46	1.303
+ +++ Configure	1998/10/27 11:33:55
+ @@ -1697,7 +1697,7 @@
+  ##
+  if [ "x$SUBVERSION" != "x" ] ; then
+          SUBVERSION=`echo $SUBVERSION | sed 's/^ +//'`
+ -	CFLAGS="$CFLAGS -DSERVER_SUBVERSION=\\\"$SUBVERSION\\\""
+ +	CFLAGS="$CFLAGS \"-DSERVER_SUBVERSION=\\\"$SUBVERSION\\\"\""
+  fi
+  
+  ####################################################################
+ @@ -1770,16 +1770,29 @@
+  ## ap_config_auto.h so they are available to external modules needing to
+  ## include Apache header files.
+  ##
+ -for cflag in $CFLAGS; do
+ -	echo $cflag | sed 's/\\\"/\"/g' >>$tmpconfig ;
+ +TEXTRA_CFLAGS=`egrep '^EXTRA_CFLAGS=' Makefile.config | tail -1 |\
+ +               sed -e 's;^EXTRA_CFLAGS=;;' -e 's;\`.*\`;;'`
+ +tmpstr=`echo $CFLAGS $TEXTRA_CFLAGS |\
+ +        sed -e 's;[   ]-;!-;g' -e 's/\\\"/\"/g' -e 's/\([^\\]\)"/\1/g'`
+ +OIFS="$IFS" IFS='!'
+ +for cflag in $tmpstr; do
+ +    echo "$cflag" >>$tmpconfig
+  done
+ +IFS="$OIFS"
+  awk >>$AP_CONFIG_AUTO_H <$tmpconfig '
+ -	/^-D.*/ {
+ -		define = substr($1, 3, length($1)-2)
+ -		split(define, parts, "=")
+ -		printf ("\n/* build flag: %s */\n", $0)
+ -		printf ("#ifndef %s\n#define %s %s\n#endif\n", parts[1],parts[1],parts[2])
+ -	}
+ +    /^-D.*/ {
+ +        i = index($0, "=")
+ +        if (i > 0) {
+ +            define = substr($0, 3, i-3)
+ +            value  = substr($0, i+1, length($0)-i)
+ +        }
+ +        else {
+ +            define = substr($0, 3, length($0)-2)
+ +            value  = "1";
+ +        }
+ +        printf ("\n/* build flag: %s */\n", $0)
+ +        printf ("#ifndef %s\n#define %s %s\n#endif\n", define, define, value)
+ +    }
+  '
+  
+  # finish header file
+Comment-Added-By: jim
+Comment-Added-When: Wed Dec  2 18:02:08 PST 1998
+Comment-Added:
+Of course, SERVER_SUBVERSION is no longer supported at all.
+So really, that code fragment in Configure which deals with
+it should be deleted anyway :)
+State-Changed-From-To: open-closed
+State-Changed-By: rse
+State-Changed-When: Sun Dec  6 07:22:28 PST 1998
+State-Changed-Why:
+Ok, the SERVER_SUBVERSION support was now
+completely removed and nevertheless the remaining
+code for the generation of ap_config_auto.h was
+now made more robust. Thanks for your feedback.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

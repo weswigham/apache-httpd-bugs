@@ -1,0 +1,151 @@
+Received: (qmail 567 invoked by uid 2012); 17 Dec 1999 22:09:14 -0000
+Message-Id: <19991217220914.566.qmail@hyperreal.org>
+Date: 17 Dec 1999 22:09:14 -0000
+From: Rob Kreamer <develop@vaxxine.com>
+Reply-To: develop@vaxxine.com
+To: apbugs@hyperreal.org
+Subject: Virtual host broken due to INADDR_NONE
+X-Send-Pr-Version: 3.2
+
+>Number:         5490
+>Category:       os-osf
+>Synopsis:       Virtual host broken due to INADDR_NONE
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jim
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          duplicate
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Dec 17 14:10:00 PST 1999
+>Closed-Date:    Mon Oct 30 19:28:20 PST 2000
+>Last-Modified:  Mon Oct 30 19:28:20 PST 2000
+>Originator:     develop@vaxxine.com
+>Release:        1.3.9
+>Organization:
+>Environment:
+Digital UNIX 4.0D - Newest patch level
+uname -a:  OSF1 alpha.vaxxine.com V4.0 878 alpha
+gcc --version:  2.95.2
+cc -V:  DEC C V5.6-084 on Digital UNIX V4.0 (Rev. 878)
+
+From /usr/include/netinet/in.h:
+@(#)$RCSfile: in.h,v $ $Revision: 4.3.26.3 $ (DEC) $Date: 1997/10/08 19:01:25 $
+>Description:
+
+Hello.  This error is a repeat of the PR#463 but occurred in Apache 1.3.9
+using either gcc or cc.
+
+The problem, like PR#463, seems to be related to typing.  In
+/usr/include/in/netstd.h I have:
+
+#ifndef _KERNEL
+#define      INADDR_NONE             0xffffffff       /* -1 return */
+#endif
+
+If I create a test program and compile via either cc or gcc the failure
+of inet_addr() does not match INADDR_NONE.
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <netinet/in.h>
+
+int main( void )
+{
+    char *w = "entersomedomainhere";
+    struct hostent *hep;
+    unsigned long my_addr;
+    char *p;
+
+    hep = gethostbyname(w);
+
+    if ((!hep) || (hep->h_addrtype != AF_INET || !hep->h_addr_list[0])) {
+        fprintf(stderr, "Cannot resolve host name %s --- exiting!\n", w);
+        exit(1);
+    }
+
+    my_addr = inet_addr( w );
+
+    printf( "Name = %s\n", hep->h_name );
+    printf( "inet_addr (unsigned) = %u\n", my_addr );
+    printf( "inet_addr (decimal) = %d\n", my_addr );
+    printf( "No address (unsigned) = %u\n", INADDR_NONE );
+    printf( "No address (decimal) = %d\n", ((unsigned long) -1) );
+    printf( "UL:  %d != %d ? %d\n", my_addr, INADDR_NONE,
+      (my_addr != INADDR_NONE) );
+}
+
+I get:
+
+Name = entersomedomainhere
+inet_addr (unsigned) = 4294967295
+inet_addr (decimal) = -1
+No address (unsigned) = 4294967295
+No address (decimal) = -1
+UL:  -1 != -1 ? 1
+
+>How-To-Repeat:
+If necessary I can provide a short term shell account.
+>Fix:
+I was able to resolve the problem by #undef'ing INADDR_NONE and letting the
+existing #define with http_vhost.c take effect.  Admittedly one should not
+have to do so but it patched the problem.  Maybe a test of the sizeof the
+return value of inet_addr() and the sizeof INADDR_NONE if compiled on an
+alpha when httpd starts?  It would at least let alpha users know there's a
+problem.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: jim
+State-Changed-When: Tue Dec 21 07:36:35 PST 1999
+State-Changed-Why:
+Could you provide the output from src/helpers/GuessOS? It
+does look like the "fix" is to make sure alpha/OSF uses the
+(unsigned long)-1 format, but I want to have that happen
+only with your platform (ie: OSF on the alpha)
+Responsible-Changed-From-To: apache-jim
+Responsible-Changed-By: jim
+Responsible-Changed-When: Tue Dec 21 07:36:35 PST 1999
+Responsible-Changed-Why:
+ 
+Comment-Added-By: coar
+Comment-Added-When: Wed Jun  7 12:52:38 PDT 2000
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: slive
+State-Changed-When: Mon Oct 30 19:28:19 PST 2000
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

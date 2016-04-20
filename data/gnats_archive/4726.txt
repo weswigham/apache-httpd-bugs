@@ -1,0 +1,68 @@
+Received: (qmail 15647 invoked by uid 2012); 13 Jul 1999 15:22:56 -0000
+Message-Id: <19990713152256.15646.qmail@hyperreal.org>
+Date: 13 Jul 1999 15:22:56 -0000
+From: Simon Burr <simonb@uk.uu.net>
+Reply-To: simonb@uk.uu.net
+To: apbugs@hyperreal.org
+Subject: Ickiness in the Y2K fix for support/log_server_status from PR4523
+X-Send-Pr-Version: 3.2
+
+>Number:         4726
+>Category:       general
+>Synopsis:       Ickiness in the Y2K fix for support/log_server_status from PR4523
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jul 13 08:30:00 PDT 1999
+>Last-Modified:
+>Originator:     simonb@uk.uu.net
+>Organization:
+apache
+>Release:        1.3 CVS snap-shot
+>Environment:
+Solaris
+>Description:
+The %Y fix I originally gave in PR4523 had to be dropped due to %Y
+not being universal :( This lead to a rather icky fix which involved
+doing a %y and if the year was <70 then it was assumed to be after 2000, if
+not then it was assumed to be during 1900. A better fix is below
+>How-To-Repeat:
+
+>Fix:
+Replace the code
+
+        $year=`date +%y`;
+        chomp($year);
+        $year += ($year < 70) ? 2000 : 1900;
+        $date = $year . `date +%m%d:%H%M%S`;
+        chomp($date);
+        ($day,$time)=split(/:/,$date);
+
+With:
+
+        @tl=localtime($^T);
+        $time=sprintf("%02d%02d%02d",$tl[2],$tl[1],$tl[0]);
+        $day=sprintf("%d%02d%02d",$tl[5]+1900,$tl[4]+1,$tl[3]);
+
+This has the advantage of not only removing the Y2K kludge, but also removes
+two calls to the date command and does the job in a smaller amount of code.
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

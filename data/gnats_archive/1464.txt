@@ -1,0 +1,152 @@
+Received: (qmail 4892 invoked by uid 2012); 23 Nov 1997 21:22:58 -0000
+Message-Id: <19971123212258.4891.qmail@hyperreal.org>
+Date: 23 Nov 1997 21:22:58 -0000
+From: Michael Burford <mjb@headlightsw.com>
+Reply-To: mjb@headlightsw.com
+To: apbugs@hyperreal.org
+Subject: Response for Byte-Range containing whole file "Range: bytes=0-"
+X-Send-Pr-Version: 3.2
+
+>Number:         1464
+>Category:       protocol
+>Synopsis:       Response for Byte-Range containing whole file "Range: bytes=0-"
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Nov 23 13:30:01 PST 1997
+>Last-Modified:  Tue May  5 21:32:12 PDT 1998
+>Originator:     mjb@headlightsw.com
+>Organization:
+>Release:        1.3b3
+>Environment:
+Not my server so I don't know.
+>Description:
+While I don't think it is a bug, some of my users have commented on this and
+it could cause confusion.
+
+When doing a byte-range request, GetRight (and probably other tools) will
+do the first request from "Range: bytes=0-".  It uses the response (206 or 200) to
+indicate if the server will allow it to resume later if this transfer 
+is disconnected.
+(GetRight may be downloaded from http://www.getright.com/ )
+
+It appears that 1.3b3 returns a 200 response if the range is for the while file 
+("0-"), but 206 otherwise.
+
+While it doesn't really cause any problems, GetRight will interpret the 200 response
+as meaning the server will not allow resuming.  Some users may try to find some
+other server to download since it doesn't appear that this server will let
+them resume later.
+
+-------------Headers for byterange "0-"-------
+----Header Sent----
+GET /sounds/WAV/Rafiki.zip HTTP/1.1
+Host: www.lionking.org
+Range: bytes=0-
+User-Agent: GetRight/3.02
+Accept: *.*, */*
+Range-If: Fri, 25 Apr 1997 20:28:04 GMT
+
+----Header Recv----
+HTTP/1.1 200 OK
+Date: Sun, 23 Nov 1997 21:09:27 GMT
+Server: Apache/1.3b3 mod_perl/1.06
+Last-Modified: Fri, 25 Apr 1997 20:28:04 GMT
+ETag: "4b46f-1a80fb-336113d4"
+Content-Length: 1736955
+Content-Type: application/zip
+
+-------------Headers for regular byterange-------
+----Header Sent----
+GET /sounds/WAV/Rafiki.zip HTTP/1.1
+Host: www.lionking.org
+Range: bytes=60527-
+User-Agent: GetRight/3.02
+Accept: *.*, */*
+Range-If: Fri, 25 Apr 1997 20:28:04 GMT
+
+----Header Recv----
+HTTP/1.1 206 Partial Content
+Date: Sun, 23 Nov 1997 21:20:17 GMT
+Server: Apache/1.3b3 mod_perl/1.06
+Last-Modified: Fri, 25 Apr 1997 20:28:04 GMT
+ETag: "4b46f-1a80fb-336113d4"
+Content-Length: 1676428
+Content-Range: bytes 60527-1736954/1736955
+Content-Type: application/zip
+
+>How-To-Repeat:
+http://www.lionking.org/sounds/WAV/Rafiki.zip
+>Fix:
+Either Apache can always return a 206 for any byte-range request, or GetRight 
+can parse the Server response & know that Apache/1.2 or higher really will
+resume--but it may not actually be able to resume if there is some Proxy
+server in the middle that doesn't know about HTTP 1.1
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: akosut
+State-Changed-When: Sun Nov 23 14:36:49 PST 1997
+State-Changed-Why:
+Although this is not technically a bug, we do agree that it is
+an inconsistency in Apache's handling of byteranges. We are discussing
+the matter, the behavior may change in the next release of Apache.
+
+However, it should be pointed out that the HTTP/1.1 spec does
+provide a way to check to see if a given entity (for a non-ranges request)
+supports byteranges: the presence of an "Accept-Ranges" header. Most
+servers that I know of do send this.
+
+From: Marc Slemko <marcs@znep.com>
+To: mjb@headlightsw.com
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: protocol/1464: Response for Byte-Range containing whole file "Range: bytes=0-"
+Date: Sun, 23 Nov 1997 15:39:19 -0700 (MST)
+
+ Also note that sending a Range: header for all requests will cause a lot
+ of proxy servers to not cache the response, which is not really desirable.
+ 
+ On 23 Nov 1997 akosut@hyperreal.org wrote:
+ 
+ > Synopsis: Response for Byte-Range containing whole file "Range: bytes=0-"
+ > 
+ > State-Changed-From-To: open-analyzed
+ > State-Changed-By: akosut
+ > State-Changed-When: Sun Nov 23 14:36:49 PST 1997
+ > State-Changed-Why:
+ > Although this is not technically a bug, we do agree that it is
+ > an inconsistency in Apache's handling of byteranges. We are discussing
+ > the matter, the behavior may change in the next release of Apache.
+ > 
+ > However, it should be pointed out that the HTTP/1.1 spec does
+ > provide a way to check to see if a given entity (for a non-ranges request)
+ > supports byteranges: the presence of an "Accept-Ranges" header. Most
+ > servers that I know of do send this.
+ > 
+ 
+Release-Changed-From-To: Server: Apache/1.3b3-1.3b3
+Release-Changed-By: coar
+Release-Changed-When: Mon Nov 24 07:30:02 PST 1997
+State-Changed-From-To: analyzed-closed
+State-Changed-By: brian
+State-Changed-When: Tue May  5 21:32:12 PDT 1998
+State-Changed-Why:
+The conclusion 'round these parts is that the 200 response on
+the request for bytes "0-" is correct.  Not doing so would 
+cause HTTP/1.0 proxies to not cache the results, and any
+client software can tell from the "Accept-Range" header in
+the response that byte range requests are accepted for that
+object.  Remember, byte range requests can certainly vary 
+on a per-object basis.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

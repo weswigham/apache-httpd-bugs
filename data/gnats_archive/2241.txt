@@ -1,0 +1,152 @@
+Received: (qmail 543 invoked by uid 2012); 17 May 1998 11:34:58 -0000
+Message-Id: <19980517113458.542.qmail@hyperreal.org>
+Date: 17 May 1998 11:34:58 -0000
+From: Alex Semenyaka <alexs@rinet.ru>
+Reply-To: alexs@rinet.ru
+To: apbugs@hyperreal.org
+Subject: suEXEC won't execute anything not under DOC_ROOT from suexec.h
+X-Send-Pr-Version: 3.2
+
+>Number:         2241
+>Category:       suexec
+>Synopsis:       suEXEC won't execute anything not under DOC_ROOT from suexec.h
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun May 17 04:40:00 PDT 1998
+>Last-Modified:  Wed May 20 13:10:01 PDT 1998
+>Originator:     alexs@rinet.ru
+>Organization:
+>Release:        1.2.6
+>Environment:
+>Description:
+Whean I run a main Web-server and several other I want to provide the access of different people to the maintaining each of them.
+It means that I would like to have own cgi-bin directory for each of those servers and run scripts with corresponding UID/GID.
+It is possible only with suEXEC wrapper; however suEXEC is able to run programs with the path, necessaryly containing DOC_ROOT (/usr/local/etc/httpd/htdocs by default), and I do NOT want to create users directories there.
+There is no such problem without suEXEC but in this case scripts are run as fake httpd-users, and, so do not have permission to write anything in user directory.
+>How-To-Repeat:
+Unfortunatelly I needed to setup working server quickly so I cannot show you it now.
+Of course I can provide you my configuration files but I suppose it is not what you want, don't you?
+>Fix:
+Here is the patch for suexec.c to fix the problem. The main idea is to set working directory to DOC_ROOT only if the environment variable DOCUMENT_ROOT is not defined, and to DOCUMENT_ROOT from the environment else.
+
+*** suexec.c.old        Sat May 16 23:01:02 1998
+--- suexec.c    Sun May 17 14:52:59 1998
+***************
+*** 223,228 ****
+--- 223,231 ----
+      char *actual_gname;     /* actual group name           */
+      char *prog;             /* name of this program      */
+      char *cmd;              /* command to be executed    */
++ /*+APS+*/
++     char *envvar;         /* environ variable value    */
++ /*-APS-*/
+      char cwd[AP_MAXPATH];   /* current working directory */
+      char dwd[AP_MAXPATH];   /* docroot working directory */
+      struct passwd *pw;      /* password entry holder     */
+***************
+*** 391,398 ****
+              exit(112);
+          }
+      }
+!     else {
+!         if (((chdir(DOC_ROOT)) != 0) ||
+            ((getcwd(dwd, AP_MAXPATH)) == NULL) ||
+            ((chdir(cwd)) != 0))
+          {
+--- 394,407 ----
+              exit(112);
+          }
+      }
+!     else { /*+APS+*/
+!       if ((envvar=getenv("DOCUMENT_ROOT")) != NULL )
+!                strncpy(dwd, envvar, AP_MAXPATH);
+!       else
+!                strncpy(dwd, DOC_ROOT, AP_MAXPATH);
+!       log_err("dwd: %s\n", dwd);
+!         if (((chdir(dwd)) != 0) ||
+!          /*-APS-*/
+            ((getcwd(dwd, AP_MAXPATH)) == NULL) ||
+            ((chdir(cwd)) != 0))
+          {
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Sun May 17 07:17:26 PDT 1998
+State-Changed-Why:
+suexec is the way it is for a reason; letting it blindly
+trust the environment variable it is passed opens up a security hole
+by allowing anyone who can run suexec (ie. as the user that
+is defined in suexec.h) to run _any_ program anywhere on
+disk, subject to the other restrictions.  This can have
+very serious security implications.
+
+Again, suexec will only execute programs under a defined
+DOCUMENT_ROOT or in ~userdirs by design for security
+reasons.
+
+From: Marc Slemko <marcs@znep.com>
+To: Alex Semenyaka <alexs@snark.rinet.ru>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: suexec/2241: suEXEC won't execute anything not under DOC_ROOT from suexec.h
+Date: Wed, 20 May 1998 13:39:04 -0600 (MDT)
+
+ On Mon, 18 May 1998, Alex Semenyaka wrote:
+ 
+ > > State-Changed-From-To: open-closed
+ > > State-Changed-By: marc
+ > > State-Changed-When: Sun May 17 07:17:26 PDT 1998
+ > > State-Changed-Why:
+ > > suexec is the way it is for a reason; letting it blindly
+ > > trust the environment variable it is passed opens up a security hole
+ > > by allowing anyone who can run suexec (ie. as the user that
+ > > is defined in suexec.h) to run _any_ program anywhere on
+ > > disk, subject to the other restrictions.  This can have
+ > > very serious security implications.
+ > > 
+ > > Again, suexec will only execute programs under a defined
+ > > DOCUMENT_ROOT or in ~userdirs by design for security
+ > > reasons.
+ > 
+ > That's right but I beleive that same trick can be done in the next manner:
+ > 1) Create new group (httpd, for example)
+ > 2) The only member of this group will be that pseudo-user, who is running httpd
+ > (from httpd.conf). Make sure that this user has no shell (i.e. cannot login).
+ > 3) Set owner for suexec as root/httpd
+ > 4) Set permissions for suexec as 4010.
+ > 
+ > Nobody except with user running httpd can run suexec here. I suppose this
+ > solution is secure enough, isn't it?
+ 
+ No, it isn't.  We already check to be sure that the user running suexec is
+ the user that httpd runs as.  Either someone can run a non-suexeced CGI or
+ can perhaps find some other hole in the server to break into; your
+ solution gives them full access.  There is _NO_ benefit to checking an
+ environment variable for the document root; it is exactly the same as if
+ you didn't bother checking.
+ 
+ It is easy to make something with more functionality if you toss out
+ security.  However, most of the places where suexec is limited it is
+ limited for a very good reason. 
+ 
+ > 
+ > 							Sincerely yours,
+ > 							Alex Semenyaka
+ > 
+ 
+>Unformatted:
+>uname -a
+FreeBSD snark.rinet.ru 3.0-971012-SNAP FreeBSD 3.0-971012-SNAP #0: Fri Mar  6 23:22:59 MSK 1998     root@snark.rinet.ru:/usr/src/sys/compile/CYRIX_DOS  i386
+>gcc --version
+2.7.2.1
+
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+

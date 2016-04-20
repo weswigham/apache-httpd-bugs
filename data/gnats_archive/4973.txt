@@ -1,0 +1,113 @@
+Received: (qmail 22663 invoked by uid 2012); 7 Sep 1999 17:21:38 -0000
+Message-Id: <19990907172138.22662.qmail@hyperreal.org>
+Date: 7 Sep 1999 17:21:38 -0000
+From: Andrew McRae <andrew@liquid.com>
+Reply-To: andrew@liquid.com
+To: apbugs@hyperreal.org
+Subject: dbmmanage - simple bug in error handling
+X-Send-Pr-Version: 3.2
+
+>Number:         4973
+>Category:       other
+>Synopsis:       dbmmanage - simple bug in error handling
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Sep  7 10:30:01 PDT 1999
+>Closed-Date:    Wed Sep 20 10:20:19 PDT 2000
+>Last-Modified:  Wed Sep 20 10:20:19 PDT 2000
+>Originator:     andrew@liquid.com
+>Release:        1.3.9
+>Organization:
+>Environment:
+Apache 1.3.9 (and 1.3.6, and possibly earlier) any operating system
+>Description:
+The Perl script shipped as src/support/dbmmanage appears to run
+successfully even when it fails to open the DBM file on which
+it's invoked (e.g. because the file isn't readable, or because
+the file doesn't exist and the relevant directory doesn't exist
+or isn't writable).
+
+The problem is that line 94 of the script shipped as
+src/support/dbmmanage says:
+
+  tie %DB, "AnyDBM_File", $file, $flags, $mode || die "Can't tie $file: $!";
+
+Because of the relative precedence of "||", this is equivalent to
+
+  tie %DB, "AnyDBM_File", $file, $flags, ($mode || die "Can't tie $file: $!");
+
+so the "die()" is not invoked even if the "tie()" fails.
+>How-To-Repeat:
+Try running
+
+    dbmmanage <dir>/<file> add foo bar
+
+where "<dir>" is a nonexistent directory and "<file>"
+is any file name. dbmmanage outputs:
+
+    User foo added with password encrypted to bar
+
+but doesn't actually change anything.
+
+Or try running dbmmanage on a non-writable DBM file.
+>Fix:
+Change line 94 of "dbmmanage" to:
+
+  tie (%DB, "AnyDBM_File", $file, $flags, $mode) || die "Can't tie $file: $!";
+
+or
+
+  tie %DB, "AnyDBM_File", $file, $flags, $mode
+    or die "Can't tie $file: $!";
+>Release-Note:
+>Audit-Trail:
+
+From: "Ralf S. Engelschall" <rse@engelschall.com>
+To: apbugs@apache.org
+Cc:  Subject: Re: other/4973: dbmmanage - simple bug in error handling
+Date: Sun, 28 Nov 1999 14:38:09 +0100
+
+ In article <19990907172138.22662.qmail@hyperreal.org> you wrote:
+  
+ >>Number:         4973
+ >>Category:       other
+ >>Synopsis:       dbmmanage - simple bug in error handling
+ >>Confidential:   no
+ > [...]
+ > Change line 94 of "dbmmanage" to:
+ >   tie (%DB, "AnyDBM_File", $file, $flags, $mode) || die "Can't tie $file: $!";
+ 
+ Thanks for catching this subtle bug.
+ It's now fixed for Apache 1.3.10.
+                                        Ralf S. Engelschall
+                                        rse@engelschall.com
+                                        www.engelschall.com
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Wed Sep 20 10:20:16 PDT 2000
+State-Changed-Why:
+
+Fixed as of Apache 1.3.10
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

@@ -1,0 +1,128 @@
+Received: (qmail 23975 invoked by uid 501); 25 Nov 2000 18:09:51 -0000
+Message-Id: <20001125180951.23973.qmail@locus.apache.org>
+Date: 25 Nov 2000 18:09:51 -0000
+From: Laurent Genier <lgr@intrinsec.com>
+Reply-To: lgr@intrinsec.com
+To: submit@bugz.apache.org
+Subject: SEGV of httpd when using a re-entrant upload script
+X-Send-Pr-Version: 3.110
+
+>Number:         6889
+>Category:       apache-api
+>Synopsis:       SEGV of httpd when using a re-entrant upload script
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Nov 25 10:10:01 PST 2000
+>Closed-Date:    Wed Mar 21 22:40:41 PST 2001
+>Last-Modified:  Wed Mar 21 22:40:41 PST 2001
+>Originator:     lgr@intrinsec.com
+>Release:        1.3.14
+>Organization:
+>Environment:
+Linux 2.2.14-5.0 intel
+>Description:
+This bug seems to be the same than number #6792.
+
+When using a script called "foo.php3" for uploading a file on a web server,
+if this script calls itself for parsing the uploaded file, httpd has SEGV.
+
+Program received signal SIGSEGV, Segmentation fault.
+0x4024ecbd in XS_Apache__URI_password () from /etc/httpd.other/modules/libperl.so
+(gdb) where
+#0  0x4024ecbd in XS_Apache__URI_password () from /etc/httpd.other/modules/libperl.so
+#1  0x402a2008 in Perl_pp_dbmopen () from /etc/httpd.other/modules/libperl.so
+#2  0x4025103c in XS_Apache__Server_port () from /etc/httpd.other/modules/libperl.so
+#3  0x4025170e in XS_Apache__File_new () from /etc/httpd.other/modules/libperl.so
+[...]
+
+When using it from a .html page "test_segv.html" to a .php3 script "test_segv.php3" (same name, but different extensions), 
+a SEGV occurs :
+
+Program received signal SIGSEGV, Segmentation fault.
+0x0 in ?? ()
+(gdb) where
+#0  0x0 in ?? ()
+#1  0x40225d20 in ?? () from /etc/httpd.other/modules/libperl.so
+#2  0x4024f02a in XS_Apache__URI_query () from /etc/httpd.other/modules/libperl.so
+#3  0x4025103c in XS_Apache__Server_port () from /etc/httpd.other/modules/libperl.so
+#4  0x4025170e in XS_Apache__File_new () from /etc/httpd.other/modules/libperl.so
+#5  0x40246516 in XS_Apache_subprocess_env () from /etc/httpd.other/modules/libperl.so
+#6  0x402747e4 in study_chunk () from /etc/httpd.other/modules/libperl.so
+
+
+
+When calling it with a CGI, and without setting php3 on, a broken pipe appears :
+rogram received signal SIGPIPE, Broken pipe.
+0x40146af4 in __libc_write () from /lib/libc.so.6
+(gdb) where
+#0  0x40146af4 in __libc_write () from /lib/libc.so.6
+#1  0x404b9854 in dummy_lsub () from /usr/lib/apache/imap.so
+#2  0x806b160 in ap_hook_call ()
+#3  0x806adec in ap_hook_call ()
+#4  0x8051d53 in ap_bspawn_child ()
+#5  0x805278b in ap_bfilbuf ()
+>How-To-Repeat:
+Use this script, put it in a file called "test_segv.php3" :
+<HTML>
+<BODY>
+ <FORM ENCTYPE="multipart/form-data" ACTION="test_segv.php3" METHOD=POST>
+  <INPUT NAME="order_file" TYPE="file"> 
+  <INPUT NAME="DOWNLOAD" TYPE="submit" VALUE="Télécharger les ordres">
+ </FORM>
+</BODY>
+</HTML>
+
+Try to launch it, when you call it for the upload, httpd SEGV.
+I've tried it with a .php3 and a .cgi. Using .cgi has a differenc behaviour,
+httpd has broken pipe.
+>Fix:
+Don't use a re-entrant script, use two differents scripts
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: slive
+State-Changed-When: Sun Nov 26 22:30:53 PST 2000
+State-Changed-Why:
+
+I am confused by your problem.  You say that the
+problem is with PHP, yet the segfault seems to
+be in mod_perl.  In addition, many millions of
+people use CGI scripts that call themselves, so
+I am fairly certain that this is not the problem.
+
+Can you recreate this problem with a CGI
+on a server that includes
+only standard Apache modules (no PHP or mod_perl)?
+If you can, can you describe exactly what happens
+in more detail?
+Thanks.
+
+State-Changed-From-To: feedback-closed
+State-Changed-By: slive
+State-Changed-When: Wed Mar 21 22:40:41 PST 2001
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,265 @@
+Received: (qmail 15367 invoked by uid 2012); 7 Apr 1999 03:54:19 -0000
+Message-Id: <19990407035419.15366.qmail@hyperreal.org>
+Date: 7 Apr 1999 03:54:19 -0000
+From: Steven Roussey <sroussey@network54.com>
+Reply-To: sroussey@network54.com
+To: apbugs@hyperreal.org
+Subject: redirect based on 404 turns POST into GET
+X-Send-Pr-Version: 3.2
+
+>Number:         4203
+>Category:       general
+>Synopsis:       redirect based on 404 turns POST into GET
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Apr  6 23:10:01 PDT 1999
+>Last-Modified:  Sat Apr 24 18:10:00 PDT 1999
+>Originator:     sroussey@network54.com
+>Organization:
+>Release:        1.3.4
+>Environment:
+Linux 2.0.36
+>Description:
+I'm using ErrorDocument 404 directive to redirect to index.php3 so that I can lookup the URL in a database and display the corresponding page. This works OK, but when a POST form is used, REQUEST_METHOD is GET, not POST, so PHP does not use the content (even though it has a length, etc.) to create HTTP_POST_VARS.
+>How-To-Repeat:
+see above
+>Fix:
+If there is a redirect, the post needs to be redirected (at least for 404 redirects), which means REQUEST_METHOD should be the same as REDIRECT_REQUEST_METHOD.
+>Audit-Trail:
+
+From: Dirk-Willem van Gulik <dirk.vangulik@jrc.it>
+To: sroussey@network54.com
+Cc: apbugs@hyperreal.org
+Subject: Re: general/4203: redirect based on 404 turns POST into GET
+Date: Wed, 07 Apr 1999 09:26:50 +0200
+
+ >Number:         4203
+ >Category:       general
+ >Synopsis:       redirect based on 404 turns POST into GET
+ >Confidential:   no
+ >Severity:       serious
+ >Priority:       medium
+ >Responsible:    apache
+ >State:          open
+ >Class:          sw-bug
+ >Submitter-Id:   apache
+ >Arrival-Date:   Tue Apr  6 23:10:01 PDT 1999
+ >Last-Modified:
+ >Originator:     sroussey@network54.com
+ >Organization:
+ apache
+ >Release:        1.3.4
+ >Environment:
+ Linux 2.0.36
+ >Description:
+ I'm using ErrorDocument 404 directive to redirect to index.php3 so that I can lookup the URL in a database and display
+ the corresponding page. This works OK, but when a POST form is used, REQUEST_METHOD is GET, not POST, so PHP does not
+ use the content (even though it has a length, etc.) to create HTTP_POST_VARS.
+ >How-To-Repeat:
+ see above
+ >Fix:
+ If there is a redirect, the post needs to be redirected (at least for 404 redirects), which means REQUEST_METHOD should
+ be the same as REDIRECT_REQUEST_METHOD.
+ >Audit-Trail:
+ >Unformatted:
+ [In order for any reply to be added to the PR database, ]
+ [you need to include <apbugs@Apache.Org> in the Cc line ]
+ [and leave the subject line UNCHANGED.  This is not done]
+ [automatically because of the potential for mail loops. ]
+ [If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request ]
+ [from a developer.                                      ]
+ [Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+ 
+ Firstly; this seems a a _browser_ issue to me; i.e. it
+ is the browser who deceides to re-try with a GET instead
+ of a POST.
+ 
+ Secondly From RFC1945:
+ 
+ 9.3  Redirection 3xx
+ 
+    This class of status code indicates that further action needs to be
+    taken by the user agent in order to fulfill the request. The action
+    required may be carried out by the user agent without interaction
+    with the user if and only if the method used in the subsequent
+    request is GET or HEAD. A user agent should never automatically
+    redirect a request more than 5 times, since such redirections usually
+    indicate an infinite loop.
+ 
+ Now I agree that there is some confusion (see for example how lynx does this
+ (http://www.ocf.berkeley.edu/~jeffwong/lynxstuff/webdesign/cgiforms.html)
+ as to whether this is right.
+ 
+ Now in the draft for HTTP/1.1 you see much the same story:
+ 
+ 10.3 Redirection 3xx
+ 
+    This class of status code indicates that further action needs to be
+    taken by the user agent in order to fulfill the request.  The action
+    required MAY be carried out by the user agent without interaction
+    with the user if and only if the method used in the second request is
+    GET or HEAD. A client SHOULD detect infinite redirection loops, since
+    such loops generate network traffic for each redirection.
+ 
+       Note: previous versions of this specification recommended a
+       maximum of five redirections. Content developers should be
+       aware that there might be clients that implement such a fixed
+       limitation.
+ 
+ So, can I close this PR ?
+ 
+ Dw.
+
+From: "Dirk-Willem van Gulik (kim)" <dirkx@webweaving.org>
+To: apbugs@apache.org, sroussey@www.network54.com
+Cc:  Subject: general/4203: redirect based on 404 turns POST into GET
+Date: Thu, 08 Apr 1999 22:06:10 +0200
+
+ Steven Roussey wrote:
+  
+ > Seems ErrorDocument does an 'internal' redirect. It doesn't send anything
+ > back to the browser about redirection. It does, however, turn the POST into
+ > a GET by the time my script runs. :(
+ 
+ Could you send me a copy of how you configured that. This sounds a bit
+ more like a true niggle ? I.e. a cut and paste of the conf file.
+ 
+ Dw.
+  
+ > Steven Roussey
+ > Network54.com
+ > 
+ > > Steven Roussey wrote:
+ > > >
+ > > > I have one question. In the case of the ErrorDocument, does
+ > > apache really do
+ > > > a redirect? I thought it created REDIRECT_* variables, and then did the
+ > > > redirect itself without sending a response code to the user. It would be
+ > > > strange to send a redirect response code and then a 404
+ > > response code from
+ > > > the error document. As I understand it from the documentation,
+ > > apache uses
+ > > > the error document provided (what I mistakenly call a redirect) pure and
+ > > > simple.
+ > >
+ > > Well, there is also the concept of an 'internal' redirection; but in fact
+ > > all three methods are possible; depending on how you configure the server.
+ > > You'd have to show me the exact setup. You can also have a look at the log
+ > > file; that might show you if there was a second request.. or even easier
+ > > just do a telnet to port 80 and do it manually. That gives you
+ > > best control.
+ > >
+ > > Dw.
+ 
+ > >
+
+From: Dirk-Willem van Gulik <dirkx@webweaving.org>
+To: Steven Roussey <steven.roussey@xgroup.com>
+Cc: apbugs@apache.org
+Subject: RE: general/4203: redirect based on 404 turns POST into GET
+Date: Thu, 8 Apr 1999 23:22:30 +0200 (CEST)
+
+ On Thu, 8 Apr 1999, Steven Roussey wrote:
+ 
+ > REDIRECT_ERROR_NOTES 
+ 	File does not exist: /usr/local/apache/htdocs/network54/Travel
+ > REQUEST_METHODST_METHOD 
+ 	POST
+ 
+ Ok, so you do get this one.. i.e. the rewritten REEUST_METHOD of the
+ original. That is good; I mistakenly assumed you did not get
+ these and that we where eating them.
+ 
+ I am not too sure wether one really want to have ErrorDocument fall
+ throughs as anything else than a GETs.
+ 
+ I see no real technical reason not to; but I can see how hairy it could
+ get if you allow things like PUT or DELETE to repeat their action to the
+ cgi defined by ErrorDocument (especially if the ErrorDocument is then
+ changed to be a  file -> which would cause another error). POST being a
+ bit of a grey area.
+ 
+ If you are despearate to fix this; go into http_request.c; search for
+ _internal_redirect() in the function _die(). In there you see that the
+ method is changed to M_GET and strdup(GET). But this will break your
+ server if you ever put a static HTML file as an error document; and then
+ have a POST request referring to it. (Whih cause a post on the Error
+ document, which is a static file, which is not allowed.)
+ 
+ Remove those two lines and bob is your uncle. Meanwhile I'll puzzle to see
+ if this is such a good idea, or how you could perhaps allow for something.
+ 
+ The other option is of course to rewrite your POST script to accept the 
+ REDIRECT_REQUEST_METHOD under certain circumstances.
+ 
+ Dw
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 11:09:09 PDT 1999
+State-Changed-Why:
+I don't think we want POST errors to POST to the error handler.
+Maybe a site-specific hack... not something we want to distribute.
+
+Dean
+
+From: "Steven Roussey" <sroussey@www.network54.com>
+To: <dgaudet@apache.org>, <apache-bugdb@apache.org>
+Cc: <apbugs@apache.org>
+Subject: RE: general/4203: redirect based on 404 turns POST into GET
+Date: Sat, 24 Apr 1999 18:03:53 -0700
+
+ mod_redirect provides a better mechanism to do what we want (though it has
+ its own bugs).
+ 
+ Steven Roussey
+ Network54.com
+ 
+ > -----Original Message-----
+ > From: dgaudet@apache.org [mailto:dgaudet@apache.org]
+ > Sent: Tuesday, April 20, 1999 11:09 AM
+ > To: apache-bugdb@apache.org; dgaudet@apache.org; sroussey@network54.com
+ > Subject: Re: general/4203: redirect based on 404 turns POST into GET
+ >
+ >
+ > [In order for any reply to be added to the PR database, ]
+ > [you need to include <apbugs@Apache.Org> in the Cc line ]
+ > [and leave the subject line UNCHANGED.  This is not done]
+ > [automatically because of the potential for mail loops. ]
+ > [If you do not include this Cc, your reply may be ig-   ]
+ > [nored unless you are responding to an explicit request ]
+ > [from a developer.                                      ]
+ > [Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+ >
+ >
+ > Synopsis: redirect based on 404 turns POST into GET
+ >
+ > State-Changed-From-To: open-closed
+ > State-Changed-By: dgaudet
+ > State-Changed-When: Tue Apr 20 11:09:09 PDT 1999
+ > State-Changed-Why:
+ > I don't think we want POST errors to POST to the error handler.
+ > Maybe a site-specific hack... not something we want to distribute.
+ >
+ > Dean
+ >
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

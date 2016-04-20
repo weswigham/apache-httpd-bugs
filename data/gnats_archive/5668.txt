@@ -1,0 +1,263 @@
+Received: (qmail 44748 invoked by uid 65534); 29 Jan 2000 16:46:14 -0000
+Message-Id: <20000129164614.44747.qmail@locus.apache.org>
+Date: 29 Jan 2000 16:46:14 -0000
+From: Kim Bisgaard <kib@dmi.dk>
+Reply-To: kib@dmi.dk
+To: submit@bugz.apache.org
+Subject: Patch for streaming servers and long running cgi-scripts
+X-Send-Pr-Version: 3.110
+
+>Number:         5668
+>Category:       mod_proxy
+>Synopsis:       fixed for HTTP/1.0
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Jan 29 08:50:00 PST 2000
+>Closed-Date:    Thu Sep 27 22:27:49 PDT 2001
+>Last-Modified:  Thu Sep 27 22:27:49 PDT 2001
+>Originator:     kib@dmi.dk
+>Release:        1.3.11
+>Organization:
+>Environment:
+any
+>Description:
+Apache proxy module ruins the marvelous new facility in apache 1.3 of 
+delivering the output from scripts un-buffered - thus instantly. This 
+property is vital in long running cgi-scripts (see bug report 4733, 1166), 
+and in streaming servers (see bug report 4566)
+>How-To-Repeat:
+See above emntioned bug reports.
+>Fix:
+Utilize the "Pragma: no-cache" or HTTP 1.1 "Cache-Control: no-cache" to signify
+both no-caching and no-buffering in proxy module.
+--- apache_1.9.11/src/modules/proxy/proxy_http.c
++++ apache_1.9.11/src/modules/proxy/proxy_http.c
+@@ -472,6  +472,16 @@
+      if ((datestr = ap_table_get(resp_hdrs, "URI")) != NULL)
+  	ap_table_set(resp_hdrs, "URI", proxy_location_reverse_map(r, datestr));
+
++ /* If "Pragma: no-cache" or "Cache-Control: no-cache"
++  * set nocache and make reply un-buffered to enshure timely delivery */
++     if (((pragma = ap_table_get(resp_hdrs, "Pragma")) != NULL &&
++ 	 ap_proxy_liststr(pragma, "no-cache")) ||
++ 	((pragma = ap_table_get(resp_hdrs, "Cache-Control")) != NULL &&
++ 	 ap_proxy_liststr(pragma, "no-cache"))) {
++       nocache = 1;
++       r->connection->client->flags &= ~B_WR;
++     }
+
+  /* check if NoCache directive on this host */
+      for (i = 0; i < conf->nocaches->nelts; i++) {
+>Release-Note:
+>Audit-Trail:
+
+From: Kim Bisgaard <kib@dmi.dk>
+To: privat <kk.bisgaard@get2net.dk>
+Cc: apbugs@apache.org
+Subject: Re: mod_proxy/5668: Patch for streaming servers and long running 
+ cgi-scripts
+Date: Mon, 31 Jan 2000 16:49:04 +0100
+
+ Q2xhcmlmaWNhdGlvbjoNCkFmdGVyIHRoaXMgcGF0Y2ggaGFzIGJlZW4gYXBwbGllZCwgb25l
+ IG9ubHkgaGFzIHRvIG1ha2Ugc3VyZSB0aGF0IHRoZSBsb25nDQpydW5uaW5nIHNjcmlwdHMg
+ b3V0cHV0cyAiUHJhZ21hOiBub2NhY2hlIiBpbiB0aGUgaGVhZGVyICh3aGF0IHRoZXkgc2hv
+ dWxkIGhhdmUNCmRvbmUgYWxsIHRoZSB0aW1lLCBhbnl3YXkpLCBhbmQgdGhlbiB0aGV5IHdp
+ bGwgYmUgcGFzc2VkIHRocm91Z2ggdGhlIHByb3h5DQp1bi1idWZmZXJlZCBhbmQgdW4tY2Fj
+ aGVkLiBObyBwZXJmb3JtYW5jZSBsb3NzZXMgb24gb3RoZXIgdXJscy4NCg0KVGhlIHRvdGFs
+ L2NvcnJlY3QgcGF0Y2ggZm9yIHRoaXMgcHJvYmxlbSBpczoNCg0KKioqIC90bXAvcHJveHlf
+ aHR0cC5jLm9yZyBNb24gSmFuIDMxIDE2OjM3OjMyIDIwMDANCi0tLSAvdG1wL3Byb3h5X2h0
+ dHAuYyBNb24gSmFuIDMxIDE2OjM3OjMyIDIwMDANCioqKioqKioqKioqKioqKg0KKioqIDE4
+ NywxOTMgKioqKg0KICAgICAgaW50IGRlc3Rwb3J0ID0gMDsNCiAgICAgIGNoYXIgKmRlc3Rw
+ b3J0c3RyID0gTlVMTDsNCiAgICAgIGNvbnN0IGNoYXIgKnVybHB0ciA9IE5VTEw7DQohICAg
+ ICBjb25zdCBjaGFyICpkYXRlc3RyOw0KICAgICAgc3RydWN0IHRibF9kb19hcmdzIHRkbzsN
+ Cg0KICAgICAgdm9pZCAqc2NvbmYgPSByLT5zZXJ2ZXItPm1vZHVsZV9jb25maWc7DQotLS0g
+ MTg3LDE5MyAtLS0tDQogICAgICBpbnQgZGVzdHBvcnQgPSAwOw0KICAgICAgY2hhciAqZGVz
+ dHBvcnRzdHIgPSBOVUxMOw0KICAgICAgY29uc3QgY2hhciAqdXJscHRyID0gTlVMTDsNCiEg
+ ICAgIGNvbnN0IGNoYXIgKmRhdGVzdHIsICpwcmFnbWE7DQogICAgICBzdHJ1Y3QgdGJsX2Rv
+ X2FyZ3MgdGRvOw0KDQogICAgICB2b2lkICpzY29uZiA9IHItPnNlcnZlci0+bW9kdWxlX2Nv
+ bmZpZzsNCioqKioqKioqKioqKioqKg0KKioqIDQ2OCw0NzMgKioqKg0KLS0tIDQ2OCw0ODMg
+ LS0tLQ0KICAgYXBfdGFibGVfc2V0KHJlc3BfaGRycywgIkxvY2F0aW9uIiwgcHJveHlfbG9j
+ YXRpb25fcmV2ZXJzZV9tYXAociwgZGF0ZXN0cikpOw0KICAgICAgaWYgKChkYXRlc3RyID0g
+ YXBfdGFibGVfZ2V0KHJlc3BfaGRycywgIlVSSSIpKSAhPSBOVUxMKQ0KICAgYXBfdGFibGVf
+ c2V0KHJlc3BfaGRycywgIlVSSSIsIHByb3h5X2xvY2F0aW9uX3JldmVyc2VfbWFwKHIsIGRh
+ dGVzdHIpKTsNCisNCisgLyogSWYgIlByYWdtYTogbm8tY2FjaGUiIG9yICJDYWNoZS1Db250
+ cm9sOiBuby1jYWNoZSINCisgICogc2V0IG5vY2FjaGUgYW5kIG1ha2UgcmVwbHkgdW4tYnVm
+ ZmVyZWQgdG8gZW5zaHVyZSB0aW1lbHkgZGVsaXZlcnkgKi8NCisgICAgIGlmICgoKHByYWdt
+ YSA9IGFwX3RhYmxlX2dldChyZXNwX2hkcnMsICJQcmFnbWEiKSkgIT0gTlVMTCAmJg0KKyAg
+ IGFwX3Byb3h5X2xpc3RzdHIocHJhZ21hLCAibm8tY2FjaGUiKSkgfHwNCisgICgocHJhZ21h
+ ID0gYXBfdGFibGVfZ2V0KHJlc3BfaGRycywgIkNhY2hlLUNvbnRyb2wiKSkgIT0gTlVMTCAm
+ Jg0KKyAgIGFwX3Byb3h5X2xpc3RzdHIocHJhZ21hLCAibm8tY2FjaGUiKSkpIHsNCisgICAg
+ ICAgbm9jYWNoZSA9IDE7DQorICAgICAgIHItPmNvbm5lY3Rpb24tPmNsaWVudC0+ZmxhZ3Mg
+ Jj0gfkJfV1I7DQorICAgICB9DQoNCiAgLyogY2hlY2sgaWYgTm9DYWNoZSBkaXJlY3RpdmUg
+ b24gdGhpcyBob3N0ICovDQogICAgICBmb3IgKGkgPSAwOyBpIDwgY29uZi0+bm9jYWNoZXMt
+ Pm5lbHRzOyBpKyspIHsNCg0KDQotLQ0KS2ltIEJpc2dhYXJkDQoNCk9lcnN0ZWQgU2NpZW5j
+ ZSBEYXRhIENlbnRlcg0KU29sYXItVGVycmVzdHJpYWwgUGh5c2ljcyBEaXZpc2lvbiAgICAg
+ ICAgICAgUGhvbmU6ICs0NSAzOTE1IDc0OTUgKGRpcmVjdCkNCkRhbmlzaCBNZXRlb3JvbG9n
+ aWNhbCBJbnN0aXR1dGUgICAgICAgICAgICAgIEZheDogKzQ1IDM5MTUgNzQ2MCAoZGl2aXNp
+ b24pDQpodHRwOi8vd3d3LmRtaS5kay9zb2xhci10ZXJyZXN0cmlhbC8gLS0gRGl2aXNpb24g
+ aG9tZXBhZ2UNCmh0dHA6Ly93d3cuZG1pLmRrL3Byb2plY3RzL29lcnN0ZWQvICAtLSBPZXJz
+ dGVkIFNhdGVsbGl0ZQ0KaHR0cDovL3d3dy5kbWkuZGsvcHJvamVjdHMvd2RjYzEvICAgIC0t
+ IFdEQyBDMSBmb3IgZ2VvLW1hZ25ldGlzbQ0KICBUaGVzZSBhcmUgb3VyIG9mZmljaWFsIFdl
+ YiBhZGRyZXNzZXMgLSBpZ25vcmUgYW55IGNoYW5nZSBpbiB0aGUgc2VydmVyIG5hbWUNCiAg
+ d2hpY2ggbWF5IG9jY3VyIHdoaWxlIGJyb3dzaW5nIHRoaXMgc2l0ZS4gVW5mb3J0dW5hdGVs
+ eSwgdGhlc2UgcGFnZXMgYXJlDQogIG5vdCByZWFjaGFibGUgdmlhIGxpbmtzIGZyb20gdGhl
+ IG1haW4gaW5zdGl0dXRlIHBhZ2VzIC0gaHR0cDovL3d3dy5kbWkuZGsNCg0KDQo=
+
+From: Kim Bisgaard <kib@dmi.dk>
+To: privat <kk.bisgaard@get2net.dk>, apbugs@apache.org
+Cc:  
+Subject: Re: mod_proxy/5668: Patch for streaming servers and long running 
+ cgi-scripts
+Date: Tue, 01 Feb 2000 12:49:45 +0100
+
+ UmV0cmFuc21pdCBiZWNhdXNlIE5ldHNjYXBlIHNlbmQgbGFzdCBtZXNzYWdlIGFzIHV1ZW5j
+ b2RlLg0KDQpDbGFyaWZpY2F0aW9uOg0KQWZ0ZXIgdGhpcyBwYXRjaCBoYXMgYmVlbiBhcHBs
+ aWVkLCBvbmUgb25seSBoYXMgdG8gbWFrZSBzdXJlIHRoYXQgdGhlIGxvbmcNCnJ1bm5pbmcg
+ c2NyaXB0cyBvdXRwdXRzICJQcmFnbWE6IG5vY2FjaGUiIGluIHRoZSBoZWFkZXIgKHdoYXQg
+ dGhleSBzaG91bGQgaGF2ZQ0KZG9uZSBhbGwgdGhlIHRpbWUsIGFueXdheSksIGFuZCB0aGVu
+ IHRoZXkgd2lsbCBiZSBwYXNzZWQgdGhyb3VnaCB0aGUgcHJveHkNCnVuLWJ1ZmZlcmVkIGFu
+ ZCB1bi1jYWNoZWQuIE5vIHBlcmZvcm1hbmNlIGxvc3NlcyBvbiBvdGhlciB1cmxzLg0KDQpU
+ aGUgdG90YWwvY29ycmVjdCBwYXRjaCBmb3IgdGhpcyBwcm9ibGVtIGlzOg0KDQoqKiogL3Rt
+ cC9wcm94eV9odHRwLmMub3JnIE1vbiBKYW4gMzEgMTY6Mzc6MzIgMjAwMA0KLS0tIC90bXAv
+ cHJveHlfaHR0cC5jIE1vbiBKYW4gMzEgMTY6Mzc6MzIgMjAwMA0KKioqKioqKioqKioqKioq
+ DQoqKiogMTg3LDE5MyAqKioqDQogICAgICBpbnQgZGVzdHBvcnQgPSAwOw0KICAgICAgY2hh
+ ciAqZGVzdHBvcnRzdHIgPSBOVUxMOw0KICAgICAgY29uc3QgY2hhciAqdXJscHRyID0gTlVM
+ TDsNCiEgICAgIGNvbnN0IGNoYXIgKmRhdGVzdHI7DQogICAgICBzdHJ1Y3QgdGJsX2RvX2Fy
+ Z3MgdGRvOw0KDQogICAgICB2b2lkICpzY29uZiA9IHItPnNlcnZlci0+bW9kdWxlX2NvbmZp
+ ZzsNCi0tLSAxODcsMTkzIC0tLS0NCiAgICAgIGludCBkZXN0cG9ydCA9IDA7DQogICAgICBj
+ aGFyICpkZXN0cG9ydHN0ciA9IE5VTEw7DQogICAgICBjb25zdCBjaGFyICp1cmxwdHIgPSBO
+ VUxMOw0KISAgICAgY29uc3QgY2hhciAqZGF0ZXN0ciwgKnByYWdtYTsNCiAgICAgIHN0cnVj
+ dCB0YmxfZG9fYXJncyB0ZG87DQoNCiAgICAgIHZvaWQgKnNjb25mID0gci0+c2VydmVyLT5t
+ b2R1bGVfY29uZmlnOw0KKioqKioqKioqKioqKioqDQoqKiogNDY4LDQ3MyAqKioqDQotLS0g
+ NDY4LDQ4MyAtLS0tDQogICBhcF90YWJsZV9zZXQocmVzcF9oZHJzLCAiTG9jYXRpb24iLCBw
+ cm94eV9sb2NhdGlvbl9yZXZlcnNlX21hcChyLCBkYXRlc3RyKSk7DQogICAgICBpZiAoKGRh
+ dGVzdHIgPSBhcF90YWJsZV9nZXQocmVzcF9oZHJzLCAiVVJJIikpICE9IE5VTEwpDQogICBh
+ cF90YWJsZV9zZXQocmVzcF9oZHJzLCAiVVJJIiwgcHJveHlfbG9jYXRpb25fcmV2ZXJzZV9t
+ YXAociwgZGF0ZXN0cikpOw0KKw0KKyAvKiBJZiAiUHJhZ21hOiBuby1jYWNoZSIgb3IgIkNh
+ Y2hlLUNvbnRyb2w6IG5vLWNhY2hlIg0KKyAgKiBzZXQgbm9jYWNoZSBhbmQgbWFrZSByZXBs
+ eSB1bi1idWZmZXJlZCB0byBlbnNodXJlIHRpbWVseSBkZWxpdmVyeSAqLw0KKyAgICAgaWYg
+ KCgocHJhZ21hID0gYXBfdGFibGVfZ2V0KHJlc3BfaGRycywgIlByYWdtYSIpKSAhPSBOVUxM
+ ICYmDQorICAgYXBfcHJveHlfbGlzdHN0cihwcmFnbWEsICJuby1jYWNoZSIpKSB8fA0KKyAg
+ KChwcmFnbWEgPSBhcF90YWJsZV9nZXQocmVzcF9oZHJzLCAiQ2FjaGUtQ29udHJvbCIpKSAh
+ PSBOVUxMICYmDQorICAgYXBfcHJveHlfbGlzdHN0cihwcmFnbWEsICJuby1jYWNoZSIpKSkg
+ ew0KKyAgICAgICBub2NhY2hlID0gMTsNCisgICAgICAgci0+Y29ubmVjdGlvbi0+Y2xpZW50
+ LT5mbGFncyAmPSB+Ql9XUjsNCisgICAgIH0NCg0KICAvKiBjaGVjayBpZiBOb0NhY2hlIGRp
+ cmVjdGl2ZSBvbiB0aGlzIGhvc3QgKi8NCiAgICAgIGZvciAoaSA9IDA7IGkgPCBjb25mLT5u
+ b2NhY2hlcy0+bmVsdHM7IGkrKykgew0KDQoNCg0KLS0NCktpbSBCaXNnYWFyZA0KDQpPZXJz
+ dGVkIFNjaWVuY2UgRGF0YSBDZW50ZXINClNvbGFyLVRlcnJlc3RyaWFsIFBoeXNpY3MgRGl2
+ aXNpb24gICAgICAgICAgIFBob25lOiArNDUgMzkxNSA3NDk1IChkaXJlY3QpDQpEYW5pc2gg
+ TWV0ZW9yb2xvZ2ljYWwgSW5zdGl0dXRlICAgICAgICAgICAgICBGYXg6ICs0NSAzOTE1IDc0
+ NjAgKGRpdmlzaW9uKQ0KaHR0cDovL3d3dy5kbWkuZGsvc29sYXItdGVycmVzdHJpYWwvIC0t
+ IERpdmlzaW9uIGhvbWVwYWdlDQpodHRwOi8vd3d3LmRtaS5kay9wcm9qZWN0cy9vZXJzdGVk
+ LyAgLS0gT2Vyc3RlZCBTYXRlbGxpdGUNCmh0dHA6Ly93d3cuZG1pLmRrL3Byb2plY3RzL3dk
+ Y2MxLyAgICAtLSBXREMgQzEgZm9yIGdlby1tYWduZXRpc20NCiAgVGhlc2UgYXJlIG91ciBv
+ ZmZpY2lhbCBXZWIgYWRkcmVzc2VzIC0gaWdub3JlIGFueSBjaGFuZ2UgaW4gdGhlIHNlcnZl
+ ciBuYW1lDQogIHdoaWNoIG1heSBvY2N1ciB3aGlsZSBicm93c2luZyB0aGlzIHNpdGUuIFVu
+ Zm9ydHVuYXRlbHksIHRoZXNlIHBhZ2VzIGFyZQ0KICBub3QgcmVhY2hhYmxlIHZpYSBsaW5r
+ cyBmcm9tIHRoZSBtYWluIGluc3RpdHV0ZSBwYWdlcyAtIGh0dHA6Ly93d3cuZG1pLmRrDQoN
+ Cg0K
+
+From: Kim Bisgaard <kib@dmi.dk>
+To: kib@dmi.dk
+Cc: apbugs@apache.org
+Subject: Re: mod_proxy/5668: Patch for streaming servers and long running cgi-scripts
+Date: Tue, 1 Feb 2000 13:10:57 +0100
+
+ Retransmit because Netscape send last message as uuencode/base64.
+ 
+ Clarification:
+ After this patch has been applied, one only has to make sure that the long
+ running scripts outputs "Pragma: nocache" in the header (what they should have
+ done all the time, anyway), and then they will be passed through the proxy
+ un-buffered and un-cached. No performance losses on other urls.
+ 
+ The total/correct patch for this problem is:
+ 
+ *** /tmp/proxy_http.c.org Mon Jan 31 16:37:32 2000
+ --- /tmp/proxy_http.c Mon Jan 31 16:37:32 2000
+ ***************
+ *** 187,193 ****
+       int destport = 0;
+       char *destportstr = NULL;
+       const char *urlptr = NULL;
+ !     const char *datestr;
+       struct tbl_do_args tdo;
+ 
+       void *sconf = r->server->module_config;
+ --- 187,193 ----
+       int destport = 0;
+       char *destportstr = NULL;
+       const char *urlptr = NULL;
+ !     const char *datestr, *pragma;
+       struct tbl_do_args tdo;
+ 
+       void *sconf = r->server->module_config;
+ ***************
+ *** 468,473 ****
+ --- 468,483 ----
+    ap_table_set(resp_hdrs, "Location", proxy_location_reverse_map(r, datestr));
+       if ((datestr = ap_table_get(resp_hdrs, "URI")) != NULL)
+    ap_table_set(resp_hdrs, "URI", proxy_location_reverse_map(r, datestr));
+ +
+ + /* If "Pragma: no-cache" or "Cache-Control: no-cache"
+ +  * set nocache and make reply un-buffered to enshure timely delivery */
+ +     if (((pragma = ap_table_get(resp_hdrs, "Pragma")) != NULL &&
+ +   ap_proxy_liststr(pragma, "no-cache")) ||
+ +  ((pragma = ap_table_get(resp_hdrs, "Cache-Control")) != NULL &&
+ +   ap_proxy_liststr(pragma, "no-cache"))) {
+ +       nocache = 1;
+ +       r->connection->client->flags &= ~B_WR;
+ +     }
+ 
+   /* check if NoCache directive on this host */
+       for (i = 0; i < conf->nocaches->nelts; i++) {
+ 
+ 
+ 
+ 
+ --
+ Kim Bisgaard
+ 
+ Oersted Science Data Center
+ Solar-Terrestrial Physics Division           Phone: +45 3915 7495 (direct)
+ Danish Meteorological Institute              Fax: +45 3915 7460 (division)
+ http://www.dmi.dk/solar-terrestrial/ -- Division homepage
+ http://www.dmi.dk/projects/oersted/  -- Oersted Satellite
+ http://www.dmi.dk/projects/wdcc1/    -- WDC C1 for geo-magnetism
+   These are our official Web addresses - ignore any change in the server name
+   which may occur while browsing this site. Unfortunately, these pages are
+   not reachable via links from the main institute pages - http://www.dmi.dk
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: chuck
+State-Changed-When: Thu Sep 27 22:27:49 PDT 2001
+State-Changed-Why:
+added patch for Pragma: nocache, as we are HTTP/1.0. 
+1.3 (HTTP/1.1 rewrite) and 2.0 proxies handle both cases already.
+Synopsis-Changed-From: Patch for streaming servers and long running cgi-scripts
+Synopsis-Changed-To: fixed for HTTP/1.0
+Synopsis-Changed-By: chuck
+Synopsis-Changed-When: Thu Sep 27 22:27:49 PDT 2001
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

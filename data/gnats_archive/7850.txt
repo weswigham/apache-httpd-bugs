@@ -1,0 +1,422 @@
+Received: (qmail 71997 invoked by uid 501); 11 Jun 2001 17:19:44 -0000
+Message-Id: <20010611171944.71996.qmail@apache.org>
+Date: 11 Jun 2001 17:19:44 -0000
+From: Edgar Ruiz <_espartaco@yahoo.com>
+Reply-To: _espartaco@yahoo.com
+To: submit@bugz.apache.org
+Subject: Apache for Cygwin in Win9x is very slow when it executes CGI scripts
+X-Send-Pr-Version: 3.110
+
+>Number:         7850
+>Category:       os-windows
+>Synopsis:       Apache for Cygwin in Win9x is very slow when it executes CGI scripts
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun 11 10:20:00 PDT 2001
+>Closed-Date:    
+>Last-Modified:  Mon Jun 11 17:30:01 PDT 2001
+>Originator:     _espartaco@yahoo.com
+>Release:        1.3.20
+>Organization:
+apache
+>Environment:
+CYGWIN_98-4.10 TAT 1.3.2(0.39/3/2) 2001-05-20 23:28 i586 unknown
+gcc version 2.95.3-2 (cygwin special)
+>Description:
+After executing any CGI script on Cygwin for Win9x, Apache takes 300 seconds to execute it completely.
+I have detected that Apache waits to that finishes the time defined in "Timeout" (in the file "httpd.conf") to stop the script.
+(a detailed report about this problem is found in the URL http://sources.redhat.com/ml/cygwin/2000-11/msg00733.html).
+>How-To-Repeat:
+After executing the Apache daemon, please execute the script that it comes preinstalled in the distribution:
+http://127.0.0.1:8080/cgi-bin/test-cgi
+>Fix:
+Yes, please apply the following patch:
+
+diff -urN apache_1.3.20/src/main/http_protocol.c apache_1.3.20-cygwin/src/main/http_protocol.c
+--- apache_1.3.20/src/main/http_protocol.c      Fri Mar  9 10:10:26 2001
++++ apache_1.3.20-cygwin/src/main/http_protocol.c       Mon Jun 11 18:08:42 2001
+
+@@ -2275,9 +2275,16 @@
+
+     /* Make fb unbuffered and non-blocking */
+     ap_bsetflag(fb, B_RD, 0);
++#ifdef CYGWIN
++#define CYGWIN_is_winnt        (GetVersion() < 0x80000000)
++    if (CYGWIN_is_winnt) {
++#endif
+ #ifndef TPF
+     ap_bnonblock(fb, B_RD);
+ #endif
++#ifdef CYGWIN
++    }
++#endif
+     fd = ap_bfileno(fb, B_RD);
+ #ifdef CHECK_FD_SETSIZE
+     if (fd >= FD_SETSIZE) {
+>Release-Note:
+>Audit-Trail:
+
+From: =?iso-8859-1?q?Edgar=20Ruiz=20Rojas?= <_espartaco@yahoo.com>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc: apbugs@Apache.Org
+Subject: Re: os-windows/7850: Apache for Cygwin in Win9x is very slow when it executes CGI scripts
+Date: Mon, 11 Jun 2001 19:24:13 -0500 (CDT)
+
+ The following patch is a correction of the message
+ previously sent by me.
+ 
+ The reason for which send this mail again, is because
+ I forgot to include inside
+  the patch the definition of the function "GetVersion"
+ for Cygwin. So, the file
+ http_protocol.c should be this way, so that the server
+ can work without problems
+ when it executes scripts inside Cygwin in Win9x:
+ 
+ 
+ --- apache_1.3.20/src/main/http_protocol.c      Fri
+ Mar  9 10:10:26 2001
+ +++ apache_1.3.20-cygwin/src/main/http_protocol.c     
+  Tue Jun 12 01:11:34 2001
+ @@ -77,6 +77,15 @@
+  #include <stdarg.h>
+  #include "http_conf_globals.h"
+ 
+ +#ifdef CYGWIN
+ +#ifndef __stdcall
+ +#define __stdcall __attribute__((stdcall))
+ +#endif
+ +#define WINAPI __stdcall
+ +typedef unsigned long DWORD;
+ +DWORD WINAPI GetVersion(void);
+ +#endif
+ +
+  #define SET_BYTES_SENT(r) \
+    do { if (r->sent_bodyct) \
+            ap_bgetopt (r->connection->client,
+ BO_BYTECT, &r->bytes_sent); \
+ @@ -2275,9 +2284,16 @@
+ 
+      /* Make fb unbuffered and non-blocking */
+      ap_bsetflag(fb, B_RD, 0);
+ +#ifdef CYGWIN
+ +#define CYGWIN_is_winnt        (GetVersion() <
+ 0x80000000)
+ +    if (CYGWIN_is_winnt) {
+ +#endif
+  #ifndef TPF
+      ap_bnonblock(fb, B_RD);
+  #endif
+ +#ifdef CYGWIN
+ +    }
+ +#endif
+      fd = ap_bfileno(fb, B_RD);
+  #ifdef CHECK_FD_SETSIZE
+      if (fd >= FD_SETSIZE) {
+ 
+ 
+ --- submit@bugz.apache.org escribio:
+ > Received: (qmail 71997 invoked by uid 501); 11 Jun
+ 2001 17:19:44 -0000
+ > Message-Id: <20010611171944.71996.qmail@apache.org>
+ > Date: 11 Jun 2001 17:19:44 -0000
+ > From: Edgar Ruiz <_espartaco@yahoo.com>
+ > Reply-To: _espartaco@yahoo.com
+ > To: submit@bugz.apache.org
+ > Subject: Apache for Cygwin in Win9x is very slow
+ when it executes CGI scripts
+ > X-Send-Pr-Version: 3.110
+ >
+ > >Number:         7850
+ > >Category:       os-windows
+ > >Synopsis:       Apache for Cygwin in Win9x is very
+ slow when it executes CGI scripts
+ > >Confidential:   no
+ > >Severity:       non-critical
+ > >Priority:       medium
+ > >Responsible:    apache
+ > >State:          open
+ > >Quarter:
+ > >Keywords:
+ > >Date-Required:
+ > >Class:          sw-bug
+ > >Submitter-Id:   apache
+ > >Arrival-Date:   Mon Jun 11 10:20:00 PDT 2001
+ > >Closed-Date:
+ > >Last-Modified:
+ > >Originator:     _espartaco@yahoo.com
+ > >Release:        1.3.20
+ > >Organization:
+ > apache
+ > >Environment:
+ > CYGWIN_98-4.10 TAT 1.3.2(0.39/3/2) 2001-05-20 23:28
+ i586 unknown
+ > gcc version 2.95.3-2 (cygwin special)
+ > >Description:
+ > After executing any CGI script on Cygwin for Win9x,
+ Apache takes 300 seconds to execute it completely.
+ > I have detected that Apache waits to that finishes
+ the time defined in "Timeout" (in the file
+ "httpd.conf") to stop the script.
+ > (a detailed report about this problem is found in
+ the URL
+ http://sources.redhat.com/ml/cygwin/2000-11/msg00733.html).
+ > >How-To-Repeat:
+ > After executing the Apache daemon, please execute
+ the script that it comes preinstalled in the
+ distribution:
+ > http://127.0.0.1:8080/cgi-bin/test-cgi
+ > >Fix:
+ > Yes, please apply the following patch:
+ >
+ > diff -urN apache_1.3.20/src/main/http_protocol.c
+ apache_1.3.20-cygwin/src/main/http_protocol.c
+ > --- apache_1.3.20/src/main/http_protocol.c      Fri
+ Mar  9 10:10:26 2001
+ > +++ apache_1.3.20-cygwin/src/main/http_protocol.c   
+    Mon Jun 11 18:08:42 2001
+ >
+ > @@ -2275,9 +2275,16 @@
+ >
+ >      /* Make fb unbuffered and non-blocking */
+ >      ap_bsetflag(fb, B_RD, 0);
+ > +#ifdef CYGWIN
+ > +#define CYGWIN_is_winnt        (GetVersion() <
+ 0x80000000)
+ > +    if (CYGWIN_is_winnt) {
+ > +#endif
+ >  #ifndef TPF
+ >      ap_bnonblock(fb, B_RD);
+ >  #endif
+ > +#ifdef CYGWIN
+ > +    }
+ > +#endif
+ >      fd = ap_bfileno(fb, B_RD);
+ >  #ifdef CHECK_FD_SETSIZE
+ >      if (fd >= FD_SETSIZE) {
+ > >Release-Note:
+ > >Audit-Trail:
+ > >Unformatted:
+ >  [In order for any reply to be added to the PR
+ database, you need]
+ >  [to include <apbugs@Apache.Org> in the Cc line and
+ make sure the]
+ >  [subject line starts with the report component and
+ number, with ]
+ >  [or without any 'Re:' prefixes (such as
+ "general/1098:" or      ]
+ >  ["Re: general/1098:").  If the subject doesn't
+ match this       ]
+ >  [pattern, your message will be misfiled and
+ ignored.  The       ]
+ >  ["apbugs" address is not added to the Cc line of
+ messages from  ]
+ >  [the database automatically because of the
+ potential for mail   ]
+ >  [loops.  If you do not include this Cc, your reply
+ may be ig-   ]
+ >  [nored unless you are responding to an explicit
+ request from a  ]
+ >  [developer.  Reply only with text; DO NOT SEND
+ ATTACHMENTS!     ]
+ >
+ >
+ 
+ _________________________________________________________
+ Do You Yahoo!?
+ Obtenga su dirección de correo-e gratis @yahoo.com
+ en http://correo.espanol.yahoo.com
+
+From: =?iso-8859-1?q?Edgar=20Ruiz=20Rojas?= <_espartaco@yahoo.com>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc: apbugs@Apache.Org
+Subject: Re: os-windows/7850: Apache for Cygwin in Win9x is very slow when it executes CGI scripts
+Date: Mon, 11 Jun 2001 19:24:13 -0500 (CDT)
+
+ The following patch is a correction of the message
+ previously sent by me.
+ 
+ The reason for which send this mail again, is because
+ I forgot to include inside
+  the patch the definition of the function "GetVersion"
+ for Cygwin. So, the file
+ http_protocol.c should be this way, so that the server
+ can work without problems
+ when it executes scripts inside Cygwin in Win9x:
+ 
+ 
+ --- apache_1.3.20/src/main/http_protocol.c      Fri
+ Mar  9 10:10:26 2001
+ +++ apache_1.3.20-cygwin/src/main/http_protocol.c     
+  Tue Jun 12 01:11:34 2001
+ @@ -77,6 +77,15 @@
+  #include <stdarg.h>
+  #include "http_conf_globals.h"
+ 
+ +#ifdef CYGWIN
+ +#ifndef __stdcall
+ +#define __stdcall __attribute__((stdcall))
+ +#endif
+ +#define WINAPI __stdcall
+ +typedef unsigned long DWORD;
+ +DWORD WINAPI GetVersion(void);
+ +#endif
+ +
+  #define SET_BYTES_SENT(r) \
+    do { if (r->sent_bodyct) \
+            ap_bgetopt (r->connection->client,
+ BO_BYTECT, &r->bytes_sent); \
+ @@ -2275,9 +2284,16 @@
+ 
+      /* Make fb unbuffered and non-blocking */
+      ap_bsetflag(fb, B_RD, 0);
+ +#ifdef CYGWIN
+ +#define CYGWIN_is_winnt        (GetVersion() <
+ 0x80000000)
+ +    if (CYGWIN_is_winnt) {
+ +#endif
+  #ifndef TPF
+      ap_bnonblock(fb, B_RD);
+  #endif
+ +#ifdef CYGWIN
+ +    }
+ +#endif
+      fd = ap_bfileno(fb, B_RD);
+  #ifdef CHECK_FD_SETSIZE
+      if (fd >= FD_SETSIZE) {
+ 
+ 
+ --- submit@bugz.apache.org escribio:
+ > Received: (qmail 71997 invoked by uid 501); 11 Jun
+ 2001 17:19:44 -0000
+ > Message-Id: <20010611171944.71996.qmail@apache.org>
+ > Date: 11 Jun 2001 17:19:44 -0000
+ > From: Edgar Ruiz <_espartaco@yahoo.com>
+ > Reply-To: _espartaco@yahoo.com
+ > To: submit@bugz.apache.org
+ > Subject: Apache for Cygwin in Win9x is very slow
+ when it executes CGI scripts
+ > X-Send-Pr-Version: 3.110
+ >
+ > >Number:         7850
+ > >Category:       os-windows
+ > >Synopsis:       Apache for Cygwin in Win9x is very
+ slow when it executes CGI scripts
+ > >Confidential:   no
+ > >Severity:       non-critical
+ > >Priority:       medium
+ > >Responsible:    apache
+ > >State:          open
+ > >Quarter:
+ > >Keywords:
+ > >Date-Required:
+ > >Class:          sw-bug
+ > >Submitter-Id:   apache
+ > >Arrival-Date:   Mon Jun 11 10:20:00 PDT 2001
+ > >Closed-Date:
+ > >Last-Modified:
+ > >Originator:     _espartaco@yahoo.com
+ > >Release:        1.3.20
+ > >Organization:
+ > apache
+ > >Environment:
+ > CYGWIN_98-4.10 TAT 1.3.2(0.39/3/2) 2001-05-20 23:28
+ i586 unknown
+ > gcc version 2.95.3-2 (cygwin special)
+ > >Description:
+ > After executing any CGI script on Cygwin for Win9x,
+ Apache takes 300 seconds to execute it completely.
+ > I have detected that Apache waits to that finishes
+ the time defined in "Timeout" (in the file
+ "httpd.conf") to stop the script.
+ > (a detailed report about this problem is found in
+ the URL
+ http://sources.redhat.com/ml/cygwin/2000-11/msg00733.html).
+ > >How-To-Repeat:
+ > After executing the Apache daemon, please execute
+ the script that it comes preinstalled in the
+ distribution:
+ > http://127.0.0.1:8080/cgi-bin/test-cgi
+ > >Fix:
+ > Yes, please apply the following patch:
+ >
+ > diff -urN apache_1.3.20/src/main/http_protocol.c
+ apache_1.3.20-cygwin/src/main/http_protocol.c
+ > --- apache_1.3.20/src/main/http_protocol.c      Fri
+ Mar  9 10:10:26 2001
+ > +++ apache_1.3.20-cygwin/src/main/http_protocol.c   
+    Mon Jun 11 18:08:42 2001
+ >
+ > @@ -2275,9 +2275,16 @@
+ >
+ >      /* Make fb unbuffered and non-blocking */
+ >      ap_bsetflag(fb, B_RD, 0);
+ > +#ifdef CYGWIN
+ > +#define CYGWIN_is_winnt        (GetVersion() <
+ 0x80000000)
+ > +    if (CYGWIN_is_winnt) {
+ > +#endif
+ >  #ifndef TPF
+ >      ap_bnonblock(fb, B_RD);
+ >  #endif
+ > +#ifdef CYGWIN
+ > +    }
+ > +#endif
+ >      fd = ap_bfileno(fb, B_RD);
+ >  #ifdef CHECK_FD_SETSIZE
+ >      if (fd >= FD_SETSIZE) {
+ > >Release-Note:
+ > >Audit-Trail:
+ > >Unformatted:
+ >  [In order for any reply to be added to the PR
+ database, you need]
+ >  [to include <apbugs@Apache.Org> in the Cc line and
+ make sure the]
+ >  [subject line starts with the report component and
+ number, with ]
+ >  [or without any 'Re:' prefixes (such as
+ "general/1098:" or      ]
+ >  ["Re: general/1098:").  If the subject doesn't
+ match this       ]
+ >  [pattern, your message will be misfiled and
+ ignored.  The       ]
+ >  ["apbugs" address is not added to the Cc line of
+ messages from  ]
+ >  [the database automatically because of the
+ potential for mail   ]
+ >  [loops.  If you do not include this Cc, your reply
+ may be ig-   ]
+ >  [nored unless you are responding to an explicit
+ request from a  ]
+ >  [developer.  Reply only with text; DO NOT SEND
+ ATTACHMENTS!     ]
+ >
+ >
+ 
+ _________________________________________________________
+ Do You Yahoo!?
+ Obtenga su dirección de correo-e gratis @yahoo.com
+ en http://correo.espanol.yahoo.com
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,194 @@
+Received: (qmail 26275 invoked by uid 2012); 11 Jan 1999 20:17:20 -0000
+Message-Id: <19990111201720.26274.qmail@hyperreal.org>
+Date: 11 Jan 1999 20:17:20 -0000
+From: Rob Langfeld <hwrdstrn@superlink.net>
+Reply-To: hwrdstrn@superlink.net
+To: apbugs@hyperreal.org
+Subject: Broken PUT method on Linux
+X-Send-Pr-Version: 3.2
+
+>Number:         3643
+>Category:       os-linux
+>Synopsis:       Broken PUT method on Linux
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jan 11 12:20:01 PST 1999
+>Last-Modified:  Tue Mar 16 08:39:03 PST 1999
+>Originator:     hwrdstrn@superlink.net
+>Organization:
+>Release:        1.3.0 or 1.3.3
+>Environment:
+Redhat version 5.2 
+Linux kernel 2.0.36-0.7
+gcc version 2.7.2.3
+>Description:
+im pretty convinced ive found a problem or bug in apache 1.3.0 (or 3.3) running
+on a fresh copy of redhat 5.2 (kernel 2.0.36-0.7) & the PUT method
+
+im convinced of this becauase before the upgrade, the method & everything worked
+ flawlessly. I also run the same PUT scripts/programs on HPUX 10.x with apache with no 
+problems.
+
+I run the put method, and the Content-length of the size of the file being sent ge
+ts set correctly, however opening up stdin to reading the file, and its empty, 
+no file is being sent. no data is available to read...(so it hangs on the read to standa
+rd input & eventually times out )
+ Im absolutely positively certain its being sent through netscape composer or my own client programs.
+The only thing thats changed is the OS upgrade. (also becauase the Content-length is correctly set)
+
+The PUT script/program gets called but no data is available.
+
+it launches my fileput.exe PUT handler program (i can see it being run with ps ax command)
+(ive tesed it out in both c & perl), the content-length is correctly set to the size of the data being PUT'ed, however there
+ is absolultely no data available to read at standard input... 
+
+Ive tested it with my own programs & the ones from apacheweek.com sample:
+Again the PUT handler program gets correctly launched, the content-length is correct, however
+No data is available. This was working fine before the linux version upgrade &
+ also runs on HPUX 10x with no problems
+
+#!/usr/local/bin/perl
+
+# Very simple PUT handler. Read the Apache Week article before attempting
+# to use this script. You are responsible for ensure that this script is
+# used securely.
+
+# A simple log file, must be writable by the user that this program runs as.   
+# Should not be within the document tree.
+$putlog = "/tmp/put1.log";
+
+# Check we are using PUT method 
+if ($ENV{'REQUEST_METHOD'} ne "PUT") { &reply(500, "Request method is not PUT");
+ }
+
+# Note: should also check we are an authentication user by checking
+# REMOTE_USER
+
+# Check we got a destination filename
+$filename = $ENV{'PATH_TRANSLATED'};
+$filename="/tmp/puttest.dat";
+
+&log("this is a test\n");
+
+if (!$filename) { &reply(500, "No PATH_TRANSLATED"); }
+
+# Check we got some content
+$clength = $ENV{'CONTENT_LENGTH'};
+if (!$clength) { &reply(500, "Content-Length missing or zero ($clength)"); }   
+
+# Read the content itself 
+$toread = $clength;
+$content = ""; 
+&log("this is a test: $toread\n");    #### Size is Set Correctly ######
+  
+
+while ($toread > 0) 
+{ 
+    $nread = read(STDIN, $data, $clength);    ## HANGS NO DATA ###
+    &reply(500, "Error reading content") if !defined($nread);
+    $toread -= $nread;
+    $content = $data;
+}
+
+# Write it out
+# Note: doesn't check the location of the file, whether it already
+# exists, whether it is a special file, directory or link. Does not
+# set the access permissions. Does not handle subdirectories that
+# need creating. 
+open(OUT, "> $filename") || &reply(500, "Cannot write to $filename");
+print OUT $content;
+close(OUT);
+
+# Everything seemed to work, reply with 204 (or 200). Should reply with 201
+# if content was created, not updated.
+&reply(204);
+
+exit(0);
+    
+#   
+# Send back reply to client for a given status.
+#   
+ 
+sub reply
+{
+    local($status, $message) = @_;
+    local($remuser, $remhost, $logline) = ();
+
+    print "Status: $status\n";
+    print "Content-Type: text/html\n\n";
+
+    if ($status == 200) {
+        print "<HEAD><TITLE>OK</TITLE></HEAD><H1>Content Accepted</H1>\n";
+    } elsif ($status == 500) {
+        print "<HEAD><TITLE>Error</TITLE></HEAD><H1>Error Publishing File</H1>\n
+";
+        print "An error occurred publishing this file ($message).\n";
+    }
+    # Note: status 204 and 201 gives have content part
+    
+    # Create a simple log
+    $remuser = $ENV{'REMOTE_USER'} || "-";
+    $remhost = $ENV{'REMOTE_HOST'} || $ENV{'REMOTE_ADDR'} || "-";
+ 
+    $logline = "$remhost $remuser $filename status $status";
+
+    $logline .= " ($message)" if ($status == 500);
+    &log($logline);
+    exit(0);
+}
+    
+sub log
+{
+    local($msg) = @_;
+    open (LOG, ">> $putlog") || return;
+    print LOG "$msg\n"; 
+#    print LOG "$ENV{'REQUEST_METHOD'}\n";
+#    print LOG %ENV;
+    close(LOG);
+}   
+
+
+
+
+
+
+
+
+>How-To-Repeat:
+Setup a PUT method program on redhat 5.2, linux 2.0.36-7 (out of the box redhat)
+
+Execute a put method with netscape composer or other PUT method utility.
+
+Put method handler program should be be able to get correct content-length
+but hang on reading stdin (no data sent)
+
+
+>Fix:
+Check if any changes were made between the linux kernels (or gcc versions)
+ & the way apache is writing data as input to the PUT programs. 
+Maybe something has changed or is different. 
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Mar 16 08:39:03 PST 1999
+State-Changed-Why:
+See PR#3808 -- user indicates that the third party module
+mod_bandwidth was causing the trouble.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

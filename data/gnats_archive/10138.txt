@@ -1,0 +1,159 @@
+Received: (qmail 53386 invoked by uid 501); 12 Mar 2002 06:40:56 -0000
+Message-Id: <20020312064056.53385.qmail@apache.org>
+Date: 12 Mar 2002 06:40:56 -0000
+From: Kohji Nakamura <nakamura@duo.co.jp>
+Reply-To: nakamura@duo.co.jp
+To: submit@bugz.apache.org
+Subject: CGI program is not invoked when a trailing '/' is provided to the CGI-script's URL.
+X-Send-Pr-Version: 3.110
+
+>Number:         10138
+>Category:       mod_cgi
+>Synopsis:       CGI program is not invoked when a trailing '/' is provided to the CGI-script's URL.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Mar 11 22:50:00 PST 2002
+>Closed-Date:    Fri Mar 15 06:44:35 PST 2002
+>Last-Modified:  Fri Mar 15 06:44:35 PST 2002
+>Originator:     nakamura@duo.co.jp
+>Release:        2.0.32
+>Organization:
+>Environment:
+SunOS olive 5.8 Generic_108528-12 sun4u sparc SUNW,Ultra-5_10
+>Description:
+In apahce httpd 1.3.x, an access to 'http://localhost/cgi-bin/printenv/' results in an invocation of printenv CGI program.
+However, in apache httpd 2.0.32, it seems to result in trying to find a script named 'printenv/' and issues a following error message on the browser.
+Premature end of script headers: /opt/httpd-2.0.32/cgi-bin/printenv/
+This behaviour is a problem when using 'viewcvs' for example.
+>How-To-Repeat:
+http://localhost/cgi-bin/printenv/
+>Fix:
+Sorry, no idea.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: trawick
+State-Changed-When: Tue Mar 12 17:42:10 PST 2002
+State-Changed-Why:
+Hmmm... something weird is happening with your configuration...
+
+cvs.apache.org is running 2.0.32 and this URL works there:
+  http://cvs.apache.org/viewcvs.cgi/
+
+I get the same correct result for /cgi-bin/printenv and
+/cgi-bin/printenv/ using current code from CVS.
+
+Do you have any configuration directives which would affect
+printenv?
+
+Please run truss on Apache to see what file is exec()-ed
+when you request /cgi-bin/printenv, and whether or not
+the exec() succeeded.
+
+I realize you mentioned in your report that it might be trying to run "printenv/" but we need to know for sure.  The truss output should show exactly what Apache tries to exec().
+
+
+From: "Kohji Nakamura" <nakamura@duo.co.jp>
+To: <trawick@apache.org>
+Cc: <apache-bugdb@apache.org>,
+	<apbugs@Apache.Org>
+Subject: Re: mod_cgi/10138: CGI program is not invoked when a trailing '/' is provided to the CGI-script's URL.
+Date: Wed, 13 Mar 2002 12:40:40 +0900
+
+ Thank you for your quick response.
+ 
+ I found the reason of the problem. 'Options FollowSymLinks' directive is the
+ one.
+ 
+ I had a following configuration and failed.
+ 
+ <Directory "/opt/httpd-2.0.32/cgi-bin">
+     AllowOverride None
+     Options FollowSymLinks       # <- reason of the problem
+ #    Options None
+ 
+ After I changed back to 'None' option,  an access to 'printenv/' successed.
+ 
+ <Directory "/opt/httpd-2.0.32/cgi-bin">
+     AllowOverride None
+     Options None       # <- This will work
+ 
+ Is this your expected behaviour?
+ 
+ Anyway I tried to run truss and following is the result grep-ed with
+ 'printenv'.
+ 
+ 27201:  stat("/opt/httpd-2.0.32/cgi-bin/printenv/", 0xFFBEF4E8) = 0
+ 27203:  chdir("/opt/httpd-2.0.32/cgi-bin/printenv/")    Err#20 ENOTDIR
+ 
+ Httpd didn't exec 'printenv/' as you pointed.
+ 
+ I also put here outputs of 'diff httpd-std.conf httpd.conf' when I got the
+ error.
+ 
+ 251c251
+ < Group #-1
+ ---
+ > Group nogroup
+ 260c260
+ < ServerAdmin you@your.address
+ ---
+ > ServerAdmin nakamura@duo.co.jp
+ 274c274
+ < #ServerName new.host.name:80
+ ---
+ > ServerName olive.i.duo.co.jp:80
+ 546a547,556
+ >     Options FollowSymLinks
+ > #Options None
+ >     Order allow,deny
+ >     Allow from all
+ > </Directory>
+ >
+ > ScriptAlias /viewcvs/cgi-bin/ "/opt/viewcvs/cgi/"
+ >
+ > <Directory "/opt/viewcvs/cgi">
+ >     AllowOverride None
+ 547a558
+ >     Options FollowSymLinks
+ 
+ Thanks.
+ 
+ 
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: trawick
+State-Changed-When: Fri Mar 15 06:44:34 PST 2002
+State-Changed-Why:
+A fix for this was just committed to the CVS repository.  It
+will be in the next release of Apache 2.0.
+
+Here is the patch as committed:
+
+http://cvs.apache.org/viewcvs.cgi/httpd-2.0/server/request.c.diff?r1=1.106&r2=1.107
+
+Thanks for your report, and thanks for using Apache 2.0!
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

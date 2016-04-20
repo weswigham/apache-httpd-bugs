@@ -1,0 +1,320 @@
+From nobody@hyperreal.org  Mon Jul 28 07:50:07 1997
+Received: (from nobody@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id HAA20005;
+	Mon, 28 Jul 1997 07:50:07 -0700 (PDT)
+Message-Id: <199707281450.HAA20005@hyperreal.org>
+Date: Mon, 28 Jul 1997 07:50:07 -0700 (PDT)
+From: Jesper Holck <holck@knold.ballehs.dk>
+Reply-To: holck@knold.ballehs.dk
+To: apbugs@hyperreal.org
+Subject: httpd cannot start, apparently because it is unable to open the scoreboard file
+X-Send-Pr-Version: 3.2
+
+>Number:         928
+>Category:       config
+>Synopsis:       httpd cannot start, apparently because it is unable to open the scoreboard file
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jul 28 08:00:01 1997
+>Originator:     holck@knold.ballehs.dk
+>Organization:
+>Release:        1.3a1
+>Environment:
+ULTRIX BALMAX.ballehs.dk 4.5 0 RISC
+gcc compiler
+>Description:
+After having done the usual configuration, compilation
+and small changes in the *.conf-files, I tried to start
+httpd - as usual with the command:
+
+/usr/local/etc/apache/httpd -f /usr/local/etc/apache/conf/httpd.conf
+
+This results in some 50 or so lines as follows:
+
+Cannot open scoreboard file:
+/usr/local/etc/apache/logs/apache_status: Permission denied
+
+I have not had this problem with previous versions. I have now
+started my 1.2 version of httpd with no problems, even though
+I use exactly the same *.conf-files.
+
+>How-To-Repeat:
+
+>Fix:
+No
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: brian
+State-Changed-When: Mon Jul 28 19:58:09 PDT 1997
+State-Changed-Why:
+What are the permissions on the directory 
+/usr/local/etc/apache/logs/?  
+
+Also, could you show us the compile-time flags to GCC, both
+for 1.3a1 and 1.2? 
+
+Thanks.
+
+
+
+From: Jesper Holck <holck@knold.ballehs.dk> (by way of Brian Behlendorf <brian@hyperreal.org>)
+To: apbugs@hyperreal.org
+Subject: Re: config/928: httpd cannot start, apparently because it is
+  unable to open the scoreboard file
+Date: Wed, 30 Jul 1997 14:51:48 -0700
+
+ 
+ brian@hyperreal.org wrote:
+ 
+ > Synopsis: httpd cannot start, apparently because it is unable to open
+ > the scoreboard file
+ >
+ > State-Changed-From-To: open-feedback
+ > State-Changed-By: brian
+ > State-Changed-When: Mon Jul 28 19:58:09 PDT 1997
+ > State-Changed-Why:
+ > What are the permissions on the directory
+ > /usr/local/etc/apache/logs/?
+ >
+ 
+ drwxrwxr-x  2 httpd        1024 Jul 28 22:09 logs
+ 
+ The httpd-daemon is running as user httpd, member of group www, of which
+ 
+ root also is a member.
+ 
+ 
+ 
+ > Also, could you show us the compile-time flags to GCC, both
+ > for 1.3a1 and 1.2?
+ 
+ I'll list what I believe to be the relevant parts of the two Makefiles:
+ 
+ Makefile (1.3a1):
+ 
+ ###############
+ EXTRA_CFLAGS=
+ EXTRA_LDFLAGS=
+ EXTRA_LIBS=
+ EXTRA_INCLUDES=
+ ##Rule:STATUS=yes
+ ##Rule:SOCKS4=no
+ ##Rule:IRIXNIS=no
+ ##Rule:IRIXN32=yes
+ ##Rule:WANTHSREGEX=default
+ ###############
+ ###############
+ # Platform: ULTRIX
+ # Final Rules:
+ #  Rule WANTHSREGEX=yes
+ ###############
+ CC=gcc
+ CFLAGS1=-DULTRIX -DSTATUS
+ INCLUDES1= -Iregex
+ LDFLAGS1=
+ BROKEN_BPRINTF_FLAGS=
+ REGLIB=regex/libregex.a
+ RANLIB=ranlib
+ SHELL=/bin/sh5
+ LIBS1=
+ 
+ 
+ Makefile (1.2):
+ 
+ ###############
+ EXTRA_CFLAGS=
+ EXTRA_LFLAGS=
+ EXTRA_LIBS=
+ EXTRA_INCLUDES=
+ OPTIM=-O2
+ ##Rule:STATUS=yes
+ ##Rule:SOCKS4=no
+ ##Rule:IRIXNIS=no
+ ##Rule:WANTHSREGEX=default
+ ###############
+ 
+ ###############
+ # Platform: ULTRIX
+ # Final Rules:
+ #  Rule WANTHSREGEX=yes
+ ###############
+ CC=gcc
+ INCLUDES1= -Iregex
+ LIBS1=
+ LFLAGS1=
+ BROKEN_BPRINTF_FLAGS=
+ REGLIB=regex/libregex.a
+ RANLIB=ranlib
+ SHELL=/bin/sh5
+ 
+ > Thanks.
+ 
+ Pleased to help,
+ 
+ Jesper
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Jesper Holck <holck@knold.ballehs.dk>
+Subject: Re: config/928: httpd cannot start, apparently because it is  unable to open the scoreboard file
+Date: Sat, 2 Aug 1997 14:11:41 -0600 (MDT)
+
+ 
+ 
+ On Thu, 31 Jul 1997, Jesper Holck wrote:
+ 
+ >  drwxrwxr-x  2 httpd        1024 Jul 28 22:09 logs
+ >  
+ >  The httpd-daemon is running as user httpd, member of group www, of which
+ >  
+ >  root also is a member.
+ 
+ Don't do that.  Anyone who can get the uid httpd or gid www can compromise
+ the user that starts Apache, which is normally root.
+ 
+ In http_main.c there are two sections with code like this:
+ 
+     scoreboard_fd = popenf(p, scoreboard_fname, O_CREAT|O_BINARY|O_RDWR, 0644);
+     if (scoreboard_fd == -1)
+     {
+         perror (scoreboard_fname);
+         fprintf (stderr, "Cannot open scoreboard file:\n");
+         exit (1);
+     }
+ 
+ Try removing the O_BINARY| from it, ie. leave it something like:
+ 
+     scoreboard_fd = popenf(p, scoreboard_fname, O_CREAT|O_RDWR, 0644);
+     if (scoreboard_fd == -1)
+     {
+         perror (scoreboard_fname);
+         fprintf (stderr, "Cannot open scoreboard file:\n");
+         exit (1);
+     }
+ 
+ Recompile then try starting the server again.
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: apbugs@apache.org
+Subject: Re: config/928: httpd cannot start, apparently because it is  unable to open the scoreboard file (fwd)
+Date: Sun, 3 Aug 1997 12:54:37 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Sun, 03 Aug 1997 15:57:38 +0200
+ From: Jesper Holck <holck@knold.ballehs.dk>
+ To: Marc Slemko <marcs@znep.com>
+ Subject: Re: config/928: httpd cannot start, apparently because it is  unable to open the scoreboard file
+ 
+ [...]
+ 
+ Marc Slemko wrote:
+ 
+ > Try removing the O_BINARY| from it, ie. leave it something like:
+ >
+ >     scoreboard_fd = popenf(p, scoreboard_fname, O_CREAT|O_RDWR, 0644);
+ >
+ >     if (scoreboard_fd == -1)
+ >     {
+ >         perror (scoreboard_fname);
+ >         fprintf (stderr, "Cannot open scoreboard file:\n");
+ >         exit (1);
+ >     }
+ >
+ > Recompile then try starting the server again.
+ 
+ I tried to do this, but it did not seem to change anything. Still lots
+ of lines
+ on the screen, complaining about the scoreboard file.
+ 
+ Jesper Holck
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Jesper Holck <holck@knold.ballehs.dk>
+Subject: Re: config/928: httpd cannot start, apparently because it is  unable to open the scoreboard file
+Date: Sun, 3 Aug 1997 13:10:21 -0600 (MDT)
+
+ 
+ > I tried to do this, but it did not seem to change anything. Still lots
+ > of lines
+ > on the screen, complaining about the scoreboard file.
+ 
+ Looking further, it does appear this is broken.
+ 
+ In http_main.c, find the child_main subroutine.  Move the
+ 
+     reopen_scoreboard(pconf);
+ 
+ line to the line _before_ the first #ifdef MPE line in child_main.  This
+ should fix it.  Hopefully.
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: marc
+State-Changed-When: Mon Aug  4 09:52:43 PDT 1997
+State-Changed-Why:
+User reports problem fixed.  Patch applied to
+1.3 development tree.
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Subject: Re: config/928: httpd cannot start, apparently because it is   unable to open the scoreboard file (fwd)
+Date: Mon, 4 Aug 1997 10:54:25 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Mon, 4 Aug 97 13:53:28 +0200
+ From: Jesper Holck <holck@knold.ballehs.dk>
+ To: Marc Slemko <marcs@znep.com>
+ Subject: Re: config/928: httpd cannot start, apparently because it is   unable to open the scoreboard file
+ 
+ At 13.10 03-08-1997 -0600, you wrote:
+ >> I tried to do this, but it did not seem to change anything. Still lots
+ >> of lines
+ >> on the screen, complaining about the scoreboard file.
+ >
+ >Looking further, it does appear this is broken.
+ >
+ >In http_main.c, find the child_main subroutine.  Move the
+ >
+ >    reopen_scoreboard(pconf);
+ >
+ >line to the line _before_ the first #ifdef MPE line in child_main.  This
+ >should fix it.  Hopefully.
+ >
+ >
+ 
+ Thank you. No problems now. Hopefully.
+ 
+ Jesper
+ +------------------------------+----------------------------------+
+ |                              |                                  |
+ |  Jesper Holck                |  Phone:   +45 44200200           |
+ |  Ballerup Business College   |  Fax:     +45 44200222           |
+ |  P.O. Box 40                 |  E-mail:  holck@knold.ballehs.dk |
+ |  DK-2750 Ballerup            |      or   holckj@acm.org         |
+ |  Denmark                     |                                  |
+ |                              |                                  |
+ +------------------------------+----------------------------------+
+ 
+>Unformatted:
+
+>Last-Modified:  Mon Aug  4 09:52:43 PDT 1997
+
+
+
+
+
+

@@ -1,0 +1,117 @@
+Received: (qmail 18974 invoked by uid 2012); 8 Jun 1998 15:22:44 -0000
+Message-Id: <19980608152244.18973.qmail@hyperreal.org>
+Date: 8 Jun 1998 15:22:44 -0000
+From: Ralf Hildebrandt <R.Hildebrandt@tu-bs.de>
+Reply-To: R.Hildebrandt@tu-bs.de
+To: apbugs@hyperreal.org
+Subject: Fails to compile with --enable-shared for modules
+X-Send-Pr-Version: 3.2
+
+>Number:         2378
+>Category:       os-hpux
+>Synopsis:       Fails to compile with --enable-shared for modules
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun  8 08:30:00 PDT 1998
+>Last-Modified:  Tue Jun  9 06:05:38 PDT 1998
+>Originator:     R.Hildebrandt@tu-bs.de
+>Organization:
+>Release:        1.3.0
+>Environment:
+HP-UX 9.03, gcc-2.7.2.3, gnu binutils, gnu awk, gnu sed, etc.
+>Description:
+... snip ...
+<=== src/modules/standard
+<=== src/modules
+gcc -c  -I./os/unix -I./include   -DHPUX -DUSE_HSREGEX -O -I/users2/local/include -I/usr/include/X11R5 -I/usr/includ\
+e/Motif1.2 `./apaci` modules.c
+gcc -c  -I./os/unix -I./include   -DHPUX -DUSE_HSREGEX -O -I/users2/local/include -I/usr/include/X11R5 -I/usr/includ\
+e/Motif1.2 `./apaci` buildmark.c
+gcc  -DHPUX -DUSE_HSREGEX -O -I/users2/local/include -I/usr/include/X11R5 -I/usr/include/Motif1.2 `./apaci`  -L/user\
+s2/local/lib -L/usr/lib/X11R5 -L/usr/lib/Motif1.2 -Wl,-E -Wl,-B,deferred \
+      -o httpd buildmark.o modules.o modules/standard/libstandard.a main/libmain.a ./os/unix/libos.a ap/libap.a rege\
+x/libregex.a  -lm
+collect2: ld returned 1 exit status
+/bin/ld: Unsatisfied symbols:
+   shl_findsym (code)
+   shl_load (code)
+   shl_unload (code)
+make[2]: *** [target_static] Error 1
+make[2]: Leaving directory `/mnt/disk3/gnu/apache_1.3.0/src'
+make[1]: *** [build-std] Error 2
+make[1]: Leaving directory `/mnt/disk3/gnu/apache_1.3.0'
+make: *** [build] Error 2
+>How-To-Repeat:
+./configure --enable-module=log_agent --enable-module=log_referer --enable-module=speling --enable-shared=log_agent --enable-shared=log_referer --enable-shared=speling
+>Fix:
+Well, adding -ldld to LIBS1 in the Makefile src/Makefile
+helps:
+LIBS1= -lm -ldld
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: rse
+State-Changed-When: Tue Jun  9 04:54:02 PDT 1998
+State-Changed-Why:
+That's interesting. Under HPUX 10.20 it worked
+because as it seems the libdld.sl is
+automaticalled loaded through symbols in libc.sl:
+
+:> nm -B /usr/lib/libdld.sl | grep shl_load
+00001400 T shl_load
+000013e8 T shl_load
+:> nm -B /usr/lib/libc.sl | grep shl_load
+         U shl_load
+         U shl_load
+         U shl_load
+
+And under HPUX 9.x (where I've no access to such
+a box) the symbols in libc.sl are missing.
+Ok, the correct patch is to let Apache check
+for libdld explicitly. Please try out the above
+patch and report if it now works without
+manually editing something:
+
+Index: src/Configure
+===================================================================
+RCS file: /e/apache/REPOS/apache-1.3/src/Configure,v
+retrieving revision 1.266
+diff -u -r1.266 Configure
+--- Configure   1998/06/09 10:30:12     1.266
++++ Configure   1998/06/09 11:47:23
+@@ -1071,6 +1071,15 @@
+         *-ibm-aix* )
+             DL_LIB="-lld"
+             ;;
++        *-hp-hpux*)
++            if ./helpers/TestCompile func shl_load; then
++                :
++            else
++                if ./helpers/TestCompile lib dld; then
++                    DL_LIB="-ldld"
++                fi
++            fi
++            ;;
+         * )
+             if ./helpers/TestCompile func dlopen; then
+                 :
+
+
+State-Changed-From-To: feedback-closed
+State-Changed-By: rse
+State-Changed-When: Tue Jun  9 06:05:37 PDT 1998
+State-Changed-Why:
+User reported that patch works.
+It was now comitted for 1.3.1. 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

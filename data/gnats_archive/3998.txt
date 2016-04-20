@@ -1,0 +1,118 @@
+Received: (qmail 17556 invoked by uid 2012); 4 Mar 1999 23:07:56 -0000
+Message-Id: <19990304230756.17554.qmail@hyperreal.org>
+Date: 4 Mar 1999 23:07:56 -0000
+From: Max Campos <maxc@wolfram.com>
+Reply-To: maxc@wolfram.com
+To: apbugs@hyperreal.org
+Subject: DirectoryMatch/LocationMatch fail when used with SetHandler & Action
+X-Send-Pr-Version: 3.2
+
+>Number:         3998
+>Category:       mod_mime
+>Synopsis:       DirectoryMatch/LocationMatch fail when used with SetHandler & Action
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Mar  4 15:10:03 PST 1999
+>Last-Modified:  Tue Apr 20 10:11:22 PDT 1999
+>Originator:     maxc@wolfram.com
+>Organization:
+>Release:        1.3.3
+>Environment:
+Linux 2.0.33
+Linux 2.0.36
+
+gcc 2.7.2.1
+gcc 2.7.2.2
+>Description:
+When I try to access one of the files in a directory matched by the block
+below, Apache spins off into an infinite loop until it consumes all of the
+memory on the machine (it consumed 128mb once before we caught it).  I've had
+the same problem on 2 machines (although one was running Stronghold 2.4 the
+other Apache 1.3.3).
+
+Note that this result only occurs when using a <DirectoryMatch>, 
+<LocationMatch>, <Directory ~ >, or <Location ~>.  It does not occur when using
+a straight <Directory> or <Location> or .htaccess file.
+ 
+Running strace while it is churning produces a loop with lines like the 
+following:
+
+stat("/usr/local/apache/share/htdocs/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/t
+mj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-
+auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth
+444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444
+.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi
+/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/t
+mj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-a
+uth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth4
+44.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.c
+gi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z
+/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj
+-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-aut
+h444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/tmj-auth444
+.cgi/z/tmj-auth444.cgi/z/tmj-auth444.cgi/z/t", 0x8448244) = -1 ENOTDIR (Not 
+a directory) 
+
+The CGI script is a simple perl script:
+
+#!/usr/local/bin/perl
+print "Content-type: text/plain\n\n";
+print "authentication cgi hello.";
+
+Here is what Apache's configuration looks like:
+
+<DirectoryMatch "one">
+SetHandler tmj-auth
+Action tmj-auth /z/tmj-auth444.cgi
+</DirectoryMatch>
+
+Likewise, this fails when using:
+<Directory ~ "/one/">
+</Directory>
+
+or 
+
+<Location ~ "/one/">
+</Location>
+
+The URLs that I tested look like this:
+
+http://machinename/one/contents/two/z.html
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 10:11:21 PDT 1999
+State-Changed-Why:
+Yes, of course that happens.  It matches a /one/, then it
+prepends your Action handler to the URI and re-runs the
+access checks.
+
+Then it matches a /one/ and prepends your Action handler to
+the URI and re-runs the access checks.
+
+Then it matches a /one/ ...
+
+Your configuration is broken.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

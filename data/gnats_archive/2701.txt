@@ -1,0 +1,97 @@
+Received: (qmail 27772 invoked by uid 2012); 24 Jul 1998 17:09:54 -0000
+Message-Id: <19980724170954.27771.qmail@hyperreal.org>
+Date: 24 Jul 1998 17:09:54 -0000
+From: Horst H.G.Weber <weberh@forwiss.tu-muenchen.de>
+Reply-To: weberh@forwiss.tu-muenchen.de
+To: apbugs@hyperreal.org
+Subject: Test launch of apache fails with fatal ld.so error
+X-Send-Pr-Version: 3.2
+
+>Number:         2701
+>Category:       general
+>Synopsis:       Test launch of apache fails with fatal ld.so error
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jul 24 10:10:03 PDT 1998
+>Last-Modified:  Sat Jul 25 01:25:28 PDT 1998
+>Originator:     weberh@forwiss.tu-muenchen.de
+>Organization:
+>Release:        1.3.1
+>Environment:
+uname -a: SunOS sunforw0 5.6 Generic_105181-06 sun4u sparc SUNW,Ultra-1
+gcc -v: gcc version egcs-2.90.23 980102 (egcs-1.0.1 release)
+Apache configured with "--enable-module=most --enable-shared=max"
+>Description:
+After compilation and installation I tried to test the new httpd with
+'apachectl start' as described in the docs. But the launch failed with this 
+error msg:
+
+Syntax error on line 26 of /home/proj/www-1/Apache/etc/apache/httpd.conf:
+Cannot load /home/proj/www-1/Apache/libexec/mod_env.so into server: ld.so.1: /home/proj/www-1/Apache/sbin/httpd: fatal: relocation error: file /home/proj/www-1/Apache/libexec/mod_env.so: symbol ap_palloc: referenced symbol not found
+../../sbin/apachectl start: httpd could not be started
+
+This line 26 is just the default entry:
+LoadModule env_module         libexec/mod_env.so
+
+Compiling the daemon with mod_env statically linked in (and the above line 
+commented out) just let it fail on the next module (mod_log_config.so), this 
+time with "symbol ap_psprintf: referenced symbol not found".
+
+So -- what did I miss?
+As far as I figured it out, these functions live in libmain.a, and it is called
+by the linker. So everything should be in its place...
+
+>How-To-Repeat:
+I have repeated it now for several times. Next thing would be to try it on a
+different machine (but that's currently not available for me).
+
+So, try:
+
+configure --prefix=/bla --enable-module=most --enable-shared=max
+make
+make install
+cd <to Apache-sbin-dir>
+apachectl start
+
+At least it does it for me. 
+>Fix:
+Currently -- no. I will try to create a version without DSO suppport.
+>Audit-Trail:
+
+From: Horst Weber <weberh@forwiss.tu-muenchen.de>
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: general/2701: Test launch of apache fails with fatal ld.so error
+Date: Fri, 24 Jul 1998 19:54:53 +0200 (MET DST)
+
+ After compiling all modules static I successfully launched the daemon, 
+ browsed through the docs -- AND FOUND IT!! 
+ 
+ So, for the next updates:  Please add the remark from the file "dso.html"
+ that "some systems require --enable-rule=SHARED_CORE" also in the 
+ README.configure and/or INSTALL files!
+ 
+ After doing this, Apache works with DSOs for me... :-)
+ 
+ So, it seems that Solaris 2.6 requires this, but configure does not know 
+ about it...
+ 
+ bye...
+        Horst.
+State-Changed-From-To: open-closed
+State-Changed-By: rse
+State-Changed-When: Sat Jul 25 01:25:27 PDT 1998
+State-Changed-Why:
+Done for 1.3.2. Thanks for your report.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

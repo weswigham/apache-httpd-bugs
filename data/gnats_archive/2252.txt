@@ -1,0 +1,93 @@
+Received: (qmail 2832 invoked by uid 2012); 19 May 1998 13:47:48 -0000
+Message-Id: <19980519134748.2831.qmail@hyperreal.org>
+Date: 19 May 1998 13:47:48 -0000
+From: Rob Saccoccio <robs@InfiniteTechnology.com>
+Reply-To: robs@InfiniteTechnology.com
+To: apbugs@hyperreal.org
+Subject: add_cgi_vars() doesn't destroy memory allocated by sub_req_lookup_uri()
+X-Send-Pr-Version: 3.2
+
+>Number:         2252
+>Category:       apache-api
+>Synopsis:       add_cgi_vars() doesn't destroy memory allocated by sub_req_lookup_uri()
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue May 19 06:50:00 PDT 1998
+>Last-Modified:  Thu May 28 16:53:44 PDT 1998
+>Originator:     robs@InfiniteTechnology.com
+>Organization:
+>Release:        1.2.6,1.3b6+
+>Environment:
+The problem report is based upon source code.
+>Description:
+add_cgi_vars() doesn't call destroy_sub_req(pa_req) to
+destroy the memory allocated to the subrequest by 
+sub_req_lookup_uri().
+
+A comment in the code makes it pretty clear:
+
+	/* Don't bother destroying pa_req --- it's only
+	created in * child processes which are about to
+	jettison their address * space anyway.  BTW, we
+	concatenate filename and path_info * from the
+	sub_request to be compatible in case the PATH_INFO *
+	is pointing to an object which doesn't exist. */ .
+
+This function is used by the fastcgi module, and
+its address space is not jettisoned upon completion
+of the request.  The problem is in both the v1.3b5 and
+1.2.6 baselines.
+>How-To-Repeat:
+Have a look at add_cgi_vars() in util_script.c.  Its quite obvious.
+>Fix:
+Add "destroy_sub_req(pa_req);" after the "if (pa_req->filename) {...}"
+conditional.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon May 25 10:59:44 PDT 1998
+State-Changed-Why:
+Oh yeah how stupid.  Even mod_include uses it... and on win32
+there's no such thing as fork so it's called in the parent as
+well.  What a silly "optimization".  I fixed it in 1.3b8-dev
+and am about to put it into 1.2.7-dev.  Thanks.
+
+Dean
+State-Changed-From-To: closed-analyzed
+State-Changed-By: coar
+State-Changed-When: Thu May 28 04:09:29 PDT 1998
+State-Changed-Why:
+[From a separate path; the memory leak issue needs to be
+checked.]
+
+PR 2252 wasn't corrected in 1.3b7. I wanted to bring attention to this so
+it could hopefully get fixed before 1.3.0 comes out. The PR suggests a fix
+which is only one line and seems to work on the web servers I've applied it
+to. It causes a memory leak for anyone running mod_fastcgi.
+
+Jonathan Roy - roy@idle.com - Idle Communications, Inc.
+Release-Changed-From-To: 1.2.6 & 1.3b5-1.2.6,1.3b6+
+Release-Changed-By: coar
+Release-Changed-When: Thu May 28 04:09:29 PDT 1998
+State-Changed-From-To: analyzed-closed
+State-Changed-By: brian
+State-Changed-When: Thu May 28 16:53:44 PDT 1998
+State-Changed-Why:
+Right, it wasn't fixed in 1.3b7, but it *was* fixed in 1.3b8-dev
+and 1.2.7-dev, which means it'll be available when those come
+out.  So, this report can be closed.
+
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

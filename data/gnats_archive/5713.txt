@@ -1,0 +1,232 @@
+Received: (qmail 81439 invoked by uid 65534); 6 Feb 2000 02:36:46 -0000
+Message-Id: <20000206023646.81438.qmail@locus.apache.org>
+Date: 6 Feb 2000 02:36:46 -0000
+From: Mike Gray <mikeg@avantgo.com>
+Reply-To: mikeg@avantgo.com
+To: submit@bugz.apache.org
+Subject: [PATCH] install as service with domain account
+X-Send-Pr-Version: 3.110
+
+>Number:         5713
+>Category:       os-windows
+>Synopsis:       [PATCH] install as service with domain account
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Feb 05 18:40:00 PST 2000
+>Closed-Date:
+>Last-Modified:  Sun Jul 16 18:49:42 PDT 2000
+>Originator:     mikeg@avantgo.com
+>Release:        1.3.11
+>Organization:
+>Environment:
+WinNT SP3+ or Win2k, using apache 1.3.11, MS VC++ 6.0
+>Description:
+The patch provider will allow apache to be installed as a service using a specific account.  Running as a specific account on the local machine or even on the domain allows certain privileges that module developers may like to have.  For example, our product does user authentication against an NTDomain, but it is not capable of doing this unless the service is installed with an account from that NTDomain.  Please see the patch included for more details on installing apache as a service using a known account.
+>How-To-Repeat:
+
+>Fix:
+*** http_main.c.old     Wed Jan 12 07:54:58 2000
+--- http_main.c Sat Feb  5 18:25:12 2000
+***************
+*** 1050,1056 ****
+      fprintf(stderr, "       %s [-C \"directive\"] [-c \"directive\"]\n", pad);
+      fprintf(stderr, "       %s [-v] [-V] [-h] [-l] [-L] [-S] [-t] [-T]\n", pad);
+  #ifdef WIN32
+!     fprintf(stderr, "       %s [-n service] [-k signal] [-i] [-u]\n", pad);
+  #endif
+      fprintf(stderr, "Options:\n");
+  #ifdef SHARED_CORE
+--- 1050,1056 ----
+      fprintf(stderr, "       %s [-C \"directive\"] [-c \"directive\"]\n", pad);
+      fprintf(stderr, "       %s [-v] [-V] [-h] [-l] [-L] [-S] [-t] [-T]\n", pad);
+  #ifdef WIN32
+!     fprintf(stderr, "       %s [-n service] [-k signal] [-i [-U username] [-P password]] [-u]\n", pad);
+  #endif
+      fprintf(stderr, "Options:\n");
+  #ifdef SHARED_CORE
+***************
+*** 1076,1081 ****
+--- 1076,1083 ----
+      fprintf(stderr, "  -k start         : tell Apache to start\n");
+      fprintf(stderr, "  -i               : install an Apache service\n");
+      fprintf(stderr, "  -u               : uninstall an Apache service\n");
++     fprintf(stderr, "  -U username      : when installing as an Apache service use this account\n");
++     fprintf(stderr, "  -P password      : password associated with above username\n");
+  #endif
+  
+  #ifdef NETWARE
+***************
+*** 6602,6607 ****
+--- 6604,6612 ----
+      int conf_specified = 0;
+      char *signal_to_send = NULL;
+      char cwd[MAX_STRING_LEN];
++ #ifdef WIN32
++     char *username = NULL, *password = NULL;
++ #endif /* WIN32 */
+  
+  #ifdef NETWARE
+      TSD Tsd;
+***************
+*** 6650,6656 ****
+      ap_cpystrn(ap_server_root, cwd, sizeof(ap_server_root));
+  #endif
+  
+!     while ((c = getopt(argc, argv, "D:C:c:Xd:f:vVlLZ:iusStThk:n:")) != -1) {
+          char **new;
+        switch (c) {
+        case 'c':
+--- 6655,6661 ----
+      ap_cpystrn(ap_server_root, cwd, sizeof(ap_server_root));
+  #endif
+  
+!     while ((c = getopt(argc, argv, "D:C:c:Xd:f:vVlLZ:iusStThk:n:U:P:")) != -1) {
+          char **new;
+        switch (c) {
+        case 'c':
+***************
+*** 6697,6702 ****
+--- 6702,6713 ----
+        case 'k':
+            signal_to_send = optarg;
+            break;
++     case 'U':
++         username = optarg;
++         break;
++     case 'P':
++         password = optarg;
++         break;
+  #endif /* WIN32 */
+        case 'd':
+              optarg = ap_os_canonical_filename(pcommands, optarg);
+***************
+*** 6793,6799 ****
+          if (!service_name)
+              service_name = ap_pstrdup(pconf, DEFAULTSERVICENAME);
+          if (install > 0) 
+!             InstallService(service_name, ap_server_root_relative(pcommands, ap_server_confname));
+          else
+              RemoveService(service_name);
+          clean_parent_exit(0);
+--- 6804,6810 ----
+          if (!service_name)
+              service_name = ap_pstrdup(pconf, DEFAULTSERVICENAME);
+          if (install > 0) 
+!             InstallService(service_name, ap_server_root_relative(pcommands, ap_server_confname), username, password);
+          else
+              RemoveService(service_name);
+          clean_parent_exit(0);
+
+*** service.h.old       Thu Apr  8 14:04:48 1999
+--- service.h   Sat Feb  5 18:34:34 2000
+***************
+*** 8,14 ****
+  void service_cd();
+  BOOL isProcessService();
+  BOOL isValidService(char *service_name);
+! void InstallService(char *service_name, char *conf);
+  void RemoveService(char *service_name);
+  int service_init();
+  int send_signal_to_service(char *service_name, char *sig);
+--- 8,14 ----
+  void service_cd();
+  BOOL isProcessService();
+  BOOL isValidService(char *service_name);
+! void InstallService(char *service_name, char *conf, char *username, char *password);
+  void RemoveService(char *service_name);
+  int service_init();
+  int send_signal_to_service(char *service_name, char *sig);
+
+*** service.c.old       Thu Apr  8 14:04:47 1999
+--- service.c   Sat Feb  5 18:34:34 2000
+***************
+*** 185,191 ****
+      return(1);
+  }
+  
+! void InstallService(char *service_name, char *conf)
+  {
+      SC_HANDLE   schService;
+      SC_HANDLE   schSCManager;
+--- 185,191 ----
+      return(1);
+  }
+  
+! void InstallService(char *service_name, char *conf, char *username, char *password)
+  {
+      SC_HANDLE   schService;
+      SC_HANDLE   schSCManager;
+***************
+*** 226,233 ****
+              NULL,                       // no load ordering group
+              NULL,                       // no tag identifier
+              NULL,       // dependencies
+!             NULL,                       // LocalSystem account
+!             NULL);                      // no password
+  
+          if (schService) {
+              CloseServiceHandle(schService);
+--- 226,233 ----
+              NULL,                       // no load ordering group
+              NULL,                       // no tag identifier
+              NULL,       // dependencies
+!             username,                   // account: can be on local system or domain
+!             password);                  // password associate with above account
+  
+          if (schService) {
+              CloseServiceHandle(schService);
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: wrowe
+State-Changed-When: Sun Jul 16 18:49:41 PDT 2000
+State-Changed-Why:
+
+This is an interesting proposal, thank you for submitting
+it!  As it stands, the option to choose between manual and
+automatic service startup would also be useful, as well as
+some of the other service config options.
+
+As revised, the documentation for 1.3.13 will explain to the
+user how to configure the Apache service to run in another
+user's account, and change the service dependencies.  We
+hope this helps, but will reserve your suggestion for future
+consideration.
+
+I would invite you to pose your suggestion, or others, on
+the new-httpd@apache.org mailing list.  While there are
+often differences of opinion and different ways of looking
+at these problems, you will find these ideas can be refined
+and honed to everyone's satisfaction.
+
+Thank you for your interest in the Apache Server project!
+
+Yours,
+
+Bill
+
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

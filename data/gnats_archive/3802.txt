@@ -1,0 +1,284 @@
+Received: (qmail 16509 invoked by uid 2012); 31 Jan 1999 02:13:26 -0000
+Message-Id: <19990131021326.16508.qmail@hyperreal.org>
+Date: 31 Jan 1999 02:13:26 -0000
+From: sam berman <s.berman@ieee.org>
+Reply-To: s.berman@ieee.org
+To: apbugs@hyperreal.org
+Subject: would like to add an option,%R, to expand directory requests to include the filename within CLF
+X-Send-Pr-Version: 3.2
+
+>Number:         3802
+>Category:       mod_log-any
+>Synopsis:       would like to add an option,%R, to expand directory requests to include the filename within CLF
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Jan 30 18:20:01 PST 1999
+>Last-Modified:  Wed Apr 21 10:40:01 PDT 1999
+>Originator:     s.berman@ieee.org
+>Organization:
+>Release:        1.3.4
+>Environment:
+SunOS hdpww02 5.5.1 Generic_103640-23 sun4m sparc SUNW,SPARCstation-20
+/usr/local/bin/gcc:
+        SunOS 5.4 generic July 1994 
+>Description:
+I would like to add an option, %R, that would present the request header
+that is normally shown in CLF only it would expand directory requests to
+include the file name presented to the client.
+
+This is helpful when analyzing the log, because it automatically aggregates
+the files requested whether the client requested it via a directory request
+or via the page.  Since log analyzers don't have access to the configuration
+directives or the files in the document root, they cannot know what file was
+actually presented.
+>How-To-Repeat:
+Enhancement request.
+>Fix:
+*** mod_log_config-old.c        Fri Jan 29 15:49:09 1999
+--- mod_log_config.c    Fri Jan 29 16:26:49 1999
+***************
+*** 313,323 ****
+             * (note also that r->the_request contains the unmodified request)
+             */
+      return (r->parsed_uri.password) ? ap_pstrcat(r->pool, r->method, " ",
+!                                        ap_unparse_uri_components(r->pool, &r->
+parsed_uri, 0),
+                                         r->assbackwards ? NULL : " ", r->protoc
+ol, NULL)
+                                        : r->the_request;
+  }
+
+  static const char *log_request_file(request_rec *r, char *a)
+  {
+      return r->filename;
+--- 313,358 ----
+             * (note also that r->the_request contains the unmodified request)
+             */
+      return (r->parsed_uri.password) ? ap_pstrcat(r->pool, r->method, " ",
+!                                        ap_unparse_uri_components(r->pool, &r->
+parsed_uri, "", 0),
+                                         r->assbackwards ? NULL : " ", r->protoc
+ol, NULL)
+                                        : r->the_request;
+  }
+
++ /* samiam -- expand directory requests to include the filename */
++ static const char *
++      log_request_line_exp_file(request_rec * r, char *a)
++ {
++     /*
++      * NOTE: If the original request contained a password, we re-write the
++      * request line here to contain XXXXXX instead: (note the truncation
++      * before the protocol string for HTTP/0.9 requests) (note also that
++      * r->the_request contains the unmodified request)
++      */
++     char *filename = r->filename;
++     if (!r->filename || !r->filename[0]
++       || r->filename[strlen(r->filename) - 1] == '/') {
++       if (r->next) {
++           request_rec *rr = r->next;
++           if (rr) {
++               if (rr->filename && rr->filename[0]
++                   && rr->filename[strlen(rr->filename) - 1] != '/') {
++                   filename = rr->filename;
++               }
++           }
++       }
++     }
++     /*
++      * The following puts in the filename and handles overwriting password
++      */
++     return (r->uri[strlen(r->uri) - 1] == '/' || r->parsed_uri.password)
++       ? ap_pstrcat(r->pool, r->method, " ",
++                    ap_unparse_uri_components(r->pool, &r->parsed_uri,
++                                       (r->uri[strlen(r->uri) - 1] == '/')
++                                ? strrchr(filename, (int) '/') + 1 : "", 0),
++                    r->assbackwards ? NULL : " ", r->protocol, NULL)
++       : r->the_request;
++ }
++
+  static const char *log_request_file(request_rec *r, char *a)
+  {
+      return r->filename;
+***************
+*** 454,459 ****
+--- 489,497 ----
+          'r', log_request_line, 1
+      },
+      {
++       'R', log_request_line_exp_file, 1
++     },
++     {
+          'f', log_request_file, 0
+      },
+      {
+***************
+*** 1047,1049 ****
+--- 1085,1088 ----
+  #endif
+      NULL                        /* post read-request */
+  };
++
+
+*** util_uri-old.c      Fri Jan  1 14:04:54 1999
+--- util_uri.c  Fri Jan 29 16:20:18 1999
+***************
+*** 163,173 ****
+      return (hp == NULL) ? NULL : ap_pduphostent(p, hp);
+  }
+
+!
+  /* Unparse a uri_components structure to an URI string.
+   * Optionally suppress the password for security reasons.
+   */
+! API_EXPORT(char *) ap_unparse_uri_components(pool *p, const uri_components *up
+tr, unsigned flags)
+  {
+      char *ret = "";
+
+--- 163,176 ----
+      return (hp == NULL) ? NULL : ap_pduphostent(p, hp);
+  }
+
+! /*samiam--Added filename parameter in case caller wanted the full filename
+!   to be part of the "request string" -- valuable for logging the client
+!   request with the filename expanded when a directory is requested
+! */
+  /* Unparse a uri_components structure to an URI string.
+   * Optionally suppress the password for security reasons.
+   */
+! API_EXPORT(char *) ap_unparse_uri_components(pool *p, const uri_components *up
+tr, char *filename, unsigned flags)
+  {
+      char *ret = "";
+
+***************
+*** 201,206 ****
+--- 204,210 ----
+        ret = ap_pstrcat (p,
+                ret,
+                uptr->path ? uptr->path : "",
++               filename && filename[0] ? filename : "",
+                (uptr->query    && !(flags & UNP_OMITQUERY)) ? "?" : "",
+                (uptr->query    && !(flags & UNP_OMITQUERY)) ? uptr->query : "",
+                (uptr->fragment && !(flags & UNP_OMITQUERY)) ? "#" : NULL,
+
+*** util_uri-old.h      Fri Jan  1 14:04:42 1999
+--- util_uri.h  Fri Jan 29 15:52:23 1999
+***************
+*** 114,121 ****
+  API_EXPORT(unsigned short) ap_default_port_for_request(const request_rec *r);
+  API_EXPORT(struct hostent *) ap_pduphostent(pool *p, const struct hostent *hp)
+;
+  API_EXPORT(struct hostent *) ap_pgethostbyname(pool *p, const char *hostname);
+  API_EXPORT(char *) ap_unparse_uri_components(pool *p, const uri_components *up
+tr,
+!     unsigned flags);
+  API_EXPORT(int) ap_parse_uri_components(pool *p, const char *uri, uri_componen
+ts *uptr);
+  API_EXPORT(int) ap_parse_hostinfo_components(pool *p, const char *hostinfo, ur
+i_components *uptr);
+  /* called by the core in main() */
+--- 114,122 ----
+  API_EXPORT(unsigned short) ap_default_port_for_request(const request_rec *r);
+  API_EXPORT(struct hostent *) ap_pduphostent(pool *p, const struct hostent *hp)
+;
+  API_EXPORT(struct hostent *) ap_pgethostbyname(pool *p, const char *hostname);
++ /* samiam.  added the optional filename parm */
+  API_EXPORT(char *) ap_unparse_uri_components(pool *p, const uri_components *up
+tr,
+!     char *filename, unsigned flags);
+  API_EXPORT(int) ap_parse_uri_components(pool *p, const char *uri, uri_componen
+ts *uptr);
+  API_EXPORT(int) ap_parse_hostinfo_components(pool *p, const char *hostinfo, ur
+i_components *uptr);
+  /* called by the core in main() */
+  
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 18:32:02 PDT 1999
+State-Changed-Why:
+Umm, what's wrong with %f ?  Log the filename and then
+teach your tool to understand the filename.  That's how
+I've always done it...
+
+Dean
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Wed Apr 21 10:31:26 PDT 1999
+State-Changed-Why:
+No, I took a look at your code for %R, and to be honest it scares me.
+It looks far more complicated than a "simple change".  It includes
+knowledge of how the subrequests are ordered, which is not something
+that is necessarily tied down.  All the info you need is already
+available through %f -- you could post process the logs, and that
+leaves us less code to support.  Sorry.
+
+Thanks for choosing Apache.
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: mod_log-any/3802: would like to add an option,%R, to expand directory requests to include the filename within CLF (fwd)
+Date: Wed, 21 Apr 1999 10:33:00 -0700 (PDT)
+
+ ---------- Forwarded message ----------
+ From: sam@lynxhub.lz.att.com
+ Subject: Re: mod_log-any/3802: would like to add an option,%R, to expand directory requests to include the filename within CLF
+ To: dgaudet@apache.org
+ Date: Wed, 21 Apr 1999 11:34:19 -0400 (EDT)
+ Cc: apache-bugdb@apache.org
+ 
+ Dean,
+ 
+     We present reports to our customers and we allow our customers
+     to get their raw log files.
+ 
+     Since most tools understand extended CLF, we provide that (or
+     something that looks like it) to our customers.
+     
+     If I understand you correctly, you are suggesting that we add
+     a new field (at the end of the log) and strip it off before
+     shipping it to the customer.  We could use the new field in
+     combination with the URL presented via %>r to construct the
+     correct file name, path/info, and query string in all cases.
+ 
+     Of course, the above is possible.
+ 
+     Wouldn't it be easier for everyone concerned to implement a
+     different change request, PR2772.
+ 
+     Allow us to put the %>r together by having separate
+     options for method, uri-w-query, and protocol.
+ 
+     I implemented PR2772 using %V for uri-w-query to my dismay when
+     I found out that Apache 1.3.6 used %V for something else.  Oh well.
+ 
+     There are many users of Apache, it is simpler to change LogFormat
+     entries than write code--clearly, it is not a hugh impact for
+     hundreds of us to write a little code, but I think it is better
+     to localize the "little code" to 1 place--in this case, Apache.
+ 
+ --
+ one man's opinion,
+ sam
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

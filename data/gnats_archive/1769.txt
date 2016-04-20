@@ -1,0 +1,1441 @@
+Received: (qmail 11962 invoked by uid 2012); 4 Feb 1998 05:41:19 -0000
+Message-Id: <19980204054119.11959.qmail@hyperreal.org>
+Date: 4 Feb 1998 05:41:19 -0000
+From: Gary Shea <shea@gtsdesign.com>
+Reply-To: shea@gtsdesign.com
+To: apbugs@hyperreal.org
+Subject: suexec too limited -- need per-directory control, more permissive directory structures
+X-Send-Pr-Version: 3.2
+
+>Number:         1769
+>Category:       suexec
+>Synopsis:       suexec too limited -- need per-directory control, more permissive directory structures
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Feb  3 21:50:00 PST 1998
+>Closed-Date:
+>Last-Modified:  Wed Jan 31 00:40:01 PST 2001
+>Originator:     shea@gtsdesign.com
+>Release:        1.3*
+>Organization:
+>Environment:
+any os/any compiler/etc.
+>Description:
+I work with an ISP providing quite complex web app's, and rely heavily on
+the sugid patches to cgi (available up to 1.2b10) to configure what user
+a cgi is run as.  Due to changes in Apache, sugid can't be implemented (as
+far as I can see) in 1.3, but the restrictions of suexec are too painful!
+We often have multiple applications running in subdirectories of a single
+cgi-bin, each with its own user (consider mail trapping, etc...).  I don't
+want suppport necessarily, but am struggling with large scale hacking necessary
+to add per-directory control of what user/group a script is run as.  Not to
+mention the requirement that all virtuals be in a single document space..
+I am amazed that this is being accepted by folks.  Am I missing something?
+That seems like a tremendously and unjustifiably restrictive requirement.
+>How-To-Repeat:
+
+>Fix:
+I'm currently digging through the code, but am still too clueless to suggest
+anything.  I want suexec to be able to duplicate the abilities of sugid, if
+you are familiar with sugid... per-directory control of userid/groupid.  I
+expect I'll have to hack the core to implement this functionality.  Eeek!
+What I really want is a policy reading from the Apache folk saying "We don't
+care about this problem, you're on your own" or if I'm lucky "here's some
+suggestions, go do it and send us the patches"
+>Release-Note:
+>Audit-Trail:
+Class-Changed-From-To: sw-bug-change-request
+Class-Changed-By: coar
+Class-Changed-When: Wed Feb  4 06:42:59 PST 1998
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Gary Shea <shea@gtsdesign.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: suexec/1769: suexec too limited -- need per-directory control, more permissive directory structures
+Date: Wed, 4 Feb 1998 11:23:28 -0800 (PST)
+
+ On 4 Feb 1998, Gary Shea wrote:
+ 
+ > expect I'll have to hack the core to implement this functionality.  Eeek!
+ > What I really want is a policy reading from the Apache folk saying "We don't
+ > care about this problem, you're on your own" or if I'm lucky "here's some
+ > suggestions, go do it and send us the patches"
+ 
+ Why is it that people paint us as mean awful ogres all the time?
+ 
+ At any rate.  If you've got the patches for 1.2 already, you could send
+ them along so that we at least see what you mean... I'd be surprised if
+ this isn't possible.  Heck you shouldn't even need patches to do this if
+ you're willing to do the directory -> user mapping outside of apache.
+ Just use the same model that cgiwrapper uses.  i.e. something like this:
+ 
+ RewriteEngine on
+ RewriteRule ^(.*)\.cgi /usr/local/apache/my-fancy-cgi-wrapper/$1 [T=application/x-httpd-cgi]
+ 
+ (Not that I've tested that example.)
+ 
+ Dean
+ 
+
+From: Gary Shea <shea@gtsdesign.com>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: Gary Shea <shea@gtsdesign.com>, apbugs@hyperreal.org
+Subject: Re: suexec/1769: suexec too limited -- need per-directory control, more permissive directory structures
+Date: Wed, 4 Feb 1998 15:07:48 -0700 (MST)
+
+ On Wed, 4 Feb 1998, Dean Gaudet wrote:
+ > On 4 Feb 1998, Gary Shea wrote:
+ > Why is it that people paint us as mean awful ogres all the time?
+ 
+ I'm sorry about that.  The rigidity of suexec put me off a bit,
+ but it's no excuse for being harsh.
+ 
+ > Heck you shouldn't even need patches to do this if
+ > you're willing to do the directory -> user mapping outside of apache.
+ > Just use the same model that cgiwrapper uses.  i.e. something like this:
+ > 
+ > RewriteEngine on
+ > RewriteRule ^(.*)\.cgi /usr/local/apache/my-fancy-cgi-wrapper/$1 [T=application/x-httpd-cgi]
+ > 
+ > (Not that I've tested that example.)
+ > 
+ > Dean
+ 
+ I'll look carefully at that idea, it's promising, now that the rewrite
+ module can eliminate the need to manually change thousands of
+ HTML pages.  And when the work I've already done expires due to
+ the next release of 1.3, well, it might look even more attractive!
+ 
+ The approach I've taken so far (and will go ahead and finish
+ since it's basically done) is to use the UserID and GroupID directives
+ sugid introduced into mod_cgi, and pass the results to call_exec
+ as two additional arguments.  It's fairly clean, but meant moving
+ the /~user detection from call_exec to mod_cgi, since that's where
+ the uid/gid is determined.  I dunno if that's a sticking point.
+ Then I've hacked suexec to suck up a startup file containing
+ a few directives:
+ 
+ UserDirSuffix: public_html
+ UserDirectories: on
+ Directory: /blah-blah/cgi-bin
+ Directory: /other-blah-blah/cgi-bin
+ Directory: /some-blah-blah/cgi-bin/dibble
+ 
+ Frankly, I could care less about UserDir* since I have no
+ such users to worry about, but just to be complete... ;)
+ 
+ This stuff could be compiled in but that would be a PAIN, since
+ I'm always adding new virtuals.
+ 
+ When uname, gname, fname are presented to suexec I check the
+ user's home directory + '/' + UserDirSuffix for a match;
+ if none, check the directories list for a match (which can be
+ very fast); if none, error out.  (The suexec ~user uname hack had to
+ go, too bad -- it was good for efficiency but too ugly to
+ propagate through call_exec, in my opinion.)
+ 
+ This frees me from the constraints of stock suexec, without
+ (I think!) unreasonable additional security exposure, but at the
+ cost of loading a startup file for every cgi.  Yuck!  The
+ right way is probably to turn suexec into a simple forking server
+ (on a unix socket) in its own right (which seems a bit silly
+ but useful at the same time).  I might go ahead and
+ do it, just cuz it's easy.  One more thing to go wrong, sigh...
+ as always, it's the error handling that really bites.
+ 
+ I believe the fancy-cgi-wrapper approach shares the need to startup and
+ read a list to make sure it's ok to do what it's being told to, if
+ it's not exec'ing in a user's home directory, so while it doesn't
+ involve hacking Apache it also isn't the highest performance solution
+ available.
+ 
+ I'll send in patches when things are cleaned up, if I haven't
+ heard any comments/suggestions by then.
+ 
+ -----------------------------------------------------------------
+ Gary Shea                                       shea@xmission.com
+ Salt Lake City                      http://www.xmission.com/~shea
+ 
+ 
+
+From: Gary Shea <shea@gtsdesign.com>
+To: dgaudet@arctic.com
+Cc: pvanhaes@be.oracle.com, shea@gtsdesign.com, apbugs@apache.org
+Subject: Re: suexec/1769: suexec too limited -- need per-directory control, more permissive directory structures
+Date: Fri, 6 Feb 1998 13:30:23 -0700 (MST)
+
+ As promised, patches.  These patches were inspired by, and to some
+ extent stolen from, Philippe Vanhaesendonck's (pvanhaes@be.oracle.com) 
+ mod_cgi_sugid patches.  Philippe's code/concept functioned entirely
+ in mod_cgi and is no longer workable in 1.3b3 (I've not looked at
+ 1.2.* since 1.2b10), but is the source of the UserID and GroupID
+ directive support code.
+ 
+ I have hacked mod_cgi to directly request a uid/gid from call_exec()
+ if there is an applicable UserID and/or GroupID.  call_exec() respects
+ directly requested uid/gid's absolutely, but if none is specified, it'll
+ still detect ~user uri's and pass the appropriate uid/gid to suexec.
+ Thus it's identical from the point of view of mod_include, but can
+ still give mod_cgi what it wants/expects..
+ 
+ suexec is heavily hacked to suck up a configuration file more or less
+ akin to standard apache config files, but I didn't attempt to use
+ apache code -- it's my proof of concept I guess, easier to code it
+ for testing than to work out integrating the apache code.  As a result
+ the config files are quite picky about case, etc..  Also there
+ are some holes still insofar as what happens if some of the
+ directives are not specified.  I won't bother to fix those holes
+ unless someone else wants to use this code.
+ 
+ The configuration file takes three directives at present;
+ everything else remains compiled in.  Here's an example. 
+ 
+ UserDirSuffix: public_html/cgi-bin
+ UserDirectories: on
+ Directory: /users/src/a13b3/htd3/cgi-bin
+ Directory: /users/src/a13b3/htd2/cgi-bin
+ Directory: /users/src/a13b3/htd5/cgi-bin
+ 
+ I have not yet converted suexec to a simple forking server sitting
+ on a Unix socket, but if ther are adverse effects from startup time,
+ I will.  Since most of what I run are large Perl codes that take close
+ to a second to compile, that's unlikely!
+ 
+ Here's a clip of a configuration file which uses the UserID and GroupID
+ directives:
+ 
+ ScriptAlias /htd2/cgi-bin /users/src/a13b3/htd2/cgi-bin
+ <Location /htd2/cgi-bin>
+ <Limit GET POST>
+ UserId          shea
+ GroupId         users
+ </Limit>
+ </Location>
+ 
+ And.... HEEEEEEEEEEERE'S the PATCHES!
+ 
+ 
+ diff -c --exclude=*.[oa] --recursive apache_1.3b3/src/Configuration a13b3/src/Configuration
+ *** apache_1.3b3/src/Configuration	Wed Nov 19 17:49:57 1997
+ --- a13b3/src/Configuration	Wed Feb  4 22:48:13 1998
+ ***************
+ *** 41,47 ****
+   # Settings here have priority; If not set, Configure will attempt to guess
+   # the C compiler, looking for gcc first, then cc.
+   #
+ ! EXTRA_CFLAGS=
+   EXTRA_LDFLAGS=
+   EXTRA_LIBS=
+   EXTRA_INCLUDES=
+ --- 41,47 ----
+   # Settings here have priority; If not set, Configure will attempt to guess
+   # the C compiler, looking for gcc first, then cc.
+   #
+ ! EXTRA_CFLAGS=-DHTTPD_ROOT=\"/users/src/a13b3\" -DDEBUG_CGI -DDEBUG_SUGID_CONFIG  -DSUEXEC_BIN=\"/users/src/a13b3/sbin/suexec\" 
+   EXTRA_LDFLAGS=
+   EXTRA_LIBS=
+   EXTRA_INCLUDES=
+ ***************
+ *** 181,192 ****
+   ## STATUS=yes (see the Rules section near the start of this file) to allow
+   ## full status information.  Check conf/access.conf on how to enable this.
+   
+ ! # AddModule modules/standard/mod_status.o
+   
+   ## The Info module displays configuration information for the server and 
+   ## all included modules. It's very useful for debugging.
+   
+ ! # AddModule         modules/standard/mod_info.o
+   
+   ## mod_include translates server-side include (SSI) statements in text files.
+   ## mod_autoindex handles requests for directories which have no index file
+ --- 181,192 ----
+   ## STATUS=yes (see the Rules section near the start of this file) to allow
+   ## full status information.  Check conf/access.conf on how to enable this.
+   
+ ! AddModule modules/standard/mod_status.o
+   
+   ## The Info module displays configuration information for the server and 
+   ## all included modules. It's very useful for debugging.
+   
+ ! AddModule         modules/standard/mod_info.o
+   
+   ## mod_include translates server-side include (SSI) statements in text files.
+   ## mod_autoindex handles requests for directories which have no index file
+ diff -c --exclude=*.[oa] --recursive apache_1.3b3/src/main/util_script.c a13b3/src/main/util_script.c
+ *** apache_1.3b3/src/main/util_script.c	Sun Nov 16 08:45:22 1997
+ --- a13b3/src/main/util_script.c	Fri Feb  6 08:47:03 1998
+ ***************
+ *** 559,567 ****
+   #endif
+   
+   
+ ! API_EXPORT(int) call_exec(request_rec *r, char *argv0, char **env, int shellcmd)
+   {
+       int pid = 0;
+   #if defined(RLIMIT_CPU)  || defined(RLIMIT_NPROC) || \
+       defined(RLIMIT_DATA) || defined(RLIMIT_VMEM)
+   
+ --- 559,569 ----
+   #endif
+   
+   
+ ! API_EXPORT(int) call_exec(request_rec *r, char *argv0, char **env, int shellcmd, uid_t req_uid, gid_t req_gid)
+   {
+       int pid = 0;
+ +     int change_ids = 0; /* Fork suexec or (by default) the target command? */
+ +     char *execuser, *grpname; /* Only used if change_ids gets set.  Ick. */
+   #if defined(RLIMIT_CPU)  || defined(RLIMIT_NPROC) || \
+       defined(RLIMIT_DATA) || defined(RLIMIT_VMEM)
+   
+ ***************
+ *** 778,840 ****
+   	return (pid);
+       }
+   #else
+ !     if (suexec_enabled &&
+ ! 	((r->server->server_uid != user_id) ||
+ ! 	 (r->server->server_gid != group_id) ||
+ ! 	 (!strncmp("/~", r->uri, 2)))) {
+ ! 
+ ! 	char *execuser, *grpname;
+ ! 	struct passwd *pw;
+ ! 	struct group *gr;
+ ! 
+ ! 	if (!strncmp("/~", r->uri, 2)) {
+ ! 	    gid_t user_gid;
+ ! 	    char *username = pstrdup(r->pool, r->uri + 2);
+ ! 	    int pos = ind(username, '/');
+   
+ ! 	    if (pos >= 0)
+ ! 		username[pos] = '\0';
+   
+ ! 	    if ((pw = getpwnam(username)) == NULL) {
+   		aplog_error(APLOG_MARK, APLOG_ERR, r->server,
+ ! 			    "getpwnam: invalid username %s", username);
+ ! 		return (pid);
+ ! 	    }
+ ! 	    execuser = pstrcat(r->pool, "~", pw->pw_name, NULL);
+ ! 	    user_gid = pw->pw_gid;
+ ! 
+ ! 	    if ((gr = getgrgid(user_gid)) == NULL) {
+ ! 		if ((grpname = palloc(r->pool, 16)) == NULL)
+ ! 		    return (pid);
+ ! 		else
+ ! 		    ap_snprintf(grpname, 16, "%ld", (long) user_gid);
+ ! 	    }
+ ! 	    else
+ ! 		grpname = gr->gr_name;
+ ! 	}
+ ! 	else {
+ ! 	    if ((pw = getpwuid(r->server->server_uid)) == NULL) {
+ ! 		aplog_error(APLOG_MARK, APLOG_ERR, r->server,
+ ! 		            "getpwuid: invalid userid %ld",
+ ! 		            (long) r->server->server_uid);
+   		return (pid);
+   	    }
+   	    execuser = pstrdup(r->pool, pw->pw_name);
+   
+ ! 	    if ((gr = getgrgid(r->server->server_gid)) == NULL) {
+   		aplog_error(APLOG_MARK, APLOG_ERR, r->server,
+ ! 		            "getgrgid: invalid groupid %ld",
+ ! 		            (long) r->server->server_gid);
+   		return (pid);
+   	    }
+ ! 	    grpname = gr->gr_name;
+   	}
+   
+   	if (shellcmd)
+ ! 	    execle(SUEXEC_BIN, SUEXEC_BIN, execuser, grpname, argv0, NULL, env);
+   
+   	else if ((!r->args) || (!r->args[0]) || (ind(r->args, '=') >= 0))
+ ! 	    execle(SUEXEC_BIN, SUEXEC_BIN, execuser, grpname, argv0, NULL, env);
+   
+   	else {
+   	    execve(SUEXEC_BIN,
+ --- 780,849 ----
+   	return (pid);
+       }
+   #else
+ !     if (suexec_enabled) {
+ ! 	uid_t target_uid;
+ ! 	gid_t target_gid;
+ ! 
+ ! 	if (req_uid > 0 || req_gid > 0) {
+ ! 	    /*
+ ! 	    *  In the cgi module, the user id and group id are requested
+ ! 	    *  independently, so provide sensible defaults in case one
+ ! 	    *  is not specified.
+ ! 	    */
+ ! 	    target_uid = req_uid > 0 ? req_uid : r->server->server_uid;
+ ! 	    target_gid = req_gid > 0 ? req_gid : r->server->server_gid;
+ ! 	} else if (strncmp("/~", r->uri, 2) == 0) {
+ !             struct passwd *pw;
+ !             char *username = pstrdup(r->pool, r->uri + 2);
+ !             int pos = ind(username, '/');
+ ! 
+ !             if (pos >= 0)
+ !                 username[pos] = '\0';
+ ! 
+ !             if ((pw = getpwnam(username)) == NULL) {
+ !                 aplog_error(APLOG_MARK, APLOG_ERR, r->server,
+ !                             "getpwnam: invalid username %s", username);
+ !                 exit (0);
+ !             }
+ !             target_uid = pw->pw_uid;
+ !             target_gid = pw->pw_gid;
+ ! 	} else {
+ ! 	    target_uid = r->server->server_uid;
+ ! 	    target_gid = r->server->server_gid;
+ ! 	}
+ ! 
+ ! 	if (target_uid != user_id || target_gid != group_id) {
+ ! 	    struct passwd *pw;
+ ! 	    struct group *gr;
+   
+ ! 	    change_ids = 1;
+   
+ ! 	    if ((pw = getpwuid(target_uid)) == NULL) {
+   		aplog_error(APLOG_MARK, APLOG_ERR, r->server,
+ ! 			    "getpwuid: invalid userid %ld",
+ ! 			    (long) target_uid);
+   		return (pid);
+   	    }
+   	    execuser = pstrdup(r->pool, pw->pw_name);
+   
+ ! 	    if ((gr = getgrgid(target_gid)) == NULL) {
+   		aplog_error(APLOG_MARK, APLOG_ERR, r->server,
+ ! 			    "getgrgid: invalid groupid %ld",
+ ! 			    (long) target_gid);
+   		return (pid);
+   	    }
+ ! 	    grpname = pstrdup(r->pool, gr->gr_name);
+   	}
+ +     }
+   
+ +     if (change_ids) {
+   	if (shellcmd)
+ ! 	    execle(SUEXEC_BIN,
+ ! 		   SUEXEC_BIN, execuser, grpname, argv0, NULL, env);
+   
+   	else if ((!r->args) || (!r->args[0]) || (ind(r->args, '=') >= 0))
+ ! 	    execle(SUEXEC_BIN,
+ ! 		   SUEXEC_BIN, execuser, grpname, argv0, NULL, env);
+   
+   	else {
+   	    execve(SUEXEC_BIN,
+ ***************
+ *** 842,849 ****
+   			       argv0, r->args),
+   		   env);
+   	}
+ !     }
+ !     else {
+   	if (shellcmd)
+   	    execle(SHELL_PATH, SHELL_PATH, "-c", argv0, NULL, env);
+   
+ --- 851,857 ----
+   			       argv0, r->args),
+   		   env);
+   	}
+ !     } else {
+   	if (shellcmd)
+   	    execle(SHELL_PATH, SHELL_PATH, "-c", argv0, NULL, env);
+   
+ diff -c --exclude=*.[oa] --recursive apache_1.3b3/src/main/util_script.h a13b3/src/main/util_script.h
+ *** apache_1.3b3/src/main/util_script.h	Wed Oct 22 14:29:53 1997
+ --- a13b3/src/main/util_script.h	Fri Feb  6 08:48:53 1998
+ ***************
+ *** 67,70 ****
+   API_EXPORT(int) scan_script_header_err(request_rec *r, FILE *f, char *buffer);
+   API_EXPORT(int) scan_script_header_err_buff(request_rec *r, BUFF *f, char *buffer);
+   API_EXPORT(void) send_size(size_t size, request_rec *r);
+ ! API_EXPORT(int) call_exec(request_rec *r, char *argv0, char **env, int shellcmd);
+ --- 67,70 ----
+   API_EXPORT(int) scan_script_header_err(request_rec *r, FILE *f, char *buffer);
+   API_EXPORT(int) scan_script_header_err_buff(request_rec *r, BUFF *f, char *buffer);
+   API_EXPORT(void) send_size(size_t size, request_rec *r);
+ ! API_EXPORT(int) call_exec(request_rec *r, char *argv0, char **env, int shellcmd, uid_t request_uid, gid_t request_gid);
+ Only in a13b3/src/modules: CVS
+ Only in a13b3/src/modules: Makefile
+ Only in a13b3/src/modules/standard: CVS
+ Only in a13b3/src/modules/standard: Makefile
+ diff -c --exclude=*.[oa] --recursive apache_1.3b3/src/modules/standard/mod_cgi.c a13b3/src/modules/standard/mod_cgi.c
+ *** apache_1.3b3/src/modules/standard/mod_cgi.c	Fri Nov  7 18:20:02 1997
+ --- a13b3/src/modules/standard/mod_cgi.c	Fri Feb  6 08:47:43 1998
+ ***************
+ *** 99,104 ****
+ --- 99,111 ----
+       int bufbytes;
+   } cgi_server_conf;
+   
+ + typedef struct
+ + {
+ +     uid_t userid;
+ +     gid_t groupid;
+ + } cgi_dir_conf;
+ + 
+ + 
+   static void *create_cgi_config(pool *p, server_rec *s)
+   {
+       cgi_server_conf *c =
+ ***************
+ *** 118,123 ****
+ --- 125,144 ----
+       return overrides->logname ? overrides : base;
+   }
+   
+ + void *create_cgi_dir_config (pool *p, char *dummy)
+ + {
+ +     cgi_dir_conf *c = (cgi_dir_conf *) palloc (p,sizeof(cgi_dir_conf));
+ + 
+ + #   ifdef DEBUG_SUGID_CONFIG
+ +       fprintf(stderr,"Create dir config: %s\n",dummy ? dummy : "<NULL>");
+ + #   endif
+ + 
+ +     c->userid = 0;
+ +     c->groupid = 0;
+ + 
+ +     return (void *) c;
+ + }
+ + 
+   static const char *set_scriptlog(cmd_parms *cmd, void *dummy, char *arg)
+   {
+       server_rec *s = cmd->server;
+ ***************
+ *** 148,153 ****
+ --- 169,219 ----
+       return NULL;
+   }
+   
+ + const char *set_userid(cmd_parms *cmd,cgi_dir_conf *conf, char *user) {
+ +     struct passwd *ent;
+ + 
+ + #   ifdef DEBUG_SUGID_CONFIG
+ +       fprintf(stderr,"Add UserId: %s\n",user);
+ +       fprintf(stderr,"\tPrevious value: %d\n",conf->userid);
+ +       fprintf(stderr,"\tConfig File   : %s\n",cmd->config_file->name);
+ +       fprintf(stderr,"\tPath    : %s\n",
+ +         cmd->path ? cmd->path : "<NULL>");
+ + #   endif
+ + 
+ +     if (user[0] == '#') {
+ +       conf->userid = atoi(&user[1]);
+ +       return NULL;
+ +     } else if (!(ent = getpwnam(user))) {
+ +       return "Invalid User Name";
+ +     } else {
+ +       conf->userid = ent->pw_uid;
+ +       return NULL;
+ +     }
+ + }
+ + 
+ + const char *set_groupid(cmd_parms *cmd,cgi_dir_conf *conf, char *grp)
+ + {
+ +     struct group *ent;
+ + 
+ + #   ifdef DEBUG_SUGID_CONFIG
+ +       fprintf(stderr,"Add GroupId: %s\n",grp);
+ +       fprintf(stderr,"\tPrevious value: %d\n",conf->groupid);
+ +       fprintf(stderr,"\tConfig File   : %s\n",cmd->config_file->name);
+ +       fprintf(stderr,"\tPath    : %s\n",
+ +         cmd->path ? cmd->path : "<NULL>");
+ + #   endif
+ + 
+ +     if (grp[0] == '#') {
+ +       conf->groupid = atoi(&grp[1]);
+ +       return NULL;
+ +     } else if (!(ent = getgrnam(grp))) {
+ +       return "Invalid Group Name";
+ +     } else {
+ +       conf->groupid = ent->gr_gid;
+ +       return NULL;
+ +     }
+ + }
+ + 
+   static command_rec cgi_cmds[] =
+   {
+       {"ScriptLog", set_scriptlog, NULL, RSRC_CONF, TAKE1,
+ ***************
+ *** 156,161 ****
+ --- 222,231 ----
+        "the maximum length (in bytes) of the script debug log"},
+       {"ScriptLogBuffer", set_scriptlog_buffer, NULL, RSRC_CONF, TAKE1,
+        "the maximum size (in bytes) to record of a POST request"},
+ +     { "UserId", set_userid, NULL, RSRC_CONF | ACCESS_CONF, TAKE1,
+ +       "a UserName or #UserId"},
+ +     { "GroupId", set_groupid, NULL, RSRC_CONF | ACCESS_CONF, TAKE1,
+ +       "a GroupName or #GroupId"},
+       {NULL}
+   };
+   
+ ***************
+ *** 281,286 ****
+ --- 351,361 ----
+       request_rec *r = cld->r;
+       char *argv0 = cld->argv0;
+       int child_pid;
+ +     cgi_dir_conf *conf = (cgi_dir_conf *)
+ +       get_module_config (r->per_dir_config,&cgi_module);
+ +     uid_t request_uid = 0;
+ +     gid_t request_gid = 0;
+ + 
+   
+   #ifdef DEBUG_CGI
+   #ifdef __EMX__
+ ***************
+ *** 296,303 ****
+   
+       RAISE_SIGSTOP(CGI_CHILD);
+   #ifdef DEBUG_CGI
+ !     fprintf(dbg, "Attempting to exec %s as %sCGI child (argv0 = %s)\n",
+ ! 	    r->filename, nph ? "NPH " : "", argv0);
+   #endif
+   
+       add_cgi_vars(r);
+ --- 371,378 ----
+   
+       RAISE_SIGSTOP(CGI_CHILD);
+   #ifdef DEBUG_CGI
+ !     fprintf(dbg, "%s (uri=<%s>) as CGI child (argv0 = %s)\n",
+ ! 	    r->filename, r->uri, argv0);
+   #endif
+   
+       add_cgi_vars(r);
+ ***************
+ *** 309,314 ****
+ --- 384,417 ----
+   	fprintf(dbg, "'%s'\n", env[i]);
+   #endif
+   
+ + 
+ + #if ! defined(__EMX__) && ! defined(WIN32)
+ +     /*
+ +     * See under which uid we will run the request.
+ +     * If there's a UserId or GroupId available, use those.
+ +     * The request_[ug]id args to call_exec are set non-zero
+ +     * to override the per-virtual or overall-server defaults.
+ +     * If they're left 0, 0, they will be set (in main/util_script.c)
+ +     * to a user's uid/gid if this is a ~user uri and suexec
+ +     * is enabled.
+ +     */
+ +     if (suexec_enabled) {
+ + 	if (conf) {
+ + 	    if (conf->userid > 0) {
+ + 		request_uid = conf->userid;
+ + 	    }
+ + 	    if (conf->groupid > 0) {
+ + 		request_gid = conf->groupid;
+ + 	    }
+ + 	}
+ + #ifdef DEBUG_SUGID_CONFIG
+ + 	fprintf(dbg, "sugid parameters: request_uid=%d request_gid=%d\n",
+ + 		request_uid, request_gid);
+ + #endif
+ + 
+ +     }
+ + #endif
+ + 
+       chdir_file(r->filename);
+       if (!cld->debug)
+   	error_log2stderr(r->server);
+ ***************
+ *** 319,325 ****
+   
+       cleanup_for_exec();
+   
+ !     child_pid = call_exec(r, argv0, env, 0);
+   #ifdef WIN32
+       return (child_pid);
+   #else
+ --- 422,428 ----
+   
+       cleanup_for_exec();
+   
+ !     child_pid = call_exec(r, argv0, env, 0, request_uid, request_gid);
+   #ifdef WIN32
+       return (child_pid);
+   #else
+ ***************
+ *** 551,557 ****
+   {
+       STANDARD_MODULE_STUFF,
+       NULL,			/* initializer */
+ !     NULL,			/* dir config creater */
+       NULL,			/* dir merger --- default is to override */
+       create_cgi_config,		/* server config */
+       merge_cgi_config,		/* merge server config */
+ --- 654,660 ----
+   {
+       STANDARD_MODULE_STUFF,
+       NULL,			/* initializer */
+ !     create_cgi_dir_config,	/* dir config creater */
+       NULL,			/* dir merger --- default is to override */
+       create_cgi_config,		/* server config */
+       merge_cgi_config,		/* merge server config */
+ diff -c --exclude=*.[oa] --recursive apache_1.3b3/src/modules/standard/mod_include.c a13b3/src/modules/standard/mod_include.c
+ *** apache_1.3b3/src/modules/standard/mod_include.c	Sun Nov  9 13:40:34 1997
+ --- a13b3/src/modules/standard/mod_include.c	Fri Feb  6 08:45:57 1998
+ ***************
+ *** 733,739 ****
+   #endif
+       cleanup_for_exec();
+       /* set shellcmd flag to pass arg to SHELL_PATH */
+ !     child_pid = call_exec(r, s, create_environment(r->pool, env), 1);
+   #ifdef WIN32
+       return (child_pid);
+   #else
+ --- 733,739 ----
+   #endif
+       cleanup_for_exec();
+       /* set shellcmd flag to pass arg to SHELL_PATH */
+ !     child_pid = call_exec(r, s, create_environment(r->pool, env), 1, 0, 0);
+   #ifdef WIN32
+       return (child_pid);
+   #else
+ diff -c --exclude=*.[oa] --recursive apache_1.3b3/src/support/suexec.c a13b3/src/support/suexec.c
+ *** apache_1.3b3/src/support/suexec.c	Wed Oct 22 14:30:46 1997
+ --- a13b3/src/support/suexec.c	Fri Feb  6 07:43:58 1998
+ ***************
+ *** 112,117 ****
+ --- 112,118 ----
+   
+   extern char **environ;
+   static FILE *log;
+ + static int debug_flag = 1;
+   
+   char *safe_env_lst[] =
+   {
+ ***************
+ *** 155,160 ****
+ --- 156,174 ----
+       NULL
+   };
+   
+ + typedef struct dir_list {
+ +     char *dir;
+ +     struct dir_list *next;
+ + } dir_list;
+ + 
+ + typedef struct {
+ +     int user_dir_on;
+ +     char *user_dir_suff;
+ +     dir_list *dirs[2];
+ + } suexec_attribs;
+ + 
+ + suexec_attribs attr;
+ + 
+   
+   static void err_output(const char *fmt, va_list ap)
+   {
+ ***************
+ *** 194,199 ****
+ --- 208,226 ----
+       return;
+   }
+   
+ + void debug (const char *fmt,...) {
+ + #ifdef LOG_EXEC
+ +     if (debug_flag) {
+ + 	va_list ap;
+ + 
+ + 	va_start(ap, fmt);
+ + 	err_output(fmt, ap);
+ + 	va_end(ap);
+ +     }
+ + #endif /* LOG_EXEC */
+ +     return;
+ + }
+ + 
+   void clean_env()
+   {
+       char pathbuf[512];
+ ***************
+ *** 231,236 ****
+ --- 258,443 ----
+       environ = cleanenv;
+   }
+   
+ + void load_setup_file () {
+ +     char pathbuf[512];
+ +     char linebuf[512];
+ +     int linecount = 0;
+ +     FILE *fp;
+ +     struct stat dir_info;	/* directives directory info holder */
+ +     struct stat file_info;	/* directives file info holder */
+ + 
+ +     attr.user_dir_on = 0;
+ +     attr.user_dir_suff = 0;
+ +     attr.dirs[0] = attr.dirs[1] = 0;
+ + 
+ +     /*
+ +      * Stat the cwd and verify it is a directory, or error out.
+ +      */
+ +     if (((lstat(DIRECTIVE_DIR, &dir_info)) != 0)
+ + 	    || !(S_ISDIR(dir_info.st_mode))) {
+ + 	log_err("cannot stat directory: (%s)\n", DIRECTIVE_DIR);
+ + 	exit(130);
+ +     }
+ + 
+ +     /*
+ +      * Error out if DIRECTIVE_DIR is writable by others.
+ +      */
+ +     if ((dir_info.st_mode & S_IWOTH) || (dir_info.st_mode & S_IWGRP)) {
+ + 	log_err("directory is writable by others: (%s)\n", DIRECTIVE_DIR);
+ + 	exit(131);
+ +     }
+ + 
+ +     strcpy (pathbuf, DIRECTIVE_DIR);
+ +     strcat (pathbuf, "/");
+ +     strcat (pathbuf, DIRECTIVE_FILENAME);
+ + 
+ +     /*
+ +      * Error out if we cannot stat the directives file.
+ +      */
+ +     if (((lstat(pathbuf, &file_info)) != 0) || (S_ISLNK(file_info.st_mode))) {
+ + 	log_err("cannot stat directives file: (%s)\n", pathbuf);
+ + 	exit(132);
+ +     }
+ + 
+ +     /*
+ +      * Error out if the directives file is writable by others.
+ +      */
+ +     if ((file_info.st_mode & S_IWOTH) || (file_info.st_mode & S_IWGRP)) {
+ + 	log_err("file is writable by others: (%s)\n", pathbuf);
+ + 	exit(133);
+ +     }
+ + 
+ +     if ((fp = fopen (pathbuf, "r")) == 0) {
+ + 	log_err("failed to open directives file: (%s)\n", pathbuf);
+ + 	exit(134);
+ +     }
+ + 
+ +     while (fgets (linebuf, 512, fp)) {
+ +         char *key = linebuf;
+ + 	char *val;
+ + 	char *cp;
+ + 	int len = strlen (linebuf);
+ + 
+ + 	++linecount;
+ + 
+ + 	/*
+ + 	*  Get rid of that trailing newline!
+ + 	*  If there isn't one, then the line is too long.
+ + 	*/
+ + 	if (linebuf [len - 1] == '\n') {
+ + 	    linebuf [len - 1] = '\0';
+ + 	} else {
+ + 	    log_err("line %d: line too long: (%s)\n", linecount, linebuf);
+ + 	    exit(135);
+ + 	}
+ + 
+ +         /*
+ + 	*  Directives may not extend across newline boundaries.
+ + 	*  Honor '#' signs as comment delimiters.
+ + 	*
+ + 	*  First strip off all leading white space,
+ + 	*  determine the directive, isolate the value + trailing stuff,
+ + 	*  then step back from the tail getting rid of trailing
+ + 	*  comments and white space.
+ + 	*/
+ + 	while (*key && isspace (*key)) {
+ + 	    ++key;
+ + 	}
+ + 	if (! *key || *key == '#') {
+ + 	    continue;
+ + 	}
+ + 	debug ("beginning of key: <%s>\n", key);
+ + 
+ + 	/*
+ + 	* That should be the beginning of the directive.
+ + 	* Find the first whitespace or ':' and set it null
+ + 	* to isolate the directive.
+ + 	*/
+ + 	cp = key;
+ + 	while (*cp && *cp != ':' && ! isspace (*cp)) {
+ + 	    ++cp;
+ + 	}
+ + 	if (! *cp) {
+ + 	    log_err("line %d: end of directive not found: (%s)\n",
+ + 		linecount, linebuf);
+ + 	    exit(136);
+ + 	}
+ + 	*cp = '\0';
+ + 	debug ("finished key: <%s>\n", key);
+ + 
+ + 	/*
+ + 	*  Now find the beginning of the value, which is the
+ + 	* next non-null, non-colon character.
+ + 	*/
+ + 	++cp;
+ + 	while (*cp && (*cp == ':' || isspace (*cp))) {
+ + 	    ++cp;
+ + 	}
+ + 	if (! *cp) {
+ + 	    log_err("line %d: beginning of value not found: (%s)\n",
+ + 		linecount, linebuf);
+ + 	    exit(137);
+ + 	}
+ + 	val = cp;
+ + 	debug ("beginning of value: <%s>\n", val);
+ + 
+ + 	/*
+ + 	*  If there's a comment, get rid of it.
+ + 	*  Then strip off trailing whitespace.
+ + 	*/
+ + 	if (cp = strchr (val, '#')) {
+ + 	    *cp = '\0';
+ + 	}
+ + 	cp = val + strlen (val) - 1;
+ + 	while (cp > val && isspace (*cp)) {
+ + 	    *cp = '\0';
+ + 	    --cp;
+ + 	}
+ + 	debug ("val w/o trailing comments: <%s>\n", val);
+ + 
+ + 	/*
+ + 	*  Ok, it's a take.
+ + 	*  Directory directives get tacked onto the
+ + 	*  dirs list; the others go to their specific
+ + 	*  suexec_attribs field.
+ + 	*/
+ + 
+ + 	if (strcmp (key, "Directory") == 0) {
+ + 	    dir_list *dl;
+ + 	    if (! (dl = malloc (sizeof (dir_list)))) {
+ + 		log_err("line %d: out of memory\n", linecount);
+ + 		exit(138);
+ + 	    }
+ + 	    dl->next = 0;
+ + 	    if (! (dl->dir = strdup (val))) {
+ + 		log_err("line %d: out of memory\n", linecount);
+ + 		exit(139);
+ + 	    }
+ + 	    if (! attr.dirs[0]) {
+ + 	        attr.dirs[0] = attr.dirs[1] = dl;
+ + 	    } else {
+ + 	        attr.dirs[1]->next = dl;
+ + 		attr.dirs[1] = dl;
+ + 	    }
+ + 	} else if (strcmp (key, "UserDirectories") == 0) {
+ + 	    if (strcmp (val, "on") == 0) {
+ + 	        attr.user_dir_on = 1;
+ + 	    } else {
+ + 	        attr.user_dir_on = 0;
+ + 	    }
+ + 	} else if (strcmp (key, "UserDirSuffix") == 0) {
+ + 	    if (! (attr.user_dir_suff = strdup (val))) {
+ + 		log_err("line %d: out of memory\n", linecount);
+ + 		exit(140);
+ + 	    }
+ + 	} else {
+ + 	    log_err("line %d: unknown directive: (%s)\n",
+ + 		linecount, key);
+ + 	    exit(141);
+ + 	}
+ +     }
+ + }
+ + 
+   int main(int argc, char *argv[])
+   {
+       int userdir = 0;		/* ~userdir flag             */
+ ***************
+ *** 249,254 ****
+ --- 456,462 ----
+       struct group *gr;		/* group entry holder        */
+       struct stat dir_info;	/* directory info holder     */
+       struct stat prg_info;	/* program info holder       */
+ +     int dirfound = 0;
+   
+   
+   
+ ***************
+ *** 264,269 ****
+ --- 472,479 ----
+       target_uname = argv[1];
+       target_gname = argv[2];
+       cmd = argv[3];
+ +     debug ("uname=<%s> gname=<%s> cmd=<%s>\n",
+ +         target_uname, target_gname, cmd);
+   
+       /*
+        * Check existence/validity of the UID of the user
+ ***************
+ *** 286,313 ****
+       }
+   
+       /*
+ !      * Check for a leading '/' (absolute path) in the command to be executed,
+ !      * or attempts to back up out of the current directory,
+        * to protect against attacks.  If any are
+        * found, error out.  Naughty naughty crackers.
+        */
+ !     if ((cmd[0] == '/') || (!strncmp(cmd, "../", 3))
+   	|| (strstr(cmd, "/../") != NULL)) {
+           log_err("invalid command (%s)\n", cmd);
+   	exit(104);
+       }
+   
+       /*
+ -      * Check to see if this is a ~userdir request.  If
+ -      * so, set the flag, and remove the '~' from the
+ -      * target username.
+ -      */
+ -     if (!strncmp("~", target_uname, 1)) {
+ - 	target_uname++;
+ - 	userdir = 1;
+ -     }
+ - 
+ -     /*
+        * Error out if the target username is invalid.
+        */
+       if ((pw = getpwnam(target_uname)) == NULL) {
+ --- 496,512 ----
+       }
+   
+       /*
+ !      * Check for attempts to back up out of the current directory,
+        * to protect against attacks.  If any are
+        * found, error out.  Naughty naughty crackers.
+        */
+ !     if ((!strncmp(cmd, "../", 3))
+   	|| (strstr(cmd, "/../") != NULL)) {
+           log_err("invalid command (%s)\n", cmd);
+   	exit(104);
+       }
+   
+       /*
+        * Error out if the target username is invalid.
+        */
+       if ((pw = getpwnam(target_uname)) == NULL) {
+ ***************
+ *** 372,378 ****
+        * and setgid() to the target group. If unsuccessful, error out.
+        */
+       if (((setgid(gid)) != 0) || (initgroups(actual_uname, gid) != 0)) {
+ ! 	log_err("failed to setgid (%ld: %s/%s)\n", gid, cwd, cmd);
+   	exit(109);
+       }
+   
+ --- 571,577 ----
+        * and setgid() to the target group. If unsuccessful, error out.
+        */
+       if (((setgid(gid)) != 0) || (initgroups(actual_uname, gid) != 0)) {
+ ! 	log_err("failed to setgid (%ld: %s)\n", gid, cmd);
+   	exit(109);
+       }
+   
+ ***************
+ *** 380,394 ****
+        * setuid() to the target user.  Error out on fail.
+        */
+       if ((setuid(uid)) != 0) {
+ ! 	log_err("failed to setuid (%ld: %s/%s)\n", uid, cwd, cmd);
+   	exit(110);
+       }
+   
+       /*
+ !      * Get the current working directory, as well as the proper
+ !      * document root (dependant upon whether or not it is a
+ !      * ~userdir request).  Error out if we cannot get either one,
+ !      * or if the current working directory is not in the docroot.
+        * Use chdir()s and getcwd()s to avoid problems with symlinked
+        * directories.  Yuck.
+        */
+ --- 579,590 ----
+        * setuid() to the target user.  Error out on fail.
+        */
+       if ((setuid(uid)) != 0) {
+ ! 	log_err("failed to setuid (%ld: %s)\n", uid, cmd);
+   	exit(110);
+       }
+   
+       /*
+ !      * Get the current working directory.
+        * Use chdir()s and getcwd()s to avoid problems with symlinked
+        * directories.  Yuck.
+        */
+ ***************
+ *** 396,424 ****
+   	log_err("cannot get current working directory\n");
+   	exit(111);
+       }
+ ! 
+ !     if (userdir) {
+ ! 	if (((chdir(target_homedir)) != 0) ||
+ ! 	    ((chdir(USERDIR_SUFFIX)) != 0) ||
+ ! 	    ((getcwd(dwd, AP_MAXPATH)) == NULL) ||
+ ! 	    ((chdir(cwd)) != 0)) {
+ ! 	    log_err("cannot get docroot information (%s)\n", target_homedir);
+ ! 	    exit(112);
+ ! 	}
+ !     }
+ !     else {
+ ! 	if (((chdir(DOC_ROOT)) != 0) ||
+ ! 	    ((getcwd(dwd, AP_MAXPATH)) == NULL) ||
+ ! 	    ((chdir(cwd)) != 0)) {
+ ! 	    log_err("cannot get docroot information (%s)\n", DOC_ROOT);
+ ! 	    exit(113);
+ ! 	}
+ !     }
+ ! 
+ !     if ((strncmp(cwd, dwd, strlen(dwd))) != 0) {
+ ! 	log_err("command not in docroot (%s/%s)\n", cwd, cmd);
+ ! 	exit(114);
+ !     }
+   
+       /*
+        * Stat the cwd and verify it is a directory, or error out.
+ --- 592,598 ----
+   	log_err("cannot get current working directory\n");
+   	exit(111);
+       }
+ !     debug ("cwd=<%s>\n", cwd);
+   
+       /*
+        * Stat the cwd and verify it is a directory, or error out.
+ ***************
+ *** 434,439 ****
+ --- 608,664 ----
+       if ((dir_info.st_mode & S_IWOTH) || (dir_info.st_mode & S_IWGRP)) {
+   	log_err("directory is writable by others: (%s)\n", cwd);
+   	exit(116);
+ +     }
+ + 
+ +     /*
+ +      * Load the setup file as late as possible.
+ +      */
+ +     load_setup_file ();
+ + 
+ +     /*
+ +     *  Search the directory lists to determine if the command
+ +     *  is in a legal directory.  The current directory is the
+ +     *  directory where the command is supposed to be.  If the
+ +     *  current directory is the same as, or a subdirectory of,
+ +     *  one of the list directories, then it's ok to exec it.
+ +     */
+ + 
+ +     if (attr.user_dir_on) {
+ + 	char td[AP_MAXPATH];	/* test directory */
+ +         /*
+ + 	*  Construct the home directory for the specified
+ + 	*  user.
+ + 	*/
+ + 	strcpy (td, target_homedir);
+ + 	strcat (td, "/");
+ + 	strcat (td, attr.user_dir_suff);
+ + 	debug ("check cwd=<%s> against user dir <%s>\n", cwd, td);
+ + 	if (strncmp (cwd, td, strlen (td)) == 0) {
+ + 	    ++dirfound;
+ + 	}
+ +     }
+ +     if (! dirfound) {
+ +         dir_list *dl = attr.dirs[0];
+ +         /*
+ + 	*  Step through the directories which suexec is
+ + 	*  allowed to work in, looking for a prefix match
+ + 	*  with the current directory.
+ + 	*/
+ + 	while (dl) {
+ + 	    debug ("check cwd=<%s> against <%s>\n", cwd, dl->dir);
+ + 	    if (strncmp (cwd, dl->dir, strlen (dl->dir)) == 0) {
+ + 	        ++dirfound;
+ + 		break;
+ + 	    } else {
+ + 	        dl = dl->next;
+ + 	    }
+ + 	}
+ +     }
+ + 
+ +     if (! dirfound) {
+ + 	log_err("unable to validate directory (%s) for user (%s), "
+ + 	     "group (%s), cmd (%s)\n", cwd, target_uname, target_gname, cmd);
+ + 	exit(121);
+       }
+   
+       /*
+ diff -c --exclude=*.[oa] --recursive apache_1.3b3/src/support/suexec.h a13b3/src/support/suexec.h
+ *** apache_1.3b3/src/support/suexec.h	Sat Oct 25 16:35:20 1997
+ --- a13b3/src/support/suexec.h	Wed Feb  4 23:45:28 1998
+ ***************
+ *** 65,71 ****
+    *               this program.
+    */
+   #ifndef HTTPD_USER
+ ! #define HTTPD_USER "www"
+   #endif
+   
+   /*
+ --- 65,71 ----
+    *               this program.
+    */
+   #ifndef HTTPD_USER
+ ! #define HTTPD_USER "nobody"
+   #endif
+   
+   /*
+ ***************
+ *** 115,121 ****
+    *             debugging purposes.
+    */
+   #ifndef LOG_EXEC
+ ! #define LOG_EXEC "/usr/local/apache/logs/cgi.log"	/* Need me? */
+   #endif
+   
+   /*
+ --- 115,121 ----
+    *             debugging purposes.
+    */
+   #ifndef LOG_EXEC
+ ! #define LOG_EXEC "/users/src/a13b3/logs/cgi.log"	/* Need me? */
+   #endif
+   
+   /*
+ ***************
+ *** 133,138 ****
+ --- 133,154 ----
+    */
+   #ifndef SAFE_PATH
+   #define SAFE_PATH "/usr/local/bin:/usr/bin:/bin"
+ + #endif
+ + 
+ + /*
+ +  * DIRECTIVE_DIR -- Path to the directives file.
+ +  *
+ +  */
+ + #ifndef DIRECTIVE_DIR
+ + #define DIRECTIVE_DIR "/users/src/a13b3/conf"
+ + #endif
+ + 
+ + /*
+ +  * DIRECTIVE_FILENAME -- Name of the directives file.
+ +  *
+ +  */
+ + #ifndef DIRECTIVE_FILENAME
+ + #define DIRECTIVE_FILENAME "suexec.conf"
+   #endif
+   
+   #endif /* _SUEXEC_H */
+ 
+ 
+ 
+ 
+
+From: Gary Shea <shea@gtsdesign.com>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: Gary Shea <shea@gtsdesign.com>, apbugs@hyperreal.org
+Subject: Re: suexec/1769: suexec too limited -- need per-directory control, more permissive directory structures
+Date: Wed, 11 Feb 1998 00:36:03 -0700 (MST)
+
+ On Wed, 4 Feb 1998, Dean Gaudet wrote:
+ > At any rate.  If you've got the patches for 1.2 already, you could send
+ > them along so that we at least see what you mean... I'd be surprised if
+ > this isn't possible.
+ > 
+ > Dean
+ 
+ Dean -- Did you receive the patches I sent you for mod_cgi.c and
+ suexec.c and util_call.c?  I had goofed up the mail and sent
+ the patches to apbugs & myself the first time, and just to you the
+ second time.
+ 
+ 	Gary
+ 
+ -----------------------------------------------------------------
+ Gary Shea                                       shea@xmission.com
+ Salt Lake City                      http://www.xmission.com/~shea
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Gary Shea <shea@gtsdesign.com>
+Cc: apbugs@apache.org
+Subject: Re: suexec/1769: suexec too limited -- need per-directory control, more permissive directory structures
+Date: Wed, 11 Feb 1998 17:43:36 -0800 (PST)
+
+ On 6 Feb 1998, Gary Shea wrote:
+ 
+ >  ScriptAlias /htd2/cgi-bin /users/src/a13b3/htd2/cgi-bin
+ >  <Location /htd2/cgi-bin>
+ >  <Limit GET POST>
+ >  UserId          shea
+ >  GroupId         users
+ >  </Limit>
+ >  </Location>
+ 
+ You definately want to lose the <Limit>/</Limit>.  Well it will depend a
+ bit on how you implemented things, but you almost never want those...
+ because otherwise you're not protecting all methods.  You probably just
+ want:
+ 
+ <Location ...>
+ UserID shea
+ GroupId users
+ </Location>
+ 
+ As for the patch, I think we're going to have to stick this in contrib for
+ now because we're not at a point in either the 1.2 or 1.3 development
+ cycle where we want to make such a large change to a very security
+ sensitive feature.  But thanks for contributing it. 
+ 
+ Dean
+ 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: suexec/1769: suexec too limited -- need per-directory control, more permissive directory structures
+Date: Mon, 27 Apr 1998 11:32:21 -0700 (PDT)
+
+ ---------- Forwarded message ----------
+ Date: Mon, 27 Apr 1998 12:12:49 -0400
+ To: dgaudet@arctic.org
+ From: Jonathan Roy <roy@idle.com>
+ 
+ 
+   I'd just like to second PR #1769's request for more flexability in
+ suexec. The only thing I wanted to use it for was to set cgis in the
+ adverts/ directory to their own user/group, one just for the ad engine, so
+ other users couldn't screw it up with their own cgis (which would have the
+ same permissions). Maybe 1.4 or 2.0 will have that I guess. Some sort of
+ <Directory> based User/Group model. Then each seperate application could
+ have it's own user/group permissions...
+ 
+ -Jonathan
+ 
+ 
+ --
+ Jonathan Roy - roy@idle.com - Idle Communications, Inc.
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: brian
+State-Changed-When: Mon May  4 21:22:20 PDT 1998
+State-Changed-Why:
+submitted patch added to the contrib/patches/1.3 
+distribution directory.
+
+
+From: Gary Shea <shea@gtsdesign.com>
+To: dgaudet@arctic.com
+Cc: shea@gtsdesign.com, pvanhaes@be.oracle.com, apbugs@apache.org
+Subject: Re: suexec/1769: suexec too limited -- need per-directory control, more permissive directory structures
+Date: Wed, 11 Nov 1998 02:01:46 -0700 (MST)
+
+ Hi folks --
+ 
+ Some time ago I created a set of patches for 1.3b3 which
+ allow suexec to work in a more flexible manner; those
+ patches are getting a bit dated, and I've got a new set (for
+ 1.3.3) pretty much ready to go.  I've attempted to follow
+ the spirit of the changes that have been made since 1.3b3.
+ 
+ The patches are still intolerant of variation in the formatting
+ of the suexec.conf file, but otherwise are fairly solid (I think!).
+ 
+ Since the configure stuff has become very slick and useful,
+ I'm wondering if I can get a copy of the configure.in
+ file so I can add a few --suexec-* options to the patches
+ so some additional configuration can be automated.  For
+ instance, I need to set up where the suexec.conf file is found
+ (and what it's called, for that matter...).
+ 
+ Once I have the configure changes done I'd like to re-release
+ the patches.  I have lost track of who handled that, so
+ I'd appreciate it if you could let me know...
+ 
+ I made (sparing) use of the request rec's 'notes' field,
+ and for the first time used the space management stuff
+ implemented in alloc.c ... wow, is that stuff nice.
+ Beautiful work.  Whoever did it was thinking.
+ 
+ 	Gary
+ 
+ -----------------------------------------------------------------
+ Gary Shea                                       shea@xmission.com
+ Salt Lake City                      http://www.xmission.com/~shea
+ 
+
+From: "Ralf S. Engelschall" <rse@engelschall.com>
+To: apbugs@apache.org
+Cc:  Subject: Re: suexec/1769: suexec too limited -- need per-directory control, more permissive directory structures
+Date: Wed, 18 Nov 1998 10:37:51 +0100
+
+ In article <19981111075000.18806.qmail@hyperreal.org> you wrote:
+ 
+ >  Some time ago I created a set of patches for 1.3b3 which
+ >  allow suexec to work in a more flexible manner; those
+ >  patches are getting a bit dated, and I've got a new set (for
+ >  1.3.3) pretty much ready to go.  I've attempted to follow
+ >  the spirit of the changes that have been made since 1.3b3.
+ >  
+ >  The patches are still intolerant of variation in the formatting
+ >  of the suexec.conf file, but otherwise are fairly solid (I think!).
+ >  
+ >  Since the configure stuff has become very slick and useful,
+ >  I'm wondering if I can get a copy of the configure.in
+ >  file so I can add a few --suexec-* options to the patches
+ >  so some additional configuration can be automated.  For
+ >  instance, I need to set up where the suexec.conf file is found
+ >  (and what it's called, for that matter...).
+ >[...]
+ 
+ There is no configure.in, because APACI is Apache Autoconf-*STYLE* Interface
+ and not really an Autoconf-based interface. The current "configure" script is
+ hand-written which you should recognize when looking carefully at it and
+ comparing it to the stuff GNU Autoconf's m4 macros output ;-)
+ 
+                                        Ralf S. Engelschall
+                                        rse@engelschall.com
+                                        www.engelschall.com
+
+From: kesseler@Cetrel.LU
+To: "Ralf S. Engelschall" <rse@engelschall.com>
+Cc: apbugs@apache.org
+Subject: Re: suexec/1769: suexec too limited -- need per-directory control
+	, more permissive directory structures
+Date: Wed, 31 Jan 2001 09:32:49 +0100
+
+ This electronic message is not binding on its sender nor on Cetrel S.C.
+ Any use of information of this mail except the use by the addressee
+ within his or her business relation with Cetrel is strictly forbidden
+ CETREL S.C. L-2956 Luxembourg; Tel: 00352 35566-1; http://www.cetrel.lu
+ ------------------------------------------------------------------------ 
+ 
+ 
+ 
+ Georges Kesseler@CETREL
+ 31/01/2001 09:32
+ 
+ I have been searching the web how to have more flexibility in suexec and found
+ this page http://bugs.apache.org/index.cgi/full/1769 wich did not have a real
+ solution
+ usable for me. I needed some way to have a per user cgi without needing a ~ in
+ the URL
+ Looking a bit into suexec and rewritengine I came up with this simple solution:
+ 
+ RewriteEngine on
+ RewriteRule ^/cgi-bin/username/(.*)$ /~username/cgi-bin/$2 [PT]
+ ScriptAlias /~username/cgi-bin/ /home/username/cgi-bin/
+ 
+ I think with rewrite one can solve most of the limitations of suexec without
+ needing to modify the sources.
+ 
+ Georges
+ 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

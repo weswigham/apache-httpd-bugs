@@ -1,0 +1,162 @@
+Received: (qmail 2024 invoked by uid 2012); 4 Mar 1999 17:56:42 -0000
+Message-Id: <19990304175642.2023.qmail@hyperreal.org>
+Date: 4 Mar 1999 17:56:42 -0000
+From: Rex Dieter <rdieter@math.unl.edu>
+Reply-To: rdieter@math.unl.edu
+To: apbugs@hyperreal.org
+Subject: Enable mod_so for OpenStep for Mach platform
+X-Send-Pr-Version: 3.2
+
+>Number:         3997
+>Category:       mod_so
+>Synopsis:       Enable mod_so for OpenStep for Mach platform
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Mar  4 11:10:00 PST 1999
+>Last-Modified:  Mon May 17 01:00:50 PDT 1999
+>Originator:     rdieter@math.unl.edu
+>Organization:
+>Release:        1.3.4
+>Environment:
+OpenStep for Mach 4.2, cc compiler
+>Description:
+Sorry, this isn't really a bug, but a feature addition.  I discovered the code within the mod_so that supports the MacOSX/Rhapsody platform, also works for OpenStep for Mach.  I'm including a patch here that touches up the files: Configure and mod_so.c to enable use of this module on this platform.
+
+Actually building loadable modules on this platform is tricky, and I haven't found a nice "automatic" way of doing it yet.  For now, all I've been doing to create them, is to first make a regular module, say, mod_expires.o, then to create the loadable module, issue:
+cc -bundle -o mod_expires.bundle mod_expires.o -undefined suppress
+and put the bundle in the libexec directory of the apache tree.
+>How-To-Repeat:
+
+>Fix:
+#   This patch incorporates the changes required to enable
+# loadable modules for OpenStep.  Turns out Apple had already
+# provided this support for Rhapsody, and the same code works
+# for OpenStep too.  -- Rex 990303
+
+
+diff -durb apache_1.3.4_orig/src/Configure apache_1.3.4/src/Configure
+--- apache_1.3.4_orig/src/Configure	Sat Jan  9 08:24:51 1999
++++ apache_1.3.4/src/Configure	Wed Mar  3 15:10:50 1999
+@@ -472,12 +473,9 @@
+ 	;;
+     *-next-openstep*)
+ 	OS='OpenStep/Mach'
+	CC='cc'
+ 	OPTIM='-O'
+ 	CFLAGS="$CFLAGS -DNEXT"
+-	CFLAGS_SHLIB='-dynamic -fno-common'
+-	LD_SHLIB='cc'
+-	LDFLAGS_SHLIB='-dynamiclib -undefined warning'
+ 	DEF_WANTHSREGEX=yes
+ 	;;
+     *-apple-rhapsody*)
+@@ -987,6 +985,13 @@
+ 	    LDFLAGS_SHLIB="-shared"
+ 	    LDFLAGS_SHLIB_EXPORT="-rdynamic"
+ 	    ;;
++	*-next-openstep*)
++	    LD_SHLIB="cc"
++	    CFLAGS_SHLIB='-dynamic -fno-common'
++	    LDFLAGS_SHLIB='-bundle -undefined warning'
++	    LDFLAGS_SHLIB_EXPORT=""
++	    SHLIB_SUFFIX_DEPTH=0
++	    ;;
+ 	*-apple-rhapsody*)
+ 	    LD_SHLIB="cc"
+ 	    CFLAGS_SHLIB=""
+diff -durb apache_1.3.4_orig/src/include/ap_config.h apache_1.3.4/src/include/ap_config.h
+--- apache_1.3.4_orig/src/include/ap_config.h	Fri Jan  1 13:04:38 1999
++++ apache_1.3.4/src/include/ap_config.h	Wed Mar  3 15:07:42 1999
+@@ -386,6 +386,9 @@
+ #define NO_USE_SIGACTION
+ #define HAVE_SYSLOG 1
+ 
++#define USE_FLOCK_SERIALIZED_ACCEPT
++#define SINGLE_LISTEN_UNSERIALIZED_ACCEPT
++
+ #elif defined(RHAPSODY) /* Mac OS X Server */
+ #define HAVE_GMTOFF
+ #define HAVE_MMAP
+diff -durb apache_1.3.4_orig/src/os/unix/os.c apache_1.3.4/src/os/unix/os.c
+--- apache_1.3.4_orig/src/os/unix/os.c	Wed Sep 16 01:49:44 1998
++++ apache_1.3.4/src/os/unix/os.c	Wed Mar  3 14:43:36 1999
+@@ -26,7 +26,7 @@
+  *  dynamic shared object (DSO) mechanism
+  */
+ 
+-#ifdef RHAPSODY
++#if defined(RHAPSODY) || (defined(NEXT) && defined(__DYNAMIC__) )
+ #include <mach-o/dyld.h>
+ #include "httpd.h"
+ #include "http_log.h"
+@@ -77,7 +77,7 @@
+ 
+ void ap_os_dso_init(void)
+ {
+-#if defined(RHAPSODY)
++#if defined(RHAPSODY) || (defined(NEXT) && defined(__DYNAMIC__) )
+     NSLinkEditErrorHandlers handlers;
+ 
+     handlers.undefined = undefined_symbol_handler;
+@@ -95,7 +95,7 @@
+     handle = shl_load(path, BIND_IMMEDIATE|BIND_VERBOSE|BIND_NOSTART, 0L);
+     return (void *)handle;
+ 
+-#elif defined(RHAPSODY)
++#elif defined(RHAPSODY) || (defined(NEXT) && defined(__DYNAMIC__) ) 
+     NSObjectFileImage image;
+     if (NSCreateObjectFileImageFromFile(path, &image) !=
+         NSObjectFileImageSuccess)
+@@ -116,7 +116,7 @@
+ #if defined(HPUX) || defined(HPUX10)
+     shl_unload((shl_t)handle);
+ 
+-#elif defined(RHAPSODY)
++#elif defined(RHAPSODY) || (defined(NEXT) && defined(__DYNAMIC__) ) 
+     NSUnLinkModule(handle,FALSE);
+ 
+ #else
+@@ -138,7 +138,7 @@
+         status = shl_findsym((shl_t *)&handle, symname, TYPE_DATA, &symaddr);
+     return (status == -1 ? NULL : symaddr);
+ 
+-#elif defined(RHAPSODY)
++#elif defined(RHAPSODY) || (defined(NEXT) && defined(__DYNAMIC__) ) 
+     NSSymbol symbol;
+     char *symname2 = (char*)malloc(sizeof(char)*(strlen(symname)+2));
+     sprintf(symname2, "_%s", symname);
+@@ -163,7 +163,7 @@
+ {
+ #if defined(HPUX) || defined(HPUX10)
+     return strerror(errno);
+-#elif defined(RHAPSODY)
++#elif defined(RHAPSODY) || (defined(NEXT) && defined(__DYNAMIC__) ) 
+     return NULL;
+ #else
+     return dlerror();
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rse
+State-Changed-When: Mon May 17 01:00:50 PDT 1999
+State-Changed-Why:
+Thanks for your feedback.
+I've ported the DSO-related parts of your
+patches to 1.3.7 and comitted it. They
+will occur with Apache 1.3.7
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

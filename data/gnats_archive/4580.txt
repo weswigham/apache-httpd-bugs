@@ -1,0 +1,364 @@
+Received: (qmail 4362 invoked by uid 2012); 14 Jun 1999 02:37:05 -0000
+Message-Id: <19990614023705.4361.qmail@hyperreal.org>
+Date: 14 Jun 1999 02:37:05 -0000
+From: Vladislav Malyshkin <malyshki@cs.wmich.edu>
+Reply-To: malyshki@cs.wmich.edu
+To: apbugs@hyperreal.org
+Subject: Can not post may long form parameters with the same name.
+X-Send-Pr-Version: 3.2
+
+>Number:         4580
+>Category:       mod_jserv
+>Synopsis:       Can not post may long form parameters with the same name.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Jun 13 19:40:00 PDT 1999
+>Last-Modified:  Mon Jun 14 12:40:02 PDT 1999
+>Originator:     malyshki@cs.wmich.edu
+>Organization:
+apache
+>Release:        1.3.6 + JServ 1fc1
+>Environment:
+Redhat 5.2, JDK 1.1.7
+>Description:
+Currently I can not post many long form parameters 
+with the same name. The JServ gets outofmemory error.
+I started JVM as
+exec /usr/local/jdk117_v3/bin/java -ms20000K -mx20000K -verbosegc $*
+then looked to error log.
+Also I added printing to the class from SUNs JDK 
+javax.servlet.http.HttpUtils, method parseQueryString
+The output looks like:
+
+<GC: freed 9 objects, 760 bytes in 148 ms, 97% free (14978264/15359992)>
+  <GC: init&scan: 8 ms, scan handles: 39 ms, sweep: 29 ms, compact: 72 ms>
+######### parseQueryString
+<GC: freed 3 objects, 760 bytes in 139 ms, 97% free (14977992/15359992)>
+  <GC: init&scan: 6 ms, scan handles: 36 ms, sweep: 28 ms, compact: 69 ms>
+<GC: managing allocation failure. need 73728 bytes, type=1, action=1>
+<GC: freed 4440 objects, 7445256 bytes in 4057 ms, 48% free (7448592/15359992)>
+  <GC: init&scan: 22 ms, scan handles: 4004 ms, sweep: 31 ms, compact: 0 ms>
+######### parseQueryString DONE
+<GC: freed 31 objects, 1240 bytes in 250 ms, 43% free (6709048/15359992)>
+  <GC: init&scan: 6 ms, scan handles: 35 ms, sweep: 29 ms, compact: 180 ms>
+
+The JVM is taking a lot of memory, but GC does not claim it back.
+After javax.servlet.http.HttpUtils.parseQueryString about 7Mb 
+memory is taken, but the form parameters take just 40Kb.
+
+Something is wrong with the garbage collector and its 
+interaction with JServ and javax.servlet.http.HttpUtils.
+I used a workaround to make JServ be able working 
+with many long parameters as it described below.
+>How-To-Repeat:
+1. Run Java VM as
+exec /usr/local/jdk117_v3/bin/java -ms20000K -mx20000K -verbosegc $*
+2. Post by using POST method of the form many long parameters
+   (about 40Kb).
+   I can supply you with such form if necessary.
+3. Look at error_log.
+The JVM will take a lot of memory or even run outofmemory error.
+The memory will be released only after request is completed.
+During all request processing a lot of memory is taken 
+by something.
+>Fix:
+I have the following workaround to fix this.
+1. Move SUN's file javax.servlet.http.HttpUtils
+to org.apache.jserv.X_HttpUtils
+and replace  
+org.apache.jserv.X_HttpUtils.parseName(String, StringBuffer) by
+org.apache.jserv.JServUtils.URLDecode(String)     
+This fixes this problem!!! I do not know why.
+Also Edit org.apache.jserv.JServConnection to
+use X_HttpUtils instead of HttpUtils.
+After these changes are made 
+free memory is always >95% in the garbage collector 
+output. I have no OutOfMemoery error after this.
+Before these changes were made 
+one can easily get outofmemory error if post to many long parameters
+with the same name.
+>Audit-Trail:
+
+From: Vladislav Malyshkin <malyshki@cs.wmich.edu>
+To: apbugs@hyperreal.org, jserv-bugdb@apache.org
+Cc:  Subject: Re: mod_jserv/4580: Can not post may long form parameters with the same 
+ name.
+Date: Sun, 13 Jun 1999 22:50:51 -0400
+
+ apbugs@hyperreal.org wrote:
+ 
+ > Thank you very much for your problem report.
+ > It has the internal identification `mod_jserv/4580'.
+ > The individual assigned to look at your
+ > report is: jserv.
+ >
+ > >Category:       mod_jserv
+ > >Responsible:    jserv
+ > >Synopsis:       Can not post may long form parameters with the same name.
+ > >Arrival-Date:   Sun Jun 13 19:40:00 PDT 1999
+ 
+ The two patches below fix this problem.
+ They do the following:
+ 1. re-implement SUNs  javax.servlet.http.HttpUtils in org.apache.jserv.JServUtils
+     and change JServConnection to use these methods.
+ 2.  Now we use JServUtils.URLDecode instead of  javax.servlet.http.HttpUtils.parseName
+    This somehow cases garbage collector to collect unused objects.
+ 
+ With these patches applied I am able to post big forms.
+ Without them I get OutOfMemory Exception when I try to post big forms.
+ 
+ I can send an example of such form, if necessary.
+ 
+ Vladislav
+ 
+ --- /tmp/d/ORIGTINAL/src/java/org/apache/jserv/JServUtils.java  Sun Apr 25 20:33:59 1999
+ +++ ApacheJServ-1.0fc1/src/java/org/apache/jserv/JServUtils.java        Sun Jun 13 22:33:36 1999
+ @@ -150,6 +150,100 @@
+          return dec.toString();
+      }
+ 
+ +
+ + /** This method parses a urlencoded string
+ +   *  to a Hastable of parameters.
+ +   *  @param encodedString the url-encoded string
+ +   *  @return the hashtable of values
+ +   */
+ +  static public java.util.Hashtable parseQueryString(String encodedString)
+ +    throws java.lang.IllegalArgumentException {
+ +      if (encodedString == null)
+ +       throw new java.lang.IllegalArgumentException();
+ +
+ +      final java.util.Hashtable t=new java.util.Hashtable();
+ +      final int val_len=encodedString.length(),val_len_1=val_len-1;
+ +      int prevPosWord=0,possepar=-1;
+ +      for(int n=0;n<val_len;n++)
+ +       {
+ +         final char c=encodedString.charAt(n);
+ +         if(c=='&' || n>=val_len_1)
+ +           {
+ +             final String name,value;
+ +             final int last_pos= c=='&' ? n : n+1;
+ +                // there is somethingt strange how garbage collector
+ +                // works with encoding. If we use the same buffer
+ +                // for URLDecode it some times does not release memory
+ +             if(possepar<0)
+ +               {
+ +                 name=URLDecode(encodedString.substring(prevPosWord,last_pos));
+ +                 value="";
+ +               }
+ +             else
+ +               {
+ +                 name=URLDecode(encodedString.substring(prevPosWord,possepar));
+ +                 value= possepar>=val_len_1 ? "" : URLDecode(encodedString.substring(possepar+1,last_pos));
+ +               }
+ +             java.util.Vector v=(java.util.Vector) t.get(name);
+ +             if(null==v)
+ +               { // new parameter
+ +                 v=new java.util.Vector();
+ +                 t.put(name,v);
+ +               }
+ +             v.addElement(value);
+ +             prevPosWord=n+1;
+ +             possepar=-1;
+ +           }
+ +         else if(c=='=')
+ +           {
+ +             possepar=n;
+ +           }
+ +       }
+ +      final int sz=t.size();
+ +      if(sz<=0) return null;
+ +
+ +      final java.util.Enumeration e=t.keys();
+ +      final java.util.Hashtable t1=new java.util.Hashtable(sz,1.0f);
+ +      for(;e.hasMoreElements();)
+ +       {
+ +         final Object nm=e.nextElement();
+ +         final java.util.Vector v=(java.util.Vector)t.get(nm);
+ +         final String [] varr=new String [v.size()];
+ +         final java.util.Enumeration e2=v.elements();
+ +         for(int i=0;i<varr.length;i++)
+ +           {
+ +             varr[i]=(String)e2.nextElement();
+ +           }
+ +         t1.put(nm,varr);
+ +       }
+ +      return t1;
+ + }
+ +
+ +
+ +  /**
+ +   * This method parses FORM data of
+ +   * application/x-www-form-urlencoded mime type.
+ +   * @param len the length of the data
+ +   * @param in the input stream
+ +   * @return a hashtable of the parsed key, values.
+ +   */
+ +  static public java.util.Hashtable parsePostData(int len,javax.servlet.ServletInputStream in)
+ +    throws java.io.IOException,java.lang.IllegalArgumentException {
+ +    if (len <=0) return null;
+ +
+ +    final byte [] arr_bytes = new byte [len];
+ +    int off=0;
+ +    do {
+ +      final int read_len=in.read(arr_bytes,off,len -off);
+ +      if (read_len <= 0)
+ +       throw new java.io.IOException ("short read");
+ +      off += read_len;
+ +    } while ((len - off) > 0);
+ +    return parseQueryString(new String (arr_bytes, 0, 0, len));
+ +  }
+ +
+ +
+ +
+      /**
+       * Parse a cookie header into an array of cookies as per
+       * RFC2109 - HTTP Cookies
+ @@ -257,4 +351,4 @@
+              return encoding;
+          }
+      }
+ -}
+ \ No newline at end of file
+ +}
+ 
+ 
+ And this is one more patch:
+ 
+ 
+ --- /tmp/d/ORIGTINAL/src/java/org/apache/jserv/JServConnection.java     Tue Jun  8 14:52:55 1999
+ +++ ApacheJServ-1.0fc1/src/java/org/apache/jserv/JServConnection.java   Sun Jun 13 22:33:35 1999
+ @@ -755,7 +755,7 @@
+          // Parse any query string parameters from the request
+          Hashtable queryParameters = null;
+          try {
+ -            queryParameters = HttpUtils.parseQueryString(getQueryString());
+ +            queryParameters = JServUtils.parseQueryString(getQueryString());
+          } catch (IllegalArgumentException e) {
+              queryParameters = null;
+          }
+ @@ -767,7 +767,7 @@
+              try {
+                  ServletInputStream is = getInputStream();
+                  postParameters =
+ -                    HttpUtils.parsePostData(getContentLength(), is);
+ +                    JServUtils.parsePostData(getContentLength(), is);
+              } catch (IllegalArgumentException e) {
+                  postParameters = null;
+              } catch (IOException e) {
+ 
+ 
+
+From: Vladislav Malyshkin <malyshki@cs.wmich.edu>
+To: apbugs@hyperreal.org, jserv-bugdb@apache.org
+Cc:  Subject: Re: mod_jserv/4580: Can not post may long form parameters with the same 
+ name.
+Date: Mon, 14 Jun 1999 03:38:21 -0400
+
+ This is a multi-part message in MIME format.
+ --------------6144ED9643A1EE5371F2D551
+ Content-Type: text/plain; charset=us-ascii
+ Content-Transfer-Encoding: 7bit
+ 
+ >
+ 
+ This is an example of the form
+ which causes OutOfMemory error
+ without my workaround patch and does not casue
+ OutOfMemory error with my patch.
+ 
+ (replace Action in this HTML form to an URL of any servlet with
+ JServ 1.0 fc1  and  SUNs JDK 1.1.6 or 1.1.7)
+ 
+ Vladislav
+ 
+ 
+ --------------6144ED9643A1EE5371F2D551
+ Content-Type: application/x-gzip;
+  name="form_example.tar.gz"
+ Content-Transfer-Encoding: base64
+ Content-Disposition: inline;
+  filename="form_example.tar.gz"
+ 
+ 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
+ --------------6144ED9643A1EE5371F2D551--
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

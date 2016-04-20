@@ -1,0 +1,248 @@
+From nobody@hyperreal.org  Thu Jul 31 01:26:22 1997
+Received: (from nobody@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id BAA02327;
+	Thu, 31 Jul 1997 01:26:22 -0700 (PDT)
+Message-Id: <199707310826.BAA02327@hyperreal.org>
+Date: Thu, 31 Jul 1997 01:26:22 -0700 (PDT)
+From: Ronny Cook <ronny@tmx.com.au>
+Reply-To: ronny@tmx.com.au
+To: apbugs@hyperreal.org
+Subject: The "User" directive fails for virtual hosts where the user differs from that for the main server.
+X-Send-Pr-Version: 3.2
+
+>Number:         946
+>Category:       suexec
+>Synopsis:       The "User" directive fails for virtual hosts where the user differs from that for the main server.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jul 31 01:30:01 1997
+>Originator:     ronny@tmx.com.au
+>Organization:
+>Release:        1.2.1
+>Environment:
+BSD/OS online.tmx.com.au 3.0 BSDI BSD/OS 3.0
+shlicc2 (==gcc 2.7.2.1 for shared libraries)
+Patches K200-001, U200-001, U200-002.
+Apache was compiled separately. (The OS itself includes version 1.1.3).
+>Description:
+If an Apache configuration specifies a particular "User" for its base
+configuration and a different User for one of its virtual hosts, the setuid()
+for the virtual host fails, preventing execution of the suexec wrapper
+for that virtual host.
+
+A system call trace seems to show that a subserver attempts to handle the
+request and fails because it is running under a different UID.
+>How-To-Repeat:
+http://ecash.tmx.com.au/shop/shop.htm fails because of this problem, but
+I'm sure that's less than helpful.
+
+Create an Apache configuration with a User directive of, for example, "nobody",
+and with a virtual host with a different user ("cgiwrap"). The suexec wrapper
+will be run as "nobody" rather than as "cgiwrap" because user "nobody" is
+not allowed to setuid().
+>Fix:
+I suspect suexec really needs its own module to avoid this problem.
+Workaround: Run suexec scripts from a separate httpd running from inetd.
+Fix: Have any CGI invocations by virtual hosts be checked by the server
+for User directives before farming requests out to subservers. If there is
+a User directive present (different from the default), fork a new server
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Thu Jul 31 07:23:41 PDT 1997
+State-Changed-Why:
+I'm sorry, I don't understand what you are saying.
+The server is not supposed to do a setuid() to use
+suexec.  suexec is supposed to be setuid root, and it is
+supposed to be run by the user the main server runs as.
+
+Where is the problem?
+
+From: Marc Slemko <marcs@znep.com>
+To: apbugs@apache.org
+Subject: Re: suexec/946: The "User" directive fails for virtual hosts where the user differs from that for the main server. (fwd)
+Date: Thu, 31 Jul 1997 18:04:16 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Fri, 01 Aug 97 09:15:09 +1000
+ From: Ronny Cook <ronny@tmx.com.au>
+ To: marc@hyperreal.org
+ Subject: Re: suexec/946: The "User" directive fails for virtual hosts where the user differs from that for the main server.
+ 
+ > Date: Thu, 31 Jul 1997 07:23:42 -0700 (PDT)
+ > From: Marc Slemko <marc@hyperreal.org>
+ > Subject: Re: suexec/946: The "User" directive fails for virtual hosts where the user differs from that for the main server.
+ > 
+ > Synopsis: The "User" directive fails for virtual hosts where the user differs from that for the main server.
+ > 
+ > State-Changed-From-To: open-analyzed
+ > State-Changed-By: marc
+ > State-Changed-When: Thu Jul 31 07:23:41 PDT 1997
+ > State-Changed-Why:
+ > I'm sorry, I don't understand what you are saying.
+ > The server is not supposed to do a setuid() to use
+ > suexec.  suexec is supposed to be setuid root, and it is
+ > supposed to be run by the user the main server runs as.
+ > 
+ > Where is the problem?
+ > 
+ Well, I could say that "the User directive does not work for virtual hosts",
+ which is what causes suexec to fail, but since "User" is only supposed to
+ work when suexec is enabled, that's not stating the real problem. The
+ suexec binary is fine. It might be that the bug belongs in the "core"
+ category.
+ 
+ The suexec documentation includes a paragraph which says:
+ ] One way to use suEXEC is through the User and Group directives in
+ ] VirtualHost definitions. By setting these directives to values different
+ ] from the main server user ID, all requests for CGI resources will be
+ ] executed as the User and Group defined for that <VirtualHost>. If only
+ ] one or neither of these directives are specified for a <VirtualHost>
+ ] then the main server userid is assumed.
+ 
+ I took this to mean that I could use "User" and "Group" to enable suexec
+ for particular hosts by compiling suexec to use one particular UID (in our
+ case it's "cgiwrap") then using the User directive to force suexec to work
+ only when a particular virtual host is being accessed. This doesn't work,
+ basically because the *User* directive doesn't work (for virtual hosts). As
+ nearly as I can tell, The User directive doesn't work because requests are
+ farmed out to subservers which are already running under a non-root UID.
+ 
+ It could be a documentation bug rather than a program bug, I suppose, but
+ if so that begs the question of what is the server *supposed* to be doing
+ with the User directive?
+ 
+ Here's a snippet from our Apache configuration:
+ 
+ ] User nobody
+ ] Group nogroup
+ ] 
+ ] <VirtualHost 203.31.119.104>
+ ] ServerAdmin     bahram@creative.com.au
+ ] ServerName      ecash.tmx.com.au
+ ] DocumentRoot    /usr/local/etc/httpd/htdocs/ecash
+ ] ScriptAlias     /cgi-bin/       /usr/local/etc/httpd/htdocs/ecash/cgi-bin/
+ ] User #599
+ ] </VirtualHost>
+ 
+ (User #599 is the cgiwrap user; I changed the UID to numeric form after my
+ initial tests showed failure with that configuration).
+ 
+ The intention here is to enable suexec only for the 203.31.119.104 virtual
+ host. A kernel trace on the daemon while serving a request for the above
+ virtual host shows no setuid calls; it could be that the User directive
+ for a virtual host is simply being ignored.
+ 
+ Incidentally, before you mention it, I do know that that particular
+ configuration isn't particularly secure. It's strictly temporary.
+ 
+ 		...Ronny
+ --
+  Ronald Cook, Technical Manager - Message Handling Systems/The Message eXchange
+  Email: ronny@tmx.com.au ----- Phone: +61-2-9550-4448 ---- Fax: +61-2-9519-2551
+ 
+ All opinions are my own and not those of TMX unless explicitly stated otherwise.
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: marc
+State-Changed-When: Sat Aug  2 13:14:11 PDT 1997
+State-Changed-Why:
+That is not the way suexec works, details explained in
+mail.
+
+From: Marc Slemko <marcs@znep.com>
+To: Ronny Cook <ronny@tmx.com.au>
+Subject: Re: suexec/946: The "User" directive fails for virtual hosts where the user differs from that for the main server.
+Date: Sat, 2 Aug 1997 14:14:38 -0600 (MDT)
+
+ 
+ On Fri, 1 Aug 1997, Ronny Cook wrote:
+ 
+ > The suexec documentation includes a paragraph which says:
+ > ] One way to use suEXEC is through the User and Group directives in
+ > ] VirtualHost definitions. By setting these directives to values different
+ > ] from the main server user ID, all requests for CGI resources will be
+ > ] executed as the User and Group defined for that <VirtualHost>. If only
+ > ] one or neither of these directives are specified for a <VirtualHost>
+ > ] then the main server userid is assumed.
+ > 
+ > I took this to mean that I could use "User" and "Group" to enable suexec
+ > for particular hosts by compiling suexec to use one particular UID (in our
+ > case it's "cgiwrap") then using the User directive to force suexec to work
+ > only when a particular virtual host is being accessed. This doesn't work,
+ > basically because the *User* directive doesn't work (for virtual hosts). As
+ > nearly as I can tell, The User directive doesn't work because requests are
+ > farmed out to subservers which are already running under a non-root UID.
+ > 
+ > It could be a documentation bug rather than a program bug, I suppose, but
+ > if so that begs the question of what is the server *supposed* to be doing
+ > with the User directive?
+ 
+ No, that is not the way things should work and I don't really see that
+ being implied by the above docs.
+ 
+ Apache will never setuid() after its initial change to the user specified
+ by the main User directive (if started as root; if not started as root, it
+ will never setuid() at all).  To use suexec, suexec _needs_ to be setuid
+ root so it can setuid() to the appropriate user.  That is the whole point
+ of suexec; Apache does not run as root beacause that is a huge security
+ risk, so it can't setuid().  That means suexec is the one that has to do
+ that.
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Ronny Cook <ronny@tmx.com.au>
+Subject: Re: suexec/946: The "User" directive fails for virtual hosts where the user differs from that for the main server.
+Date: Sun, 3 Aug 1997 21:12:23 -0600 (MDT)
+
+ 
+ On Mon, 4 Aug 1997, Ronny Cook wrote:
+ 
+ > > Date: Sat, 2 Aug 1997 14:14:38 -0600 (MDT)
+ > > From: Marc Slemko <marcs@znep.com>
+ > > cc: apbugs@apache.org
+ > > 
+ > > On Fri, 1 Aug 1997, Ronny Cook wrote:
+ > [...]
+ > >> It could be a documentation bug rather than a program bug, I suppose, but
+ > >> if so that begs the question of what is the server *supposed* to be doing
+ > >> with the User directive?
+ > > 
+ > > No, that is not the way things should work and I don't really see that
+ > > being implied by the above docs.
+ > 
+ > I agree it's thin, but it seemed to be the only reasonable interpretation
+ > assuming that the "User" command was to be meaningful for virtual hosts.
+ > > 
+ > > Apache will never setuid() after its initial change to the user specified
+ > > by the main User directive (if started as root; if not started as root, it
+ > > will never setuid() at all).  To use suexec, suexec _needs_ to be setuid
+ > > root so it can setuid() to the appropriate user.  That is the whole point
+ > > of suexec; Apache does not run as root beacause that is a huge security
+ > > risk, so it can't setuid().  That means suexec is the one that has to do
+ > > that.
+ > > 
+ > I know, but you still haven't answered my final question. If the User
+ > directive doesn't set the user under which the daemon runs (and it doesn't)
+ > what *does* it do? At the moment it seems to be a null operation; it doesn't
+ > do anything, even when suexec is enabled, so far as I can see.
+ > 
+ > If User does nothing, why is it there?
+ 
+ It tells Apache what user to tell suexec to run CGIs as.
+ 
+>Unformatted:
+
+
+>Last-Modified:  Sat Aug  2 13:14:11 PDT 1997
+
+
+

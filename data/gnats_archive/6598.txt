@@ -1,0 +1,85 @@
+Received: (qmail 73813 invoked by uid 501); 27 Sep 2000 19:12:29 -0000
+Message-Id: <20000927191229.73811.qmail@locus.apache.org>
+Date: 27 Sep 2000 19:12:29 -0000
+From: Brian Gontowski <brian.gontowski@onsemi.com>
+Reply-To: brian.gontowski@onsemi.com
+To: submit@bugz.apache.org
+Subject: mod_proxy does not proxy NTLM authentication properly
+X-Send-Pr-Version: 3.110
+
+>Number:         6598
+>Category:       mod_proxy
+>Synopsis:       mod_proxy does not proxy NTLM authentication properly
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Sep 27 12:20:01 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     brian.gontowski@onsemi.com
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Solaris 2.6 with GCC 2.8.1
+>Description:
+When setting up a Solaris server to proxy a NT IIS server with both basic and NTLM authenication, the logins are rejected.
+>How-To-Repeat:
+Setup a ProxyPass and ProxyPassReverse to an NT IIS server that requires authentication.
+>Fix:
+If you strip out the NTLM authentication header, basic authentication will be used.  Alternatively, NTLM can be shut off on the IIS server, although the people accessing the server directly will be at a disadvantage.
+
+This involes adding  a new function to "src/main/alloc.c".  This has the same functionality as ap_table_unset, except it matches the value also.
+
+API_EXPORT(void) ap_table_unset_val(table *t, const char *key,const char *val)
+{
+    register int i, j, k;
+    table_entry *elts = (table_entry *) t->a.elts;
+
+    for (i = 0; i < t->a.nelts;) {
+        if ((!strcasecmp(elts[i].key, key))&&(!strcasecmp(elts[i].val, val))) {
+
+            /* found an element to skip over
+             * there are any number of ways to remove an element from
+             * a contiguous block of memory.  I've chosen one that
+             * doesn't do a memcpy/bcopy/array_delete, *shrug*...
+             */
+            for (j = i, k = i + 1; k < t->a.nelts; ++j, ++k) {
+                elts[j].key = elts[k].key;
+                elts[j].val = elts[k].val;
+            }
+            --t->a.nelts;
+        }
+        else {
+            ++i;
+        }
+    }
+}
+
+Then on line 441 of "src/modules/proxy/proxy_http.c" you simply...
+
+ ap_table_unset_val(resp_hdrs, "WWW-Authenticate","NTLM");
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

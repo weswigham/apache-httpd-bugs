@@ -1,0 +1,86 @@
+Received: (qmail 3348 invoked by uid 501); 26 Aug 2001 19:02:34 -0000
+Message-Id: <20010826190234.3347.qmail@apache.org>
+Date: 26 Aug 2001 19:02:34 -0000
+From: Dustin Mitchell <dustin@cs.uchicago.edu>
+Reply-To: dustin@cs.uchicago.edu
+To: submit@bugz.apache.org
+Subject: A check for absolute paths is made before any quotes are removed, so ap_os_is_path_absolute returns an incorrect response
+X-Send-Pr-Version: 3.110
+
+>Number:         8238
+>Category:       mod_userdir
+>Synopsis:       A check for absolute paths is made before any quotes are removed, so ap_os_is_path_absolute returns an incorrect response
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Aug 26 12:10:00 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     dustin@cs.uchicago.edu
+>Release:        1.3.20
+>Organization:
+apache
+>Environment:
+[dustin@eleanor src]$ uname -a
+SunOS eleanor 5.8 Generic_108528-05 sun4u sparc SUNW,Ultra-4
+[dustin@eleanor src]$ gcc -v
+Reading specs from /usr/local/lib/gcc-lib/sparc-sun-solaris2.8/2.95.3/specs
+gcc version 2.95.3 20010315 (release)
+>Description:
+This code in mod_userdir.c, starting on line 172, checks to see if the path is absolute,
+and complains if it is not (and it is not a URL).  This is fine under most
+conditions, but when there are quotes around the configuration value (because
+it contains spaces), the call to ap_os_is_path_absolute returns FALSE, because
+it looks at the initial '"' character, producing an erroneous configuration
+error.
+
+        if (!ap_os_is_path_absolute(arg) && !strchr(arg, ':'))
+#if defined(WIN32) || defined(NETWARE)
+            return "UserDir must specify an absolute redirect or absolute "
+                   "file path";
+#else
+            if (strchr(arg, '*'))
+                 return "UserDir cannot specify a both a relative path and "
+                        "'*' substitution";
+#endif
+
+The relevant line of configuration looks like this (cleansed slightly for 
+obsecurity)
+
+    UserDir "/path/to/windoze/mount/*/My Documents/webpage"
+
+and the resulting configuration error (produced by the very code pasted above)
+is
+
+UserDir cannot specify a both a relative path and '*' substitution
+>How-To-Repeat:
+Put quotes around an absolute-path argument to UserDir.
+>Fix:
+I got my Apache working by removing the snippet of code reproduced above.  A
+more robust solution would be to do the unquoting earlier in set_user_dir (I
+believe it's currently handled by ap_getword_conf called from translate_userdir;
+perhaps set_user_dir could use a similar function?).
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

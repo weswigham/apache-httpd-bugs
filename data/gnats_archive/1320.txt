@@ -1,0 +1,71 @@
+Received: (qmail 25853 invoked by uid 2012); 25 Oct 1997 01:50:12 -0000
+Message-Id: <19971025015012.25852.qmail@hyperreal.org>
+Date: 25 Oct 1997 01:50:12 -0000
+From: John Fieber <jfieber@indiana.edu>
+Reply-To: jfieber@indiana.edu
+To: apbugs@hyperreal.org
+Subject: %t indicates when the request finished, not started.
+X-Send-Pr-Version: 3.2
+
+>Number:         1320
+>Category:       mod_log-any
+>Synopsis:       %t indicates when the request finished, not started.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Oct 24 19:00:01 PDT 1997
+>Last-Modified:  Fri Oct 24 19:20:38 PDT 1997
+>Originator:     jfieber@indiana.edu
+>Organization:
+>Release:        1.2.4
+>Environment:
+FreeBSD 2.2.2 (but not relevant for this problem)
+>Description:
+The %t directive for the custom log format reports when the request
+is finished rather than when it started.  Whether or not this is
+as bug is certainly debatable, but for a project I'm working on, recording
+the start of the transaction is important.  (Specifically, I have
+apache set up as a proxy to monitor traffic at the client end of a
+surfish session, as part of some web site usability testing.)
+
+I've included a patch to mod_log_custom.c that provides the behavior
+I need.
+>How-To-Repeat:
+
+>Fix:
+*** src/mod_log_config.c.orig   Fri Oct 24 20:25:45 1997
+--- src/mod_log_config.c        Fri Oct 24 20:25:55 1997
+***************
+*** 302,307 ****
+--- 302,311 ----
+      
+      t = get_gmtoff(&timz);
+  
++     /* The above reports the time the request finishes, not when
++        it starts.  Adjust t here for the start time. */
++     t = localtime(&(r->request_time));
++ 
+      if (a && *a) /* Custom format */
+        strftime(tstr, MAX_STRING_LEN, a, t);
+      else { /* CLF format */
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Oct 24 19:20:38 PDT 1997
+State-Changed-Why:
+Unfortunately we have to use the time the request finished
+because that's how common log format is defined ... and many
+log analysers assume that the times in the log only go forward...
+which is what they appear to do if you use the time() at which
+the log entry is written.  (Naturally there are race conditions
+that make this false... so those log analysers are just generally
+broken.)
+
+Dean
+>Unformatted:
+

@@ -1,0 +1,240 @@
+Received: (qmail 87899 invoked by uid 501); 13 Mar 2001 16:41:47 -0000
+Message-Id: <20010313164147.87898.qmail@apache.org>
+Date: 13 Mar 2001 16:41:47 -0000
+From: Larry Martin <LMartin@northpark.edu>
+Reply-To: LMartin@northpark.edu
+To: submit@bugz.apache.org
+Subject: Apache 1.3.19 steals all IP addresses from IIS
+X-Send-Pr-Version: 3.110
+
+>Number:         7401
+>Category:       os-windows
+>Synopsis:       Apache 1.3.19 steals all IP addresses from IIS
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Mar 13 08:50:01 PST 2001
+>Closed-Date:    Wed Mar 21 22:35:59 PST 2001
+>Last-Modified:  Thu Nov 15 21:40:00 PST 2001
+>Originator:     LMartin@northpark.edu
+>Release:        1.3.19
+>Organization:
+>Environment:
+Win2000, Apache 1.3.19 usual binary installer, ActiveState Perl 5.6, + mod_perl, NTMLAuth,
+>Description:
+When I have Apache 1.3.19 installed as a service, then when the machine is rebooted Apache begins answering on every IP assigned to that machine. IIS sites are supposed to answer on several of the IPs, but it reports that the port is busy when I start the IIS web. If I shut down the Apache service, start the IIS webs, and then start Apache, everything is well-behaved. It seems that Apache is greedy about the IPs.
+I have the following (relevant?) lines in my config file:
+Listen 206.68.42.20:80
+BindAddress 206.68.42.20
+ServerName webassign2.northpark.edu
+
+I've also tried removing those lines and using VirtualHosts:
+NameVirtualHost 206.68.42.20
+<VirtualHost 206.68.42.20>
+    ServerAdmin LMartin@northpark.edu
+    DocumentRoot d:/webassign/apache/htdocs
+    ServerName webassign2.northpark.edu
+    ErrorLog logs/error.log
+    CustomLog logs/access.log common
+</VirtualHost>
+
+In this case, the Apache takes over from IIS no matter what order I start them in!
+
+Shouldn't this answer only on 206.68.42.20:80? Why would Apache be able to begin answering on other IPs like 206.68.42.18 which is assigned a different name in the DNS?
+>How-To-Repeat:
+Since this is on our production machines, I hesitate to play much longer; the webmaster is pretty upset when my server takes over the institutional web presence.
+>Fix:
+No.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: slive
+State-Changed-When: Thu Mar 15 23:40:17 PST 2001
+State-Changed-Why:
+
+Can you try it with JUST the Listen directive or
+JUST the BindAddress directive, but NOT both, and see
+if that helps?
+
+
+From: "Martin, Larry" <LMartin@Northpark.edu>
+To: "'slive@apache.org'" <slive@apache.org>
+Cc: "'apbugs@Apache.Org'" <apbugs@Apache.Org>
+Subject: RE: os-windows/7401: Apache 1.3.19 steals all IP addresses from I
+	IS
+Date: Wed, 21 Mar 2001 07:43:49 -0600
+
+ I tried those suggestions across several days 
+ (it's frustrating to wait a day to bounce the server) 
+ and now I sadly report that Apache is still being rude to IIS 
+ (or IIS is being a wimp). 
+ Having only Listen or BindAddress did not help. Any more ideas?
+ 
+ thanks,
+ Larry
+ 
+ -----Original Message-----
+ From: slive@apache.org [mailto:slive@apache.org]
+ Sent: Friday, March 16, 2001 1:40 AM
+ To: apache-bugdb@apache.org; lmartin@northpark.edu; slive@apache.org
+ Subject: Re: os-windows/7401: Apache 1.3.19 steals all IP addresses from IIS
+ 
+ Synopsis: Apache 1.3.19 steals all IP addresses from IIS
+ 
+ Can you try it with JUST the Listen directive or
+ JUST the BindAddress directive, but NOT both, and see
+ if that helps?
+ 
+State-Changed-From-To: feedback-open
+State-Changed-By: slive
+State-Changed-When: Wed Mar 21 11:23:47 PST 2001
+State-Changed-Why:
+
+I'm changing this back to "open" status, because I don't
+know enough about the windows platform to diagnose this
+further.
+
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Wed Mar 21 22:35:59 PST 2001
+State-Changed-Why:
+
+I just reproduced the scenario using
+
+Listen 123.45.67.89:80
+exactly once, no other enabled occurances
+(careful not to keep a Listen 80 around!)
+
+#BindAddress
+is entirely commented out
+
+Port 80
+which does nothing more than tell the server what port
+to advertise as it's identity, not what port to listen to.
+
+And netstat -an reports I'm listening on exactly one port.
+
+Please try _carefully_ and slowly repeating this scenario,
+dropping every occurance of BindAddress, dropping out all
+the vhost stuff, and this will work for you.
+
+Good luck!
+
+
+From: "Brian Biby" <res0mn1n@verizon.net>
+To: <slive@apache.org>, <lmartin@northpark.edu>
+Cc: <apbugs@apache.org>
+Subject: os-windows/7401: Apache 1.3.19 steals all IP addresses from IIS
+Date: Thu, 15 Nov 2001 23:30:47 -0600
+
+ This is a multi-part message in MIME format.
+ 
+ ------=_NextPart_000_0007_01C16E2D.8DB704D0
+ Content-Type: text/plain;
+ 	charset="iso-8859-1"
+ Content-Transfer-Encoding: quoted-printable
+ 
+ I realize this thread is a little old, but my problem is identical to =
+ 7401 and I  have not been able to find the solution to this problem =
+ elsewhere. =20
+ 
+ If the apache service is started BEFORE IIS, then it seems to steal all =
+ the addresses on the specified port.  If the two applicaions use =
+ different port numbers, there is no obvious conflict.  If IIS is started =
+ first, both IIS and apache seem to play well together, until you STOP =
+ the IIS sites on the specified port (as soon as IIS gives them up, =
+ apache steals them!).
+ 
+ I have checked over all the included files as well as the  httpd.conf to =
+ be sure there arent extra uncommented bindaddress or port or listen =
+ directives (there are none).  Using bindaddress & port or listen, I get =
+ apache to respond properly to web requests (only to the bound =
+ address/port or the listen address/port gives a response to the =
+ browser).  Even though there is no web response to the other IP =
+ addresses on the machine, IIS seems to think the address/port is in use =
+ and the IIS will not startup.
+ 
+ Is there a solution to this other than delaying the start of the apache =
+ service until IIS is up and running? =20
+ 
+ Any help will be appreciated...  Thanks.. Brian
+ 
+ 
+ ------=_NextPart_000_0007_01C16E2D.8DB704D0
+ Content-Type: text/html;
+ 	charset="iso-8859-1"
+ Content-Transfer-Encoding: quoted-printable
+ 
+ <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+ <HTML><HEAD>
+ <META http-equiv=3DContent-Type content=3D"text/html; =
+ charset=3Diso-8859-1">
+ <META content=3D"MSHTML 5.50.4807.2300" name=3DGENERATOR>
+ <STYLE></STYLE>
+ </HEAD>
+ <BODY bgColor=3D#ffffff>
+ <DIV><FONT face=3DArial size=3D2>I realize this thread is a little old, =
+ but my=20
+ problem is identical to 7401 and I&nbsp; have not been able to find the =
+ solution=20
+ to this problem elsewhere.&nbsp; </FONT></DIV>
+ <DIV><FONT face=3DArial size=3D2></FONT>&nbsp;</DIV>
+ <DIV><FONT face=3DArial size=3D2>If&nbsp;the apache service is started =
+ BEFORE IIS,=20
+ then it seems to steal all the addresses on the&nbsp;specified =
+ port.&nbsp; If=20
+ the two applicaions use different port numbers, there is no obvious=20
+ conflict.&nbsp; If IIS is started first, both IIS and&nbsp;apache seem =
+ to play=20
+ well together, until you&nbsp;STOP the IIS sites on the specified port =
+ (as soon=20
+ as IIS gives them up, apache steals them!).<BR></FONT></DIV>
+ <DIV><FONT face=3DArial size=3D2>I have checked over all the included =
+ files as well=20
+ as the &nbsp;httpd.conf to be sure there arent extra uncommented =
+ bindaddress or=20
+ port or listen directives (there are none).&nbsp; Using bindaddress =
+ &amp; port=20
+ or listen, I get apache to respond properly to web requests (only =
+ to&nbsp;the=20
+ bound address/port or the listen address/port gives a response to the=20
+ browser).&nbsp; Even though there is no web response to the other IP =
+ addresses=20
+ on the machine, IIS seems to think the address/port is in use and the =
+ IIS will=20
+ not startup.</FONT></DIV>
+ <DIV><FONT face=3DArial size=3D2></FONT>&nbsp;</DIV>
+ <DIV><FONT face=3DArial size=3D2>Is there a solution to this other than =
+ delaying the=20
+ start of the apache service until IIS is up and running?&nbsp; =
+ </FONT></DIV>
+ <DIV><FONT face=3DArial size=3D2></FONT>&nbsp;</DIV>
+ <DIV><FONT face=3DArial size=3D2>Any help will be appreciated...&nbsp; =
+ Thanks..=20
+ Brian</FONT></DIV>
+ <DIV><FONT face=3DArial size=3D2></FONT>&nbsp;</DIV></BODY></HTML>
+ 
+ ------=_NextPart_000_0007_01C16E2D.8DB704D0--
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

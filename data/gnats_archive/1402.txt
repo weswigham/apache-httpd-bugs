@@ -1,0 +1,609 @@
+Received: (qmail 27355 invoked by uid 2012); 12 Nov 1997 12:47:35 -0000
+Message-Id: <19971112124735.27354.qmail@hyperreal.org>
+Date: 12 Nov 1997 12:47:35 -0000
+From: Stig <stig@hackvan.com>
+Reply-To: stig@hackvan.com
+To: apbugs@hyperreal.org
+Subject: Relative Symlinks are handled improperly
+X-Send-Pr-Version: 3.2
+
+>Number:         1402
+>Category:       general
+>Synopsis:       Relative Symlinks are handled improperly
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Nov 12 04:50:00 PST 1997
+>Last-Modified:  Fri Feb 27 02:09:24 PST 1998
+>Originator:     stig@hackvan.com
+>Organization:
+>Release:        1.2.4
+>Environment:
+Linux JATO.hackvan.com 2.0.30 #21 Tue Sep 30 23:59:58 PDT 1997 i586 unknown
+>Description:
+The handling of symlinks is hosed.  There is confusion in the server between 
+URL paths and filesystem path names.  The server moronically handles relative 
+path symlinks manually and applies the path manipulation to the URL and not the
+real pathname of the file!!!  The relative URL path is then accessed in the 
+filesystem (failing of course, because this doesn't account for Alias directives).
+
+URL:   http://localhost/pub/foo
+			^^^^ Alias directive
+path    /u/ftp/pub/foo     this is a link to ../bar
+fuckup  /u/web/hackvan.com/pub/bar
+
+
+PS:  I concur with bug 922.  Symlinks owned by root should always be respected, regardless of SymLinksIfOwnerMatch.
+
+>How-To-Repeat:
+Alias /pub    /u/ftp/pub/
+cd /u/ftp/pub
+touch XX
+ln -s XX YY
+
+now try to access http://host/pub/YY
+
+you get this error:
+[Wed Nov 12 04:20:04 1997] access to /u/web/hackvan.com/pub/YY failed for localhost, reason: File does not exist
+>Fix:
+Symlinks should be expanded in the filesystem pathname and not the URL.
+
+To continue on a related nit...
+It disturbs me that apache does not provide chmod-like behavior wrt symlinks.
+The expanded name should then be checked against Directory directives to determine if
+access is permitted.  
+%0
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Stig <stig@hackvan.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/1402: Relative Symlinks are handled improperly
+Date: Thu, 13 Nov 1997 21:08:19 -0800 (PST)
+
+ [What, is this the week where everyone who submits bugs has to do so in a
+ derogatory manner?  It's sure nice to feel appreciated.  Not.  I apologize
+ in advance if your message was jovial and I didn't catch the joke.]
+ 
+ I cannot reproduct this bug:
+ 
+ cd apachen
+ echo hi >ick.txt
+ cd htdocs
+ ln -s ../ick.txt
+ cd ../conf
+ echo "Alias /whatever /home/dgaudet/ap/apachen/htdocs"
+ 
+ start server
+ telnet to server and GET /whatever/ick.txt HTTP/1.0.  It succeeds.
+ 
+ Apache doesn't ever read a symlink.  It uses lstat() to find them, but
+ that's all it does with them.  So it's really hard for me to imagine
+ this bug existing.  In no event does Apache handle symlinks manually.
+ You're invited to read directory_walk() in http_request.c if you want
+ to see it yourself.
+ 
+ On 12 Nov 1997, Stig wrote:
+ 
+ > PS:  I concur with bug 922.  Symlinks owned by root should always be respected, regardless of SymLinksIfOwnerMatch.
+ 
+ That's a nice opinion.  Are you aware that there are systems, which are
+ POSIX compliant, on which the owner of a symlink is absolutely irrelevant?
+ For example, on said systems, to create a symlink with a particular owner
+ you must setuid(owner) first.  On said systems, if a user directory is
+ restored from backup, or copied from one filesystem to another, then
+ all symlinks in that user's directory will be owned by root.
+ 
+ We have no desire to figure out which systems behave like that.
+ So SymLinksIfOwnerMatch won't be changing to cater to the systems which
+ do allow chown()ing of symlinks.
+ 
+ > Symlinks should be expanded in the filesystem pathname and not the URL.
+ 
+ As I said earlier, they're never expanded.  We'd have to use readlink()
+ to do that, I challenge you to find a call to readlink() in Apache.
+ 
+ > To continue on a related nit...
+ > It disturbs me that apache does not provide chmod-like behavior wrt symlinks.
+ > The expanded name should then be checked against Directory directives to determine if
+ > access is permitted.  
+ 
+ If you want this to change then submit a feature request.  As documented
+ Apache does not do this.  Symlinks are never expanded.  If you want a
+ personal opinion, I'll give you mine:  relying on symlink protection in
+ Apache is a bad idea.  The only real solution is a chroot() cage.
+ 
+ Dean
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Thu Nov 13 21:10:49 PST 1997
+State-Changed-Why:
+Awaiting response to my message.
+
+Dean
+
+From: stig@hackvan.com
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org, Stig@hackvan.com
+Subject: Re: general/1402: Relative Symlinks are handled improperly
+Date: 14 Nov 1997 07:58:23 -0000
+
+ Dean Gaudet wrote:
+ > 
+ > [What, is this the week where everyone who submits bugs has to do so in a
+ > derogatory manner?  It's sure nice to feel appreciated.  Not.  I apologize
+ > in advance if your message was jovial and I didn't catch the joke.]
+ 
+ I was really tired and really cranky.  My hand was hurting.  You're right.
+ I hate bug reports like that too.  Especially they're misinterpretations of
+ the problem.
+ 
+ As some penance, I got your address from internic and just wrote you a
+ personal check.  Expect it next week.  Sorry again...what else can I say?
+ And thank you.
+ 
+ 
+ > I cannot reproduct this bug:
+ > 
+ ...
+ > > Symlinks should be expanded in the filesystem pathname and not the URL.
+ > 
+ > As I said earlier, they're never expanded.  We'd have to use readlink()
+ > to do that, I challenge you to find a call to readlink() in Apache.
+ 
+ I screwed up and misinterpreted my logs.  But you already knew that
+ something like that must've happened.
+ 
+ For what its worth, my Alias directive was in a VirtualHost directive and
+ some of my testing was done by telnetting to localhost:80 and getting a raw
+ path.  Thus missing the VirtualHost directive and the Alias.  It looked like
+ the symlink was screwy.  I was really tired...and even more tired of trying
+ to figure out why FollowSymLinks wasn't working.
+ 
+ I have some related weirdness which I'll include in another reply.
+ 
+ 
+ > > PS:  I concur with bug 922.  Symlinks owned by root should always be respected, regardless of SymLinksIfOwnerMatch.
+ > 
+ > That's a nice opinion.  Are you aware that there are systems, which are
+ > POSIX compliant, on which the owner of a symlink is absolutely irrelevant?
+ > For example, on said systems, to create a symlink with a particular owner
+ > you must setuid(owner) first.  On said systems, if a user directory is
+ > restored from backup, or copied from one filesystem to another, then
+ > all symlinks in that user's directory will be owned by root.
+ > 
+ > We have no desire to figure out which systems behave like that.
+ > So SymLinksIfOwnerMatch won't be changing to cater to the systems which
+ > do allow chown()ing of symlinks.
+ 
+ On these systems with the screwy symlink ownership, SymLinksIfOwnerMatch is
+ broken already and therefore worthless, right?
+ 
+ On systems where it works, it seems that root is trustworthy.
+ 
+ Food for thought.  Your call.
+ 
+ 
+ 
+ > > To continue on a related nit...
+ > > It disturbs me that apache does not provide chmod-like behavior wrt symlinks.
+ > > The expanded name should then be checked against Directory directives to determine if
+ > > access is permitted.  
+ > 
+ > If you want this to change then submit a feature request.  As documented
+ > Apache does not do this.  Symlinks are never expanded.  If you want a
+ > personal opinion, I'll give you mine:  relying on symlink protection in
+ > Apache is a bad idea.  The only real solution is a chroot() cage.
+ 
+ You're right.  That's better.
+ 
+     Stig
+
+From: stig@hackvan.com
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org, Stig@hackvan.com
+Subject: Re: general/1402: Relative Symlinks are handled improperly
+Date: 14 Nov 1997 08:01:49 -0000
+
+ > I just wrote:
+ >
+ > I was really tired...and even more tired of trying to figure out why
+ > FollowSymLinks wasn't working.
+ > 
+ > I have some related weirdness which I'll include in another reply.
+ 
+ WEIRD ITEM #1:
+ 
+ Indexing a directory that contains symlinks causes spurious logging of file
+ access failures.  There is no attempt to access the files themselves,
+ therefore the logging seems erroneous.
+ 
+ 
+   -- stig@JATO.hackvan.com -- /var/log/httpd >> htcat http://hackvan.com/pub/stig/funny/rants/
+   GET http://hackvan.com/pub/stig/funny/rants/ HTTP/1.0
+   
+   HTTP/1.1 200 OK
+   Date: Fri, 14 Nov 1997 07:31:58 GMT
+   Server: Apache/1.2.4
+   Connection: close
+   Content-Type: text/html
+   
+   <HTML><HEAD>
+   <TITLE>Index of /pub/stig/funny/rants</TITLE>
+   </HEAD><BODY>
+   <H1>Index of /pub/stig/funny/rants</H1>
+   <PRE><IMG SRC="/icons/blank.gif" ALT="     "> Name                   Last modified     Size  Description
+   <HR>
+   <IMG SRC="/icons/back.gif" ALT="[DIR]"> <A HREF="/pub/stig/funny/">Parent Directory</A>       03-Nov-97 16:35      -  
+   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="clumsy-morning-coffee">clumsy-morning-coffee</A>  26-Jan-97 22:14     5k  
+   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="hermann-hates-chains">hermann-hates-chains</A>   27-Oct-96 12:16    10k  
+   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="hermann-hates-communication">hermann-hates-communi..</A>11-Oct-96 08:52     8k  
+   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="hermann-hates-dogs">hermann-hates-dogs</A>     09-Aug-96 08:05    11k  
+   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="hermann-hates-getting-old">hermann-hates-getting..</A>30-Sep-96 12:10     9k  
+   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="hermann-hates-mainstream-music">hermann-hates-mainstr..</A>24-Nov-96 10:02     6k  
+   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="hermann-hates-neighbors">hermann-hates-neighbors</A>10-Feb-97 15:36     8k  
+   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="hermann-hates-the-drug-war">hermann-hates-the-dru..</A>19-Mar-97 15:40    14k  
+   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="hermann-hates-the-movies">hermann-hates-the-mov..</A>13-Sep-96 09:58    11k  
+   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="hermann-loves-a-few-things-too">hermann-loves-a-few-t..</A>11-Feb-97 22:36    12k  
+   </PRE></BODY></HTML>
+   -- stig@JATO.hackvan.com -- /var/log/httpd >> jato.hackvan.com - - [13/Nov/1997:23:31:58 -0800] "GET http://hackvan.com/pub/stig/funny/rants/ HTTP/1.0" 200 1667
+   
+   ==> /var/log/httpd/errors.hackvan <==
+   [Thu Nov 13 23:31:58 1997] access to /u/ftp/pub//stig/funny/rants/hermann-hates-chains failed for jato.hackvan.com, reason: Symbolic link not allowed
+   [Thu Nov 13 23:31:58 1997] access to /u/ftp/pub//stig/funny/rants/hermann-hates-communication failed for jato.hackvan.com, reason: Symbolic link not allowed
+   [Thu Nov 13 23:31:58 1997] access to /u/ftp/pub//stig/funny/rants/hermann-hates-dogs failed for jato.hackvan.com, reason: Symbolic link not allowed
+   [Thu Nov 13 23:31:58 1997] access to /u/ftp/pub//stig/funny/rants/hermann-hates-getting-old failed for jato.hackvan.com, reason: Symbolic link not allowed
+   [Thu Nov 13 23:31:58 1997] access to /u/ftp/pub//stig/funny/rants/hermann-hates-mainstream-music failed for jato.hackvan.com, reason: Symbolic link not allowed
+   [Thu Nov 13 23:31:58 1997] access to /u/ftp/pub//stig/funny/rants/hermann-hates-neighbors failed for jato.hackvan.com, reason: Symbolic link not allowed
+   [Thu Nov 13 23:31:58 1997] access to /u/ftp/pub//stig/funny/rants/hermann-hates-the-drug-war failed for jato.hackvan.com, reason: Symbolic link not allowed
+   [Thu Nov 13 23:31:58 1997] access to /u/ftp/pub//stig/funny/rants/hermann-hates-the-movies failed for jato.hackvan.com, reason: Symbolic link not allowed
+   [Thu Nov 13 23:31:58 1997] access to /u/ftp/pub//stig/funny/rants/hermann-loves-a-few-things-too failed for jato.hackvan.com, reason: Symbolic link not allowed
+   htcat http://hackvan.com/pub/stig/funny/rants/hermann-hates-neighbors
+
+From: stig@hackvan.com
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org, Stig@hackvan.com
+Subject: Re: general/1402: Relative Symlinks are handled improperly
+Date: 14 Nov 1997 08:12:43 -0000
+
+ > I just wrote:
+ >
+ > I was really tired...and even more tired of trying to figure out why
+ > FollowSymLinks wasn't working.
+ > 
+ > I have some related weirdness which I'll include in another reply.
+ 
+ WEIRD ITEM #2:
+ 
+ Options parsing seems to not conform to my reading of the manual apache
+ book.
+ 
+ The directive "Options FollowSymLinks Indexes" at the top-level of
+ access.conf, which is not overridden by another Options directive in a
+ VirtualHost or Directory context, doesn't make symlinks work.
+ 
+ An .htaccess file with "Options FollowSymLinks" does make them work.
+ Options is supposed to be valid in the config context.
+ 
+ 
+   htcat http://hackvan.com/pub/stig/funny/rants/hermann-hates-neighbors
+   GET http://hackvan.com/pub/stig/funny/rants/hermann-hates-neighbors HTTP/1.0
+   
+   HTTP/1.1 403 Forbidden
+   Date: Fri, 14 Nov 1997 08:03:44 GMT
+   Server: Apache/1.2.4
+   Connection: close
+   Content-Type: text/html
+   
+   <HTML><HEAD>
+   <TITLE>403 Forbidden</TITLE>
+   </HEAD><BODY>
+   <H1>Forbidden</H1>
+   You don't have permission to access /pub/stig/funny/rants/hermann-hates-neighbors
+   on this server.<P>
+   </BODY></HTML>
+   -- stig@JATO.hackvan.com -- /var/log/httpd >> 
+   ==> /var/log/httpd/access.hackvan <==
+   jato.hackvan.com - - [14/Nov/1997:00:03:44 -0800] "GET http://hackvan.com/pub/stig/funny/rants/hermann-hates-neighbors HTTP/1.0" 403 191
+   
+   ==> /var/log/httpd/errors.hackvan <==
+   [Fri Nov 14 00:03:44 1997] access to /u/web/hackvan.com/pub/stig/funny/rants/hermann-hates-neighbors failed for jato.hackvan.com, reason: Symbolic link not allowed
+   pwd
+   /var/log/httpd
+   -- stig@JATO.hackvan.com -- /var/log/httpd >> cd
+   -- stig@JATO.hackvan.com -- /u/stig >> cd fun/rants
+   /u/stig/links/fun/rants
+   -- /u/ftp/pub/stig/funny/rants --
+   a-- stig@JATO.hackvan.com -- >> ls
+   clumsy-morning-coffee            hermann-hates-dogs@              hermann-hates-neighbors@         hermann-loves-a-few-things-too@
+   hermann-hates-chains@            hermann-hates-getting-old@       hermann-hates-the-drug-war@
+   hermann-hates-communication@     hermann-hates-mainstream-music@  hermann-hates-the-movies@
+   -- /u/ftp/pub/stig/funny/rants --
+   a-- stig@JATO.hackvan.com -- >> echo Options +FollowSymLinks >.htaccess
+   -- /u/ftp/pub/stig/funny/rants --
+   a-- stig@JATO.hackvan.com -- >> hthead http://hackvan.com/pub/stig/funny/rants/hermann-hates-neighbors
+   GET http://hackvan.com/pub/stig/funny/rants/hermann-hates-neighbors HTTP/1.0
+   
+   HTTP/1.1 200 OK
+   Date: Fri, 14 Nov 1997 08:04:38 GMT
+   Server: Apache/1.2.4
+   Last-Modified: Mon, 10 Feb 1997 23:36:39 GMT
+   ETag: "9fae-1e75-32ffb107"
+   Content-Length: 7797
+   Accept-Ranges: bytes
+   Connection: close
+   Content-Type: text/plain
+   
+   From aol.com!HermHates Wed Aug 21 20:09:23 1996
+   Status: RO
+   X-VM-v5-Data: ([nil nil nil nil nil nil nil nil nil]
+           ["6481" "Wed" "21" "August" "1996" "23:02:23" "-0400" "HermHates@aol.com" "HermHates@aol.com" "<960821230222_507131918@emout15.mail.aol.com>" "127" "Hermann Hates #13" "^From:" nil nil "8" "1996082203:02:23" "Hermann Hates #13" nil nil]
+           ("=stig="))
+   -- /u/ftp/pub/stig/funny/rants --
+   -- stig@JATO.hackvan.com -- >> 
+   ==> /var/log/httpd/access.hackvan <==
+   jato.hackvan.com - - [14/Nov/1997:00:04:38 -0800] "GET http://hackvan.com/pub/stig/funny/rants/hermann-hates-neighbors HTTP/1.0" 200 7797
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: stig@hackvan.com
+Cc: apbugs@hyperreal.org
+Subject: Re: general/1402: Relative Symlinks are handled improperly
+Date: Fri, 14 Nov 1997 00:29:59 -0800 (PST)
+
+ On 14 Nov 1997 stig@hackvan.com wrote:
+ 
+ > Dean Gaudet wrote:
+ > > 
+ > > [What, is this the week where everyone who submits bugs has to do so in a
+ > > derogatory manner?  It's sure nice to feel appreciated.  Not.  I apologize
+ > > in advance if your message was jovial and I didn't catch the joke.]
+ > 
+ > I was really tired and really cranky.  My hand was hurting.  You're right.
+ > I hate bug reports like that too.  Especially they're misinterpretations of
+ > the problem.
+ 
+ No problem, I apologize too for the curtness of my reply.
+ 
+ > As some penance, I got your address from internic and just wrote you a
+ > personal check.  Expect it next week.  Sorry again...what else can I say?
+ > And thank you.
+ 
+ That's not necessary I assure you!
+ 
+ > > > PS:  I concur with bug 922.  Symlinks owned by root should always be respected, regardless of SymLinksIfOwnerMatch.
+ > > 
+ > > That's a nice opinion.  Are you aware that there are systems, which are
+ > > POSIX compliant, on which the owner of a symlink is absolutely irrelevant?
+ > > For example, on said systems, to create a symlink with a particular owner
+ > > you must setuid(owner) first.  On said systems, if a user directory is
+ > > restored from backup, or copied from one filesystem to another, then
+ > > all symlinks in that user's directory will be owned by root.
+ > > 
+ > > We have no desire to figure out which systems behave like that.
+ > > So SymLinksIfOwnerMatch won't be changing to cater to the systems which
+ > > do allow chown()ing of symlinks.
+ > 
+ > On these systems with the screwy symlink ownership, SymLinksIfOwnerMatch is
+ > broken already and therefore worthless, right?
+ 
+ SymLinksIfOwnerMatch works until you copy a users directory as described
+ ... but a malicious user could have done "ln -s / hahaha" and it would
+ become a hole after a restore or home directory movement.  So if we treat
+ root specially we open this subtle attack.
+ 
+ > > If you want this to change then submit a feature request.  As documented
+ > > Apache does not do this.  Symlinks are never expanded.  If you want a
+ > > personal opinion, I'll give you mine:  relying on symlink protection in
+ > > Apache is a bad idea.  The only real solution is a chroot() cage.
+ > 
+ > You're right.  That's better.
+ 
+ I'm working on another security model for Apache ... I'm trying to figure
+ out another solution to this problem.  But I'm too busy lately to get
+ anywhere on the work.  chroot() should be easier in the model;  including
+ chroot() compartments for CGI users.  I'll announce it when I've got
+ something to show. 
+ 
+ Dean
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: stig@hackvan.com
+Cc: apbugs@hyperreal.org
+Subject: Re: general/1402: Relative Symlinks are handled improperly
+Date: Fri, 14 Nov 1997 00:57:17 -0800 (PST)
+
+ On 14 Nov 1997 stig@hackvan.com wrote:
+ 
+ > WEIRD ITEM #1:
+ > 
+ > Indexing a directory that contains symlinks causes spurious logging of file
+ > access failures.  There is no attempt to access the files themselves,
+ > therefore the logging seems erroneous.
+ 
+ What's up here is a deficiency in the API as currently implemented, well
+ ok that depends on how you interpret the symlink rules in the config
+ language. 
+ 
+ One interpretation is that the symlink rules say that all symlinks the
+ server might use in the process of handling a request have to be allowed
+ by the symlink settings.  Another interpretation is that they only apply
+ to the first document accessed. 
+ 
+ Related to this are the tests which check if a file is a "special" file,
+ i.e. a fifo/socket/device.  To be useful these have to be applied on all
+ potentially questionable file accesses.
+ 
+ The indexing function runs a sub_req_lookup_file() on all the names it
+ finds, and that sub_req_lookup_file() goes through all the symlink and
+ special file checks.  The subrequest is required at a minimum to decide
+ what the content type is so that the icon can be constructed.  But the
+ subrequest generates warnings and errors just like it would if it were a
+ full request.
+ 
+ Subrequests are used like this frequently in the server.  But they're not
+ the only reason subrequests are used.  In other cases, such as
+ content-negotiation and mod_include, the subrequest is actually run to
+ generate output.  In this case the subrequest errors are really useful
+ (and the symlink/special checks are absolutely necessary).
+ 
+ But in the case of the subrequests that never get run, the errors/warnings
+ are almost always not useful.  Fixing this is not easy in our current
+ model... I'm not even sure these symlink tests are absolutely necessary in
+ the case of some subrequests, but it's not something I really like
+ thinking about.  I'd rather find some other way to protect things. 
+ 
+ An idea just occured to me: a really cheap way to protect a root
+ filesystem from being served is to check st_dev in the stat structure and
+ only allow serving from particular devices.  Hmmm. 
+ 
+ At any rate ... does this explain this weirdness any? 
+ 
+ Dean
+ 
+ > 
+ > 
+ >   -- stig@JATO.hackvan.com -- /var/log/httpd >> htcat http://hackvan.com/pub/stig/funny/rants/
+ >   GET http://hackvan.com/pub/stig/funny/rants/ HTTP/1.0
+ >   
+ >   HTTP/1.1 200 OK
+ >   Date: Fri, 14 Nov 1997 07:31:58 GMT
+ >   Server: Apache/1.2.4
+ >   Connection: close
+ >   Content-Type: text/html
+ >   
+ >   <HTML><HEAD>
+ >   <TITLE>Index of /pub/stig/funny/rants</TITLE>
+ >   </HEAD><BODY>
+ >   <H1>Index of /pub/stig/funny/rants</H1>
+ >   <PRE><IMG SRC="/icons/blank.gif" ALT="     "> Name                   Last modified     Size  Description
+ >   <HR>
+ >   <IMG SRC="/icons/back.gif" ALT="[DIR]"> <A HREF="/pub/stig/funny/">Parent Directory</A>       03-Nov-97 16:35      -  
+ >   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="clumsy-morning-coffee">clumsy-morning-coffee</A>  26-Jan-97 22:14     5k  
+ >   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="hermann-hates-chains">hermann-hates-chains</A>   27-Oct-96 12:16    10k  
+ >   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="hermann-hates-communication">hermann-hates-communi..</A>11-Oct-96 08:52     8k  
+ >   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="hermann-hates-dogs">hermann-hates-dogs</A>     09-Aug-96 08:05    11k  
+ >   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="hermann-hates-getting-old">hermann-hates-getting..</A>30-Sep-96 12:10     9k  
+ >   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="hermann-hates-mainstream-music">hermann-hates-mainstr..</A>24-Nov-96 10:02     6k  
+ >   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="hermann-hates-neighbors">hermann-hates-neighbors</A>10-Feb-97 15:36     8k  
+ >   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="hermann-hates-the-drug-war">hermann-hates-the-dru..</A>19-Mar-97 15:40    14k  
+ >   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="hermann-hates-the-movies">hermann-hates-the-mov..</A>13-Sep-96 09:58    11k  
+ >   <IMG SRC="/icons/unknown.gif" ALT="[   ]"> <A HREF="hermann-loves-a-few-things-too">hermann-loves-a-few-t..</A>11-Feb-97 22:36    12k  
+ >   </PRE></BODY></HTML>
+ >   -- stig@JATO.hackvan.com -- /var/log/httpd >> jato.hackvan.com - - [13/Nov/1997:23:31:58 -0800] "GET http://hackvan.com/pub/stig/funny/rants/ HTTP/1.0" 200 1667
+ >   
+ >   ==> /var/log/httpd/errors.hackvan <==
+ >   [Thu Nov 13 23:31:58 1997] access to /u/ftp/pub//stig/funny/rants/hermann-hates-chains failed for jato.hackvan.com, reason: Symbolic link not allowed
+ >   [Thu Nov 13 23:31:58 1997] access to /u/ftp/pub//stig/funny/rants/hermann-hates-communication failed for jato.hackvan.com, reason: Symbolic link not allowed
+ >   [Thu Nov 13 23:31:58 1997] access to /u/ftp/pub//stig/funny/rants/hermann-hates-dogs failed for jato.hackvan.com, reason: Symbolic link not allowed
+ >   [Thu Nov 13 23:31:58 1997] access to /u/ftp/pub//stig/funny/rants/hermann-hates-getting-old failed for jato.hackvan.com, reason: Symbolic link not allowed
+ >   [Thu Nov 13 23:31:58 1997] access to /u/ftp/pub//stig/funny/rants/hermann-hates-mainstream-music failed for jato.hackvan.com, reason: Symbolic link not allowed
+ >   [Thu Nov 13 23:31:58 1997] access to /u/ftp/pub//stig/funny/rants/hermann-hates-neighbors failed for jato.hackvan.com, reason: Symbolic link not allowed
+ >   [Thu Nov 13 23:31:58 1997] access to /u/ftp/pub//stig/funny/rants/hermann-hates-the-drug-war failed for jato.hackvan.com, reason: Symbolic link not allowed
+ >   [Thu Nov 13 23:31:58 1997] access to /u/ftp/pub//stig/funny/rants/hermann-hates-the-movies failed for jato.hackvan.com, reason: Symbolic link not allowed
+ >   [Thu Nov 13 23:31:58 1997] access to /u/ftp/pub//stig/funny/rants/hermann-loves-a-few-things-too failed for jato.hackvan.com, reason: Symbolic link not allowed
+ >   htcat http://hackvan.com/pub/stig/funny/rants/hermann-hates-neighbors
+ > 
+ 
+
+From: stig@hackvan.com
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/1402: Relative Symlinks are handled improperly
+Date: 14 Nov 1997 08:59:38 -0000
+
+ Dean Gaudet wrote:
+ > 
+ > On 14 Nov 1997 stig@hackvan.com wrote:
+ > 
+ > > WEIRD ITEM #1:
+ > > 
+ > > Indexing a directory that contains symlinks causes spurious logging of file
+ > > access failures.  There is no attempt to access the files themselves,
+ > > therefore the logging seems erroneous.
+ ...
+ > An idea just occured to me: a really cheap way to protect a root
+ > filesystem from being served is to check st_dev in the stat structure and
+ > only allow serving from particular devices.  Hmmm. 
+ 
+ Bing!  A fine idea!  Great.  Excellent.  This would help a great deal!
+ 
+ > At any rate ... does this explain this weirdness any? 
+ 
+ Yes and I still think it's an annoyance to keep as an active bug in the
+ database.
+ 
+     Stig 
+
+From: stig@hackvan.com
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/1402: Relative Symlinks are handled improperly
+Date: 14 Nov 1997 08:49:42 -0000
+
+ Dean Gaudet wrote:
+ > 
+ > > I was really tired and really cranky.  My hand was hurting.  You're right.
+ > > I hate bug reports like that too.  Especially they're misinterpretations of
+ > > the problem.
+ > 
+ > No problem, I apologize too for the curtness of my reply.
+ > 
+ > > As some penance, I got your address from internic and just wrote you a
+ > > personal check.  Expect it next week.  Sorry again...what else can I say?
+ > > And thank you.
+ > 
+ > That's not necessary I assure you!
+ 
+ Doesn't matter.  It's consistent with my view of how the world ought to
+ work and how people ought to behave...not necessarily by making everything a
+ financial transaction, but by saying "thank you" in some tangible way.  
+ 
+ Spread the meme.
+ 
+ 
+ > SymLinksIfOwnerMatch works until you copy a users directory as described
+ > ... but a malicious user could have done "ln -s / hahaha" and it would
+ > become a hole after a restore or home directory movement.  So if we treat
+ > root specially we open this subtle attack.
+ 
+ ok, thanks for explaining it.  Did I mention that I hate it when bug
+ compatibility interferes with otherwise sensible design decisions?
+ I really do.
+ 
+ 
+ 
+ > > > If you want this to change then submit a feature request.  As documented
+ > > > Apache does not do this.  Symlinks are never expanded.  If you want a
+ > > > personal opinion, I'll give you mine:  relying on symlink protection in
+ > > > Apache is a bad idea.  The only real solution is a chroot() cage.
+ > > 
+ > > You're right.  That's better.
+ > 
+ > I'm working on another security model for Apache ... I'm trying to figure
+ > out another solution to this problem.  But I'm too busy lately to get
+ > anywhere on the work.  chroot() should be easier in the model;  including
+ > chroot() compartments for CGI users.  I'll announce it when I've got
+ > something to show. 
+ 
+ Oooooooooooooooooh!  Baited breath, etc...
+ 
+     Stig 
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Feb 27 02:09:22 PST 1998
+State-Changed-Why:
+I think we resolved this after long discussion and such... documentation
+insufficiency... or you were happy with mod_allowdev or something like
+that.  We just wrote too much and my eyes are sore and I don't wanna
+read it all again.
+
+Laters
+Dean
+>Unformatted:
+

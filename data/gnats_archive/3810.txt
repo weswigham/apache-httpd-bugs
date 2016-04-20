@@ -1,0 +1,152 @@
+Received: (qmail 20337 invoked by uid 2012); 1 Feb 1999 23:18:43 -0000
+Message-Id: <19990201231843.20336.qmail@hyperreal.org>
+Date: 1 Feb 1999 23:18:43 -0000
+From: Philip Warner <pjw@rhyme.com.au>
+Reply-To: pjw@rhyme.com.au
+To: apbugs@hyperreal.org
+Subject: Minor addition to dbmmanage
+X-Send-Pr-Version: 3.2
+
+>Number:         3810
+>Category:       general
+>Synopsis:       Minor addition to dbmmanage
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Feb  1 15:20:00 PST 1999
+>Closed-Date:    Wed Sep 20 13:04:15 PDT 2000
+>Last-Modified:  Wed Sep 20 13:04:15 PDT 2000
+>Originator:     pjw@rhyme.com.au
+>Release:        1.3.4
+>Organization:
+>Environment:
+Linux 2.0.34, Gnu etc...
+>Description:
+The following patch makes dbmmanage maintain a list of groups for each user in the DB file; the format for entries is:
+
+encrypted-password:comma-separated-list-of-groups
+
+This allows for users in multiple groups, and a single DB file when using mod_auth_db.
+>How-To-Repeat:
+
+>Fix:
+The patch file follows:
+-----------------------------------------
+*** /usr/bin/dbmmanage  Mon Feb  1 17:15:37 1999
+--- /usr/bin/dbmunge    Tue Feb  2 08:58:57 1999
+***************
+*** 97,103 ****
+
+  sub usage {
+      my $cmds = join "|", sort keys %dbmc::;
+!     die "usage: $0 filename [$cmds] [username]\n";
+  }
+
+  my $x;
+--- 97,103 ----
+
+  sub usage {
+      my $cmds = join "|", sort keys %dbmc::;
+!     die "usage: $0 filename [$cmds] [username] [value]\n";
+  }
+
+  my $x;
+***************
+*** 151,163 ****
+
+  sub dbmc::add {
+      die "Can't use empty password!\n" unless $crypted_pwd;
+!     unless($is_update) {
+        die "Sorry, user `$key' already exists!\n" if $DB{$key};
+!     }
+!     $DB{$key} = $crypted_pwd;
+      my $action = $is_update ? "updated" : "added";
+!     print "User $key $action with password encrypted to $DB{$key}\n";
+  }
+
+  sub dbmc::adduser {
+      my $value = getpass "New password:";
+--- 151,196 ----
+
+  sub dbmc::add {
+      die "Can't use empty password!\n" unless $crypted_pwd;
+!
+!     if ($is_update) {
+!         $DB{$key} =~ s/^[^:]*/$crypted_pwd/;
+!     } else {
+        die "Sorry, user `$key' already exists!\n" if $DB{$key};
+!         $DB{$key} = $crypted_pwd;
+!     };
+!
+      my $action = $is_update ? "updated" : "added";
+!     print "User $key $action. New record is: $DB{$key}\n";
+! }
+!
+! sub dbmc::addtogroup {
+!     die "Sorry, user `$key' doesn't exist!\n" unless $DB{$key};
+!     $DB{$key} =~ /([^:]*).?([^:]*)(.*)/;
+!     my ($hpwd,$grps,$other) = ($1,$2,$3);
+!     $grps =~ s/ //g;
+!     die "Sorry, user `$key' is already in group $crypted_pwd!\n" if ($grps =~ m/(^|,)$crypted_pwd(,|$)/
+);
+!     if ($grps eq "") {
+!       $grps = $crypted_pwd;
+!     } else {
+!       $grps = "$grps,$crypted_pwd";
+!     };
+!     $DB{$key} = "$hpwd:$grps$other";
+!     print "User $key added to group $crypted_pwd, new record is: $hpwd:$grps$other\n";
+  }
++
++ sub dbmc::delfromgroup {
++     die "Sorry, user `$key' doesn't exist!\n" unless $DB{$key};
++     $DB{$key} =~ /([^:]*).?([^:]*)(.*)/;
++     my ($hpwd,$grps,$other) = ($1,$2,$3);
++     $grps =~ s/ //g;
++     die "Sorry, user `$key' is not in group $crypted_pwd!\n" if (!($grps =~ m/(^|,)$crypted_pwd(,|$)/))
+;
++     $grps =~ s/^$crypted_pwd(,|$)//g;
++     $grps =~ s/,$crypted_pwd(,|$)/$1/g;
++
++     $DB{$key} = "$hpwd:$grps$other";
++     print "User $key delete from group $crypted_pwd, new record is: $hpwd:$grps$other\n";
++ }
++
+
+  sub dbmc::adduser {
+      my $value = getpass "New password:";
+>Release-Note:
+>Audit-Trail:
+Comment-Added-By: wrowe
+Comment-Added-When: Wed Sep 20 13:03:52 PDT 2000
+Comment-Added:
+
+The feature is implemented (again) in 1.3.13 and 2.0.
+Thank you for your report.
+
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Wed Sep 20 13:04:15 PDT 2000
+State-Changed-Why:
+
+The feature is implemented (again) in 1.3.13 and 2.0.
+Thank you for your report.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

@@ -1,0 +1,279 @@
+Received: (qmail 9886 invoked by uid 2012); 22 Apr 1999 23:39:09 -0000
+Message-Id: <19990422233909.9885.qmail@hyperreal.org>
+Date: 22 Apr 1999 23:39:09 -0000
+From: Sean Kamath <kamath@pogo.wv.tek.com>
+Reply-To: kamath@pogo.wv.tek.com
+To: apbugs@hyperreal.org
+Subject: No way to override proxyblock directive.  Adds new ProxyOverrideBlock dir.
+X-Send-Pr-Version: 3.2
+
+>Number:         4293
+>Category:       mod_proxy
+>Synopsis:       No way to override proxyblock directive.  Adds new ProxyOverrideBlock dir.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Apr 22 16:40:00 PDT 1999
+>Last-Modified:  Thu Apr 22 16:50:00 PDT 1999
+>Originator:     kamath@pogo.wv.tek.com
+>Organization:
+apache
+>Release:        1.3.6
+>Environment:
+SunOS reddwarf 5.7 Generic_106541-03 sun4m sparc SUNW,SPARCstation-5
+Though it's not OS specific
+>Description:
+I you want build an internal tunnelling proxy server, you might want to block
+foo.com, but allow everything else.  This works great until they then request
+access to www.foo.com.  This patch allows you to say:
+
+ProxyRemote * http://proxy.foo.com:8080
+ProxyBlock foo.com
+ProxyOverrideBlock www.foo.com
+
+And prevent anyone from going to internal.foo.com while still allowing them to
+see www.foo.com
+>How-To-Repeat:
+Yeah.  Set up the above, and give it a try.
+>Fix:
+Yes.  I have a patch.  The patch file is 7999 bytes.
+>Audit-Trail:
+
+From: Sean Kamath <kamath@pogo.WV.TEK.COM>
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: mod_proxy/4293: No way to override proxyblock directive. Adds new ProxyOverrideBlock dir. 
+Date: Thu, 22 Apr 1999 16:48:20 -0700
+
+ Here's the patch. (Didn't say if we handle MIME attachments.  Sorry.)
+ 
+ -snip-snip-snip-snip-snip-snip-snip-snip-snip-snip-snip-snip-snip-snip-snip-
+ 
+ *** /share/src/util/apache-1.3.6/src/modules/proxy/mod_proxy.c	Wed Mar 10 09:42:46 1999
+ --- apache-1.3.6/src/modules/proxy/mod_proxy.c	Wed Apr 21 18:05:12 1999
+ ***************
+ *** 412,417 ****
+ --- 412,418 ----
+       ps->aliases = ap_make_array(p, 10, sizeof(struct proxy_alias));
+       ps->raliases = ap_make_array(p, 10, sizeof(struct proxy_alias));
+       ps->noproxies = ap_make_array(p, 10, sizeof(struct noproxy_entry));
+ +     ps->obproxies = ap_make_array(p, 10, sizeof(struct obproxy_entry));
+       ps->dirconn = ap_make_array(p, 10, sizeof(struct dirconn_entry));
+       ps->nocaches = ap_make_array(p, 10, sizeof(struct nocache_entry));
+       ps->allowed_connect_ports = ap_make_array(p, 10, sizeof(int));
+ ***************
+ *** 535,540 ****
+ --- 536,572 ----
+       return NULL;
+   }
+   
+ + static const char *
+ +      set_proxy_override_block(cmd_parms *parms, void *dummy, char *arg)
+ + {
+ +     server_rec *s = parms->server;
+ +     proxy_server_conf *conf =
+ +     ap_get_module_config(s->module_config, &proxy_module);
+ +     struct obproxy_entry *new;
+ +     struct obproxy_entry *list = (struct obproxy_entry *) conf->obproxies->elts;
+ +     struct hostent hp;
+ +     int found = 0;
+ +     int i;
+ + 
+ +     /* Don't duplicate entries */
+ +     for (i = 0; i < conf->obproxies->nelts; i++) {
+ + 	if (strcasecmp(arg, list[i].name) == 0) /* ignore case for host names */
+ + 	    found = 1;
+ +     }
+ + 
+ +     if (!found) {
+ + 	new = ap_push_array(conf->obproxies);
+ + 	new->name = arg;
+ + 	/* Don't do name lookups on things that aren't dotted */
+ + 	if (strchr(arg, '.') != NULL && ap_proxy_host2addr(new->name, &hp) == NULL)
+ + 	    /*@@@FIXME: This copies only the first of (possibly many) IP addrs */
+ + 	    memcpy(&new->addr, hp.h_addr, sizeof(struct in_addr));
+ + 	else
+ + 	    new->addr.s_addr = 0;
+ +     }
+ +     return NULL;
+ + }
+ + 
+   /*
+    * Set the ports CONNECT can use
+    */
+ ***************
+ *** 841,846 ****
+ --- 873,880 ----
+        "a virtual path and a URL for reverse proxy behaviour"},
+       {"ProxyBlock", set_proxy_exclude, NULL, RSRC_CONF, ITERATE,
+        "A list of names, hosts or domains to which the proxy will not connect"},
+ +     {"ProxyOverrideBlock", set_proxy_override_block, NULL, RSRC_CONF, ITERATE,
+ +      "A list of names, hosts or domains to which the proxy will override a block"},
+       {"ProxyReceiveBufferSize", set_recv_buffer_size, NULL, RSRC_CONF, TAKE1,
+        "Receive buffer size for outgoing HTTP and FTP connections in bytes"},
+       {"NoProxy", set_proxy_dirconn, NULL, RSRC_CONF, ITERATE,
+ *** /share/src/util/apache-1.3.6/src/modules/proxy/proxy_http.c	Mon Mar  8 07:44:03 1999
+ --- apache-1.3.6/src/modules/proxy/proxy_http.c	Thu Apr 22 15:19:41 1999
+ ***************
+ *** 193,198 ****
+ --- 193,199 ----
+       proxy_server_conf *conf =
+       (proxy_server_conf *) ap_get_module_config(sconf, &proxy_module);
+       struct noproxy_entry *npent = (struct noproxy_entry *) conf->noproxies->elts;
+ +     struct obproxy_entry *opent = (struct obproxy_entry *) conf->obproxies->elts;
+       struct nocache_entry *ncent = (struct nocache_entry *) conf->nocaches->elts;
+       int nocache = 0;
+   
+ ***************
+ *** 232,240 ****
+       destaddr.s_addr = ap_inet_addr(desthost);
+       for (i = 0; i < conf->noproxies->nelts; i++) {
+   	if ((npent[i].name != NULL && strstr(desthost, npent[i].name) != NULL)
+ ! 	    || destaddr.s_addr == npent[i].addr.s_addr || npent[i].name[0] == '*')
+ ! 	    return ap_proxyerror(r, HTTP_FORBIDDEN,
+   				 "Connect to remote machine blocked");
+       }
+   
+       if (proxyhost != NULL) {
+ --- 233,262 ----
+       destaddr.s_addr = ap_inet_addr(desthost);
+       for (i = 0; i < conf->noproxies->nelts; i++) {
+   	if ((npent[i].name != NULL && strstr(desthost, npent[i].name) != NULL)
+ ! 	    || destaddr.s_addr == npent[i].addr.s_addr || npent[i].name[0] == '*') {
+ ! 
+ ! 	    /* At this point in the original code, we'd simply return
+ ! 	       a proxy block.  However, we are adding code to override
+ ! 	       that block.  Do so. Note: We can override *ANYTHING*
+ ! 	    */
+ ! 
+ ! 	     for (j = 0; j < conf->obproxies->nelts; j++) {
+ ! 		  if ((opent[j].name != NULL && strstr(desthost, opent[j].name) != NULL)
+ ! 		      || destaddr.s_addr == npent[j].addr.s_addr) {
+ ! 		       /* Simply break out of the loop.  j < nelts
+ !                           means we found some match */
+ ! 		       break;
+ ! 		  }
+ ! 	     }
+ ! 
+ ! 	     /* If j == conf->obproxies->nelts, the loop above went
+ !                 through every override entry, and found no matches */
+ ! 
+ ! 	     if (j == conf->obproxies->nelts) {
+ ! 		  return ap_proxyerror(r, HTTP_FORBIDDEN,
+   				 "Connect to remote machine blocked");
+ + 	     }
+ + 	}
+       }
+   
+       if (proxyhost != NULL) {
+ *** /share/src/util/apache-1.3.6/htdocs/manual/mod/directives.html	Mon Mar 22 16:17:36 1999
+ --- apache-1.3.6/htdocs/manual/mod/directives.html	Thu Apr 22 16:24:07 1999
+ ***************
+ *** 163,168 ****
+ --- 163,169 ----
+   <LI><A HREF="mod_proxy.html#proxyblock">ProxyBlock</A>
+   <LI><A HREF="mod_proxy.html#proxypass">ProxyPass</A>
+   <LI><A HREF="mod_proxy.html#proxypassreverse">ProxyPassReverse</A>
+ + <LI><A HREF="mod_proxy.html#proxyoverrideblock">ProxyOverrideBlock</A>
+   <LI><A HREF="mod_proxy.html#proxyreceivebuffersize">ProxyReceiveBufferSize</A>
+   <LI><A HREF="mod_proxy.html#proxyremote">ProxyRemote</A>
+   <LI><A HREF="mod_proxy.html#proxyrequests">ProxyRequests</A>
+ *** /share/src/util/apache-1.3.6/htdocs/manual/mod/mod_proxy.html	Mon Mar 22 16:17:41 1999
+ --- apache-1.3.6/htdocs/manual/mod/mod_proxy.html	Thu Apr 22 16:23:16 1999
+ ***************
+ *** 51,56 ****
+ --- 51,57 ----
+   <LI><A HREF="#proxypass">ProxyPass</A>
+   <LI><A HREF="#proxypassreverse">ProxyPassReverse</A>
+   <LI><A HREF="#proxyblock">ProxyBlock</A>
+ + <LI><A HREF="#proxyoverrideblock">ProxyOverrideBlock</A>
+   <LI><A HREF="#allowconnect">AllowCONNECT</A>
+   <LI><A HREF="#proxyreceivebuffersize">ProxyReceiveBufferSize</A>
+   <LI><A HREF="#noproxy">NoProxy</A>
+ ***************
+ *** 372,377 ****
+ --- 373,439 ----
+   blocks connections to all sites.
+   
+   <HR>
+ + 
+ + <H2><A NAME="proxyoverrideblock">ProxyOverrideBlock</A></H2>
+ + <A
+ +  HREF="directive-dict.html#Syntax"
+ +  REL="Help"
+ + ><STRONG>Syntax:</STRONG></A> ProxyOverrideBlock <EM>&lt;word/host/domain list&gt;</EM><BR>
+ + <A
+ +  HREF="directive-dict.html#Default"
+ +  REL="Help"
+ + ><STRONG>Default:</STRONG></A> <EM>None</EM><BR>
+ + <A
+ +  HREF="directive-dict.html#Context"
+ +  REL="Help"
+ + ><STRONG>Context:</STRONG></A> server config, virtual host<BR>
+ + <A
+ +  HREF="directive-dict.html#Override"
+ +  REL="Help"
+ + ><STRONG>Override:</STRONG></A> <EM>Not applicable</EM><BR>
+ + <A
+ +  HREF="directive-dict.html#Status"
+ +  REL="Help"
+ + ><STRONG>Status:</STRONG></A> Base<BR>
+ + <A
+ +  HREF="directive-dict.html#Module"
+ +  REL="Help"
+ + ><STRONG>Module:</STRONG></A> mod_proxy<BR>
+ + <A
+ +  HREF="directive-dict.html#Compatibility"
+ +  REL="Help"
+ + ><STRONG>Compatibility:</STRONG></A> ProxyOverrideBlock is only available in
+ + Apache 1.3.6 and later.<P>
+ + 
+ + The ProxyOverrideBlock directive specifies a list of words, hosts
+ + and/or domains, separated by spaces. HTTP, HTTPS, and FTP document
+ + requests to matched words, hosts or domains are <EM>unblocked</EM>
+ + from a previous <A HREF="#proxyblock">ProxyBlock</A> directive match
+ + on the proxy server. The proxy module will also attempt to determine
+ + IP addresses of list items which may be hostnames during startup, and
+ + cache them for match test as well, the same way <A
+ + HREF="#proxyblock">ProxyBlock</A> does. Example (including a blocked
+ + example):
+ + 
+ + <PRE>
+ +   ProxyBlock foo.com
+ +   ProxyOverrideBlock www.foo.com
+ + </PRE>
+ + 
+ + This would block all proxy access to anything in foo.com, while still
+ + allowing www.foo.com to be proxied.<P>
+ + 'foo.com' as well as 'www.foo.com' would also be matched if referenced
+ + by IP address.<P>
+ + 
+ + Note also that
+ + 
+ + <PRE>
+ + ProxyOverrideBlock *
+ + </PRE>
+ + 
+ + completely and totally undoes <EM>all</EM> blocks.
+ + 
+ + <HR>
+   
+   <H2><A NAME="proxyreceivebuffersize">ProxyReceiveBufferSize</A></H2>
+   <A
+ 
+ -snip-snip-snip-snip-snip-snip-snip-snip-snip-snip-snip-snip-snip-snip-snip-
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

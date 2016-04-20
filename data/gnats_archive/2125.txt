@@ -1,0 +1,110 @@
+Received: (qmail 27958 invoked by uid 2012); 23 Apr 1998 13:49:41 -0000
+Message-Id: <19980423134941.27957.qmail@hyperreal.org>
+Date: 23 Apr 1998 13:49:41 -0000
+From: Ray <Zimmerman@hyperreal.org>
+Reply-To: Zimmerman@hyperreal.org
+To: apbugs@hyperreal.org
+Subject: Impossible to detect browser disconnect from CGI
+X-Send-Pr-Version: 3.2
+
+>Number:         2125
+>Category:       mod_cgi
+>Synopsis:       Impossible to detect browser disconnect from CGI
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Apr 23 06:50:00 PDT 1998
+>Last-Modified:  Thu Apr 23 10:14:12 PDT 1998
+>Originator:     Zimmerman
+>Organization:
+>Release:        1.3b5
+>Environment:
+SunOS blackbird 5.5.1 Generic_103640-08 sun4u sparc SUNW,Ultra-2
+gcc version 2.7.2.2
+>Description:
+I am trying to detect a browser disconnect from my Perl CGI and it appears to be
+impossible with Apache 1.3 (b5 at least). I believe that typically, when the
+connection to the browser is broken (such as the user hitting the <stop> button)
+a SIGTERM is sent to the CGI the next time Apache tries to send something to the
+browser.
+
+In Apache 1.2, it was possible to detect a browser disconnect by making sure that
+the CGI printed something to the browser periodically using an unbuffered
+connection. The unbuffered connection could be provided by using a nph script,
+or by a patch to Apache (see the cgiAbort package and corresponding patch at:
+http://wwwtest.gdb.org/browser/abort/cgiAbort.html).
+
+Apache 1.3, according to the docs, "now provides an effectively unbuffered
+connection for CGI scripts."  This appears to be true while the connection is
+in place, but does not appear to be true with regards to detecting a browser
+disconnect.
+
+In summary, with Apache 1.3b5 it appears to be impossible for a CGI to check
+whether or not the connection to the browser is still in place.
+
+Please see the example code in the next field.
+>How-To-Repeat:
+Here is a simple Perl test CGI which illustrates the problem. It prints a
+timer count on a single line every 5 seconds, forever. This is printed both to
+the browser and the web server log. Everything appears unbuffered (with a new
+line appearing every 5 seconds in both browser and log) while the browser
+connection is in place. Now, hit the <stop> button on the browser. The CGI
+will continue to run, as evidenced by entries in the server log, for about
+another 75 seconds, then it receives a SIGTERM.
+
+Here's the Perl source for my test.cgi:
+
+#!/usr/local/bin/perl -w
+
+use strict;
+
+my $i;
+
+$| = 1;     ## unbuffered output
+
+$SIG{'TERM'}    = \&DISCONNECT;
+
+print "Content-Type: text/html\n\n";
+print "<HTML>\n<BODY><PRE>\n";
+
+$i = 0;
+while (1) {
+    print STDERR "test.cgi $i\n";
+    print "$i\n";
+    $i += 5;
+    sleep(5);
+}
+
+print "</PRE></BODY>\n</HTML>\n";
+
+
+sub DISCONNECT {
+    my $sig = shift;
+
+    die "test.cgi caught a SIG$sig\n";
+
+    1;
+}
+
+1;
+>Fix:
+Not really. Maybe change that 75 second timeout to something much smaller, but
+I don't know the other ramifications of that
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Thu Apr 23 10:14:12 PDT 1998
+State-Changed-Why:
+Dupe of PR2127.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

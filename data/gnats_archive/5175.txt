@@ -1,0 +1,71 @@
+Received: (qmail 11670 invoked by uid 2012); 20 Oct 1999 22:26:39 -0000
+Message-Id: <19991020222639.11669.qmail@hyperreal.org>
+Date: 20 Oct 1999 22:26:39 -0000
+From: Christian Gilmore <cgilmore@research.att.com>
+Reply-To: cgilmore@research.att.com
+To: apbugs@hyperreal.org
+Subject: Forcing Content-Type to be set
+X-Send-Pr-Version: 3.2
+
+>Number:         5175
+>Category:       protocol
+>Synopsis:       Forcing Content-Type to be set
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Oct 20 15:30:01 PDT 1999
+>Last-Modified:
+>Originator:     cgilmore@research.att.com
+>Organization:
+apache
+>Release:        1.3.9
+>Environment:
+n/a
+>Description:
+Apache forces a content-type string to be set in its http response even though
+RFC 2068 7.2.1 states:
+
+   Any HTTP/1.1 message containing an entity-body SHOULD include a
+   Content-Type header field defining the media type of that body.
+
+I believe there should be an option to not set a content-type in a response.
+The specific case where this is true is of a proxy. The proxy module that ships
+with apache does not add a content-type header when none is found in the
+response from the remote server. I've written a specialized proxy handler with
+mod_perl. The proxy does the right thing by not modifying (or inserting) the
+content-type header, but during http_protocol.c's ap_send_http_header function,
+a content-type header is forced onto the response:
+
+    if (r->byterange > 1)
+        ap_table_setn(r->headers_out, "Content-Type",
+                  ap_pstrcat(r->pool, "multipart", use_range_x(r) ? "/x-" : "/",                          "byteranges; boundary=", r->boundary, NULL));
+    else if (r->content_type)
+        ap_table_setn(r->headers_out, "Content-Type", r->content_type);
+    else
+        ap_table_setn(r->headers_out, "Content-Type", ap_default_type(r));
+>How-To-Repeat:
+
+>Fix:
+I would suggest adding a "None" option to the DefaultType directive to
+accomodate situations such as the above, which abide by the flexibility
+provided by the HTTP specification.
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

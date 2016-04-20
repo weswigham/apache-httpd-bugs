@@ -1,0 +1,112 @@
+Received: (qmail 12384 invoked by uid 2012); 20 Aug 1998 22:12:37 -0000
+Message-Id: <19980820221237.12383.qmail@hyperreal.org>
+Date: 20 Aug 1998 22:12:37 -0000
+From: Mike Sample <msample@opentext.com>
+Reply-To: msample@opentext.com
+To: apbugs@hyperreal.org
+Subject: CGI I/O errors not detected cuz server-end handles inherited by the CGI process.
+X-Send-Pr-Version: 3.2
+
+>Number:         2884
+>Category:       os-windows
+>Synopsis:       CGI I/O errors not detected cuz server-end handles inherited by the CGI process.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Aug 20 15:20:00 PDT 1998
+>Last-Modified:  Fri Oct  2 06:54:11 PDT 1998
+>Originator:     msample@opentext.com
+>Organization:
+>Release:        1.3.1
+>Environment:
+Windows NT 4.00.1381
+MVCC 5.0
+>Description:
+A long running CGI process will not detect that its stdin/stdout have been
+closed by the Apache server.  It's not detected because the spawned CGI 
+process has inherited handles for the server's side of the pipes used for 
+stdout/stderr/stdin. Eg. The CGI prg writes to stdout don't fail because 
+its very own process has a handle that is the target of the writes even
+if Apache has closed its handles.
+
+This is not usually a big deal for most CGI programs - they usually terminate
+on their own quite quickly.  However, for a longer running, high cost computations
+(e.g. a search with tons of hits) it is nice to know that nobody is listening 
+anymore. Or worse yet, a CGI prog that is broken and spewing output endlessly.
+>How-To-Repeat:
+Write a cgi program that dribbles out output for a very long time.  Point
+a browser at it and then interrupt the load (stop, go to another page etc).  
+Look at the taskmanager on the Apache server machine and observe the cgi-prog 
+still running...
+>Fix:
+Here's the fix I used.  I don't claim that it's the best way to do it but
+it seems to work.  
+
+in src/main/alloc.c ap_bspawn_child function:
+   .... (see trailing context to see where to put the following)
+
+    /*
+     *  Fix by Mike Sample (msample@opentext.com) to ensure that a read/write
+     *  error will occur in the spawned cgi program if the server closes
+     *  the its ends of the pipes (e.g. if the http connection is aborted)
+     */
+    if ((pipe_in && !SetHandleInformation(hPipeInputWrite, HANDLE_FLAG_INHERIT, 0)) || 
+        (pipe_out && !SetHandleInformation(hPipeOutputRead, HANDLE_FLAG_INHERIT, 0)) ||
+        (pipe_err && !SetHandleInformation(hPipeErrorRead, HANDLE_FLAG_INHERIT, 0))) {
+        if(pipe_in) {
+	    CloseHandle(hPipeInputRead);
+	    CloseHandle(hPipeInputWrite);
+	}
+	if(pipe_out) {
+	    CloseHandle(hPipeOutputRead);
+	    CloseHandle(hPipeOutputWrite);
+	}
+	if(pipe_err) {
+	    CloseHandle(hPipeErrorRead);
+	    CloseHandle(hPipeErrorWrite);
+	}
+        return 0;
+    }
+
+    (original code - paste the above in before this line in alloc.c)
+    /* The script writes stdout to this pipe handle */
+    info.hPipeOutputWrite = hPipeOutputWrite;  
+>Audit-Trail:
+Release-Changed-From-To: Apache/1.3.1-1.3.1
+Release-Changed-By: coar
+Release-Changed-When: Tue Sep  1 10:45:49 PDT 1998
+State-Changed-From-To: open-closed
+State-Changed-By: kparz@raleigh.ibm.com
+State-Changed-When: Fri Oct  2 06:54:11 PDT 1998
+State-Changed-Why:
+Mike,
+
+Thanks for the excellent bug report/debug/and fix!
+
+Just to let you know, I searched through the April '98
+MSDN CD and it mentions
+that SetHandleInformation is not supported on Win95.  I'm
+not sure if that is completely right, but better safe 
+than sorry.  Therefore, your patch was reworked to use
+DuplicateHandle.  The fix has been committed to CVS and
+you should be able to get the fix in the next release of
+Apache, or in the latest CVS tree.
+
+Again, your patch was much appreciated, and thanks for
+using Apache!
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

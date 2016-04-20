@@ -1,0 +1,110 @@
+From nobody@hyperreal.com  Wed Jan 15 12:36:35 1997
+Received: by taz.hyperreal.com (8.8.3/V2.0) id MAA20892; Wed, 15 Jan 1997 12:36:35 -0800 (PST)
+Message-Id: <199701152036.MAA20892@taz.hyperreal.com>
+Date: Wed, 15 Jan 1997 12:36:35 -0800 (PST)
+From: Jesse Sipprell <sysadmin@evcom.net>
+Reply-To: sysadmin@evcom.net
+To: apbugs@hyperreal.com
+Subject: "global" cgi scripts won't run on virtual servers where suexec is used
+X-Send-Pr-Version: 3.2
+
+>Number:         112
+>Category:       suexec
+>Synopsis:       "global" cgi scripts won't run on virtual servers where suexec is used
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan 15 12:40:01 1997
+>Last-Modified:  Thu Jun 12 08:44:26 PDT 1997
+>Originator:     sysadmin@evcom.net
+>Organization:
+>Release:        1.2b4
+>Environment:
+Linux 2.0.24, gcc 2.7.2
+>Description:
+When suexec is used to restrict/permit virtual servers to execute CGI as a particular user/group, the server won't permit "global" CGIs to execute.  This is undesireable because on a system where there are numerous virtual servers supported, it is a waste of resources to have to maintain independant sets of system CGIs.
+
+The reason this problem occurs is because system CGIs are generally owned by root or by another special user, and suexec will not execute them as the user/group specified for a particular virtual server.  In this, suexec is correct, executing such could be considered a security problem.
+
+Rather, it would seem more desirable to be able to configure mod_cgi so that one (or more) "safe" directory trees are established wherein suexec is bypassed, regardless of the virtuality of the server.  Thus, CGIs in said directory(ies) would be executed as per normal (on a system without suexec); as a safe non-root user.  Below is a patch I wrote to accomplish this.  It isn't done in the most desireable way; it only permits a single directory tree to contain global CGIs and it requires hand modification of httpd.h.  If the patch below is needed by anyone in it's raw format, it can be retrieved from: ftp://ftp.evcom.net/pub/linux/apache_1.2b4.patch
+>How-To-Repeat:
+Setup a virtual server, use User/Group directives in httpd.conf for the server, and enable suexec.
+
+Attempt to access any global CGI script on the system, such as:
+
+http://www.virtualserver.com/cgi-bin/test-cgi
+
+(assuming cgi-bin is ScriptAliased globally)
+>Fix:
+-- apache_1.2b4/src/httpd.h	Wed Jan 15 11:00:51 1997
++++ apache_1.2b4-patched/src/httpd.h	Wed Jan 15 15:10:13 1997
+@@ -176,6 +176,10 @@
+ #define SUEXEC_BIN "/etc/httpd/sbin/suexec"
+ #endif
+ 
++/* The path to the tree containing "global" cgi bins (useable by all
++   users & virtual servers with suexecing disabled */
++#define GLOBAL_CGIBIN "/u2/httpd/cgi-bin"
++
+ /* The default string lengths */
+ #define MAX_STRING_LEN HUGE_STRING_LEN
+ #define HUGE_STRING_LEN 8192
+diff -ru apache_1.2b4/src/util_script.c apache_1.2b4-patched/src/util_script.c
+--- apache_1.2b4/src/util_script.c	Sat Dec 28 13:16:10 1996
++++ apache_1.2b4-patched/src/util_script.c	Wed Jan 15 15:08:08 1997
+@@ -500,10 +500,19 @@
+ 	    execv(r->filename, create_argv(r, argv0, r->args, NULL));
+     }
+ #else
++#ifdef GLOBAL_CGIBIN
++/* Flood's global CGIBIN hack */
++    if ( suexec_enabled &&
++	 (strncmp(r->filename,GLOBAL_CGIBIN,strlen(GLOBAL_CGIBIN))) &&
++	 ((r->server->server_uid != user_id) ||
++          (r->server->server_gid != group_id) ||
++	  (!strncmp("/~",r->uri,2))) ) {
++#else
+     if ( suexec_enabled &&
+ 	 ((r->server->server_uid != user_id) ||
+ 	  (r->server->server_gid != group_id) ||
+ 	  (!strncmp("/~",r->uri,2))) ) {
++#endif
+ 
+         if (!strncmp("/~",r->uri,2)) {
+             r->uri += 2;%0
+>Audit-Trail:
+Category-Changed-From-To: mod_cgi-suexec
+Category-Changed-By: coar@decus.org
+Category-Changed-When: Wed Apr 23 07:25:18 PDT 1997
+
+State-Changed-From-To: open-feedback
+State-Changed-By: coar@decus.org
+State-Changed-When: Thu Apr 24 07:50:35 PDT 1997
+State-Changed-Why:
+This is the intended behaviour.  If you want globally
+ScriptAlias-ed scripts to be processed in the global
+environment (i.e., not under the per-vhost User and
+suexec environment), you need to include the correct
+hostname in the CGI URL.  You might consider using
+mod_rewrite and adding a rewrite rule in your vhost
+sections that redirects http://vhost/cgi-bin/* to
+http://mainhost/cgi-bin/* - I think that would result
+in the effect you want.
+
+If you don't want to do this, then you must make your
+global CGI scripts runnable under the per-vhost User
+and suexec environment.
+
+Please let us know if the rewrite option solves your issue.
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Thu Jun 12 08:44:25 PDT 1997
+State-Changed-Why:
+No response from user, assuming issue resolved.
+>Unformatted:
+
+

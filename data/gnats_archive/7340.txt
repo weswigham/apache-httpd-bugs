@@ -1,0 +1,121 @@
+Received: (qmail 80233 invoked by uid 501); 2 Mar 2001 03:11:26 -0000
+Message-Id: <20010302031126.80232.qmail@apache.org>
+Date: 2 Mar 2001 03:11:26 -0000
+From: Noboru Higuchi <nhiguchi@miraclelinux.com>
+Reply-To: nhiguchi@miraclelinux.com
+To: submit@bugz.apache.org
+Subject: apxs adds a "LoadModule" in an IfDefine close
+X-Send-Pr-Version: 3.110
+
+>Number:         7340
+>Category:       mod_so
+>Synopsis:       apxs adds a "LoadModule" in an IfDefine close
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Mar 01 19:20:02 PST 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     nhiguchi@miraclelinux.com
+>Release:        1.3.19
+>Organization:
+apache
+>Environment:
+Linux 2.2.16
+>Description:
+When the last LoadModule directive in httpd.conf
+is in an IfDefine close and you specify -a flag
+to apxs, apxs adds a LoadModule directive
+in the IfDefine close.
+So, the DSO is not enabled unless you specify
+the definition to httpd with -D flag.
+>How-To-Repeat:
+Run apxs like
+apxs -i -a -n "php3" /tmp/libphp3.so
+to the following httpd.conf:
+
+  :
+# Note: The order in which modules are loaded is important.  Don't change
+# the order below without expert advice.
+#
+# Example:
+# LoadModule foo_module libexec/mod_foo.so
+  :
+LoadModule setenvif_module    /usr/libexec/apache/mod_setenvif.so
+<IfDefine SSL>
+LoadModule ssl_module         /usr/libexec/apache/libssl.so
+</IfDefine>
+
+#  Reconstruction of the complete module list from all available modules
+#  (static and shared ones) to achieve correct module execution order.
+#  [WHENEVER YOU CHANGE THE LOADMODULE SECTION ABOVE UPDATE THIS, TOO]
+ClearModuleList
+AddModule mod_mmap_static.c
+ :
+AddModule mod_setenvif.c
+<IfDefine SSL>
+AddModule mod_ssl.c
+</IfDefine>
+
+#
+# ExtendedStatus controls whether Apache will generate "full" status
+# information (ExtendedStatus On) or just basic information (ExtendedStatus
+# Off) when the "server-status" handler is called. The default is Off.
+#
+ :
+>Fix:
+I made a patch for 1.3.19.
+It can also apply to 1.3.17 with -p1 flag.
+
+--- apache_1.3.19.org/src/support/apxs.pl       Tue Jan 16 02:06:36 2001
++++ apache_1.3.19/src/support/apxs.pl   Thu Mar  1 22:51:35 2001
+@@ -496,7 +496,11 @@
+         foreach $lmd (@lmd) {
+             my $what = $opt_A ? "preparing" : "activating";
+             if ($content !~ m|\n#?\s*$lmd|) {
+-                 $content =~ s|^(.*\n#?\s*LoadModule\s+[^\n]+\n)|$1$c$lmd\n|sg;
++                 if ($content !~ m|\n#?\s*LoadModule\s+[^\n]+\n</IfDefine>\n\n|) {
++                     $content =~ s|^(.*\n#?\s*LoadModule\s+[^\n]+\n)|$1$c$lmd\n|sg;
++                 } else {
++                     $content =~ s|^(.*\n#?\s*LoadModule\s+[^\n]+\n</IfDefine>\n)|$1$c$lmd\n|sg;
++                 }
+             } else {
+                  $content =~ s|^(.*\n)#?\s*$lmd[^\n]*\n|$1$c$lmd\n|sg;
+             }
+@@ -506,7 +510,11 @@
+         my $amd;
+         foreach $amd (@amd) {
+             if ($content !~ m|\n#?\s*$amd|) {
+-                 $content =~ s|^(.*\n#?\s*AddModule\s+[^\n]+\n)|$1$c$amd\n|sg;
++                 if ($content !~ m|\n#?\s*AddModule\s+[^\n]+\n</IfDefine>\n\n|) {
++                     $content =~ s|^(.*\n#?\s*AddModule\s+[^\n]+\n)|$1$c$amd\n|sg;
++                 } else {
++                     $content =~ s|^(.*\n#?\s*AddModule\s+[^\n]+\n</IfDefine>\n)|$1$c$amd\n|sg;
++                 }
+             } else {
+                  $content =~ s|^(.*\n)#?\s*$amd[^\n]*\n|$1$c$amd\n|sg;
+             }
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

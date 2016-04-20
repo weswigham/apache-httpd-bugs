@@ -1,0 +1,122 @@
+Received: (qmail 40775 invoked by uid 501); 13 Jul 2001 11:12:13 -0000
+Message-Id: <20010713111213.40773.qmail@apache.org>
+Date: 13 Jul 2001 11:12:13 -0000
+From: Taketo Kabe <kabe@sra-tohoku.co.jp>
+Reply-To: kabe@sra-tohoku.co.jp
+To: submit@bugz.apache.org
+Subject: [PATCH] %b,%B in LogFormat not logs zero even for HEAD request
+X-Send-Pr-Version: 3.110
+
+>Number:         8022
+>Category:       general
+>Synopsis:       [PATCH] %b,%B in LogFormat not logs zero even for HEAD request
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          duplicate
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jul 13 04:20:05 PDT 2001
+>Closed-Date:    Mon Jul 16 09:11:55 PDT 2001
+>Last-Modified:  Mon Jul 16 09:11:55 PDT 2001
+>Originator:     kabe@sra-tohoku.co.jp
+>Release:        2.0.20
+>Organization:
+>Environment:
+
+SunOS 5.8 Generic_108528-05 sun4u sparc SUNW,Ultra-60
+gcc version 2.95.2 19991024 (release)
+
+>Description:
+
+"%b" "%B" LogFormat directives, which indicated bytes sent to client
+for response body, should be "-" "0" for HEAD request--
+but actually, the fill file size is logged.
+
+This was caused by setting r->sent_bodyct flag, which indicates to
+log r->bytes_sent, set BEFORE checking for HEAD and discarding body buckets.
+
+Setting r->sent_bodyct AFTER HEAD check fixed the problem.
+
+>How-To-Repeat:
+
+* Issue a HEAD request for a plain file.
+* Examine the access_log.
+  The 7th field should be "-" or "0", but the file size is logged.
+
+>Fix:
+
+#
+#****** modules/http/http_protocol.c HEAD logs full content bytes
+#
+# This patch fixes that "%b" "%B" (bytes sent, excluding response headers)
+# directives for mod_log_config, is logged as full file size (should be zero).
+#
+##find httpd-2_0_20 -name '*.dist7' -exec ./0diff {} \;
+/usr/local/gnu/bin/patch -p1 --backup --suffix=.dist7 << 'EOP'
+=============================== {
+diff -u httpd-2_0_20/modules/http/http_protocol.c.dist7 httpd-2_0_20/modules/http/http_protocol.c
+--- httpd-2_0_20/modules/http/http_protocol.c.dist7	Fri Jul 13 07:32:53 2001
++++ httpd-2_0_20/modules/http/http_protocol.c	Fri Jul 13 07:37:42 2001
+@@ -1206,14 +1206,14 @@
+ 
+     terminate_header(b2);
+ 
+-    r->sent_bodyct = 1;         /* Whatever follows is real body stuff... */
+-
+     ap_pass_brigade(f->next, b2);
+ 
+     if (r->header_only) {
+         apr_brigade_destroy(b);
+         return OK;
+     }
++
++    r->sent_bodyct = 1;         /* Whatever follows is real body stuff... */
+ 
+     if (r->chunked) {
+         /* We can't add this filter until we have already sent the headers.
+=============================== }}
+EOP
+
+>Release-Note:
+>Audit-Trail:
+
+From: <kabe@sra-tohoku.co.jp>
+To: apbugs@Apache.Org
+Cc: kabe@sra-tohoku.co.jp
+Subject: Re: general/8022: [PATCH] %b,%B in LogFormat not logs zero even for HEAD request
+Date: Mon, 16 Jul 2001 06:11:39 +0900 (JST)
+
+ This was an exact duplicate of PR#8021.
+ Please mark and close this one (PR#8022).
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Mon Jul 16 09:11:55 PDT 2001
+State-Changed-Why:
+[This is a standard response.]
+This issue has been reported before;
+please search the FAQ and the bug database.
+Thanks for using Apache!
+Class-Changed-From-To: sw-bug-duplicate
+Class-Changed-By: wrowe
+Class-Changed-When: Mon Jul 16 09:11:55 PDT 2001
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

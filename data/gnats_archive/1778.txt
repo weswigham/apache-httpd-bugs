@@ -1,0 +1,188 @@
+Received: (qmail 12340 invoked by uid 2012); 6 Feb 1998 16:45:25 -0000
+Message-Id: <19980206164525.12339.qmail@hyperreal.org>
+Date: 6 Feb 1998 16:45:25 -0000
+From: Allen Chen <achen@nssdc.gsfc.nasa.gov>
+Reply-To: achen@nssdc.gsfc.nasa.gov
+To: apbugs@hyperreal.org
+Subject: Apache ignores .htaccess files in cgi-bin directories when using AllowOverride speed-up trick
+X-Send-Pr-Version: 3.2
+
+>Number:         1778
+>Category:       mod_auth-any
+>Synopsis:       Apache ignores .htaccess files in cgi-bin directories when using AllowOverride speed-up trick
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Feb  6 08:50:00 PST 1998
+>Last-Modified:  Mon Feb  9 08:40:01 PST 1998
+>Originator:     achen@nssdc.gsfc.nasa.gov
+>Organization:
+>Release:        1.2.5
+>Environment:
+Solaris 2.5.1 with most recommended patches installed.  Compiled with gcc 2.6.3.
+uname -a:
+SunOS xxx.xxx.xxx.xxx 5.5.1 Generic_103640-08 sun4u sparc SUNW,Ultra-2
+>Description:
+Following the instructions found at www.apacheweek.com/tips under the section
+"How to speed up Apache," it is recommended that the following be used to 
+prevent Apache from searching the entire directory tree above the DocumentRoot
+for .htaccess files:
+
+                   <Directory />
+                   AllowOverride None
+                   </Directory>
+
+                   <Directory /usr/local/etc/httpd/htdocs>
+                   AllowOverride All
+                   </Directory>
+
+This part works fine.  However, I also added:
+
+                   <Directory /usr/local/etc/httpd/cgi-bin>
+                   AllowOverride All
+                   </Directory>
+
+Unfortunately, this does NOT seem to work.  .htaccess files in the cgi-bin 
+directories are being ignored!  The only way to get them to work again is 
+to comment out the original Directory directive:
+
+                   #<Directory />
+                   #AllowOverride None
+                   #</Directory>
+>How-To-Repeat:
+Just try what I said above...
+>Fix:
+Sounds like a software problem to me..
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Allen Chen <achen@nssdc.gsfc.nasa.gov>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_auth-any/1778: Apache ignores .htaccess files in cgi-bin directories when using AllowOverride speed-up trick
+Date: Fri, 6 Feb 1998 11:57:28 -0800 (PST)
+
+ On 6 Feb 1998, Allen Chen wrote:
+ 
+ >                    <Directory /usr/local/etc/httpd/cgi-bin>
+ >                    AllowOverride All
+ >                    </Directory>
+ 
+ Sorry but I can't reproduce this.  I did this:
+ 
+ % echo garbage >cgi-bin/.htaccess
+ 
+ and I set up the <Directory>s the way you listed.  And when I access
+ /cgi-bin/printenv it fails and my error log shows:
+ 
+ [Fri Feb  6 11:42:06 1998] access to
+ /home/dgaudet/ap/apachen/cgi-bin/.htaccess failed for 127.0.0.1, reason:
+ Invalid command garbage
+ 
+ So it is definately reading the .htaccess file.
+ 
+ Dean
+ 
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Sat Feb  7 03:37:35 PST 1998
+State-Changed-Why:
+Waiting for more info from user since I can't reproduce it.
+Comment-Added-By: coar
+Comment-Added-When: Sat Feb  7 06:47:49 PST 1998
+Comment-Added:
+Are you sure that your ScriptAlias and Directory directives
+are referring to the same directory?  I.e., do you have a
+
+ScriptAlias /cgi-bin/ /usr/local/etc/httpd/cgi-bin/
+
+to match your "<Directory /usr/local/etc/httpd/cgi-bin>"?
+
+#ken    P-)}
+State-Changed-From-To: feedback-closed
+State-Changed-By: marc
+State-Changed-When: Mon Feb  9 08:38:54 PST 1998
+State-Changed-Why:
+User configuration problem.
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: mod_auth-any/1778: Apache ignores .htaccess files in cgi-bin directories when using AllowOverride speed-up trick (fwd)
+Date: Mon, 9 Feb 1998 09:38:22 -0700 (MST)
+
+ ---------- Forwarded message ----------
+ Date: Mon, 9 Feb 1998 11:31:50 -0500 (EST)
+ From: Allen Chen <achen@nssdc.gsfc.nasa.gov>
+ To: coar@hyperreal.org, dgaudet@hyperreal.org
+ Cc: apache-bugdb@apache.org
+ Subject: Re: mod_auth-any/1778: Apache ignores .htaccess files in cgi-bin directories when using AllowOverride speed-up trick
+ 
+ Hi guys,
+ 
+ I think I found the problem.  I'm not sure if it's considered a bug or an
+ error on my part, but what I had done was this: 
+ 
+   <Directory />
+   AllowOverride None
+   </Directory>
+ 
+   <Directory /opt/local/etc/httpd/htdocs>
+   Options Indexes FollowSymLinks
+   AllowOverride All
+   </Directory>
+ 
+   <Directory /opt/local/etc/httpd/cgi-bin>
+   AllowOverride All
+   </Directory>
+ 
+   ...
+ 
+   ScriptAlias /cgi-bin/ /usr/local/etc/httpd/cgi-bin/
+                          ^^^
+ 
+ Notice that /cgi-bin/'s ScriptAlias points to /USR/local... instead of
+ /OPT/local...  This worked because /usr/local is a link to /opt/local.
+ However, probably because of the way Apache determines the directory tree, 
+ the <Directory /opt/local/.../cgi-bin> did not get evaluated for
+ /usr/local/.../cgi-bin.  
+ 
+ To make a convoluted story short, changing the ScriptAlias to
+ 
+   ScriptAlias /cgi-bin/ /opt/local/etc/httpd/cgi-bin/
+                          ^^^
+ fixed the problem. :)
+ 
+ -Allen
+ 
+   Allen Chen   /   Systems Programmer   /   Raytheon STX Corporation ////
+  SSDOO Software, Systems / International Solar-Terrestrial Physics /////
+ e-mail: achen@nssdc.gsfc.nasa.gov   /  voice: (301) 286-7376     //////
+ 
+ 
+ 
+ > Synopsis: Apache ignores .htaccess files in cgi-bin directories when using AllowOverride speed-up trick
+ > 
+ > Comment-Added-By: coar
+ > Comment-Added-When: Sat Feb  7 06:47:49 PST 1998
+ > Comment-Added:
+ > Are you sure that your ScriptAlias and Directory directives
+ > are referring to the same directory?  I.e., do you have a
+ > 
+ > ScriptAlias /cgi-bin/ /usr/local/etc/httpd/cgi-bin/
+ > 
+ > to match your "<Directory /usr/local/etc/httpd/cgi-bin>"?
+ 
+ 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

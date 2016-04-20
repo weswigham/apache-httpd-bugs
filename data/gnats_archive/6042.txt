@@ -1,0 +1,132 @@
+Received: (qmail 61573 invoked by uid 501); 2 May 2000 07:14:05 -0000
+Message-Id: <20000502071405.61572.qmail@locus.apache.org>
+Date: 2 May 2000 07:14:05 -0000
+From: Gershtein Sergey <sg@ur.ru>
+Reply-To: sg@ur.ru
+To: submit@bugz.apache.org
+Subject: When redirect is forced via mod_rewrite [R] flag the query string gets double-escaped
+X-Send-Pr-Version: 3.110
+
+>Number:         6042
+>Category:       mod_rewrite
+>Synopsis:       When redirect is forced via mod_rewrite [R] flag the query string gets double-escaped
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue May 02 02:00:00 PDT 2000
+>Closed-Date:    
+>Last-Modified:  Mon Jan 29 18:30:00 PST 2001
+>Originator:     sg@ur.ru
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+FreeBSD dream.mplik.ru 3.4-STABLE FreeBSD 3.4-STABLE #2: Wed Apr 26 12:13:03 YEK
+ST 2000     sg@dream.mplik.ru:/usr/src/sys/compile/DREAM  i386                  
+>Description:
+no core dump
+>How-To-Repeat:
+RewriteRule /aaa /bbb [R]
+
+GET /aaa?key=%aa 
+
+It's get redirected to /bbb?key=%25aa
+>Fix:
+Apply the following patch 
+also available from http://www1.ekaterinburg.com:8081/leisure/books/tech/mod_rewrite.patch2
+---------------------------
+
+*** mod_rewrite.c.orig	Tue May  2 12:41:41 2000
+--- mod_rewrite.c	Tue May  2 12:59:35 2000
+***************
+*** 1164,1170 ****
+              /* append the QUERY_STRING part */
+              if (r->args != NULL) {
+                  r->filename = ap_pstrcat(r->pool, r->filename, "?", 
+!                                          ap_escape_uri(r->pool, r->args), NULL);
+              }
+  
+              /* determine HTTP redirect response code */
+--- 1164,1170 ----
+              /* append the QUERY_STRING part */
+              if (r->args != NULL) {
+                  r->filename = ap_pstrcat(r->pool, r->filename, "?", 
+!                                          r->args, NULL);
+              }
+  
+              /* determine HTTP redirect response code */
+***************
+*** 1457,1463 ****
+              /* append the QUERY_STRING part */
+              if (r->args != NULL) {
+                  r->filename = ap_pstrcat(r->pool, r->filename, "?", 
+!                                          ap_escape_uri(r->pool, r->args), NULL);
+              }
+  
+              /* determine HTTP redirect response code */
+--- 1457,1463 ----
+              /* append the QUERY_STRING part */
+              if (r->args != NULL) {
+                  r->filename = ap_pstrcat(r->pool, r->filename, "?", 
+!                                          r->args, NULL);
+              }
+  
+              /* determine HTTP redirect response code */
+***************
+*** 2331,2340 ****
+          olduri = ap_pstrdup(r->pool, r->filename);
+          *q++ = '\0';
+          if (qsappend) {
+!             r->args = ap_pstrcat(r->pool, q, "&", r->args, NULL);
+          }
+          else {
+!             r->args = ap_pstrdup(r->pool, q);
+          }
+          if (strlen(r->args) == 0) {
+              r->args = NULL;
+--- 2331,2341 ----
+          olduri = ap_pstrdup(r->pool, r->filename);
+          *q++ = '\0';
+          if (qsappend) {
+!             r->args = ap_pstrcat(r->pool,
+!             	ap_escape_uri(r->pool, q), "&", r->args, NULL);
+          }
+          else {
+!             r->args = ap_pstrdup(r->pool, ap_escape_uri(r->pool, q));
+          }
+          if (strlen(r->args) == 0) {
+              r->args = NULL;
+>Release-Note:
+>Audit-Trail:
+
+From: "Michael S. Fischer" <michael@auctionwatch.com>
+To: "'apbugs@Apache.Org'" <apbugs@Apache.Org>
+Cc:  
+Subject: mod_rewrite/6042: When redirect is forced via mod_rewrite [R] fla
+	g the query string gets double-escaped
+Date: Mon, 29 Jan 2001 18:28:53 -0800
+
+ Seriously, guys.  This bug is over seven months old and has survived across
+ two releases.  Please integrate this patch!
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

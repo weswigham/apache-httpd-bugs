@@ -1,0 +1,103 @@
+Received: (qmail 85855 invoked by uid 501); 5 Apr 2001 16:11:38 -0000
+Message-Id: <20010405161138.85854.qmail@apache.org>
+Date: 5 Apr 2001 16:11:38 -0000
+From: Jim Mercer <jim@reptiles.org>
+Reply-To: jim@reptiles.org
+To: submit@bugz.apache.org
+Subject: UnsetEnv does not work from main body of httpd.conf also does not unsetenv()
+X-Send-Pr-Version: 3.110
+
+>Number:         7528
+>Category:       mod_env
+>Synopsis:       UnsetEnv does not work from main body of httpd.conf also does not unsetenv()
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Apr 05 09:20:00 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     jim@reptiles.org
+>Release:        1.3.19
+>Organization:
+apache
+>Environment:
+iguana# uname -a
+FreeBSD iguana.reptiles.org 4.3-RC FreeBSD 4.3-RC #1: Wed Apr  4 13:13:44 EDT 2001     root@iguana.reptiles.org:/usr/obj/usr/src/sys/IGUANA  i386
+iguana# pwd
+/usr/local/src/apache_1.3.19
+>Description:
+i noticed that the actual removal of env vars does not occur if the
+"UnsetEnv" directive is in the main body of the httpd.conf
+
+moving the directive within a <Directory> group seemed to work.
+
+also, the reason for my debugging was to find out why UnsetEnv did not appear
+to unset environment variables for my php scripts.
+
+it appears that "3rd party" extensions may need an actual unsetenv() call to
+remove the item from the environment.
+>How-To-Repeat:
+with an apache/php install, use the output of phpinfo(); to check if env vars were properly deleted.
+
+with the following debug statements in src/modules/standard/mod_env.c:
+
+static void *merge_env_dir_configs(pool *p, void *basev, void *addv)
+...
+    while (uenv[0] != '\0') {
+        ap_table_unset(new_table, uenv);
+ap_log_error(__FILE__, __LINE__, 9, NULL, "%s:%d UnsetEnv %s\n", __FILE__, __L
+INE__, uenv);
+        uenv = ap_getword_conf(p, &unset);
+    }
+
+and:
+
+static const char *add_env_module_vars_unset(cmd_parms *cmd,
+                         env_dir_config_rec *sconf,
+                                             char *arg)
+{
+ap_log_error(__FILE__, __LINE__, 9, NULL, "%s:%d UnsetEnv %s\n", __FILE__, __L
+INE__, arg);
+
+i noticed that the actual removal of env vars does not occur if the
+"UnsetEnv" directive is in the main body of the httpd.conf
+
+moving the directive within a <Directory> group seemed to work.
+
+>Fix:
+it appears that "3rd party" extensions may need an actual unsetenv() call to
+remove the item from the environment.
+
+my patch was to do:
+static void *merge_env_dir_configs(pool *p, void *basev, void *addv)
+...
+    while (uenv[0] != '\0') {
+        ap_table_unset(new_table, uenv);
+        unsetenv(uenv);
+        uenv = ap_getword_conf(p, &unset);
+    }
+
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

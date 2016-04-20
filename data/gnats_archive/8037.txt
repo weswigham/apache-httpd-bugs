@@ -1,0 +1,162 @@
+Received: (qmail 26693 invoked by uid 501); 17 Jul 2001 01:08:04 -0000
+Message-Id: <20010717010804.26692.qmail@apache.org>
+Date: 17 Jul 2001 01:08:04 -0000
+From: Taketo Kabe <kabe@sra-tohoku.co.jp>
+Reply-To: kabe@sra-tohoku.co.jp
+To: submit@bugz.apache.org
+Subject: [PATCH] HEAD response header repeated twice for files over 32 kilobytes
+X-Send-Pr-Version: 3.110
+
+>Number:         8037
+>Category:       general
+>Synopsis:       [PATCH] HEAD response header repeated twice for files over 32 kilobytes
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jul 16 18:10:00 PDT 2001
+>Closed-Date:    Tue Jul 24 07:24:44 PDT 2001
+>Last-Modified:  Tue Jul 24 07:24:44 PDT 2001
+>Originator:     kabe@sra-tohoku.co.jp
+>Release:        2.0.20
+>Organization:
+>Environment:
+
+SunOS 5.8 Generic_108528-05 sun4u sparc SUNW,Ultra-60
+gcc version 2.95.2 19991024 (release)
+>Description:
+
+Requesting HEAD on files exceeding 32 kilobytes yields a
+response header repeated twice.
+
+This had became evident by the CONTENT_LENGTH filter (ap_content_length_filter)
+modification of 2.0.20, to make partial writes if brigade length
+exceeded 4*AP_MIN_BYTES_TO_WRITE == 32kB.
+
+When the partial write kicks in, the downstream HEADER filter 
+(ap_http_header_filter) was called TWICE; first for the partial write 
+of the file bucket, second for EOS bucket.
+(If we sent down multiple buckets >32kB into CONTENT_LENGTH in some way, 
+ it could have emitted more duplicate response headers...)
+
+CGIs/SSIs won't have this problem because mod_cgi[d] doesn't send down
+contents on HEAD.
+
+The patch below will modify the HEADER filter to stay and gobble up the
+body for HEAD request, which fixed the problem.
+I guess it should be done in HEADER someway, because only HEADER knows
+about the response headers as a bytestream.
+(Upstreams only deal body; downstreams treat headers and body equally)
+
+It overloads r->header_only which is a hack. The "correct" way should be
+to prepare f->ctx to preserve state; but I didn't want to do that 
+just for a single boolean value.
+
+>How-To-Repeat:
+
+[HEADing on http://dev.apache.org/API.html]
+
+% telnet dev.apache.org 80
+Trying 64.208.42.41...
+Connected to dev.apache.org.
+Escape character is '^]'.
+HEAD /API.html HTTP/1.0
+
+HTTP/1.1 200 OK
+Date: Mon, 16 Jul 2001 08:38:20 GMT
+Server: Apache/2.0.21-dev (Unix)
+Last-Modified: Wed, 08 Apr 1998 01:05:18 GMT
+ETag: "24d05-85f5-5b336f80"
+Accept-Ranges: bytes
+Connection: close
+Content-Type: text/html
+
+HTTP/1.1 200 OK
+Date: Mon, 16 Jul 2001 08:38:20 GMT
+Server: Apache/2.0.21-dev (Unix)
+Last-Modified: Wed, 08 Apr 1998 01:05:18 GMT
+ETag: "24d05-85f5-5b336f80"
+Accept-Ranges: bytes
+Connection: close
+Content-Type: text/html
+
+Connection closed by foreign host.
+
+>Fix:
+
+##dist8
+#
+#****** modules/http/http_protocol.c double-HEAD response over 32kB files
+#
+# This fixes response headers returned twice on HEADing files
+# over 32kB, by modifying ap_http_header_filter().
+# This problem became evident on the partial write modification
+# of content-length filter in 2.0.20.
+#
+##find httpd-2_0_20 -name '*.dist8' -exec ./0diff {} \;
+=============================== {{
+diff -u httpd-2_0_20/modules/http/http_protocol.c.dist8 httpd-2_0_20/modules/http/http_protocol.c
+--- httpd-2_0_20/modules/http/http_protocol.c.dist8	Fri Jul 13 07:37:42 2001
++++ httpd-2_0_20/modules/http/http_protocol.c	Mon Jul 16 08:28:40 2001
+@@ -1095,6 +1095,11 @@
+         return ap_pass_brigade(f->next, b);
+     }
+ 
++    if (r->header_only == 2) {
++        /* already sent response headers */
++        goto head_eats_body;
++    }
++
+     /*
+      * Now that we are ready to send a response, we need to combine the two
+      * header field tables into a single table.  If we don't do this, our
+@@ -1209,6 +1214,16 @@
+     ap_pass_brigade(f->next, b2);
+ 
+     if (r->header_only) {
++        /* kabe: Flag that ap_http_header_filter() will eat all
++         * the remaining body further passed by the upstream.
++         * Because only ap_http_header_filter() knows about reply headers,
++         * we should
++         * o for GET, attach CHUNK and detach myself
++         * o for HEAD, don't detach, and eat all the succeeding 
++         *   body buckets from upstream
++         */
++    head_eats_body:
++        r->header_only = 2;     /* should use f->ctx ... */
+         apr_brigade_destroy(b);
+         return OK;
+     }
+=============================== }
+EOP
+
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: stoddard
+State-Changed-When: Tue Jul 24 07:24:44 PDT 2001
+State-Changed-Why:
+Thanks for the bug report.  I believe the right fix is to uninstall the header filter the first time through on HEAD requests.  (right before we return OK). Will be fixed in the next release. Thanks again!
+Bill
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

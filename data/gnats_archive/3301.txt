@@ -1,0 +1,537 @@
+Received: (qmail 27661 invoked by uid 2012); 27 Oct 1998 18:29:39 -0000
+Message-Id: <19981027182939.27660.qmail@hyperreal.org>
+Date: 27 Oct 1998 18:29:39 -0000
+From: Ted Keller <keller@bfg.com>
+Reply-To: keller@bfg.com
+To: apbugs@hyperreal.org
+Subject: Severe performance problems under heavy load - not noticed in apache-1.3.1
+X-Send-Pr-Version: 3.2
+
+>Number:         3301
+>Category:       general
+>Synopsis:       Severe performance problems under heavy load - not noticed in apache-1.3.1
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 27 10:30:00 PST 1998
+>Closed-Date:    Tue Mar 26 06:27:28 PST 2002
+>Last-Modified:  Tue Mar 26 06:27:28 PST 2002
+>Originator:     keller@bfg.com
+>Release:        1.3.3
+>Organization:
+>Environment:
+tek@d8544-cs 59: uname -a
+IRIX d8544-cs 5.3 11091810 IP7 mips
+patch level 2068 kernel roll-up patch
+gcc-2.8.1
+
+Apache built with....
+
+
+root@d8544-cs 72: more configure-proxy
+setenv CFLAGS "-DIRIX5" 
+./configure     \
+                        --prefix=/usr/local/apache-proxy\
+                        --bindir=/usr/local/apache-proxy/bin\
+                        --sbindir=/usr/local/apache-proxy/sbin\
+                        --libexecdir=/usr/local/apache-proxy/libexec\
+                        --mandir=/usr/local/man\
+                        --sysconfdir=/etc/apache-proxy\
+                        --datadir=/usr/local/apache-proxy/share\
+                        --includedir=/usr/local/apache-proxy/include\
+                        --localstatedir=/usr/local/apache-proxy/var\
+                        --runtimedir=/usr/local/apache-proxy/var/run\
+                        --logfiledir=/usr2/adm/apache-proxy\
+                        --proxycachedir=/scratch/internet/cache\
+                        --enable-rule=SOCKS4\
+                        --enable-module=proxy\
+                        --disable-module=actions\
+                        --disable-module=alias\
+                        --disable-module=asis\
+                        --disable-module=auth\
+                        --disable-module=autoindex\
+                        --disable-module=cgi\
+                        --disable-module=dir\
+                        --disable-module=env\
+                        --disable-module=imap\
+                        --disable-module=include\
+                        --disable-module=setenvif\
+                        --disable-module=userdir
+root@d8544-cs 73: 
+>Description:
+Using apache as a proxy server for internal network.  Server supports around 1600
+individual client users running netscape and interne explorer browsers.
+Upgraded from Apache 1.3.1 to Apache 1.3.3.  User community immedicately noticed
+much slower accesses from the internet.  Downgraded back to Apache 1.3.1 and service
+was restored to original service levels.
+
+Apache appeared to accept incomming connections much slower than the previous version.
+Noted CPU loading was reduced by new version.  With apache 1.3.1, uptime provides
+statistics as follows during peak periods
+
+ 1:17pm  up 7 days, 18:26,  2 users,  load average: 32.53, 23.10, 23.43
+
+with the 1.3.3 version, these load averages were reduced to 3.xx from the levels 
+of the above numbers.
+
+System load was also reduced from approximately 75% (spiked activity) to about 
+50% steady activity with intermittent spikes.
+>How-To-Repeat:
+Would believe this would happen for any heavily loaded site.  Do not believe
+this is limited to proxy configurations.
+>Fix:
+The newer version of apache appears to have modified significantly how it decides 
+who (which of the spawned children) listen to the incomming port.  I suspect this
+algorithm is not happening fast enough for heavlily loaded environments.  Once the 
+child has connected, it processes the request quickly.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Tue Oct 27 10:33:34 PST 1998
+State-Changed-Why:
+Why do you say you don't think it is related to the proxy?
+
+Does PR#3202 (http://bugs.apache.org/index/full/3202)
+sound like it could be the same thing you are seeing?
+
+From: Rodent of Unusual Size <Ken.Coar@Golux.Com>
+To: Apache bug database <apbugs@Apache.Org>
+Cc:  Subject: Re: general/3301: Severe performance problems under heavy load - not noticed in apache-1.3.1
+Date: Wed, 28 Oct 1998 07:48:38 -0500
+
+ Ted Keller wrote:
+ > 
+ > Marc,
+ > 
+ > I think I am seeing something different here.  Although I don't have truss
+ > on my SGI - I ran a par against the base 1.3.3 server engine.  Attached
+ > are the results.  My configuration does have cache enabled.  Garbage
+ > collection is being performed.  Each of the active processes is consuming
+ > between 3-4% of the cpu time.  This seems consistent between the two
+ > releases.
+ > 
+ > Response times for low usage appear quite acceptable - and no noticable
+ > differences appear between apache 1.3.1 and apache 1.3.3.  Differences
+ > appear with loads increase.  In this case, the loading per proxy copy
+ > stays at 3-4% cpu loads.  However, processor time doesn't increase above
+ > 50% (except for occational spikes).  With the 1.3.1 server, loading
+ > increased above the 50% range - and spiking was continous.  This appears
+ > different from eric cooks description where processor load continued to
+ > increase due to the garbage collection calls.
+ > 
+ > par output....
+ > 
+ > from child server....
+ > 
+ > root@d8544-cs 63: par -s -P 22478 -l -SS
+ > OVERFLOW: total so far 183
+ > OVERFLOW: total so far 387
+ > 
+ > -- snip --
+ > 
+ > OVERFLOW: total so far 25859
+ > OVERFLOW: total so far 26490
+ > OVERFLOW: total so far 27202
+ > 14470mS[ 3]     httpd(22478): END-read() = 751
+ > 14473mS[ 3]     httpd(22478): read(4, 0x10030718, 4096) = 0
+ > 14473mS[ 3]     httpd(22478): close(4) OK
+ > 14474mS[ 3]     httpd(22478): getpid() = 22478 ppid=8515
+ > 14474mS[ 3]     httpd(22478): time() = 909536426
+ > 14474mS[ 3]     httpd(22478): getdomainname((null), 256) OK
+ > 14474mS[ 3]     httpd(22478): socket(PF_INET, SOCK_DGRAM, 0) = 4
+ > 14475mS[ 3]     httpd(22478): connect(4, <00 02 00 35 aa 7e 9b 08 00 00 00
+ > 00 00
+ >  00 00 00>, 16) OK
+ > 14476mS[ 3]     httpd(22478): send(4, <00 05 01 00 00 01 00 00 00 00 00 00
+ > 07 63
+ >  6f 75>..., 46, 0) = 46
+ > 14477mS[ 3]     httpd(22478): select(5, IN:set=4 OUT:set=4, 0, 0, sec=5
+ > usec=0)
+ > = 1
+ > 14480mS[ 3]     httpd(22478): recv(4, <00 05 85 83 00 01 00 00 00 01 00 00
+ > 07 63
+ >  6f 75>..., 1024, 0) = 105
+ > 14481mS[ 3]     httpd(22478): close(4) OK
+ > 14482mS[ 3]     httpd(22478): socket(PF_INET, SOCK_DGRAM, 0) = 4
+ > 14483mS[ 3]     httpd(22478): connect(4, <00 02 00 35 aa 7e 9b 08 00 00 00
+ > 00 00
+ >  00 00 00>, 16) OK
+ > 14483mS[ 3]     httpd(22478): send(4, <00 06 01 00 00 01 00 00 00 00 00 00
+ > 07 63
+ >  6f 75>..., 38, 0) = 38
+ > 14484mS[ 3]     httpd(22478): select(5, IN:set=4 OUT:set=4, 0, 0, sec=5
+ > usec=0)
+ > = 1
+ > 14489mS[ 0]     httpd(22478): recv(4, <00 06 81 80 00 01 00 01 00 02 00 02
+ > 07 63
+ >  6f 75>..., 1024, 0) = 147
+ > 14489mS[ 0]     httpd(22478): close(4) OK
+ > 14489mS[ 0]     httpd(22478): socket(PF_INET, SOCK_STREAM, 6) = 4
+ > 14493mS[ 0]     httpd(22478): open(/etc/hosts, O_RDONLY, 0666) = 5
+ > 14494mS[ 0]     httpd(22478): fstat(5, 0x7fff8898) OK
+ > 14494mS[ 0]     httpd(22478): ioctl(5, TCGETA, 0x7fff8840) errno = 25 (Not
+ > a typ
+ > ewriter)
+ > 14494mS[ 0]     httpd(22478): read(5, "#\n# If the NIS is running, thi",
+ > 4096) =
+ >  751
+ > 14497mS[ 0]     httpd(22478): read(5, 0x10030718, 4096) = 0
+ > 14497mS[ 0]     httpd(22478): close(5) OK
+ > 14498mS[ 0]     httpd(22478): getpid() = 22478 ppid=8515
+ > 14498mS[ 0]     httpd(22478): time() = 909536426
+ > 14498mS[ 0]     httpd(22478): getdomainname((null), 256) OK
+ > 14499mS[ 0]     httpd(22478): socket(PF_INET, SOCK_DGRAM, 0) = 5
+ > 14499mS[ 0]     httpd(22478): connect(5, <00 02 00 35 aa 7e 9b 08 00 00 00
+ > 00 00
+ >  00 00 00>, 16) OK
+ > 14499mS[ 0]     httpd(22478): send(5, <00 07 01 00 00 01 00 00 00 00 00 00
+ > 03 31
+ >  30 30>..., 45, 0) = 45
+ > 14500mS[ 0]     httpd(22478): select(6, IN:set=5 OUT:set=5, 0, 0, sec=5
+ > usec=0)
+ > = 1
+ > 14504mS[ 3]     httpd(22478): recv(5, <00 07 81 80 00 01 00 03 00 01 00 01
+ > 03 31
+ >  30 30>..., 1024, 0) = 196
+ > 14505mS[ 3]     httpd(22478): close(5) OK
+ > 14512mS[ 3]     httpd(22478): open(/etc/socks.conf, O_RDONLY, 0666) = 5
+ > 14513mS[ 3]     httpd(22478): fstat(5, 0x7fff88a8) OK
+ > 14513mS[ 3]     httpd(22478): ioctl(5, TCGETA, 0x7fff8850) errno = 25 (Not
+ > a typ
+ > ewriter)
+ > 14513mS[ 3]     httpd(22478): read(5, "direct\t192.73.67.0\t\t255.255.25",
+ > 4096)
+ >  = 206
+ > 14515mS[ 3]     httpd(22478): read(5, 0x10030718, 4096) = 0
+ > 14515mS[ 3]     httpd(22478): close(5) OK
+ > 14517mS[ 3]     httpd(22478): socket(PF_INET, SOCK_STREAM, 0) = 5
+ > 14518mS[ 3]     httpd(22478): connect(5, <00 02 04 38 aa 7e 9b 08 00 00 00
+ > 00 00
+ >  00 00 00>, 16) OK
+ > 14523mS[ 1]     httpd(22478): ulimit(4, 0) = 200
+ > 14523mS[ 1]     httpd(22478): fcntl(5, F_GETFL) = 0x2
+ > 14523mS[ 1]     httpd(22478): close(4) OK
+ > 14525mS[ 1]     httpd(22478): fcntl(5, F_DUPFD, 4) = 4
+ > 14525mS[ 1]     httpd(22478): close(5) OK
+ > 14525mS[ 1]     httpd(22478): select(5, 0, IN:set=4 OUT:set=4, 0, sec=15
+ > usec=0)
+ >  = 1
+ > 14525mS[ 1]     httpd(22478): write(4, <04 01 00 50 d1 43 77 64>, 8) = 8
+ > 14526mS[ 1]     httpd(22478): select(5, 0, IN:set=4 OUT:set=4, 0, sec=15
+ > usec=0)
+ >  = 1
+ > 14526mS[ 1]     httpd(22478): write(4, "root\0", 5) = 5
+ > OVERFLOW: total so far 27932
+ > 14527mS[ 1]     httpd(22478): select(5, set=4, 0, 0, sec=15 usec=0)
+ > 14779mS[ 2]     httpd(22478): END-read() = 457
+ > 14781mS[ 2]     httpd(22478):
+ > unlink(/scratch/internet/apache/l/a/m/QpOb4w5ewuKT
+ > F_JvVhQ) errno = 2 (No such file or directory)
+ > 14784mS[ 2]     httpd(22478): read(4, 0x7fff6b5b, 8013) = 0
+ > 14797mS[ 2]     httpd(22478): write(3, "HTTP/1.0 302 Moved\r\nDate: Wed,",
+ > 457)
+ > = 457
+ > 14799mS[ 2]     httpd(22478): close(4) OK
+ > 14799mS[ 2]     httpd(22478): fork() = 22565
+ > 14809mS[ 3]     httpd(22478): waitsys(P_PID, 22565, 0x7fff89e0,
+ > WTRAPPED|WEXITED
+ > , 0)
+ > 14826mS[ 1]     httpd(22478): was sent signal SIGCLD
+ > 14827mS[ 1]     httpd(22478): END-waitsys(P_PID, 22565, sig=SIGCLD errno=0
+ > code=
+ > CLD_EXITED pid=22565, status=0, WTRAPPED|WEXITED, 0) = 0
+ > 14829mS[ 1]     httpd(22478): close(3) OK
+ > 14830mS[ 1]     httpd(22478): sigaction(SIGUSR1, flags=0 handler=0x4289cc
+ > mask=<
+ > NO_SIGNALS>, flags=0 handler=SIG_IGN mask=<NO_SIGNALS>, 0xfad592c) OK
+ > 14830mS[ 1]     httpd(22478): close(4) errno = 9 (Bad file number)
+ > 14833mS[ 1]     httpd(22478): sigaction(SIGHUP, flags=0 handler=SIG_IGN
+ > mask=<NO
+ > _SIGNALS>, flags=0 handler=0x428954 mask=<NO_SIGNALS>, 0xfad592c) OK
+ > 14833mS[ 1]     httpd(22478): sigaction(SIGUSR1, flags=0 handler=SIG_IGN
+ > mask=<N
+ > O_SIGNALS>, flags=0 handler=0x4289cc mask=<NO_SIGNALS>, 0xfad592c) OK
+ > 14834mS[ 1]     httpd(22478): prctl(PR_GETNSHARE) = 0
+ > 14836mS[ 1]     httpd(22478): exit(0)
+ > OVERFLOW: total so far 28640
+ > 
+ > >From root process .....
+ > 
+ > root@d8544-cs 67: par -s -P 8515 -SS -l
+ > OVERFLOW: total so far 279
+ > OVERFLOW: total so far 829
+ > OVERFLOW: total so far 1494
+ > OVERFLOW: total so far 2172
+ > OVERFLOW: total so far 2712
+ > OVERFLOW: total so far 3229
+ > OVERFLOW: total so far 3743
+ > OVERFLOW: total so far 4227
+ >  2491mS[ 0]   UNKNOWN( 8515): END-select() = 0
+ >  2491mS[ 0]   UNKNOWN( 8515): time() = 909536916
+ >  2491mS[ 0]   UNKNOWN( 8515): waitsys(P_ALL, 0, NO PID,
+ > WNOHANG|WTRAPPED|WEXITED
+ > , 0) = 0
+ > OVERFLOW: total so far 4715
+ > OVERFLOW: total so far 5221
+ > OVERFLOW: total so far 5743
+ > OVERFLOW: total so far 6235
+ >  2491mS[ 0]   UNKNOWN( 8515): select(0, 0, 0, 0, sec=1 usec=0) = 0
+ >  3502mS[ 3]   UNKNOWN( 8515): time() = 909536917
+ >  3502mS[ 3]   UNKNOWN( 8515): waitsys(P_ALL, 0, NO PID,
+ > WNOHANG|WTRAPPED|WEXITED
+ > , 0) = 0
+ > OVERFLOW: total so far 6775
+ > OVERFLOW: total so far 7271
+ > OVERFLOW: total so far 7772
+ >  3502mS[ 3]   UNKNOWN( 8515): select(0, 0, 0, 0, sec=1 usec=0)
+ > OVERFLOW: total so far 8260
+ > OVERFLOW: total so far 8786
+ > OVERFLOW: total so far 9290
+ > OVERFLOW: total so far 9781
+ > OVERFLOW: total so far 10222
+ > OVERFLOW: total so far 10684
+ > OVERFLOW: total so far 11139
+ > OVERFLOW: total so far 11614
+ > OVERFLOW: total so far 12134
+ > OVERFLOW: total so far 12611
+ > OVERFLOW: total so far 13084
+ > OVERFLOW: total so far 13596
+ > OVERFLOW: total so far 14070
+ > OVERFLOW: total so far 14554
+ > OVERFLOW: total so far 15054
+ > OVERFLOW: total so far 15577
+ > OVERFLOW: total so far 16117
+ > OVERFLOW: total so far 16638
+ >  9238mS[ 3]   UNKNOWN( 8515): END-select() = 0
+ >  9238mS[ 3]   UNKNOWN( 8515): time() = 909536923
+ >  9239mS[ 3]   UNKNOWN( 8515): waitsys(P_ALL, 0, NO PID,
+ > WNOHANG|WTRAPPED|WEXITED
+ > , 0) = 0
+ > OVERFLOW: total so far 17172
+ >  9239mS[ 3]   UNKNOWN( 8515): select(0, 0, 0, 0, sec=1 usec=0)
+ > OVERFLOW: total so far 17754
+ > OVERFLOW: total so far 18314
+ > OVERFLOW: total so far 18884
+ > OVERFLOW: total so far 19456
+ > OVERFLOW: total so far 20083
+ > OVERFLOW: total so far 20712
+ > 11203mS[ 1]   UNKNOWN( 8515): END-select() = 0
+ > 11203mS[ 1]   UNKNOWN( 8515): time() = 909536925
+ > 11204mS[ 1]   UNKNOWN( 8515): waitsys(P_ALL, 0, NO PID,
+ > WNOHANG|WTRAPPED|WEXITED
+ > , 0) = 0
+ > OVERFLOW: total so far 21372
+ > 11204mS[ 1]   UNKNOWN( 8515): select(0, 0, 0, 0, sec=1 usec=0)
+ > OVERFLOW: total so far 22074
+ > OVERFLOW: total so far 22771
+ > OVERFLOW: total so far 23388
+ > OVERFLOW: total so far 24036
+ > OVERFLOW: total so far 24622
+ > OVERFLOW: total so far 25168
+ > 13188mS[ 1]   UNKNOWN( 8515): END-select() = 0
+ > 13188mS[ 1]   UNKNOWN( 8515): time() = 909536927
+ > 13189mS[ 1]   UNKNOWN( 8515): waitsys(P_ALL, 0, NO PID,
+ > WNOHANG|WTRAPPED|WEXITED
+ > , 0) = 0
+ > OVERFLOW: total so far 25688
+ > 13189mS[ 1]   UNKNOWN( 8515): select(0, 0, 0, 0, sec=1 usec=0)
+ > OVERFLOW: total so far 26212
+ > root@d8544-cs 68: Broken pipe
+ > 
+ > ted keller
+
+From: Ted Keller <keller@bfg.com>
+To: apbugs@Apache.Org
+Cc:  Subject: Re: general/3301: Severe performance problems under heavy load - not noticed in apache-1.3.1
+Date: Wed, 11 Nov 1998 17:22:08 -0500 (EST)
+
+   This message is in MIME format.  The first part should be readable text,
+   while the remaining parts are likely unreadable without MIME-aware tools.
+   Send mail to mime@docserver.cac.washington.edu for more info.
+ 
+ ---1068940524-906137352-910657055=:1851
+ Content-Type: TEXT/PLAIN; CHARSET=US-ASCII
+ Content-ID: <Pine.SGI.3.96.981111172103.900C@ns1.bfg.com>
+ 
+ 
+ 
+ Marc,
+ 
+ I've determined the problem and have developed a fix for my environment.
+ This fix will have to be generalized to be applicable to others - but the
+ process of completing the fix should now be pretty straight forward.
+ 
+ Here's the problem.....
+ 
+ I run my apache proxy behind a socks4 firewall.  Specifically, it is a
+ socks 4.2.2 firewall daemon.
+ 
+ In general, the process of "socksifying" apache is not totally correct.
+ In reality, we only want to socksify the the remote connection portion.
+ All local connections do NOT want to be socksified.  
+ 
+ The big problems occured in http_main.c.  In this routine, socks issues
+ both bind and accept calls.  These were causing increased fork system
+ calls (yes - socks will fork on a bind if the remote client is not ready
+ to talk to it).  Forcing Apache NOT to use socks in http_main.c cleared up
+ the problems.
+ 
+ To fix it, attached are three patch files.  They modify the behavior of
+ the Configure script (used to create the Makefiles), proxy_util.c (where
+ most of the proxy connections are performed), proxy_ftp.c (where the
+ special connections are preformed for non-pasv connections).
+ 
+ These are SOCK4.2.2 fixes only.  Continued review should be performed for
+ both SOCKS 4.3beta 2 users as well as the SOCKS5 users.  
+ 
+ I left the connection processing if rfc1413 alone (forced to used
+ non-socks connections) since I am assuming these are requesting data from
+ the local client.
+ 
+ Results of these fixes.....
+ 
+ 1. Fast performance - yet - it really outperforms the Cern proxy now -
+ hands down.
+ 2. Significantly reduced CPU utilization - I gained back about 1/2 of my
+ processor. 
+ 
+ Please let me know if you have any questions or comments.
+ 
+ ted keller - bfg.com
+ 
+ 
+ ---1068940524-906137352-910657055=:1851
+ Content-Type: TEXT/PLAIN; CHARSET=US-ASCII; NAME="proxy_util.c.patch"
+ Content-Transfer-Encoding: BASE64
+ Content-ID: <Pine.SGI.3.96.981109191735.1851B@ns1.bfg.com>
+ Content-Description: 
+ 
+ KioqIHByb3h5X3V0aWwuYy5vcmlnCVNhdCBOb3YgIDcgMjE6MzM6MTAgMTk5
+ OA0KLS0tIHByb3h5X3V0aWwuYwlTYXQgTm92ICA3IDIxOjU2OjA2IDE5OTgN
+ CioqKioqKioqKioqKioqKg0KKioqIDEyMjksMTIzNSAqKioqDQotLS0gMTIy
+ OSwxMjQxIC0tLS0NCiAgDQogICAgICBhcF9oYXJkX3RpbWVvdXQoInByb3h5
+ IGNvbm5lY3QiLCByKTsNCiAgICAgIGRvIHsNCisgDQorICNpZmRlZiBTT0NL
+ UzQNCisgCWkgPSBSY29ubmVjdChzb2NrLCAoc3RydWN0IHNvY2thZGRyICop
+ IGFkZHIsIHNpemVvZihzdHJ1Y3Qgc29ja2FkZHJfaW4pKTsNCisgI2Vsc2UN
+ CiAgCWkgPSBjb25uZWN0KHNvY2ssIChzdHJ1Y3Qgc29ja2FkZHIgKikgYWRk
+ ciwgc2l6ZW9mKHN0cnVjdCBzb2NrYWRkcl9pbikpOw0KKyAjZW5kaWYgLyog
+ U09DSzQgKi8NCisgDQogICNpZmRlZiBXSU4zMg0KICAJaWYgKGkgPT0gU09D
+ S0VUX0VSUk9SKQ0KICAJICAgIGVycm5vID0gV1NBR2V0TGFzdEVycm9yKCk7
+ DQo=
+ ---1068940524-906137352-910657055=:1851
+ Content-Type: TEXT/PLAIN; CHARSET=US-ASCII; NAME="proxy_ftp.c.patch"
+ Content-Transfer-Encoding: BASE64
+ Content-ID: <Pine.SGI.3.96.981109191735.1851C@ns1.bfg.com>
+ Content-Description: 
+ 
+ KioqIHByb3h5X2Z0cC5jLm9yaWcJU2F0IE5vdiAgNyAyMTo1OTozOCAxOTk4
+ DQotLS0gcHJveHlfZnRwLmMJU2F0IE5vdiAgNyAyMjowODoyMiAxOTk4DQoq
+ KioqKioqKioqKioqKioNCioqKiA4NzYsODgyICoqKioNCi0tLSA4NzYsODg4
+ IC0tLS0NCiAgDQogICAgICBpZiAoIXBhc3Ztb2RlKSB7CQkvKiBzZXQgdXAg
+ ZGF0YSBjb25uZWN0aW9uICovDQogIAljbGVuID0gc2l6ZW9mKHN0cnVjdCBz
+ b2NrYWRkcl9pbik7DQorIA0KKyAjaWZkZWYgU09DS1M0DQorIAlpZiAoUmdl
+ dHNvY2tuYW1lKHNvY2ssIChzdHJ1Y3Qgc29ja2FkZHIgKikgJnNlcnZlciwg
+ JmNsZW4pIDwgMCkgew0KKyAjZWxzZQ0KICAJaWYgKGdldHNvY2tuYW1lKHNv
+ Y2ssIChzdHJ1Y3Qgc29ja2FkZHIgKikgJnNlcnZlciwgJmNsZW4pIDwgMCkg
+ ew0KKyAjZW5kaWYgLyogU09DS1M0ICovDQorIA0KICAJICAgIGFwX2xvZ19y
+ ZXJyb3IoQVBMT0dfTUFSSywgQVBMT0dfRVJSLCByLA0KICAJCQkgInByb3h5
+ OiBlcnJvciBnZXR0aW5nIHNvY2tldCBhZGRyZXNzIik7DQogIAkgICAgYXBf
+ YmNsb3NlKGYpOw0KKioqKioqKioqKioqKioqDQoqKiogOTA1LDkxMSAqKioq
+ DQotLS0gOTExLDkyMiAtLS0tDQogICNlbmRpZiAvKl9PU0RfUE9TSVgqLw0K
+ ICAJfQ0KICANCisgI2lmZGVmIFNPQ0tTNA0KKyAJaWYgKFJiaW5kKGRzb2Nr
+ LCAoc3RydWN0IHNvY2thZGRyICopICZzZXJ2ZXIsDQorICNlbHNlDQogIAlp
+ ZiAoYmluZChkc29jaywgKHN0cnVjdCBzb2NrYWRkciAqKSAmc2VydmVyLA0K
+ KyAjZW5kaWYgLyogU09DS1M0ICovDQorIA0KICAJCSBzaXplb2Yoc3RydWN0
+ IHNvY2thZGRyX2luKSkgPT0gLTEpIHsNCiAgCSAgICBjaGFyIGJ1ZmZbMjJd
+ Ow0KICANCioqKioqKioqKioqKioqKg0KKioqIDkxNiw5MjIgKioqKg0KLS0t
+ IDkyNyw5MzkgLS0tLQ0KICAJICAgIGFwX3BjbG9zZXNvY2tldChwLCBkc29j
+ ayk7DQogIAkgICAgcmV0dXJuIEhUVFBfSU5URVJOQUxfU0VSVkVSX0VSUk9S
+ Ow0KICAJfQ0KKyANCisgI2lmZGVmIFNPQ0tTNA0KKyAJUmxpc3Rlbihkc29j
+ aywgMik7CS8qIG9ubHkgbmVlZCBhIHNob3J0IHF1ZXVlICovDQorICNlbHNl
+ DQogIAlsaXN0ZW4oZHNvY2ssIDIpOwkvKiBvbmx5IG5lZWQgYSBzaG9ydCBx
+ dWV1ZSAqLw0KKyAjZW5kaWYgLyogU09DS1M0ICovDQorIA0KICAgICAgfQ0K
+ ICANCiAgLyogc2V0IHJlcXVlc3Q7ICJwYXRoIiBob2xkcyBsYXN0IHBhdGgg
+ Y29tcG9uZW50ICovDQoqKioqKioqKioqKioqKioNCioqKiAxMTQ2LDExNTIg
+ KioqKg0KLS0tIDExNjMsMTE3NSAtLS0tDQogIAlhcF9oYXJkX3RpbWVvdXQo
+ InByb3h5IGZ0cCBkYXRhIGNvbm5lY3QiLCByKTsNCiAgCWNsZW4gPSBzaXpl
+ b2Yoc3RydWN0IHNvY2thZGRyX2luKTsNCiAgCWRvDQorIA0KKyAjaWZkZWYg
+ U09DSzQNCisgCSAgICBjc2QgPSBSYWNjZXB0KGRzb2NrLCAoc3RydWN0IHNv
+ Y2thZGRyICopICZzZXJ2ZXIsICZjbGVuKTsNCisgI2Vsc2UNCiAgCSAgICBj
+ c2QgPSBhY2NlcHQoZHNvY2ssIChzdHJ1Y3Qgc29ja2FkZHIgKikgJnNlcnZl
+ ciwgJmNsZW4pOw0KKyAjZW5kaWYgLyogc29ja3M0ICovDQorIA0KICAJd2hp
+ bGUgKGNzZCA9PSAtMSAmJiBlcnJubyA9PSBFSU5UUik7DQogIAlpZiAoY3Nk
+ ID09IC0xKSB7DQogIAkgICAgYXBfbG9nX3JlcnJvcihBUExPR19NQVJLLCBB
+ UExPR19FUlIsIHIsDQo=
+ ---1068940524-906137352-910657055=:1851
+ Content-Type: TEXT/PLAIN; CHARSET=US-ASCII; NAME="Configure.patch"
+ Content-Transfer-Encoding: BASE64
+ Content-ID: <Pine.SGI.3.96.981109191735.1851D@ns1.bfg.com>
+ Content-Description: 
+ 
+ KioqIENvbmZpZ3VyZS5vcmlnCVdlZCBPY3QgIDcgMDU6MTk6MzAgMTk5OA0K
+ LS0tIENvbmZpZ3VyZQlTYXQgTm92ICA3IDIyOjE5OjU4IDE5OTgNCioqKioq
+ KioqKioqKioqKg0KKioqIDEyNzUsMTI4NSAqKioqDQogICMgb3RoZXJ3aXNl
+ IHdlIGFzc3VtZSAiLUwvdXNyL2xvY2FsL2xpYiAtbHNvY2tzIg0KICBpZiBb
+ ICIkUlVMRV9TT0NLUzQiID0gInllcyIgXTsgdGhlbg0KICAgICAgZWNobyAi
+ ICsgZW5hYmxpbmcgU09DS1M0IHN1cHBvcnQiDQohICAgICBDRkxBR1M9IiRD
+ RkxBR1MgLURTT0NLUyAtRFNPQ0tTNCINCiEgICAgIENGTEFHUz0iJENGTEFH
+ UyAtRGNvbm5lY3Q9UmNvbm5lY3QgLURzZWxlY3Q9UnNlbGVjdCINCiEgICAg
+ IENGTEFHUz0iJENGTEFHUyAtRGdldGhvc3RieW5hbWU9UmdldGhvc3RieW5h
+ bWUiDQogICAgICBpZiBbICIuYGdyZXAgRVhUUkFfIE1ha2VmaWxlIHwgZ3Jl
+ cCBsc29ja3NgIiA9IC4gXTsgdGhlbg0KISAJTElCUz0iJExJQlMgLUwvdXNy
+ L2xvY2FsL2xpYiAtbHNvY2tzIg0KICAgICAgZmkNCiAgICAgIGNhc2UgJFBM
+ QVQgaW4NCiAgICAgICAgICAqLXNvbGFyaXMyKiApDQotLS0gMTI3NSwxMjg3
+ IC0tLS0NCiAgIyBvdGhlcndpc2Ugd2UgYXNzdW1lICItTC91c3IvbG9jYWwv
+ bGliIC1sc29ja3MiDQogIGlmIFsgIiRSVUxFX1NPQ0tTNCIgPSAieWVzIiBd
+ OyB0aGVuDQogICAgICBlY2hvICIgKyBlbmFibGluZyBTT0NLUzQgc3VwcG9y
+ dCINCiEgCUNGTEFHUz0iJENGTEFHUyAtRFNPQ0tTIC1EU09DS1M0Ig0KISAj
+ ICAgIENGTEFHUz0iJENGTEFHUyAtRFNPQ0tTIC1EU09DS1M0Ig0KISAjICAg
+ IENGTEFHUz0iJENGTEFHUyAtRGNvbm5lY3Q9UmNvbm5lY3QgLURzZWxlY3Q9
+ UnNlbGVjdCINCiEgIyAgICBDRkxBR1M9IiRDRkxBR1MgLURnZXRob3N0Ynlu
+ YW1lPVJnZXRob3N0YnluYW1lIg0KICAgICAgaWYgWyAiLmBncmVwIEVYVFJB
+ XyBNYWtlZmlsZSB8IGdyZXAgbHNvY2tzYCIgPSAuIF07IHRoZW4NCiEgIwlM
+ SUJTPSIkTElCUyAtTC91c3IvbG9jYWwvbGliIC1sc29ja3MiDQohIAlMSUJT
+ PSIkTElCUyAtbHNvY2tzIg0KICAgICAgZmkNCiAgICAgIGNhc2UgJFBMQVQg
+ aW4NCiAgICAgICAgICAqLXNvbGFyaXMyKiApDQo=
+ ---1068940524-906137352-910657055=:1851--
+Comment-Added-By: coar
+Comment-Added-When: Wed May 24 13:01:55 PDT 2000
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: jim
+State-Changed-When: Tue Mar 26 06:27:28 PST 2002
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

@@ -1,0 +1,192 @@
+Received: (qmail 11756 invoked by uid 2012); 13 Jul 1998 03:33:44 -0000
+Message-Id: <19980713033344.11755.qmail@hyperreal.org>
+Date: 13 Jul 1998 03:33:44 -0000
+From: Peter Jones <jones.peter@uqam.ca>
+Reply-To: jones.peter@uqam.ca
+To: apbugs@hyperreal.org
+Subject: loader invalid fixup error for symbol $00000011E when using shared php version PHP 3.0.1
+X-Send-Pr-Version: 3.2
+
+>Number:         2601
+>Category:       os-hpux
+>Synopsis:       loader invalid fixup error for symbol $00000011E when using shared php version PHP 3.0.1
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Jul 12 20:40:00 PDT 1998
+>Last-Modified:  Thu Jul 23 14:52:50 PDT 1998
+>Originator:     jones.peter@uqam.ca
+>Organization:
+>Release:        1.3.0
+>Environment:
+HPUX 10.20
+>Description:
+I found the aforementioned symbol in language-parser.tab.c. According
+to the Programmaing on HPUX manual, embedded constants should not be
+used in constant data because of relocation problems. The offending
+table appears to be a series of text strings in language-parser.tab.c.
+>How-To-Repeat:
+I can provide a script and output, if necessary.
+>Fix:
+
+>Audit-Trail:
+
+From: jones.peter@uqam.ca
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: os-hpux/2601: loader invalid fixup error for symbol $00000011E when using shared php version PHP 3.0.1
+Date: Sun, 12 Jul 1998 23:42:15 -0400 (EDT)
+
+ > 
+ > Thank you very much for your problem report.
+ > It has the internal identification `os-hpux/2601'.
+ > The individual assigned to look at your
+ > report is: apache. 
+ > 
+ > >Category:       os-hpux
+ > >Responsible:    apache
+ > >Synopsis:       loader invalid fixup error for symbol $00000011E when using shared php version PHP 3.0.1
+ > >Arrival-Date:   Sun Jul 12 20:40:00 PDT 1998
+ > 
+ Here is more information:
+ ::::::::::::::
+ /users/usagers1/jones/apbug.ksh (complete)
+ ::::::::::::::
+ #!/bin/ksh -vx
+ #User-specifiable parameters
+ APACHEVER=apache_1.3.0
+ PHPVER=php-3.0.1
+ SERVERROOT=$HOME/SERVERROOT
+ TOP=$SERVERROOT/apache
+ 
+ GZIPDIR=/tmp/$LOGNAME/gzips
+ mkdir -p $GZIPDIR
+ #Other parameters
+ 
+ if [[ ! -s $GZIPDIR/$APACHEVER.tar.gz ]] then
+ nice lynx -source http://www.apache.org/dist/$APACHEVER.tar.gz > $GZIPDIR/$APACHEVER.tar.gz
+ fi
+ gzcat $GZIPDIR/$APACHEVER.tar.gz | tar -xof -
+ 
+ if [[ ! -s $GZIPDIR/$PHPVER.tar.gz ]] then
+ mkdir -p $GZIPDIR
+ lynx -source http://ca.php.net/distributions/$PHPVER.tar.gz >| $GZIPDIR/$PHPVER.tar.gz
+ fi
+ gzcat $GZIPDIR/$PHPVER.tar.gz | tar -xof -
+ 
+ #Replace buggy system make
+ alias make="~gestproj/gmake -j10"
+ 
+ cd $APACHEVER
+ ./configure --prefix=$SERVERROOT
+ cd -
+ 
+ #Shared object configuration
+ cd $PHPVER
+ ./configure \
+   --cache-file=$HOME/MYPREFIX/configure.cache \
+   --prefix=$TOP/archind \
+   --exec-prefix=$TOP/archdep \
+   --with-config-file-path=$TOP/php3inipath \
+   --with-oracle=/oracle \
+   --enable-debug \
+   --enable-safe-mode \
+   --with-exec-dir=$TOP/archdep \
+   --enable-track-vars \
+   --enable-force-cgi-redirect \
+   --enable-memory-limit \
+   --with-shared-apache=../$APACHEVER
+ 
+ make clean
+ make
+ make install
+ cd -
+ 
+ cd $APACHEVER
+ ./configure \
+ --prefix=$SERVERROOT --exec-prefix=$SERVERROOT/eprefix \
+ --activate-module=src/modules/php3/libphp3.so --enable-shared=php3
+ make clean
+ make 
+ make install
+ cd -
+ 
+ ::::::::::::::
+ Relevant output
+ ::::::::::::::
+ ===> src/modules/php3
+ gmake[4]: Entering directory `/tmp/jones/12/apache_1.3.0/src/modules/php3'
+ cc -c  -I../../os/unix -I../../include   -DHPUX10 -Aa -D_HPUX_SOURCE -DUSE_HSREGEX -DSERVER_SUBVERSION=\"PHP/3.0.1\" `../../apaci` +z -DSHARED_MODULE  mod_php3.c && mv mod_php3.o mod_php3.so-o
+ rm -f libphp3.so
+ ld -b -o libphp3.so mod_php3.so-o libmodphp3-so.a  -lm  -L/oracle/lib -lclntsh -lcl -lm                    
+ ld: Invalid loader fixup for symbol "$0000011E".
+ gmake[4]: *** [libphp3.so] Error 1
+ ::::::::::::::
+ From the HPUX Programming manual
+ ::::::::::::::
+ Using the +ESlit Option to cc 
+  
+ Normally, the C compiler places constant data in the data space.  If such
+ data is used in a shared library, each process will get its own copy of
+ the data, in spite of the fact that the data is constant and should not
+ change.  This can result in some performance degradation.
+  
+ To get around this, use the C compiler's +ESlit option, which places
+ constant data in the $LIT$ text space instead of the data space.  This
+ results in one copy of the constant data being shared among all processes
+ that use the library.
+  
+ ________________________________________________________________________ 
+  
+ NOTE  This option requires that programs not write into constant strings
+       and data.  In addition, structures with embedded initialized
+       pointers won't work because the pointers cannot be relocated since
+       they are in read-only $TEXT$ space.  In this case, the linker
+       outputs the error message "Invalid loader fixup needed".
+  
+ ________________________________________________________________________ 
+ 
+
+From: jones.peter@uqam.ca
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: os-hpux/2601: loader invalid fixup error for symbol $00000011E when using shared php version PHP 3.0.1
+Date: Thu, 23 Jul 1998 14:41:34 -0400 (EDT)
+
+ > 
+ > Thank you very much for your problem report.
+ > It has the internal identification `os-hpux/2601'.
+ > The individual assigned to look at your
+ > report is: apache. 
+ > 
+ > >Category:       os-hpux
+ > >Responsible:    apache
+ > >Synopsis:       loader invalid fixup error for symbol $00000011E when using shared php version PHP 3.0.1
+ > >Arrival-Date:   Sun Jul 12 20:40:00 PDT 1998
+ > 
+ I finally traced this to the fact we have perl 5.001, not the current 5.004 on
+ our system. The '-V:' switch was not recognized, aand the '+z' compile switch
+ for shared code was not getting set.
+ 
+ Please close this report
+ 
+ Peter Jones
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Thu Jul 23 14:52:50 PDT 1998
+State-Changed-Why:
+
+Closed by submitter request (wrong version of Perl).
+Thanks for using Apache!
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

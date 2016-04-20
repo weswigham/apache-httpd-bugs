@@ -1,0 +1,87 @@
+From nobody@hyperreal.com  Sat Feb 15 01:00:08 1997
+Received: by taz.hyperreal.com (8.8.4/V2.0) id BAA19151; Sat, 15 Feb 1997 01:00:08 -0800 (PST)
+Message-Id: <199702150900.BAA19151@taz.hyperreal.com>
+Date: Sat, 15 Feb 1997 01:00:08 -0800 (PST)
+From: Alan Steremberg <alans@cs.stanford.edu>
+Reply-To: alans@cs.stanford.edu
+To: apbugs@hyperreal.com
+Subject: find_path_info in util_script.c has a bug if strings are the same
+X-Send-Pr-Version: 3.2
+
+>Number:         175
+>Category:       general
+>Synopsis:       find_path_info in util_script.c has a bug if strings are the same
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Feb 15 01:10:00 1997
+>Last-Modified:  Sat Feb 15 01:19:35 PST 1997
+>Originator:     alans@cs.stanford.edu
+>Organization:
+>Release:        1.2.b6
+>Environment:
+Solaris gcc
+>Description:
+the function find_path_info in util_script.c runs off the beginning of a string
+if the two arguments are the same path. 
+
+static int find_path_info (char *uri, char *path_info)
+{
+    int lu = strlen(uri);
+    int lp = strlen(path_info);
+
+    while (lu-- && lp-- && uri[lu] == path_info[lp]);
+
+ --- NOTE ---
+ if  the strings are the same, then lu goes to zero, and falls out but it still
+  gets post decremented to -1. 
+
+Therefore we can add a fix like this:
+    if (lu==-1) lu=0;
+
+
+--- otherwise we will try to access uri[-1] which is a really bad thing to do! --
+
+    while (uri[lu] != '\0' && uri[lu] != '/')
+    lu++;
+
+    return lu;
+}
+
+If you have any questions, please drop me a note: alans@cs.stanford.edu
+
+Thanks!
+Alan
+>How-To-Repeat:
+
+>Fix:
+Fixed code:
+
+static int find_path_info (char *uri, char *path_info)
+{
+    int lu = strlen(uri);
+    int lp = strlen(path_info);
+
+    while (lu-- && lp-- && uri[lu] == path_info[lp]);
+    if (lu==-1) lu=0;
+    while (uri[lu] != '\0' && uri[lu] != '/')
+    lu++;
+
+    return lu;
+}%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Sat Feb 15 01:19:34 PST 1997
+State-Changed-Why:
+Fixed last week in revision 1.44 of util_script.c which
+will be available with the next beta when released.  The
+fix used was exactly the same as the one suggested here.
+Thanks for the report.
+>Unformatted:
+
+

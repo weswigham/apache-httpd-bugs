@@ -1,0 +1,349 @@
+Received: (qmail 17970 invoked by uid 2012); 22 Jun 1999 01:07:44 -0000
+Message-Id: <19990622010744.17968.qmail@hyperreal.org>
+Date: 22 Jun 1999 01:07:44 -0000
+From: Ralplh Hightower <lynmax@logicsouth.com>
+Reply-To: lynmax@logicsouth.com
+To: apbugs@hyperreal.org
+Subject: mod_isapi.c: Apache frees DLLs after use; insufficient Windows error messages
+X-Send-Pr-Version: 3.2
+
+>Number:         4624
+>Category:       mod_isapi
+>Synopsis:       mod_isapi.c: Apache frees DLLs after use; insufficient Windows error messages
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun 21 18:10:01 PDT 1999
+>Closed-Date:    Mon Oct 16 23:08:53 PDT 2000
+>Last-Modified:  Mon Oct 16 23:08:53 PDT 2000
+>Originator:     lynmax@logicsouth.com
+>Release:        1.3.6
+>Organization:
+>Environment:
+Windows NT Workstation 4.0 SP4; Microsoft Visual Studio 97
+>Description:
+Our project requires keeping the ISAPI dlls loaded after use to maintain ODBC connection information and we got some errors where mod_isapi could not load our DLL.
+Added configuration options to not free dlls after use and log extended windows error information:
+1) KeepDLLsLoaded Off/On
+2) LogExtendedWindowsErrors Off/On
+Using a lookup on the dll name to reuse the dll instance would be wasting less resources; but this was a quick fix.
+>How-To-Repeat:
+
+>Fix:
+--- mod_isapi.c.orig	Fri Jan 08 11:54:44 1999
++++ mod_isapi.c	Thu Jun 10 22:04:39 1999
+@@ -72,8 +72,17 @@
+  * You should now be able to load ISAPI DLLs just be reffering to their
+  * URLs. Make sure the ExecCGI option is active in the directory
+  * the ISA is in.
++ *
++ *	1999-06-08	Ralph Hightower (lynmax@logicsouth.com)
++ *		Added ISAPI Configuration options: 
++ *		1) KeepDLLsLoaded Off/On
++ *			for those DLL's that require keeping alive ODBC connections, etc.
++ *		2) LogExtendedWindowsErrors Off/On
++ *			to provide additional error logging information from Windows
++ *
+  */
+ 
++#define	CORE_PRIVATE	/* Ralph (lynmax): Should KeepDLLsLoaded be GLOBAL_ONLY? */
+ #include "httpd.h"
+ #include "http_config.h"
+ #include "http_core.h"
+@@ -89,7 +98,10 @@
+    define this to conform */
+ #define RELAX_HEADER_RULE
+ 
+-module isapi_module;
++module MODULE_VAR_EXPORT isapi_module;
++static	isapi_keep_dlls_loaded = 0;	/* RMH (lynmax) 1999-06-08 */
++static	isapi_log_extended_win_errors = 0;	/* RMH (lynmax) 1999-06-08 */
++
+ 
+ /* Our "Connection ID" structure */
+ 
+@@ -147,6 +159,18 @@
+ 
+     if (!(isapi_handle = LoadLibraryEx(r->filename, NULL,
+ 				       LOAD_WITH_ALTERED_SEARCH_PATH))) {
++#ifdef	WIN32	/* { 1999-06-08 lynmax: Get Extended Windows Debugging Information */
++		if (isapi_log_extended_win_errors) {
++			LPVOID lpMsgBuf;
++			FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM, NULL, 
++				GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT) /* Default language */,
++				(LPTSTR) &lpMsgBuf, 0, NULL );
++			/* Log the string. */
++			ap_log_rerror(APLOG_MARK, APLOG_EMERG, r, "%s", lpMsgBuf);
++			// Free the buffer.
++			LocalFree( lpMsgBuf );
++		}
++#endif	/* } WIN32 */
+ 	ap_log_rerror(APLOG_MARK, APLOG_ALERT, r,
+ 		    "Could not load DLL: %s", r->filename);
+ 	return SERVER_ERROR;
+@@ -154,17 +178,43 @@
+ 
+     if (!(isapi_version =
+ 	  (void *)(GetProcAddress(isapi_handle, "GetExtensionVersion")))) {
++#ifdef	WIN32	/* { 1999-06-08 lynmax: Get Extended Windows Debugging Information */
++		if (isapi_log_extended_win_errors) {
++			LPVOID lpMsgBuf;
++			FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM, NULL, 
++				GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT) /* Default language */,
++				(LPTSTR) &lpMsgBuf, 0, NULL );
++			/* Log the string. */
++			ap_log_rerror(APLOG_MARK, APLOG_EMERG, r, "%s", lpMsgBuf);
++			// Free the buffer.
++			LocalFree( lpMsgBuf );
++		}
++#endif	/* } WIN32 */
+ 	ap_log_rerror(APLOG_MARK, APLOG_ALERT, r,
+ 		    "DLL could not load GetExtensionVersion(): %s", r->filename);
+-	FreeLibrary(isapi_handle);
++	if (!isapi_keep_dlls_loaded)
++		FreeLibrary(isapi_handle);
+ 	return SERVER_ERROR;
+     }
+ 
+     if (!(isapi_entry =
+ 	  (void *)(GetProcAddress(isapi_handle, "HttpExtensionProc")))) {
++#ifdef	WIN32	/* { 1999-06-08 lynmax: Get Extended Windows Debugging Information */
++		if (isapi_log_extended_win_errors) {
++			LPVOID lpMsgBuf;
++			FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM, NULL, 
++				GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT) /* Default language */,
++				(LPTSTR) &lpMsgBuf, 0, NULL );
++			/* Log the string. */
++			ap_log_rerror(APLOG_MARK, APLOG_EMERG, r, "%s", lpMsgBuf);
++			// Free the buffer.
++			LocalFree( lpMsgBuf );
++		}
++#endif	/* } WIN32 */
+ 	ap_log_rerror(APLOG_MARK, APLOG_ALERT, r,
+ 		    "DLL could not load HttpExtensionProc(): %s", r->filename);
+-	FreeLibrary(isapi_handle);
++	if (!isapi_keep_dlls_loaded)
++		FreeLibrary(isapi_handle);
+ 	return SERVER_ERROR;
+     }
+ 
+@@ -173,9 +223,22 @@
+     /* Run GetExtensionVersion() */
+ 
+     if ((*isapi_version)(pVer) != TRUE) {
++#ifdef	WIN32	/* { 1999-06-08 lynmax: Get Extended Windows Debugging Information */
++		if (isapi_log_extended_win_errors) {
++			LPVOID lpMsgBuf;
++			FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM, NULL, 
++				GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT) /* Default language */,
++				(LPTSTR) &lpMsgBuf, 0, NULL );
++			/* Log the string. */
++			ap_log_rerror(APLOG_MARK, APLOG_EMERG, r, "%s", lpMsgBuf);
++			// Free the buffer.
++			LocalFree( lpMsgBuf );
++		}
++#endif	/* } WIN32 */
+ 	ap_log_rerror(APLOG_MARK, APLOG_ALERT, r,
+ 		    "ISAPI GetExtensionVersion() failed: %s", r->filename);
+-	FreeLibrary(isapi_handle);
++	if (!isapi_keep_dlls_loaded)
++		FreeLibrary(isapi_handle);
+ 	return SERVER_ERROR;
+     }
+ 
+@@ -202,7 +265,8 @@
+     /* Set up client input */
+     if ((retval = ap_setup_client_block(r, REQUEST_CHUNKED_ERROR))) {
+ 	if (isapi_term) (*isapi_term)(HSE_TERM_MUST_UNLOAD);
+-	FreeLibrary(isapi_handle);
++	if (!isapi_keep_dlls_loaded)
++		FreeLibrary(isapi_handle);
+ 	return retval;
+     }
+ 
+@@ -222,7 +286,8 @@
+ 
+ 	if (to_read > 49152) {
+ 	    if (isapi_term) (*isapi_term)(HSE_TERM_MUST_UNLOAD);
+-	    FreeLibrary(isapi_handle);
++		if (!isapi_keep_dlls_loaded)
++		    FreeLibrary(isapi_handle);
+ 	    return HTTP_REQUEST_ENTITY_TOO_LARGE;
+ 	}
+ 
+@@ -230,7 +295,8 @@
+ 
+ 	if ((read = ap_get_client_block(r, ecb->lpbData, to_read)) < 0) {
+ 	    if (isapi_term) (*isapi_term)(HSE_TERM_MUST_UNLOAD);
+-	    FreeLibrary(isapi_handle);
++		if (!isapi_keep_dlls_loaded)
++			FreeLibrary(isapi_handle);
+ 	    return SERVER_ERROR;
+ 	}
+ 
+@@ -269,7 +335,8 @@
+ 
+     /* All done with the DLL... get rid of it */
+     if (isapi_term) (*isapi_term)(HSE_TERM_MUST_UNLOAD);
+-    FreeLibrary(isapi_handle);
++	if (!isapi_keep_dlls_loaded)
++	    FreeLibrary(isapi_handle);
+ 
+     switch(retval) {
+     case HSE_STATUS_SUCCESS:
+@@ -545,25 +612,73 @@
+     }
+ }
+ 
++/*
++ *command-related code. This is here to prevent use of KeepDLLsLoaded
++ * without isapi_module included.
++ */
++static const char *set_keep_dlls_loaded(cmd_parms *cmd, void *dummy, char *arg) 
++{
++    const char *err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
++    if (err != NULL) {
++        return err;
++    }
++    if (!strcasecmp(arg, "off") || !strcmp(arg, "0")) {
++	isapi_keep_dlls_loaded = 0;
++    }
++    else {
++	isapi_keep_dlls_loaded = 1;
++    }
++    return NULL;
++}
++
++static const char *set_log_extended_win_errors(cmd_parms *cmd, void *dummy, char *arg)
++{
++    const char *err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
++    if (err != NULL) {
++        return err;
++    }
++    if (!strcasecmp(arg, "off") || !strcmp(arg, "0")) {
++	isapi_log_extended_win_errors = 0;
++    }
++    else {
++	isapi_log_extended_win_errors = 1;
++    }
++    return NULL;
++}
++
++static const command_rec isapi_module_cmds[] =
++{
++    { "KeepDLLsLoaded", set_keep_dlls_loaded, NULL, RSRC_CONF, TAKE1,
++      "\"On\" keep DLLs loaded in memory when finished with the request, \"Off\" free DLLs when finished" },
++    { "LogExtendedWindowsErrors", set_log_extended_win_errors, NULL, RSRC_CONF, TAKE1,
++      "\"On\" enable additional Windows error logging information, \"Off\" disable additional Windows error logging information" },
++    {NULL}
++};
++
+ handler_rec isapi_handlers[] = {
+ { "isapi-isa", isapi_handler },
+ { NULL}
+ };
+ 
+-module isapi_module = {
+-   STANDARD_MODULE_STUFF,
+-   NULL,			/* initializer */
+-   NULL,			/* create per-dir config */
+-   NULL,			/* merge per-dir config */
+-   NULL,			/* server config */
+-   NULL,			/* merge server config */
+-   NULL,			/* command table */
+-   isapi_handlers,	       	/* handlers */
+-   NULL,			/* filename translation */
+-   NULL,			/* check_user_id */
+-   NULL,			/* check auth */
+-   NULL,			/* check access */
+-   NULL,			/* type_checker */
+-   NULL,			/* logger */
+-   NULL				/* header parser */
++module MODULE_VAR_EXPORT isapi_module =
++{
++    STANDARD_MODULE_STUFF,
++    NULL,		/* initializer */
++    NULL,			/* dir config creater */
++    NULL,			/* dir merger --- default is to override */
++    NULL,			/* server config */
++    NULL,			/* merge server config */
++    isapi_module_cmds,		/* command table */
++    isapi_handlers,		/* handlers */
++    NULL,			/* filename translation */
++    NULL,			/* check_user_id */
++    NULL,			/* check auth */
++    NULL,			/* check access */
++    NULL,			/* type_checker */
++    NULL,			/* fixups */
++    NULL,			/* logger */
++    NULL,			/* header parser */
++    NULL,			/* child_init */
++    NULL,			/* child_exit */
++    NULL			/* post read-request */
+ };
+>Release-Note:
+>Audit-Trail:
+Category-Changed-From-To: os-windows-mod_isapi
+Category-Changed-By: wrowe
+Category-Changed-When: Thu Jun 15 13:29:22 PDT 2000
+
+State-Changed-From-To: open-suspended
+State-Changed-By: wrowe
+State-Changed-When: Tue Sep 12 20:20:18 PDT 2000
+State-Changed-Why:
+
+Thanks for your proposal.  The fault with the patch is that
+you will grow the refcount unless there is a cache of .dll's
+so we can recall their .dll handles.  This functionallity
+will be added to Apache 2.0 in the near future, probably
+prior to its first beta.  We need to review error messages
+across the board, not specific to mod_isapi, and have
+already made significant progress.
+
+For all the above reasons I'm suspending this report until
+the ideas are implemented in Apache 2.0.  Thank you for
+your report and interest in the Apache httpd project.
+
+State-Changed-From-To: suspended-closed
+State-Changed-By: wrowe
+State-Changed-When: Mon Oct 16 23:08:53 PDT 2000
+State-Changed-Why:
+
+1. The option to cache an isapi .dll has been added to the
+   2.0-dev tree, and was released as Apache 2.0a7 as source.
+2. The growing handles are fixed in both 1.3.14 and 2.0a7.
+   MS is very picky about the LoadLibrary, in that it must
+   use '\' characters (even documented as such) and all of
+   these errors were corrected in the Apache/Win32 dso code.
+3. Dynamic caching can only be considered if mutexes are
+   added and some lru logic is put in place.  This is not
+   likely to happen, although a patch to the current tree
+   would certainly be welcome (please start a new thread
+   on that single issue.)
+4. The error reporting should be far better under 1.3.14 and
+   2.0a7, with new options to control the level of detail.
+
+Thanks for your report, your proposal, and interest in the
+Apache httpd project!
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

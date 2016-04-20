@@ -1,0 +1,243 @@
+Received: (qmail 10349 invoked by uid 2012); 23 Mar 1998 15:20:32 -0000
+Message-Id: <19980323152032.10348.qmail@hyperreal.org>
+Date: 23 Mar 1998 15:20:32 -0000
+From: Mike Brudenell <pmb1@york.ac.uk>
+Reply-To: pmb1@york.ac.uk
+To: apbugs@hyperreal.org
+Subject: mod_auth_dbm authentication algorithm incompatible with that of mod_auth
+X-Send-Pr-Version: 3.2
+
+>Number:         1978
+>Category:       mod_auth-any
+>Synopsis:       mod_auth_dbm authentication algorithm incompatible with that of mod_auth
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Mar 23 07:30:00 PST 1998
+>Last-Modified:  Sun Jun 13 04:40:59 PDT 1999
+>Originator:     pmb1@york.ac.uk
+>Organization:
+>Release:        1.3b5
+>Environment:
+pump1 1> uname -a
+SunOS pump1.york.ac.uk 5.5.1 Generic_103640-08 sun4u sparc SUNW,Ultra-2
+pump1 1> which cc
+/opt/SUNWspro/bin/cc
+pump1 1> cc -V
+cc: SC4.0 18 Oct 1995 C 4.0
+>Description:
+There is a significant difference between the algorithms used by mod_auth and
+mod_auth_dbm to determine whether the requester is allowed access to an item.
+
+It occurs when both a "require user ..." and "require group ..." set of
+directives is specified:
+    require group phys_users
+    require user abc1
+
+The expectation is that this be interpreted as "allow access if the requesting
+username is EITHER in the group phys_users (INCLUSIVE-)OR is username abc1.
+This is a valuable interpretation as it allows a defined group of users to
+be expanded to include a number of other, exceptional, usernames.
+
+Indeed this is how mod_auth interprets the configuration.
+
+[Indeed it could be argues this is the only sensible interpretation...  The
+converse would be "is a member of this group AND is username xxx" which is
+either ALWAYS true (and is more simply written as just "require user xxx"),
+or is NEVER true (and so access never granted).]
+
+However when the password and group storage is instead switched to a DBM file
+(which is, presumably, intended as a drop-in replacement but with efficiency
+gains) the interpretation changes.
+
+Instead mod_auth_dbm appears to insist that abc1 is a member of the group
+phys_users.  As it isn't access is denied, and the following line is added to
+the error_log:
+    [Mon Mar 23 13:16:15 1998] [error] user abc1 not in right group: /usr/htdocs/...
+
+It would be exceedingly helpful if the two modules functioned similarly,
+preferably using the mod_auth interpretation ("give access to these groups
+plus these users").
+>How-To-Repeat:
+Set up password/group files for use with mod_auth and mod_auth_dbm containing:
+    * username abc1 in group hist_users
+    * username xyz1 in group phys_users
+
+Protect an area using:
+    require group phys_users
+    require user abc1
+
+First configure Apache to use the mod_auth-type files and request a documented
+protected using the above requires.  Authenticating either as xyz1 or abc1
+gives access to the document.
+
+Now reconfigure Apache to instead use the mod_auth_dbm DBM files.
+Authenticating as xyz1 (in group phys_users) grants access, but authenticating
+as abc1 (not in group phys_users) does not gain access.
+>Fix:
+I would suggest modifying the dbm_check_auth() function in source file
+src/modules/standard/mod_auth_dbm.c to be based more closely on the
+check_user_access() function in src/modules/standard/mod_auth.c
+
+In particular preceding the line:
+    if (!strcmp(w, "group") && sec->auth_dbmgrpfile) {
+
+with:
+    if (!strcmp(w, "valid-user"))
+        return OK;
+    if (!strcmp(w, "user")) {
+        while (t[0]) {
+            w = getword_conf(r->pool, &t);
+            if (!strcmp(user, w))
+                return OK;
+        }
+    }
+    else
+
+ALMOST appears to fix the problem.
+
+However...
+
+The effect is only correct if the require directives are listed in a particular
+order:
+    require user abc1
+    require group phys_users
+
+Reversing this order causes access to instead be denied.  (This is because the
+code for handling a "group" name assumes that it can definitely say that access
+is not allowed if the requesting username's groups do not intersect the
+protecting groups.  It should instead continue testing in case a later "user"
+requirement permits access.)
+
+It is also questionable whether the "group" testing code should log an error
+message if the username is not in the correct group: access may yet be allowed
+by a later "require user" directive.
+
+Hence although my suggested code alteration is a workaround it does not work
+properly and is far from ideal.
+
+A better solution might be in the following patch (however it introduces the
+method_restricted variable and code from mod_auth ... I kept this in to keep
+the new algorithm based closely on that used in mod_auth, but confess to not
+understanding the significance of method_restricted or why it is missing from
+the as-distributed mod_auth_dbm code.)
+
+*** originals/mod_auth_dbm.c    Mon Mar 23 12:46:25 1998
+--- ./mod_auth_dbm.c    Mon Mar 23 15:14:18 1998
+***************
+*** 260,265 ****
+--- 260,266 ----
+                                              &dbm_auth_module);
+      char *user = r->connection->user;
+      int m = r->method_number;
++     int method_restricted = 0;
+
+      array_header *reqs_arr = requires(r);
+      require_line *reqs = reqs_arr ? (require_line *) reqs_arr->elts : NULL;
+***************
+*** 278,287 ****
+        if (!(reqs[x].method_mask & (1 << m)))
+            continue;
+
+        t = reqs[x].requirement;
+        w = getword(r->pool, &t, ' ');
+
+!       if (!strcmp(w, "group") && sec->auth_dbmgrpfile) {
+            const char *orig_groups, *groups;
+            char *v;
+
+--- 279,299 ----
+        if (!(reqs[x].method_mask & (1 << m)))
+            continue;
+
++       method_restricted = 1;
++
+        t = reqs[x].requirement;
+        w = getword(r->pool, &t, ' ');
+
+!       if (!strcmp(w, "valid-user"))
+!           return OK;
+!       if (!strcmp(w, "user")) {
+!           while (t[0]) {
+!               w = getword_conf(r->pool, &t);
+!               if (!strcmp(user, w))
+!                   return OK;
+!           }
+!       }
+!       else if (!strcmp(w, "group") && sec->auth_dbmgrpfile) {
+            const char *orig_groups, *groups;
+            char *v;
+
+***************
+*** 304,318 ****
+                        return OK;
+                }
+            }
+-           aplog_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+-                       "user %s not in right group: %s",
+-                       user, r->filename);
+-           note_basic_auth_failure(r);
+-           return AUTH_REQUIRED;
+        }
+      }
+
+!     return DECLINED;
+  }
+
+
+--- 316,335 ----
+                        return OK;
+                }
+            }
+        }
+      }
+
+!     if (!method_restricted)
+!       return OK;
+!
+!     if (!(sec->auth_dbmauthoritative))
+!       return DECLINED;
+!
+!     aplog_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+!               "user %s not authorised to access: %s",
+!               user, r->filename);
+!     note_basic_auth_failure(r);
+!     return AUTH_REQUIRED;
+  }
+
+%0
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: lars
+State-Changed-When: Sat Feb 20 16:51:52 PST 1999
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: lars
+State-Changed-When: Sun Jun 13 04:40:58 PDT 1999
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

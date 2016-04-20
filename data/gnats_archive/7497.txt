@@ -1,0 +1,109 @@
+Received: (qmail 66617 invoked by uid 501); 1 Apr 2001 05:48:57 -0000
+Message-Id: <20010401054857.66616.qmail@apache.org>
+Date: 1 Apr 2001 05:48:57 -0000
+From: David Begley <d.begley@uws.edu.au>
+Reply-To: d.begley@uws.edu.au
+To: submit@bugz.apache.org
+Subject: DoS caused by error - Too many open files: Error accepting on cgid socket.
+X-Send-Pr-Version: 3.110
+
+>Number:         7497
+>Category:       general
+>Synopsis:       DoS caused by error - Too many open files: Error accepting on cgid socket.
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Mar 31 21:50:00 PST 2001
+>Closed-Date:    Sun Apr 01 00:15:49 PST 2001
+>Last-Modified:  Sun Apr 01 00:15:49 PST 2001
+>Originator:     d.begley@uws.edu.au
+>Release:        2.0.15
+>Organization:
+>Environment:
+Operating System:
+  Solaris 7 (SunOS 5.7), 64-bit kernel Generic_106541-14 on sun4u (Ultra 1)
+Compiler:
+  GNU CC (GCC) 2.8.1
+Build Parameters:
+  CC="gcc"
+  CFLAGS="-pipe -g"
+  export CC CFLAGS
+  ./configure --prefix=/opt/cwis --enable-info --enable-status \
+    --enable-so --enable-dav --enable-rewrite
+>Description:
+Firstly, this appears related to the report noted at:
+
+http://marc.theaimsgroup.com/?l=apache-new-httpd&m=98581718124826&w=2
+
+I have marked this report "critical" for the following reasons:
+
+1. this occurs after only sixteen (16) requests, not thousands; and,
+2. when the error condition is met, Apache loops reporting this error to the
+   error_log file at a very rapid rate, chewing up I/O and quickly filling all
+   available disk space.
+
+The above report indicates that only a few FDs are probably not being closed and
+that these appear to be CGI/pipe-related;  I concur in the second case, this is
+definitely CGI-related though I'm concerned that it may be more FDs not being
+closed (which would explain why it strikes for me after only a handful of
+requests, not thousands).
+
+The only explanation I can see is that I am running PHP 4(.0.5RC4) as a CGI
+application (not as an Apache module) performing remote (TCP/IP) database access
+and that there are likely more FDs being chewed up and not restored.
+
+The endless loop is the same three system calls:
+
+accept(...) = EMFILE
+open("/usr/share/lib/zoneinfo/Australia/NSW", O_RDONLY) = EMFILE
+write(...) <-- writes "Too man open files..." to error_log
+
+and is triggered by a failed (EMFILE) call to pipe().
+
+This happened in 2.0.14, too.  Due to the endless loop, this means the Apache
+alpha can't be left unattended for very long as the processes need to be killed
+as soon as the loop begins.
+>How-To-Repeat:
+Sorry, not available on a public Web server.
+
+The quickest way would be to run PHP 4.0.5RCx (w/built-in MySQL support) as a
+CGI application under Apache 2.0.15;  after a handful of pages performing
+database requests the Apache server enters the infinite loop.
+>Fix:
+The aforementioned thread (see reference URL) discusses ways to fix the basic FD
+leak, though that is in the "thousands of requests" circumstance;  I am not sure
+whether this is enough for this case which occurs quite quickly (only 16 requests
+before the infinite loop begins).
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: trawick
+State-Changed-When: Sun Apr  1 00:15:49 PST 2001
+State-Changed-Why:
+The file descriptor leak was fixed a few days ago (at the
+time of the thread you noted on new-httpd) and will be in
+the next release.
+
+Thanks for the report, and thanks for using Apache!
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,267 @@
+Received: (qmail 676 invoked by uid 501); 16 May 2000 20:02:44 -0000
+Message-Id: <20000516200244.675.qmail@locus.apache.org>
+Date: 16 May 2000 20:02:44 -0000
+From: Jan Wedekind <jan@wede.de>
+Reply-To: jan@wede.de
+To: submit@bugz.apache.org
+Subject: Set-Cookie with 'domain=' attribute not handled with ProxyPass
+X-Send-Pr-Version: 3.110
+
+>Number:         6095
+>Category:       mod_proxy
+>Synopsis:       Set-Cookie with 'domain=' attribute not handled with ProxyPass
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue May 16 13:10:00 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     jan@wede.de
+>Release:        1.3.*
+>Organization:
+apache
+>Environment:
+any - this is a change / improvement request
+>Description:
+When using ProxyPass and ProxyPassReverse it might happen, that
+you do provide special information of whatever, so the remote server
+wants to set a Cookie.
+If it does this with a 'domain=' attribute, and the ongoing application
+really relies on that Cookie, you're lost, because the cookie might
+be accepted but not sent again to the reverse proxied server ...
+>How-To-Repeat:
+
+>Fix:
+find below a patch (against 1.3.12) to implement the new 
+option 'ProxyPassCookie' (including patching the Online documentation).
+This can be used to change the attributes of cookies on request:
+
+*** ./src/modules/proxy/mod_proxy.h.orig	Tue Jan 11 15:13:44 2000
+--- ./src/modules/proxy/mod_proxy.h	Mon May  8 22:41:14 2000
+***************
+*** 208,213 ****
+--- 208,214 ----
+      array_header *proxies;
+      array_header *aliases;
+      array_header *raliases;
++     array_header *caliases;
+      array_header *noproxies;
+      array_header *dirconn;
+      array_header *nocaches;
+*** ./src/modules/proxy/mod_proxy.c.orig	Tue Jan 11 15:13:43 2000
+--- ./src/modules/proxy/mod_proxy.c	Tue May  9 20:10:18 2000
+***************
+*** 411,416 ****
+--- 411,417 ----
+      ps->proxies = ap_make_array(p, 10, sizeof(struct proxy_remote));
+      ps->aliases = ap_make_array(p, 10, sizeof(struct proxy_alias));
+      ps->raliases = ap_make_array(p, 10, sizeof(struct proxy_alias));
++     ps->caliases = ap_make_array(p, 10, sizeof(struct proxy_alias));
+      ps->noproxies = ap_make_array(p, 10, sizeof(struct noproxy_entry));
+      ps->dirconn = ap_make_array(p, 10, sizeof(struct dirconn_entry));
+      ps->nocaches = ap_make_array(p, 10, sizeof(struct nocache_entry));
+***************
+*** 456,461 ****
+--- 457,463 ----
+      ps->proxies = ap_append_arrays(p, base->proxies, overrides->proxies);
+      ps->aliases = ap_append_arrays(p, base->aliases, overrides->aliases);
+      ps->raliases = ap_append_arrays(p, base->raliases, overrides->raliases);
++     ps->caliases = ap_append_arrays(p, base->caliases, overrides->caliases);
+      ps->noproxies = ap_append_arrays(p, base->noproxies, overrides->noproxies);
+      ps->dirconn = ap_append_arrays(p, base->dirconn, overrides->dirconn);
+      ps->nocaches = ap_append_arrays(p, base->nocaches, overrides->nocaches);
+***************
+*** 552,557 ****
+--- 554,574 ----
+  }
+  
+  static const char *
++     add_pass_cookie(cmd_parms *cmd, void *dummy, char *f, char *r)
++ {
++     server_rec *s = cmd->server;
++     proxy_server_conf *conf;
++     struct proxy_alias *new;
++ 
++     conf = (proxy_server_conf *)ap_get_module_config(s->module_config, 
++                                                   &proxy_module);
++     new = ap_push_array(conf->caliases);
++     new->fake = f;
++     new->real = r;
++     return NULL;
++ }
++ 
++ static const char *
+       set_proxy_exclude(cmd_parms *parms, void *dummy, char *arg)
+  {
+      server_rec *s = parms->server;
+***************
+*** 898,903 ****
+--- 915,922 ----
+       "a virtual path and a URL"},
+      {"ProxyPassReverse", add_pass_reverse, NULL, RSRC_CONF, TAKE2,
+       "a virtual path and a URL for reverse proxy behaviour"},
++     {"ProxyPassCookie", add_pass_cookie, NULL, RSRC_CONF, TAKE2,
++      "a virtual domain= or path= rule for reverse proxy behaviour on cookies"},
+      {"ProxyBlock", set_proxy_exclude, NULL, RSRC_CONF, ITERATE,
+       "A list of names, hosts or domains to which the proxy will not connect"},
+      {"ProxyReceiveBufferSize", set_recv_buffer_size, NULL, RSRC_CONF, TAKE1,
+*** ./src/modules/proxy/proxy_http.c.orig	Tue Jan 11 15:13:45 2000
+--- ./src/modules/proxy/proxy_http.c	Tue May  9 20:09:36 2000
+***************
+*** 134,139 ****
+--- 134,161 ----
+      return url;
+  }
+  
++ static const char *proxy_cookie_reverse_map(request_rec *r, const char *cookie)
++ {
++     void *sconf;
++     proxy_server_conf *conf;
++     struct proxy_alias *ent;
++     int i, l1, l2;
++     char *u;
++ 
++     sconf = r->server->module_config;
++     conf = (proxy_server_conf *)ap_get_module_config(sconf, &proxy_module);
++     l1 = strlen(cookie);
++     ent = (struct proxy_alias *)conf->caliases->elts;
++     for (i = 0; i < conf->raliases->nelts; i++) {
++       if (ent[i].real && (u = strstr (cookie, ent[i].real))) {
++ 	*u=0; /* use cookie up to here */
++ 	return ap_pstrcat(r->pool, cookie, ent[i].fake,
++ 			  &u[strlen(ent[i].real)], NULL);
++       }
++     }
++     return cookie;
++ }
++ 
+  /* Clear all connection-based headers from the incoming headers table */
+  static void clear_connection(pool *p, table *headers)
+  {
+***************
+*** 468,473 ****
+--- 490,498 ----
+  	ap_table_set(resp_hdrs, "Location", proxy_location_reverse_map(r, datestr));
+      if ((datestr = ap_table_get(resp_hdrs, "URI")) != NULL)
+  	ap_table_set(resp_hdrs, "URI", proxy_location_reverse_map(r, datestr));
++ 
++     if ((datestr = ap_table_get(resp_hdrs, "Set-Cookie")) != NULL)
++ 	ap_table_set(resp_hdrs, "Set-Cookie", proxy_cookie_reverse_map(r, datestr));
+  
+  /* check if NoCache directive on this host */
+      for (i = 0; i < conf->nocaches->nelts; i++) {
+*** ./htdocs/manual/mod/mod_proxy.html.orig	Tue May 16 20:55:22 2000
+--- ./htdocs/manual/mod/mod_proxy.html	Tue May 16 21:17:24 2000
+***************
+*** 50,55 ****
+--- 50,56 ----
+  <LI><A HREF="#proxyremote">ProxyRemote</A>
+  <LI><A HREF="#proxypass">ProxyPass</A>
+  <LI><A HREF="#proxypassreverse">ProxyPassReverse</A>
++ <LI><A HREF="#proxypasscookie">ProxyPassCookie</A>
+  <LI><A HREF="#proxyblock">ProxyBlock</A>
+  <LI><A HREF="#allowconnect">AllowCONNECT</A>
+  <LI><A HREF="#proxyreceivebuffersize">ProxyReceiveBufferSize</A>
+***************
+*** 273,278 ****
+--- 274,340 ----
+   HREF="mod_rewrite.html#RewriteRule"
+  ><TT>mod_rewrite</TT></A> because its doesn't depend on a corresponding
+  <SAMP>ProxyPass</SAMP> directive.
++ 
++ <HR>
++ 
++ <H2><A NAME="proxypasscookie">ProxyPassCookie</A></H2>
++ <A
++  HREF="directive-dict.html#Syntax"
++  REL="Help"
++ ><STRONG>Syntax:</STRONG></A> ProxyPassCookie <EM>&lt;local&gt; &lt;remote&gt;</EM><BR>
++ <A
++  HREF="directive-dict.html#Default"
++  REL="Help"
++ ><STRONG>Default:</STRONG></A> <EM>None</EM><BR>
++ <A
++  HREF="directive-dict.html#Context"
++  REL="Help"
++ ><STRONG>Context:</STRONG></A> server config, virtual host<BR>
++ <A
++  HREF="directive-dict.html#Override"
++  REL="Help"
++ ><STRONG>Override:</STRONG></A> <EM>Not applicable</EM><BR>
++ <A
++  HREF="directive-dict.html#Status"
++  REL="Help"
++ ><STRONG>Status:</STRONG></A> Base<BR>
++ <A
++  HREF="directive-dict.html#Module"
++  REL="Help"
++ ><STRONG>Module:</STRONG></A> mod_proxy<BR>
++ <A
++  HREF="directive-dict.html#Compatibility"
++  REL="Help"
++ ><STRONG>Compatibility:</STRONG></A> ProxyPassCookie is only available in
++ Apache 1.3.12+ and later.<P>
++ 
++ This directive lets Apache adjust the cookie in the <TT>Set-Cookie</TT>
++ header on HTTP responses. For instance this is essential when
++ Apache is used as a reverse proxy and the remote server sends a cookie
++ with a <TT>domain=</TT> attribute set. It will then be used to change that
++ attribute, so further requests are sent to the reverse proxy including
++ the valid cookie. (No attributes will be send with any cookie from the
++ client.)
++ <P>
++ &lt;local&gt; is the local replacement of the cookie (attribute).<BR>
++ &lt;remote&gt; is the remote cookie attribute to look for.
++ <P>
++ Example:<BR>
++ Suppose the local server has address <SAMP>http://wibble.org/</SAMP>
++ and the server to be reverse proxied (mapped) sends a cookie with
++ attribute <TT>domain=foo.com</TT>; then
++ <PRE>
++    ProxyPass         /mirror/foo/ http://foo.com/
++    ProxyPassReverse  /mirror/foo/ http://foo.com/
++    ProxyPassCookie   domain=wibble.org domain=foo.com
++ </PRE>
++ will not only cause a local request for the
++ &lt;<SAMP>http://wibble.org/mirror/foo/bar</SAMP>&gt; to be internally
++ converted into a proxy request to &lt;<SAMP>http://foo.com/bar</SAMP>&gt;
++ (the functionality <SAMP>ProxyPass</SAMP> provides here). It also 
++ takes care of <TT>Set-Cookie</TT> headers from that server and changes
++ those into valid cookies for the originally queried
++ <SAMP>http://wibble.org/</SAMP> server. 
+  
+  <HR>
+  
+*** ./htdocs/manual/mod/directives.html.orig	Thu Feb 24 00:11:39 2000
+--- ./htdocs/manual/mod/directives.html	Tue May 16 21:21:04 2000
+***************
+*** 166,171 ****
+--- 166,172 ----
+  <LI><A HREF="mod_proxy.html#proxyblock">ProxyBlock</A>
+  <LI><A HREF="mod_proxy.html#proxydomain">ProxyDomain</A>
+  <LI><A HREF="mod_proxy.html#proxypass">ProxyPass</A>
++ <LI><A HREF="mod_proxy.html#proxypasscookie">ProxyPassCookie</A>
+  <LI><A HREF="mod_proxy.html#proxypassreverse">ProxyPassReverse</A>
+  <LI><A HREF="mod_proxy.html#proxyreceivebuffersize">ProxyReceiveBufferSize</A>
+  <LI><A HREF="mod_proxy.html#proxyremote">ProxyRemote</A>
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,222 @@
+Received: (qmail 19971 invoked by uid 501); 14 Dec 2001 01:29:15 -0000
+Message-Id: <20011214012915.19970.qmail@apache.org>
+Date: 14 Dec 2001 01:29:15 -0000
+From: Scott Ellentuch <tuc@ttsg.com>
+Reply-To: tuc@ttsg.com
+To: submit@bugz.apache.org
+Subject: FollowSymLink not set, when it should be
+X-Send-Pr-Version: 3.110
+
+>Number:         9118
+>Category:       general
+>Synopsis:       FollowSymLink not set, when it should be
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Dec 13 17:30:00 PST 2001
+>Closed-Date:    
+>Last-Modified:  Thu Dec 13 19:20:00 PST 2001
+>Originator:     tuc@ttsg.com
+>Release:        1.3.22
+>Organization:
+apache
+>Environment:
+BSD/OS 4.2, gcc 2.95.2    and Solaris 7, 2.95.3
+>Description:
+Ever since going to 1.3.22, we've run into alot of times where the system complains about
+FollowSymLink not being set, when we never had to set it previously. We use a default
+httpd.conf, and add :
+
+    <Directory "/PATH/wwwcust">
+        Options +Indexes +Includes 
+        AllowOverride All
+    </Directory>
+    <Directory "/PATH/wwwcust1">
+        Options +Indexes +Includes 
+        AllowOverride All
+    </Directory>
+    <Directory "/PATH/wwwcust2">
+        Options +Indexes +Includes
+        AllowOverride All
+    </Directory>
+
+/PATH/wwwcust1 and /PATH/wwwcust2 is usually a normal directory on a data disk, and 
+/PATH/wwwcust is a soft sym link to /PATH/wwwcustX/directory .  So, if we move the 
+directory from wwwcust1 to wwwcust2, we just fix the link, and everything can still
+point to the same place.
+
+On a recent install, though, we had to add "+FollowSymLinks" to the Options of all those
+lines. I can't see anywhere in the config it ISN'T turned on.... Without it, it won't
+serve.
+
+We also installed FrontPage, and get :
+
+[Thu Dec 13 20:03:11 2001] [error] [client 65.105.161.248] Options FollowSymLinks or SymLinksIfOwnerMatch is off which implies that RewriteRule directive is forbidden: /usr/local/frontpage/version5.0/apache-fp/_vti_bin/fpexe
+
+/usr is a real dir
+/usr/local is /disk/usr/local
+/usr/local/frontpage is really /disk/usr/local/frontpage
+(Yadda)
+
+/usr/local/frontpage/version5.0/apache-fp/_vti_bin/fpexe is really /disk//usr/local/frontpage/version5.0/apache-fp/_vti_bin/fpexe
+
+I added :
+    <Directory "/usr/local">
+        Options +FollowSymLinks
+    </Directory>
+    <Directory "/disk/usr/local">
+        Options +FollowSymLinks
+    </Directory>
+
+and it still is giving the error. 
+
+I checked the database, and no other mention of a problem like this has happened for
+a few years.  My understanding is that with the :
+
+
+<Directory />
+    Options FollowSymLinks
+    AllowOverride None
+</Directory>
+
+
+If I never do anything else, FollowSymLinks should be active for the entire server. 
+Is this a misconception on my part?
+>How-To-Repeat:
+
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+
+From: "William A. Rowe, Jr." <wrowe@covalent.net>
+To: <apache-bugdb@apache.org>,
+	<tuc@ttsg.com>,
+	<submit@bugz.apache.org>
+Cc:  
+Subject: Re: general/9118: FollowSymLink not set, when it should be
+Date: Thu, 13 Dec 2001 20:07:57 -0600
+
+ From: "Scott Ellentuch" <tuc@ttsg.com>
+ Sent: Thursday, December 13, 2001 7:29 PM
+ 
+ 
+ >     <Directory "/PATH/wwwcust">
+ >         Options +Indexes +Includes 
+ >         AllowOverride All
+ >     </Directory>
+ > 
+ > /PATH/wwwcust1 and /PATH/wwwcust2 is usually a normal directory on a data disk, and 
+ > /PATH/wwwcust is a soft sym link to /PATH/wwwcustX/directory .  So, if we move the 
+ > directory from wwwcust1 to wwwcust2, we just fix the link, and everything can still
+ > point to the same place.
+ > 
+ > I checked the database, and no other mention of a problem like this has happened for
+ > a few years.  My understanding is that with the :
+ > 
+ > <Directory />
+ >     Options FollowSymLinks
+ >     AllowOverride None
+ > </Directory>
+ 
+ Is there any chance you also assigned an Options statement in either
+ <Directory "/PATH"> or in a <Files > or <Location > block?  Or even in
+ an .htaccess file in / or /PATH/ ?  Any of these could be interfering
+ 
+
+From: Tuc <tuc@ttsg.com>
+To: wrowe@covalent.net (William A. Rowe, Jr.)
+Cc: apache-bugdb@apache.org, tuc@ttsg.com, submit@bugz.apache.org
+Subject: Re: general/9118: FollowSymLink not set, when it should be
+Date: Thu, 13 Dec 2001 22:15:35 -0500 (EST)
+
+ > > <Directory />
+ > >     Options FollowSymLinks
+ > >     AllowOverride None
+ > > </Directory>
+ > 
+ > Is there any chance you also assigned an Options statement in either
+ > <Directory "/PATH"> or in a <Files > or <Location > block?  Or even in
+ > an .htaccess file in / or /PATH/ ?  Any of these could be interfering
+ > 
+ On the SUN in the httpd.conf :
+ 
+ <Directory />
+     Options FollowSymLinks
+     AllowOverride None
+ </Directory>
+ 
+ <Directory "/usr/local/etc/httpd/htdocs">
+     Options Indexes FollowSymLinks MultiViews
+     AllowOverride None
+     Order allow,deny
+     Allow from all
+ </Directory>
+ 
+     <Directory "/usr/local/etc/httpd/icons">
+         Options Indexes MultiViews
+         AllowOverride None
+         Order allow,deny
+         Allow from all
+     </Directory>
+ 
+     <Directory "/usr/local/etc/httpd/htdocs/manual">
+         Options Indexes FollowSymlinks MultiViews
+         AllowOverride None
+         Order allow,deny
+         Allow from all
+     </Directory>
+ 
+     <Directory "/usr/local/etc/httpd/cgi-bin">
+         AllowOverride None
+         Options None
+         Order allow,deny
+         Allow from all
+     </Directory>
+ 
+     <Directory "/PATH/wwwcust">
+         Options Indexes Includes +FollowSymLinks
+         AllowOverride   All
+     </Directory>
+ 
+ <Directory "/PATH">
+ Options +Indexes
+ AllowOverride All
+ </Directory>
+ 
+ 
+ 
+ 	As for .htaccess, we JUST built the server, and the content
+ directory only had an index.html .
+ 
+ 
+ 
+ BSDI:
+ 
+ 	There is an .htaccess in the directory with an "Options None". Is
+ this doing it?  I believe FrontPage has always had this, and never run into
+ this problem previously. Was this "fixed" at some point, or made stricter?
+ 
+ 		Thanks, Tuc/TTSG Internet Services, Inc.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

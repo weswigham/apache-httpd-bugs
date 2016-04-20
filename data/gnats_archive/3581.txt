@@ -1,0 +1,174 @@
+Received: (qmail 11393 invoked by uid 2012); 24 Dec 1998 02:59:11 -0000
+Message-Id: <19981224025911.11392.qmail@hyperreal.org>
+Date: 24 Dec 1998 02:59:11 -0000
+From: Mohit Aron <aron@cs.rice.edu>
+Reply-To: aron@cs.rice.edu
+To: apbugs@hyperreal.org
+Subject: CGI scripts never get invoked if the URL contains %2f instead of /
+X-Send-Pr-Version: 3.2
+
+>Number:         3581
+>Category:       mod_cgi
+>Synopsis:       CGI scripts never get invoked if the URL contains %2f instead of /
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Dec 23 20:10:00 PST 1998
+>Closed-Date:
+>Last-Modified:  Fri Jun 13 15:00:41 PDT 2003
+>Originator:     aron@cs.rice.edu
+>Release:        1.3.3
+>Organization:
+>Environment:
+SunOS mrsclaus.cs.rice.edu 5.6 Generic_105181-03 sun4m sparc SUNW,SPARCstation-10
+Compiler gcc-2.8.0.
+>Description:
+I believe that any path following a CGI script in the URL is passed as arguments
+(environment variable PATH_INFO) to the CGI script. However, with Apache 1.3.3
+CGI scripts never get invoked if the URL contains %2f instead of /. The
+example below would make it clear.
+>How-To-Repeat:
+The default distribution comes with a printenv cgi-script in cgi-bin directory.
+Try the following invocations:
+	http://server/cgi-bin/printenv/a/a
+	http://server/cgi-bin/printenv/a%2fa
+On the second URL, the server would complain that it didn't find the file - the
+CGI script never gets invoked
+>Fix:
+Haven't looked at the code - I guess the place where CGI parsing is done needs
+to be fixed.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: coar
+State-Changed-When: Thu Dec 24 09:40:23 PST 1998
+State-Changed-Why:
+
+This is intentional.  The presumption is that such
+encoded slashes are being used as a form of attack, to
+access restricted portions of the system that would
+automatically be denied if the unencoded slash were
+used.  The current version of the CGI spec (under
+development at <http://Web.Golux.Com/coar/cgi/>) says
+that the server can impose whatever restrictions it
+likes upon PATH_INFO.  It's unclear whether rejecting
+the request (as Apache currently does) is preferable to
+invoking the script with PATH_INFO reduced to an empty
+string.  PATH_TRANSLATED is closely related.
+
+Category-Changed-From-To: general-mod_cgi
+Category-Changed-By: coar
+Category-Changed-When: Thu Dec 24 09:40:23 PST 1998
+
+
+From: Mohit Aron <aron@cs.rice.edu>
+To: coar@apache.org
+Cc: apbugs@apache.org
+Subject: Re: mod_cgi/3581: CGI scripts never get invoked if the URL contains %2f instead of /
+Date: Thu, 24 Dec 1998 11:46:58 -0600 (CST)
+
+ > 
+ > This is intentional.  The presumption is that such
+ > encoded slashes are being used as a form of attack, to
+ > access restricted portions of the system that would
+ > automatically be denied if the unencoded slash were
+ > used.  The current version of the CGI spec (under
+ > development at <http://Web.Golux.Com/coar/cgi/>) says
+ > that the server can impose whatever restrictions it
+ > likes upon PATH_INFO.  It's unclear whether rejecting
+ > the request (as Apache currently does) is preferable to
+ > invoking the script with PATH_INFO reduced to an empty
+ > string.  PATH_TRANSLATED is closely related.
+ > 
+ 
+ 
+ This doesn't make sense. Whey not unencode the slashes and then check whether
+ access is to be allowed - rather than simply rejecting the URL if it contains
+ encoded slashes ? I'm trying to configure the Technical Reports server for
+ the Department of Computer Science at Rice University. This server interacts
+ with the world through a CGI interface and some of the commands that it gets
+ have encoded slashes. The sofware is called 'Dienst' and most major
+ Universities run it - its available from 
+ http://www.ncstrl.org/Dienst/htdocs/Info/about-ncstrl.html.
+ 
+ Is it at least possible to let the rejection of encoded URLs be determined on a
+ per-site basis - i.e. through an option in the configuration file of Apache ?
+ 
+ 
+ - Mohit
+State-Changed-From-To: analyzed-closed
+State-Changed-By: coar
+State-Changed-When: Thu Dec 24 10:19:22 PST 1998
+State-Changed-Why:
+
+This issue is the same as that described by PR#543.
+We'll be using that report to track this.
+
+
+From: Mohit Aron <aron@cs.rice.edu>
+To: coar@apache.org
+Cc: apbugs@apache.org
+Subject: Re: mod_cgi/3581: CGI scripts never get invoked if the URL contains %2f instead of /
+Date: Sat, 26 Dec 1998 16:39:17 -0600 (CST)
+
+  > 
+  > This is intentional.  The presumption is that such
+  > encoded slashes are being used as a form of attack, to
+  > access restricted portions of the system that would
+  > automatically be denied if the unencoded slash were
+  > used.  The current version of the CGI spec (under
+  > development at <http://Web.Golux.Com/coar/cgi/>) says
+  > that the server can impose whatever restrictions it
+  > likes upon PATH_INFO.  It's unclear whether rejecting
+  > the request (as Apache currently does) is preferable to
+  > invoking the script with PATH_INFO reduced to an empty
+  > string.  PATH_TRANSLATED is closely related.
+  > 
+ 
+ 
+ Thanks for your earlier reply. I still don't fully understand the concern
+ the Apache developers have. Here are my objections for not permitting a 
+ %2f in the URL:
+ 
+ 1) Before passing the argument to CGI scripts, all arguments are anyway
+    unescaped. So any %2f characters would have become a '/' anyway and the
+    CGI would be free to discard the arguments upon seeing the '/'. I think
+    your concern applies to the case where the %2f is further escaped - i.e.
+    into %25%32%66. Unfortunately, Apache still allows this sequence to pass.
+    You can try this by:
+        http://server/cgi-bin/printenv/a%25%32%66a/
+    Look at the PATH_INFO variable returned - it's "/a%2fa/". 
+ 
+ 2) I do believe that whether or not to discard the %2f is a policy issue
+    and should be left to the CGIs.
+ 
+ 
+ If my objections seem sound, can you please release a patch for Apache that
+ allows a '%2f'. Thanks,
+ 
+ 
+ 
+ - Mohit
+Comment-Added-By: coar
+Comment-Added-When: Fri Jun 13 15:00:41 PDT 2003
+Comment-Added:
+This has been addressed in Apache 2.0.46 through the AllowEncodedSlashes directive.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

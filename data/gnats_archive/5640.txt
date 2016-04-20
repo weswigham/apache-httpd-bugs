@@ -1,0 +1,96 @@
+Received: (qmail 55394 invoked by uid 65534); 25 Jan 2000 09:31:05 -0000
+Message-Id: <20000125093105.55393.qmail@locus.apache.org>
+Date: 25 Jan 2000 09:31:05 -0000
+From: Jaromir Dolecek <dolecek@ics.muni.cz>
+Reply-To: dolecek@ics.muni.cz
+To: submit@bugz.apache.org
+Subject: server may disagree with CGI on Status, but still pass the Status sent by CGI
+X-Send-Pr-Version: 3.110
+
+>Number:         5640
+>Category:       mod_cgi
+>Synopsis:       server may disagree with CGI on Status, but still pass the Status sent by CGI
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jan 25 01:40:00 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     dolecek@ics.muni.cz
+>Release:        1.3.1, 1.3.9, 1.3.11
+>Organization:
+apache
+>Environment:
+NetBSD - kernel 1.4P, userland 1.4.2 (doesn't matter though)
+egcs 1.1.1
+>Description:
+If a CGI script returns it's own Status header and Last-Modified header,
+server might think it's sending 304 Not modified response, yet still
+send the Status in same form as the CGI program passed. This is detrimental
+if the CGI script doesn't care about If-Modified-Since header sent by client
+and always returns 200 OK. If the client asks for the same
+resource second time, it passes If-Modified-Since header with the date
+same as the one in Last-Modified header it got the first time. The CGI
+script returns 200 OK and again Last-Modified header, possibly same
+as before. Now, in ap_scan_script_header_err_core(), server finds out
+the resource didn't actually changed and the routine returns 304 Not
+Modified - thus the core of Apache won't return any body to client. But
+since r->status_line is not reset before ap_scan_script_header_err_core()
+is left, status is sent in same form as CGI sent it. To the client, it
+seems as if server returned 200 OK and sent no body.
+>How-To-Repeat:
+http://www.ics.muni.cz/cgi-bin/cgibug
+
+I couldn't find any public server with "clean" Apache 1.3 installed, sorry.
+Note that if server is presented with If-Modified-Since header
+with date sooner than date in Last-Modified header sent by script,
+server returns 200 OK with no body.
+>Fix:
+Use MS IIS ... Okay, just joking ;-) Following patch should DTRT:
+
+--- util_script.c.orig	Sun Jan 23 00:50:16 2000
++++ util_script.c	Sun Jan 23 00:50:55 2000
+@@ -498,6 +498,21 @@ API_EXPORT(int) ap_scan_script_header_er
+ 	    ap_kill_timeout(r);
+ 	    if ((cgi_status == HTTP_OK) && (r->method_number == M_GET)) {
+ 		cond_status = ap_meets_conditions(r);
++		/*
++		 * If CGI script returned Status header 200 OK
++		 * and we ended up with cond_status which doesn't aggree
++		 * with it, we need to unset r->status_line, otherwise
++		 * ap_basic_http_header() would still send the status
++		 * in the form returned by CGI script, causing all sort
++		 * of possible lossage.
++		 * Note that r->status is correctly updated in case of
++		 * error by functions running module handlers, but doing
++		 * it here as well doesn't harm and improves readability.
++		 */
++		if (cond_status != OK) {
++			r->status = cond_status;
++			r->status_line = NULL;
++		}
+ 	    }
+ 	    ap_overlap_tables(r->err_headers_out, merge,
+ 		AP_OVERLAP_TABLES_MERGE);
+XXX cut here XXX
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

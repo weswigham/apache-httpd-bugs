@@ -1,0 +1,74 @@
+Received: (qmail 29541 invoked by uid 501); 3 Jul 2000 11:33:03 -0000
+Message-Id: <20000703113303.29540.qmail@locus.apache.org>
+Date: 3 Jul 2000 11:33:03 -0000
+From: Ben Kelley <ben_kelley@ubsw.com>
+Reply-To: ben_kelley@ubsw.com
+To: submit@bugz.apache.org
+Subject: %Location sometimes interpreted as %LocationMatch inside <perl></perl>,
+X-Send-Pr-Version: 3.110
+
+>Number:         6271
+>Category:       mod_perl
+>Synopsis:       %Location sometimes interpreted as %LocationMatch inside <perl></perl>,
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jul 03 04:40:00 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     ben_kelley@ubsw.com
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+mod_perl 1.21 (although probably affects later versions), Solaris 2.6, gcc
+>Description:
+It seems that somtimes setting something like $Location{'/server-info'} = ...
+gets interpreted as $LocationMatch{'/server-info'} = ...
+
+Basically, the location you enter gets parsed as a regex. From the look of the
+code, any directive that can have "Match" on the end can be affected by this.
+
+The effect is that setting the server-info handler for /server-info means that a
+URI like /xx/server-info also triggers the server-info handler.
+>How-To-Repeat:
+Set up a server with mod_perl, and the following lines inside <perl></perl>:
+
+$Location{'/server-status'} = {SetHandler => 'server-status'};
+$Location{'/server-info'} = {SetHandler => 'server-info'};
+
+Try the URL http://my.server/server-info and http://my.server/xx/server-info.
+The second URL should give a 404. Due to the nature of the bug, this may
+not be broken on all installations. (See suggested fix for details.)
+>Fix:
+This appears to come from some code in perl_handle_command_hv in
+src/modules/perl/perl_config.c. cmd->info gets set if the directive contains
+"Match". perl_urlsection and perl_dirsection (among others) check if cmd->info
+is non-zero to work out whether the argument should be treated as a regex.
+This works fine if your directive does end in "Match", but if not, cmd->info
+is not initialised to 0. Thus it depends on what cmd->info happens to contain
+as to whether your parameter is interpreted as a regex or not.
+
+A work-around is to use $LocationMatch{'^...'} instead. This will always force
+your URI parameter to be interpreted as a regex.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

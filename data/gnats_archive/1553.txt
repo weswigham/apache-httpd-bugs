@@ -1,0 +1,329 @@
+Received: (qmail 9060 invoked by uid 2012); 15 Dec 1997 17:44:07 -0000
+Message-Id: <19971215174407.9059.qmail@hyperreal.org>
+Date: 15 Dec 1997 17:44:07 -0000
+From: Sean Garagan <garagan@ug.cs.dal.ca>
+Reply-To: garagan@ug.cs.dal.ca
+To: apbugs@hyperreal.org
+Subject: Apache hangs on request
+X-Send-Pr-Version: 3.2
+
+>Number:         1553
+>Category:       os-unixware
+>Synopsis:       Apache hangs on request
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Dec 15 09:50:00 PST 1997
+>Last-Modified:  Wed Jan 21 15:49:34 PST 1998
+>Originator:     garagan@ug.cs.dal.ca
+>Organization:
+>Release:        1.2.4
+>Environment:
+The OS is Unixware 2.1.2
+uname -a: UNIX_SV devel-srv1 4.2MP 2.1.2 i386 x86at
+Compiler is gcc 2.7.2.2
+>Description:
+After starting the server, it will serve up a couple of pages with no problem,
+but then at some point shortly afterwards, the server will stop serving pages.
+
+When the client stops the transfer, nothing appears in the access_log, but the
+next time the client hits the server, the previous request appears in the log.
+If the server is killed, the client comes back with Document contains no data.
+The client in this case is Netscape Navigator 4.0x and 3.x.
+
+This problem does not seem to affect a 2 processor P90 system with a single
+SCSI bus, but it does affect a 2 processor PPro166 with 2 SCSI channels (one 
+for the root disk, where all the apache files sit) and also affects a 4 
+processor PPro 166, similar disk setup.
+
+This problem also exists with the latest 1.3 beta, but it takes quite a few more
+hits before it will stop serving.  Turning off keepalive seems to allow a couple
+more connections, but it still stops eventually.
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Sean Garagan <garagan@ug.cs.dal.ca>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-unixware/1553: Apache hangs on request
+Date: Mon, 15 Dec 1997 10:02:32 -0800 (PST)
+
+ Is your ServerRoot on an NFS partition?  If so try using "LockFile
+ /var/tmp/htlock" to move the lockfile elsewhere.
+ 
+ Otherwise, check if there are any unixware patches.  Traditionally
+ unixware/sco have needed to have various patches applied before they'll
+ run apache reliably.
+ 
+ Another useful thing you can do is try using truss/ktrace/strace
+ (whichever your system has) on the children after they've stopped serving. 
+ To make this easier you probably should use MinSpareServer 1 and
+ MaxSpareServer 2.
+ 
+ Dean
+ 
+
+From: Sean Garagan <garagan@ug.cs.dal.ca>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-unixware/1553: Apache hangs on request
+Date: Mon, 15 Dec 1997 14:41:24 -0400
+
+ On Mon, Dec 15, 1997 at 02:02:32PM -0400, Dean Gaudet wrote:
+ > Is your ServerRoot on an NFS partition?  If so try using "LockFile
+ > /var/tmp/htlock" to move the lockfile elsewhere.
+ > 
+ No, the partition is local.
+ 
+ > Otherwise, check if there are any unixware patches.  Traditionally
+ > unixware/sco have needed to have various patches applied before they'll
+ > run apache reliably.
+ > 
+ I will check this shortly.  I am quickly realizing just how broken Unixware
+ seems to be :)
+ 
+ > Another useful thing you can do is try using truss/ktrace/strace
+ > (whichever your system has) on the children after they've stopped serving. 
+ > To make this easier you probably should use MinSpareServer 1 and
+ > MaxSpareServer 2.
+ > 
+ After setting Min to 1 and Max to 2, I got the parent with 2 children.
+ Running truss on the processes gives the following:
+ 
+ getmsg(15, 0x0804770C, 0x08047700, 0x0804771C) (sleeping...)
+ 
+ poll(0x08045850, 1, -1)         (sleeping...)
+ 
+ waitsys(P_ALL, 0, 0x08047850, WEXITED|WTRAPPED|WNOHANG) = 0
+ sleep(1)
+ 
+ The order of these goes from the youngest to oldest process id.
+ 
+ When I hit a server that is hanging, truss reports the following:
+ 
+ poll(0x08045850, 1, -1)         (sleeping...)
+ poll(0x08045850, 1, -1)                         = 1
+ sigaction(SIGUSR1, 0x080477F4, 0x08047830)      = 0
+ sigprocmask(SIG_BLOCK, 0x08047754, 0x08047764)  = 0
+ getmsg(15, 0x08047774, 0x00000000, 0x08047834)  = 0
+ sigprocmask(SIG_SETMASK, 0x08047764, 0x00000000) = 0
+ ioctl(15, I_GETTP, 0x00000000)                  = 50
+ fxstat(2, 15, 0x08047780)                       = 0
+ open("/etc/netconfig", O_RDONLY, 0666)          = 3
+ ioctl(3, TCGETS, 0x080471D0)                    Err#25 ENOTTY
+ ioctl(3, I_GETTP, 0x00000000)                   Err#25 ENOTTY
+ fxstat(2, 3, 0x08047210)                        = 0
+ read(3, " t c p\t t p i _ c o t s".., 8192)     = 806
+ read(3, 0x0809FB30, 8192)                       = 0
+ lseek(3, 0, 0)                                  = 0
+ read(3, " t c p\t t p i _ c o t s".., 8192)     = 806
+ read(3, 0x0809FB30, 8192)                       = 0
+ close(3)                                        = 0
+ xstat(2, "/dev/tcp", 0x08047780)                = 0
+ open("/dev/tcp", O_RDWR, 027776033624)          = 3
+ ioctl(3, I_FIND, "sockmod")                     = 0
+ ioctl(3, I_PUSH, "sockmod")                     = 0
+ ioctl(3, I_SETCLTIME, 0x08047718)               = 0
+ ioctl(3, I_SWROPT, 0x00000002)                  = 0
+ sigprocmask(SIG_BLOCK, 0x080476A0, 0x080476B0)  = 0
+ ioctl(3, I_STR, 0x08047668)                     = 0
+ sigprocmask(SIG_SETMASK, 0x080476B0, 0x00000000) = 0
+ ioctl(3, I_GETSIG, 0x080476E0)                  Err#22 EINVAL
+ sigprocmask(SIG_BLOCK, 0x080475C4, 0x080475D4)  = 0
+ ioctl(3, I_STR, 0x08047580)                     = 0
+ sigprocmask(SIG_SETMASK, 0x080475D4, 0x00000000) = 0
+ sigprocmask(SIG_BLOCK, 0x08047754, 0x08047764)  = 0
+ ioctl(15, I_FDINSERT, 0x08047808)               = 0
+ fcntl(15, F_GETFL, 0x00000000)                  = 2
+ getmsg(15, 0x0804770C, 0x08047700, 0x0804771C) (sleeping...)
+ 
+ I hope this helps, thanks for the quick response.
+ Sean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Sean Garagan <garagan@ug.cs.dal.ca>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-unixware/1553: Apache hangs on request
+Date: Mon, 15 Dec 1997 11:00:08 -0800 (PST)
+
+ On Mon, 15 Dec 1997, Sean Garagan wrote:
+ 
+ > getmsg(15, 0x0804770C, 0x08047700, 0x0804771C) (sleeping...)
+ 
+ I'm reminded of how much I despise sysvr4 STREAMS ... they obscure so much
+ useful stuff under abstractions.   This is *probably* an accept()
+ call.
+ 
+ > poll(0x08045850, 1, -1)         (sleeping...)
+ 
+ This is select() implemented as poll() under the covers.
+ 
+ > waitsys(P_ALL, 0, 0x08047850, WEXITED|WTRAPPED|WNOHANG) = 0
+ > sleep(1)
+ 
+ This is the parent.
+ 
+ > poll(0x08045850, 1, -1)         (sleeping...)
+ > poll(0x08045850, 1, -1)                         = 1
+ > sigaction(SIGUSR1, 0x080477F4, 0x08047830)      = 0
+ > sigprocmask(SIG_BLOCK, 0x08047754, 0x08047764)  = 0
+ > getmsg(15, 0x08047774, 0x00000000, 0x08047834)  = 0
+ > sigprocmask(SIG_SETMASK, 0x08047764, 0x00000000) = 0
+ > ioctl(15, I_GETTP, 0x00000000)                  = 50
+ > fxstat(2, 15, 0x08047780)                       = 0
+ > open("/etc/netconfig", O_RDONLY, 0666)          = 3
+ > ioctl(3, TCGETS, 0x080471D0)                    Err#25 ENOTTY
+ > ioctl(3, I_GETTP, 0x00000000)                   Err#25 ENOTTY
+ > fxstat(2, 3, 0x08047210)                        = 0
+ > read(3, " t c p\t t p i _ c o t s".., 8192)     = 806
+ > read(3, 0x0809FB30, 8192)                       = 0
+ > lseek(3, 0, 0)                                  = 0
+ > read(3, " t c p\t t p i _ c o t s".., 8192)     = 806
+ > read(3, 0x0809FB30, 8192)                       = 0
+ > close(3)                                        = 0
+ > xstat(2, "/dev/tcp", 0x08047780)                = 0
+ > open("/dev/tcp", O_RDWR, 027776033624)          = 3
+ > ioctl(3, I_FIND, "sockmod")                     = 0
+ > ioctl(3, I_PUSH, "sockmod")                     = 0
+ > ioctl(3, I_SETCLTIME, 0x08047718)               = 0
+ > ioctl(3, I_SWROPT, 0x00000002)                  = 0
+ > sigprocmask(SIG_BLOCK, 0x080476A0, 0x080476B0)  = 0
+ > ioctl(3, I_STR, 0x08047668)                     = 0
+ > sigprocmask(SIG_SETMASK, 0x080476B0, 0x00000000) = 0
+ > ioctl(3, I_GETSIG, 0x080476E0)                  Err#22 EINVAL
+ > sigprocmask(SIG_BLOCK, 0x080475C4, 0x080475D4)  = 0
+ > ioctl(3, I_STR, 0x08047580)                     = 0
+ > sigprocmask(SIG_SETMASK, 0x080475D4, 0x00000000) = 0
+ > sigprocmask(SIG_BLOCK, 0x08047754, 0x08047764)  = 0
+ > ioctl(15, I_FDINSERT, 0x08047808)               = 0
+ > fcntl(15, F_GETFL, 0x00000000)                  = 2
+ > getmsg(15, 0x0804770C, 0x08047700, 0x0804771C) (sleeping...)
+ 
+ Look at all that fun stuff!  How ugly.  What is it smoking with that
+ fcntl() call?  Interesting.
+ 
+ Ok, wild guess time, try adding -DUSE_FCNTL_SERIALIZED_ACCEPT to
+ EXTRA_CFLAGS in Configure and rebuilding the entire server.  I'm
+ guessing unixware doesn't like having the same socket inside an
+ accept() and a select() at the same time.
+ 
+ Dean
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Thu Dec 25 19:07:17 PST 1997
+State-Changed-Why:
+Waiting for user to try the serialization directives.
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: os-unixware/1553: Apache hangs on request (fwd)
+Date: Mon, 5 Jan 1998 10:11:49 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ Date: Mon, 5 Jan 1998 11:58:30 -0400
+ From: Sean Garagan <garagan@ug.cs.dal.ca>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: os-unixware/1553: Apache hangs on request
+ 
+ Hi Dean,
+ 
+ Sorry for the slow reply, but tis the season and all that :)
+ 
+ The fix of adding -DUSE_FCNTL_SERIALIZED_ACCEPT seems to have worked, but I
+ also had to switch to the supplied cc from gcc for other reasons, so I am
+ not sure which was the exact fix.  If the problem occurs again, I will let
+ you know
+ 
+ Sean
+ 
+ On Mon, Dec 15, 1997 at 03:00:08PM -0400, Dean Gaudet wrote:
+ > On Mon, 15 Dec 1997, Sean Garagan wrote:
+ > 
+ > > getmsg(15, 0x0804770C, 0x08047700, 0x0804771C) (sleeping...)
+ > 
+ > I'm reminded of how much I despise sysvr4 STREAMS ... they obscure so much
+ > useful stuff under abstractions.   This is *probably* an accept()
+ > call.
+ > 
+ > > poll(0x08045850, 1, -1)         (sleeping...)
+ > 
+ > This is select() implemented as poll() under the covers.
+ > 
+ > > waitsys(P_ALL, 0, 0x08047850, WEXITED|WTRAPPED|WNOHANG) = 0
+ > > sleep(1)
+ > 
+ > This is the parent.
+ > 
+ > > poll(0x08045850, 1, -1)         (sleeping...)
+ > > poll(0x08045850, 1, -1)                         = 1
+ > > sigaction(SIGUSR1, 0x080477F4, 0x08047830)      = 0
+ > > sigprocmask(SIG_BLOCK, 0x08047754, 0x08047764)  = 0
+ > > getmsg(15, 0x08047774, 0x00000000, 0x08047834)  = 0
+ > > sigprocmask(SIG_SETMASK, 0x08047764, 0x00000000) = 0
+ > > ioctl(15, I_GETTP, 0x00000000)                  = 50
+ > > fxstat(2, 15, 0x08047780)                       = 0
+ > > open("/etc/netconfig", O_RDONLY, 0666)          = 3
+ > > ioctl(3, TCGETS, 0x080471D0)                    Err#25 ENOTTY
+ > > ioctl(3, I_GETTP, 0x00000000)                   Err#25 ENOTTY
+ > > fxstat(2, 3, 0x08047210)                        = 0
+ > > read(3, " t c p\t t p i _ c o t s".., 8192)     = 806
+ > > read(3, 0x0809FB30, 8192)                       = 0
+ > > lseek(3, 0, 0)                                  = 0
+ > > read(3, " t c p\t t p i _ c o t s".., 8192)     = 806
+ > > read(3, 0x0809FB30, 8192)                       = 0
+ > > close(3)                                        = 0
+ > > xstat(2, "/dev/tcp", 0x08047780)                = 0
+ > > open("/dev/tcp", O_RDWR, 027776033624)          = 3
+ > > ioctl(3, I_FIND, "sockmod")                     = 0
+ > > ioctl(3, I_PUSH, "sockmod")                     = 0
+ > > ioctl(3, I_SETCLTIME, 0x08047718)               = 0
+ > > ioctl(3, I_SWROPT, 0x00000002)                  = 0
+ > > sigprocmask(SIG_BLOCK, 0x080476A0, 0x080476B0)  = 0
+ > > ioctl(3, I_STR, 0x08047668)                     = 0
+ > > sigprocmask(SIG_SETMASK, 0x080476B0, 0x00000000) = 0
+ > > ioctl(3, I_GETSIG, 0x080476E0)                  Err#22 EINVAL
+ > > sigprocmask(SIG_BLOCK, 0x080475C4, 0x080475D4)  = 0
+ > > ioctl(3, I_STR, 0x08047580)                     = 0
+ > > sigprocmask(SIG_SETMASK, 0x080475D4, 0x00000000) = 0
+ > > sigprocmask(SIG_BLOCK, 0x08047754, 0x08047764)  = 0
+ > > ioctl(15, I_FDINSERT, 0x08047808)               = 0
+ > > fcntl(15, F_GETFL, 0x00000000)                  = 2
+ > > getmsg(15, 0x0804770C, 0x08047700, 0x0804771C) (sleeping...)
+ > 
+ > Look at all that fun stuff!  How ugly.  What is it smoking with that
+ > fcntl() call?  Interesting.
+ > 
+ > Ok, wild guess time, try adding -DUSE_FCNTL_SERIALIZED_ACCEPT to
+ > EXTRA_CFLAGS in Configure and rebuilding the entire server.  I'm
+ > guessing unixware doesn't like having the same socket inside an
+ > accept() and a select() at the same time.
+ > 
+ > Dean
+ > 
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Wed Jan 21 15:49:34 PST 1998
+State-Changed-Why:
+As of 1.3b4 apache will set USE_FCNTL_SERIALIZED_ACCEPT for
+unixware.  This should fix this problem.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

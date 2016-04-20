@@ -1,0 +1,70 @@
+Received: (qmail 40297 invoked by uid 501); 9 Jul 2001 18:21:53 -0000
+Message-Id: <20010709182153.40296.qmail@apache.org>
+Date: 9 Jul 2001 18:21:53 -0000
+From: Nathan Mower <nmower@verio.net>
+Reply-To: nmower@verio.net
+To: submit@bugz.apache.org
+Subject: Race condition hangs Apache child during exit
+X-Send-Pr-Version: 3.110
+
+>Number:         8001
+>Category:       general
+>Synopsis:       Race condition hangs Apache child during exit
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jul 09 11:30:01 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     nmower@verio.net
+>Release:        1.3.20
+>Organization:
+apache
+>Environment:
+FreeBSD 4.2-RELEASE i386
+gcc
+>Description:
+Under a very heavy server load, we get an occasional hung child process.  Our
+analysis shows that FreeBSD's dynamic linker has just begun its work, having
+applied a thread lock, when the Apache child receives a SIGUSR1.  The just_die()
+function calls clean_child_exit(), which calls exit().  The exit() function goes
+through its __atexit routines, one of which is the dynamic linker termination
+function.  This function spins on the original thread lock, and the Apache child
+is hung.
+>How-To-Repeat:
+This bug is extremely hard to replicate, but it can be done using torture.pl
+(see http://stein.cshl.org/~lstein/torture/).  It also helps to set
+MaxRequestsPerChild to a fairly low number, such as 50.  Then invoke torture.pl
+against your test URL, such as 'torture.pl -c 2 -t 100 URL'.  It helps also to
+send SIGUSR1 intermittently to the Apache parent process.  The hung child will
+generally show up after a couple of hours.  You're trying to hit a pretty small
+window in time.
+>Fix:
+The exit() function should never be called from a signal handler -- it is not
+async-safe.  When clean_child_exit() is called from a signal handler such as
+just_die(), it should invoke _exit() instead.  It will skip running the __atexit
+functions, and the problem is solved.  _exit() is guaranteed async-safe.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

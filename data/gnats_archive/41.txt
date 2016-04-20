@@ -1,0 +1,303 @@
+From nobody@hyperreal.com  Tue Dec 10 15:09:50 1996
+Received: by taz.hyperreal.com (8.8.3/V2.0) id PAA28358; Tue, 10 Dec 1996 15:09:50 -0800 (PST)
+Message-Id: <199612102309.PAA28358@taz.hyperreal.com>
+Date: Tue, 10 Dec 1996 15:09:50 -0800 (PST)
+From: Bruno Wolff III <bruno@csd.uwm.edu>
+Reply-To: bruno@csd.uwm.edu
+To: apbugs@hyperreal.com
+Subject: Diffs to add relational (<,>,<=,>=) string tests to mod_include.
+X-Send-Pr-Version: 3.2
+
+>Number:         41
+>Category:       mod_include
+>Synopsis:       Diffs to add relational (<,>,<=,>=) string tests to mod_include.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Dec 10 15:10:01 1996
+>Last-Modified:  Wed Jul 16 16:15:26 PDT 1997
+>Originator:     bruno@csd.uwm.edu
+>Organization:
+>Release:        1.2b2
+>Environment:
+Digital Unix 3.2
+>Description:
+Being able to do relational compares to strings allow ssi scripts to
+compare properly formated dates, times and fixed point numeric values.
+The changes needed are relatively small. I basicly replicated the eq and ne
+tests (removing the  regular expression feature for the new tests). I made
+< and > breaks for unquoted strings. Included below are diffs for
+mod_include.c and mod_include.html. I updated my changes to mod_include.c
+for 1.2b2, but the mod_include.html file is based on 1.2b1. And my diffs may
+revert changes made in going to 1.2b2.
+>How-To-Repeat:
+
+>Fix:
+*** mod_include.c       Tue Dec 10 11:36:58 1996
+--- mod_include.c.ORIG  Sun Dec 08 22:54:22 1996
+***************
+*** 818,825 ****
+
+  enum token_type { token_string,
+      token_and, token_or, token_not, token_eq, token_ne,
+!     token_rbrace, token_lbrace, token_group,
+!     token_ge, token_le, token_gt, token_lt
+  };
+  struct token {
+      enum token_type type;
+--- 818,824 ----
+
+  enum token_type { token_string,
+      token_and, token_or, token_not, token_eq, token_ne,
+!     token_rbrace, token_lbrace, token_group
+  };
+  struct token {
+      enum token_type type;
+***************
+*** 869,890 ****
+              token->type = token_and;
+              return(string+1);
+          }
+-       case '>':
+-         if (*string == '=') {
+-             token->type = token_ge;
+-             return(string+1);
+-         } else {
+-             token->type = token_gt;
+-             return(string);
+-         }
+-       case '<':
+-         if (*string == '=') {
+-             token->type = token_le;
+-             return(string+1);
+-         } else {
+-             token->type = token_lt;
+-             return(string);
+-         }
+        default:
+          token->type = token_string;
+          break;
+--- 868,873 ----
+***************
+*** 916,923 ****
+                case '!': goto TOKEN_DONE;
+                case '|': if (*(string+1) == '|') goto TOKEN_DONE;
+                case '&': if (*(string+1) == '&') goto TOKEN_DONE;
+-               case '<': goto TOKEN_DONE;
+-               case '>': goto TOKEN_DONE;
+              }
+              token->value[next++] = ch;
+          } else {
+--- 899,904 ----
+***************
+*** 994,1003 ****
+                case token_or:
+                case token_lbrace:
+                case token_not:
+-               case token_ge:
+-               case token_gt:
+-               case token_le:
+-               case token_lt:
+                  new->parent = current;
+                  current = current->right = new;
+                  break;
+--- 975,980 ----
+***************
+*** 1030,1039 ****
+                    case token_ne:
+                    case token_and:
+                    case token_or:
+-                   case token_ge:
+-                   case token_gt:
+-                   case token_le:
+-                   case token_lt:
+                      current = current->parent;
+                      continue;
+                    case token_lbrace:
+--- 1007,1012 ----
+***************
+*** 1076,1085 ****
+                    case token_and:
+                    case token_or:
+                    case token_lbrace:
+-                   case token_ge:
+-                   case token_gt:
+-                   case token_le:
+-                   case token_lt:
+                      break;
+                    default:
+                      log_printf(r->server,
+--- 1049,1054 ----
+***************
+*** 1104,1113 ****
+
+            case token_eq:
+            case token_ne:
+-           case token_ge:
+-           case token_gt;
+-           case token_le:
+-           case token_lt:
+  #ifdef DEBUG_INCLUDE
+  rputs("     Token: eq/ne\n", r);
+  #endif
+--- 1073,1078 ----
+***************
+*** 1131,1140 ****
+                    case token_not:
+                    case token_eq:
+                    case token_ne:
+-                   case token_ge:
+-                   case token_gt:
+-                   case token_le:
+-                   case token_lt:
+                    default:
+                      log_printf(r->server,
+                          "Invalid expression %s", expr, r->filename);
+--- 1096,1101 ----
+***************
+*** 1191,1200 ****
+                    case token_and:
+                    case token_or:
+                    case token_lbrace:
+-                   case token_ge:
+-                   case token_gt:
+-                   case token_le:
+-                   case token_lt:
+                      break;
+                    case token_string:
+                    case token_group:
+--- 1152,1157 ----
+***************
+*** 1344,1395 ****
+              }
+              if (current->token.type == token_ne)
+                  current->value = !current->value;
+- #ifdef DEBUG_INCLUDE
+- rvputs(r,"     Returning ", current->value ? "1" : "0", "\n", NULL);
+- #endif
+-             current->done = 1;
+-             current = current->parent;
+-             break;
+-
+-           case token_ge:
+-           case token_gt:
+-           case token_le:
+-           case token_lt:
+- #ifdef DEBUG_INCLUDE
+- rputs("     Evaluate ge/gt/le/lt\n", r);
+- #endif
+-             if ((current->left == (struct parse_node*)NULL) ||
+-                         (current->right == (struct parse_node*)NULL) ||
+-                         (current->left->token.type != token_string) ||
+-                         (current->right->token.type != token_string)) {
+-                 log_printf(r->server,
+-                     "Invalid expression %s", expr, r->filename);
+-                 rputs(error, r);
+-                 goto RETURN;
+-             }
+-             parse_string(r, current->left->token.value,
+-                          buffer, MAX_STRING_LEN, 0);
+-             strncpy(current->left->token.value, buffer, MAX_STRING_LEN-1);
+-             parse_string(r, current->right->token.value,
+-                          buffer, MAX_STRING_LEN, 0);
+-             strncpy(current->right->token.value, buffer, MAX_STRING_LEN-1);
+- #ifdef DEBUG_INCLUDE
+- rvputs(r,"     Compare (", current->left->token.value,
+-          ") with (", current->right->token.value, ")\n", NULL);
+- #endif
+-             current->value =
+-                         strcmp(current->left->token.value,
+-                          current->right->token.value);
+-             if (current->token.type == token_ge)
+-             current->value = current->value >= 0;
+-             else if (current->token.type == token_gt)
+-             current->value = current->value > 0;
+-             else if (current->token.type == token_le)
+-             current->value = current->value <= 0;
+-             else if (current->token.type == token_lt)
+-             current->value = current->value < 0;
+-           else current->value = 0; /* Don't return -1 if unknown token */
+-
+  #ifdef DEBUG_INCLUDE
+  rvputs(r,"     Returning ", current->value ? "1" : "0", "\n", NULL);
+  #endif
+--- 1301,1306 ----
+
+*** mod_include.html    Sat Dec 07 00:21:48 1996
+--- mod_include.html.ORIG       Tue Dec 10 16:35:52 1996
+***************
+*** 220,246 ****
+  <DT><I>string1</I> = <I>string2</I><BR>
+      <I>string1</I> != <I>string2</I>
+
+! <DD>Compare string1 with string2.  If string2 has the form <I>/string/</I>
+      than it is compared as a regular expression.
+      Regular expressions have the same syntax as those found in the
+      Unix egrep command.
+
+! <DT><I>string1</I> &GT; <I>string2</I><BR>
+!     <I>string1</I> &GT;= <I>string2</I><BR>
+!     <I>string1</I> &LT; <I>string2</I><BR>
+!     <I>string1</I> &LT;= <I>string2</I>
+!
+! <DD>Compare string1 with string2. This test can also be used to compare
+! integers (and properly formatted dates and times) that are zero filled
+! to the same length.
+!
+! <DT>( <I>test_condition</I> )<DD>true if <I>test_condition</I> is true
+! <DT>! <I>test_condition</I><DD>true if <I>test_condition</I> is false
+!     <I>test_condition1</I> and <I>test_condition2</I> are true
+! <DT><I>test_condition1</I> && <I>test_condition2</I><DD>true if both
+!     <I>test_condition1</I> and <I>test_condition2</I> are true
+! <DT><I>test_condition1</I> || <I>test_condition2</I><DD>true if either
+!     <I>test_condition1</I> or <I>test_condition2</I> is true
+  </DL>
+
+  <P> "<I>=</I>" and "</I>!=</I>" bind more tightly than "<I>&&</I>" and "<I>||</I>".
+--- 220,238 ----
+  <DT><I>string1</I> = <I>string2</I><BR>
+      <I>string1</I> != <I>string2</I>
+
+! <DD>Compare string1 with string 2.  If string2 has the form <I>/string/</I>
+      than it is compared as a regular expression.
+      Regular expressions have the same syntax as those found in the
+      Unix egrep command.
+
+! <DT>( <I>test_condition</I> )
+!       <DD>true if <I>test_condition</I> is true
+! <DT>! <I>test_condition</I>
+!       <DD>true if <I>test_condition</I> is false
+! <DT><I>test_condition1</I> && <I>test_condition2</I>
+!       <DD>true if both <I>test_condition1</I> and <I>test_condition2</I> are true
+! <DT><I>test_condition1</I> || <I>test_condition2</I>
+!       <DD>true if either <I>test_condition1</I> or <I>test_condition2</I> is true
+  </DL>
+
+  <P> "<I>=</I>" and "</I>!=</I>" bind more tightly than "<I>&&</I>" and "<I>||</I>".%0
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: coar@decus.org
+State-Changed-When: Wed Apr 23 04:16:38 PDT 1997
+State-Changed-Why:
+Thanks for the suggestion.  We'll put this into the bin
+for consideration for a future release after 1.2.  It'll
+stay in the report database so as not to get lost.
+State-Changed-From-To: suspended-analyzed
+State-Changed-By: coar
+State-Changed-When: Wed Jul 16 15:37:24 PDT 1997
+State-Changed-Why:
+This change has been accepted for inclusion.  I am
+working on integrating the changes now.
+State-Changed-From-To: analyzed-closed
+State-Changed-By: coar
+State-Changed-When: Wed Jul 16 16:15:26 PDT 1997
+State-Changed-Why:
+Thank you for this patch.  It has been integrated, and
+should appear in Apache 1.3.  Thank you for using Apache!
+>Unformatted:
+
+

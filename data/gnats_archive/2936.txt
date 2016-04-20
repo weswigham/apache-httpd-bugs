@@ -1,0 +1,989 @@
+Received: (qmail 28547 invoked by uid 2012); 1 Sep 1998 13:04:20 -0000
+Message-Id: <19980901130420.28546.qmail@hyperreal.org>
+Date: 1 Sep 1998 13:04:20 -0000
+From: Stipe Tolj <tolj@uni-duesseldorf.de>
+Reply-To: tolj@uni-duesseldorf.de
+To: apbugs@hyperreal.org
+Subject: Adding new cygwin32 platform support to core Apache distribution
+X-Send-Pr-Version: 3.2
+
+>Number:         2936
+>Category:       other
+>Synopsis:       Adding new cygwin32 platform support to core Apache distribution
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Sep  1 06:10:00 PDT 1998
+>Closed-Date:    Mon Apr 02 02:28:00 PDT 2001
+>Last-Modified:  Mon Apr 02 02:28:00 PDT 2001
+>Originator:     tolj@wapme-systems.de
+>Release:        1.3.20
+>Organization:
+>Environment:
+Cygnus' cygwin32 b19 on top of Win32
+>Description:
+The patch file:
+
+diff -C3 -r apache_1.3.1/src/Configure apache_1.3.1-cygwin32/src/Configure
+*** apache_1.3.1/src/Configure	Sat Jul 18 12:51:51 1998
+--- apache_1.3.1-cygwin32/src/Configure	Tue Sep 01 14:35:37 1998
+***************
+*** 476,481 ****
+--- 476,485 ----
+  	DBM_LIB=""
+  	DB_LIB=""
+  	;;
++     *-cygwin32*)
++         OS='cygwin32'
++         OSDIR="os/cygwin32"
++ 	;;
+      *-openbsd*)
+  	OS='OpenBSD'
+  	DBM_LIB=""
+***************
+*** 741,746 ****
+--- 745,751 ----
+  	fi
+  fi
+  
++ 
+  ####################################################################
+  ## Now we determine the C-compiler and optimization level
+  ## to use. Settings of CC and OPTIM in Configuration have
+***************
+*** 832,837 ****
+--- 837,848 ----
+              LDFLAGS_SHLIB_EXPORT=""
+              SHLIB_SUFFIX_DEPTH=2
+              ;;
++         *-cygwin32*)
++             CFLAGS_SHLIB=""
++             LDFLAGS_SHLIB=""
++             LDFLAGS_SHLIB_EXPORT=""
++             SHLIB_SUFFIX_DEPTH=2
++             ;;
+          *-openbsd*)
+              CFLAGS_SHLIB="-fPIC"
+              LDFLAGS_SHLIB="-Bforcearchive -Bshareable"
+***************
+*** 1180,1185 ****
+--- 1191,1208 ----
+  	    LIBS="$LIBS -lnsl"
+  	fi
+  	;;
++ 
++     *cygwin32*)
++         # cygwin32 requires -lcrypt, but has not one in the distribution
++         if ./helpers/TestCompile lib crypt; then
++             LIBS="$LIBS -lcrypt"
++         else
++             echo "** Your cygwin32 installation is missing the libcrypt.a library."
++             echo "** Please read the file README.cygwin32 within the Apache root directory."
++             exitcode=1
++             exit 1
++         fi
++         ;;
+  esac
+  
+  # SOCKS4 support:
+diff -C3 -r apache_1.3.1/src/helpers/GuessOS apache_1.3.1-cygwin32/src/helpers/GuessOS
+*** apache_1.3.1/src/helpers/GuessOS	Mon Jun 29 14:21:03 1998
+--- apache_1.3.1-cygwin32/src/helpers/GuessOS	Mon Aug 31 11:52:07 1998
+***************
+*** 127,132 ****
+--- 127,137 ----
+  	echo "${MACHINE}-whatever-freebsd${FREEBSDVERS}"; exit 0
+  	;;
+  
++     CYGWIN32*:*:*:*)
++         CYGWIN32VERS=`echo ${VERSION}|sed -e 's/[-(].*//'`
++         echo "${MACHINE}-whatever-cygwin32/${CYGWIN32VERS}"; exit 0
++ 	;;
++ 
+      NetBSD:*:*:*486*)
+  	echo "i486-whatever-netbsd"; exit 0
+  	;;
+diff -C3 -r apache_1.3.1/src/include/ap_config.h apache_1.3.1-cygwin32/src/include/ap_config.h
+*** apache_1.3.1/src/include/ap_config.h	Sat Jul 18 17:30:43 1998
+--- apache_1.3.1-cygwin32/src/include/ap_config.h	Mon Aug 31 22:05:53 1998
+***************
+*** 90,96 ****
+  #include "os.h"
+  #endif
+  
+! #if !defined(QNX) && !defined(MPE) && !defined(WIN32)
+  #include <sys/param.h>
+  #endif
+  
+--- 90,96 ----
+  #include "os.h"
+  #endif
+  
+! #if !defined(QNX) && !defined(MPE) && !defined(WIN32) && !defined(__CYGWIN32__)
+  #include <sys/param.h>
+  #endif
+  
+***************
+*** 604,609 ****
+--- 604,616 ----
+  #define HAVE_SYSLOG 1
+  #define SYS_SIGLIST sys_siglist
+  
++ #elif defined(__CYGWIN32__)
++ #define JMP_BUF jmp_buf
++ #define NO_KILLPG
++ #define USE_LONGJMP
++ /* taken from /gnuwin32/b19/H-i386-cygwin32/i386-cygwin32/include/mywinsock.h */
++ #define SO_SNDBUF 0x1001  /* send buffer size */
++ 
+  #elif defined(QNX)
+  #ifndef crypt
+  char *crypt(const char *pw, const char *salt);
+***************
+*** 858,864 ****
+  #include <netinet/in.h>
+  #include <netdb.h>
+  #include <sys/ioctl.h>
+! #if !defined(MPE) && !defined(BEOS)
+  #include <arpa/inet.h>		/* for inet_ntoa */
+  #endif
+  #include <sys/wait.h>
+--- 865,871 ----
+  #include <netinet/in.h>
+  #include <netdb.h>
+  #include <sys/ioctl.h>
+! #if !defined(MPE) && !defined(BEOS) && !defined(__CYGWIN32__)
+  #include <arpa/inet.h>		/* for inet_ntoa */
+  #endif
+  #include <sys/wait.h>
+***************
+*** 871,877 ****
+  #define O_BINARY (0)
+  #endif
+  
+! #else /* WIN32 */
+  #include <winsock.h>
+  #include <malloc.h>
+  #include <io.h>
+--- 878,884 ----
+  #define O_BINARY (0)
+  #endif
+  
+! #elif !defined(__CYGWIN32__) /* WIN32 */
+  #include <winsock.h>
+  #include <malloc.h>
+  #include <io.h>
+diff -C3 -r apache_1.3.1/src/main/http_core.c apache_1.3.1-cygwin32/src/main/http_core.c
+*** apache_1.3.1/src/main/http_core.c	Mon Jul 13 13:32:39 1998
+--- apache_1.3.1-cygwin32/src/main/http_core.c	Mon Aug 31 12:01:25 1998
+***************
+*** 2588,2594 ****
+          return METHOD_NOT_ALLOWED;
+      }
+  	
+! #if defined(__EMX__) || defined(WIN32)
+      /* Need binary mode for OS/2 */
+      f = ap_pfopen(r->pool, r->filename, "rb");
+  #else
+--- 2588,2594 ----
+          return METHOD_NOT_ALLOWED;
+      }
+  	
+! #if defined(__EMX__) || defined(WIN32) || defined(__CYGWIN32__)
+      /* Need binary mode for OS/2 */
+      f = ap_pfopen(r->pool, r->filename, "rb");
+  #else
+***************
+*** 2605,2614 ****
+--- 2605,2621 ----
+      ap_set_last_modified(r);
+      ap_set_etag(r);
+      ap_table_setn(r->headers_out, "Accept-Ranges", "bytes");
++ 
++     /*
++      * FIXME: The next if statement breaks binary transmissions
++      *        on the cygwin32 platform - Stipe Tolj (tolj@uni-duesseldorf.de).
++      */
++ #if !defined(__CYGWIN32__)
+      if (((errstatus = ap_meets_conditions(r)) != OK)
+  	|| (errstatus = ap_set_content_length(r, r->finfo.st_size))) {
+          return errstatus;
+      }
++ #endif
+  
+  #ifdef USE_MMAP_FILES
+      ap_block_alarms();
+diff -C3 -r apache_1.3.1/src/main/http_main.c apache_1.3.1-cygwin32/src/main/http_main.c
+*** apache_1.3.1/src/main/http_main.c	Tue Jul 14 11:57:55 1998
+--- apache_1.3.1-cygwin32/src/main/http_main.c	Mon Aug 31 12:04:57 1998
+***************
+*** 115,121 ****
+  #endif
+  #ifdef WIN32
+  #include "../os/win32/getopt.h"
+! #elif !defined(BEOS)
+  #include <netinet/tcp.h>
+  #endif
+  
+--- 115,121 ----
+  #endif
+  #ifdef WIN32
+  #include "../os/win32/getopt.h"
+! #elif !defined(BEOS) && !defined(__CYGWIN32__)
+  #include <netinet/tcp.h>
+  #endif
+  
+***************
+*** 2632,2638 ****
+      int x;
+  
+      chdir("/");
+! #if !defined(MPE) && !defined(__EMX__)
+  /* Don't detach for MPE because child processes can't survive the death of
+     the parent. */
+      if ((x = fork()) > 0)
+--- 2632,2638 ----
+      int x;
+  
+      chdir("/");
+! #if !defined(MPE) && !defined(__EMX__) && !defined(__CYGWIN32__)
+  /* Don't detach for MPE because child processes can't survive the death of
+     the parent. */
+      if ((x = fork()) > 0)
+***************
+*** 2656,2662 ****
+  	fprintf(stderr, "httpd: setpgrp or getpgrp failed\n");
+  	exit(1);
+      }
+! #elif defined(__EMX__)
+      /* OS/2 don't support process group IDs */
+      pgrp = getpid();
+  #elif defined(MPE)
+--- 2656,2662 ----
+  	fprintf(stderr, "httpd: setpgrp or getpgrp failed\n");
+  	exit(1);
+      }
+! #elif defined(__EMX__) || defined(__CYGWIN32__)
+      /* OS/2 don't support process group IDs */
+      pgrp = getpid();
+  #elif defined(MPE)
+***************
+*** 2723,2729 ****
+  	else
+  	    name = ap_user_name;
+  
+! #ifndef __EMX__
+  	/* OS/2 dosen't support groups. */
+  
+  	/* Reset `groups' attributes. */
+--- 2723,2729 ----
+  	else
+  	    name = ap_user_name;
+  
+! #if !defined(__EMX__) && !defined(__CYGWIN32__)
+  	/* OS/2 dosen't support groups. */
+  
+  	/* Reset `groups' attributes. */
+***************
+*** 3992,3998 ****
+  {
+      int remaining_children_to_start;
+  
+! #ifdef __EMX__
+      printf("%s \n", ap_get_server_version());
+  #endif
+  
+--- 3992,3998 ----
+  {
+      int remaining_children_to_start;
+  
+! #if defined(__EMX__) || defined(__CYGWIN32__)
+      printf("%s \n", ap_get_server_version());
+  #endif
+  
+***************
+*** 5509,5516 ****
+  
+  #ifdef __EMX__
+      printf("%s \n", ap_get_server_version());
+! #endif
+! #ifdef WIN32
+      if (!child) {
+  	printf("%s \n", ap_get_server_version());
+      }
+--- 5509,5515 ----
+  
+  #ifdef __EMX__
+      printf("%s \n", ap_get_server_version());
+! #elif defined(WIN32) || defined(__CYGWIN32__)
+      if (!child) {
+  	printf("%s \n", ap_get_server_version());
+      }
+>How-To-Repeat:
+A mail to apache@apache.org has been send with the additional files for the 
+src/os/cygwin32 files and the README.cygwin32 file.
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: lars
+State-Changed-When: Thu Jun  3 14:25:30 PDT 1999
+State-Changed-Why:
+
+Can you please submit a current cygwin32 patch?
+If possible make the diff against our current development
+version (you can get it from
+http://dev.apache.org/from-cvs/apache-1.3/) and well try
+to add it to our 1.3.7 release of Apache.
+
+
+Release-Changed-From-To: 1.3.1-1.3.6
+Release-Changed-By: lars
+Release-Changed-When: Thu Jun  3 14:25:30 PDT 1999
+Category-Changed-From-To: general-other
+Category-Changed-By: lars
+Category-Changed-When: Thu Jun  3 14:25:30 PDT 1999
+
+
+From: Stipe Tolj <tolj@uni-duesseldorf.de>
+To: lars@apache.org
+Cc: apbugs@apache.org
+Subject: Re: other/2936: Adding new cygwin32 platform support to core Apache 
+         distribution
+Date: Sun, 06 Jun 1999 03:56:10 +0200
+
+ Hi Lars,
+ 
+ > Can you please submit a current cygwin32 patch?
+ > If possible make the diff against our current development
+ > version (you can get it from
+ > http://dev.apache.org/from-cvs/apache-1.3/) and well try
+ > to add it to our 1.3.7 release of Apache.
+ 
+ thanks a lot for the offer integrating our Cygwin platform patch to the
+ official Apache source distribution. This is what we were aiming since a
+ couple of time.
+ 
+ Here is our Cygwin patch against your apache_1.3-19990605191224.tar.gz
+ distribution the above URL:
+ 
+ diff -urN apache-1.3/README.Cygwin apache-1.3-cygwin/README.Cygwin
+ --- apache-1.3/README.Cygwin Thu Jan 01 01:00:00 1970
+ +++ apache-1.3-cygwin/README.Cygwin Sun Jun 06 03:24:34 1999
+ @@ -0,0 +1,92 @@
+ +                            Apache for Cygwin b2x
+ +                             Version 1.3 (and up)
+ +
+ +What is it?
+ +-----------
+ +
+ +Apache is an HTTP server, originally designed for Unix systems. This
+ +is an alternative release of Apache for Windows 32-bit systems. Like
+ +the Unix version, it includes many frequently requested new features,
+ +and has an API which allows it to be extended to meet users' needs
+ +more easily. It also allows ISAPI extensions.
+ +
+ +What is Cygwin?
+ +---------------------------
+ +
+ +The Cygwin environment is a POSIX API layer on top of the Win32 API.
+ +For more information on the Cygwin Project please visit the Cygwin
+ +Project's web site at http://sourceware.cygnus.com/cygwin/.
+ +
+ +
+ +WARNING
+ +-------
+ +
+ +Apache under Cygwin has not yet been optimized for performance and
+ +should be considered to be still in beta mode. Apache still performs
+ +best, and is most reliable on real Unix platforms. Folks doing
+ +comparative reviews of webserver performance are asked to compare
+ +against Apache on a Unix platform such as Solaris, FreeBSD, or Linux.
+ +
+ +Compilation and Installation Requirements
+ +-----------------------------------------
+ +
+ +To compile and install this software on your Windows 95/98 or
+ +Windows NT system a clean configured installation of the Cygwin b20.1
+ +(or later) is required.
+ +
+ +Cygwin b2x may be obtained as GPL software from various FTP sites
+ +worldwide, see the Cygwin Project web site for download locations.
+ +
+ +Since the distributions (up to the latest b20.1) of Cygwin do not
+ +include a "libcrypt.a" library required for the md5 based crypt()
+ +function you will have to add it to on your own. An implementation is
+ +available at the Cygwin Porting Project web site at
+ +
+ +        http://www.student.uni-koeln.de/cygwin/
+ +
+ +Please read the "README" file for instructions on how to compile and
+ +install the "libcrypt.a" library.
+ +
+ +Known Problems
+ +--------------
+ +
+ +This Cygwin supported distribution of the Apache HTTP Server is
+ +known to run stable and reliable on Windows NT as most Cygwin ported
+ +application do. Unfortunatly there are still some problems on the
+ +Windows 95 and Windows 98 operating systems. The major known
+ +problem for these is the fact that the httpd process dies after
+ +a couple of performed requests. We are focusing our efforts to solve
+ +this problem as soon as possible. The other known problem is the
+ +fact that httpd isn't able to fork() child processes cleanly. That's
+ +why you have to set the -X switch when invoking httpd.
+ +
+ +Support
+ +-------
+ +
+ +The Cygwin portions of the Apache software are maintained and
+ +supported by the Cygwin Porting Project which intends to make
+ +favorite GNU software available for the Win32 platforms.
+ +
+ +Licensing
+ +---------
+ +
+ +Please see the file called LICENSE.
+ +
+ +Acknowledgments
+ +---------------
+ +
+ +We wish to acknowledge the following copyrighted works that make up
+ +portions of the Apache software:
+ +
+ +Portions of this software were developed at the National Center for
+ +Supercomputing Applications at the University of Illinois at
+ +Urbana-Champaign.
+ +
+ +This software contains code derived from the RSA Data Security Inc. MD5
+ +Message-Digest Algorithm, including various modifications by Spyglass Inc.,
+ +Carnegie Mellon University, and Bell Communications Research, Inc.
+ +(Bellcore).
+ +
+ +This package contains software written and copyrighted by Henry Spencer.
+ +Please see the file called src/regex/COPYRIGHT
+ +
+ diff -urN apache-1.3/src/Configure apache-1.3-cygwin/src/Configure
+ --- apache-1.3/src/Configure Mon May 31 15:12:20 1999
+ +++ apache-1.3-cygwin/src/Configure Sun Jun 06 03:24:34 1999
+ @@ -339,6 +339,12 @@
+   DBM_LIB="-lgdbm"
+   SHELL=sh
+   ;;
+ +    *-cygwin32*)
+ +    OSDIR="os/cygwin"
+ +    DEF_WANTHSREGEX=yes
+ +    OS='Cygwin'
+ +    LIBS="$LIBS -lcrypt"
+ +    ;;
+      *-hi-hiux)
+   OS='HI-UX'
+   CFLAGS="$CFLAGS -DHIUX"
+ @@ -1189,6 +1195,12 @@
+       SHCORE_IMPLIB='ApacheCoreOS2.a'
+       OS_MODULE_INCLUDE='Makefile.OS2'
+       ;;
+ +    *-cygwin32*)
+ +        CFLAGS_SHLIB=""
+ +        LDFLAGS_SHLIB=""
+ +        LDFLAGS_SHLIB_EXPORT=""
+ +        SHLIB_SUFFIX_DEPTH=2
+ +        ;;
+   *)
+       ##  ok, no known explict support for shared objects
+       ##  on this platform, but we give not up immediately.
+ @@ -1364,6 +1376,20 @@
+       LIBS="$LIBS -lnsl"
+   fi
+   ;;
+ +
+ +    *cygwin32*)
+ +    # Cygwin requires -lcrypt, but it isn't included within the offical
+ +    # distribution from Cygnus at http://sourceware.cygnus.com/cygwin, so
+ +    # print warning and exit.
+ +    if ./helpers/TestCompile lib crypt; then
+ +        LIBS="$LIBS -lcrypt"
+ +    else
+ +        echo "** Your Cygwin environment is missing the \"libcrypt.a\"
+ library."
+ +        echo "** Please read the file \"README.Cygwin\" within the Apache
+ root directory."
+ +        exitcode=1
+ +        exit 1
+ +    fi
+ +    ;;
+  esac
+ 
+  # SOCKS4 support:
+ diff -urN apache-1.3/src/helpers/GuessOS apache-1.3-cygwin/src/helpers/GuessOS
+ 
+ --- apache-1.3/src/helpers/GuessOS Tue May 04 03:12:46 1999
+ +++ apache-1.3-cygwin/src/helpers/GuessOS Sun Jun 06 03:24:34 1999
+ @@ -261,6 +261,10 @@
+   echo "whatever-unisys-sysv4"; exit 0;
+   ;;
+ 
+ +    CYGWIN*:*:*:*)
+ +    echo "${MACHINE}-unknown-cygwin32"; exit 0
+ +    ;;
+ +
+      *:*:dcosx:NILE*)
+   echo "pyramid-pyramid-svr4"; exit 0;
+   ;;
+ diff -urN apache-1.3/src/helpers/install.sh
+ apache-1.3-cygwin/src/helpers/install.sh
+ --- apache-1.3/src/helpers/install.sh Wed Apr 28 15:12:34 1999
+ +++ apache-1.3-cygwin/src/helpers/install.sh Sun Jun 06 03:27:30 1999
+ @@ -79,6 +79,17 @@
+  fi
+ 
+  #
+ +#  Check to see if the file is an executable in terms of Win32
+ +#  platforms and change name if necessary
+ +#
+ +
+ +if test -e "$src.exe";
+ +then
+ +    src="$src.exe"
+ +    dst="$dst.exe"
+ +fi
+ +
+ +#
+  #  If destination is a directory, append the input filename; if
+  #  your system does not like double slashes in filenames, you may
+  #  need to add some logic
+ diff -urN apache-1.3/src/include/ap_config.h
+ apache-1.3-cygwin/src/include/ap_config.h
+ --- apache-1.3/src/include/ap_config.h Sat Jun 05 09:12:48 1999
+ +++ apache-1.3-cygwin/src/include/ap_config.h Sun Jun 06 03:24:34 1999
+ @@ -797,6 +797,12 @@
+  #define USE_OS2SEM_SERIALIZED_ACCEPT
+  #define SINGLE_LISTEN_UNSERIALIZED_ACCEPT
+ 
+ +#elif defined(__CYGWIN__) || defined(__CYGWIN32__)
+ +#define CYGWIN
+ +#define JMP_BUF jmp_buf
+ +#define NO_KILLPG
+ +#define USE_LONGJMP
+ +
+  #elif defined(__MACHTEN__)
+  typedef int rlim_t;
+  #undef NO_KILLPG
+ diff -urN apache-1.3/src/main/alloc.c apache-1.3-cygwin/src/main/alloc.c
+ --- apache-1.3/src/main/alloc.c Tue May 25 21:12:54 1999
+ +++ apache-1.3-cygwin/src/main/alloc.c Sun Jun 06 03:24:34 1999
+ @@ -2072,7 +2072,7 @@
+  #endif /* WIN32 */
+ 
+  /* for ap_fdopen, to get binary mode */
+ -#if defined (OS2) || defined (WIN32)
+ +#if defined (OS2) || defined (WIN32) || defined (CYGWIN)
+  #define BINMODE "b"
+  #else
+  #define BINMODE
+ diff -urN apache-1.3/src/main/http_core.c
+ apache-1.3-cygwin/src/main/http_core.c
+ --- apache-1.3/src/main/http_core.c Fri May 07 03:12:44 1999
+ +++ apache-1.3-cygwin/src/main/http_core.c Sun Jun 06 03:24:34 1999
+ @@ -3007,8 +3007,8 @@
+          return METHOD_NOT_ALLOWED;
+      }
+ 
+ -#if defined(OS2) || defined(WIN32)
+ -    /* Need binary mode for OS/2 */
+ +#if defined(OS2) || defined(WIN32) || defined(CYGWIN)
+ +    /* Need binary mode for OS/2 and Cygwin */
+      f = ap_pfopen(r->pool, r->filename, "rb");
+  #else
+      f = ap_pfopen(r->pool, r->filename, "r");
+ @@ -3024,10 +3024,17 @@
+      ap_set_last_modified(r);
+      ap_set_etag(r);
+      ap_table_setn(r->headers_out, "Accept-Ranges", "bytes");
+ +
+ +    /*
+ +     * FIXME: On Cygwin platforms the next if statement breaks
+ +     * binary transmissions -- Stipe Tolj <tolj@uni-duesseldorf.de>
+ +     */
+ +#if !defined(CYGWIN)
+      if (((errstatus = ap_meets_conditions(r)) != OK)
+   || (errstatus = ap_set_content_length(r, r->finfo.st_size))) {
+          return errstatus;
+      }
+ +#endif
+ 
+  #ifdef USE_MMAP_FILES
+      ap_block_alarms();
+ diff -urN apache-1.3/src/main/http_main.c
+ apache-1.3-cygwin/src/main/http_main.c
+ --- apache-1.3/src/main/http_main.c Fri Jun 04 09:12:40 1999
+ +++ apache-1.3-cygwin/src/main/http_main.c Sun Jun 06 03:24:36 1999
+ @@ -116,7 +116,7 @@
+  #endif
+  #ifdef WIN32
+  #include "../os/win32/getopt.h"
+ -#elif !defined(BEOS) && !defined(TPF)
+ +#elif !defined(BEOS) && !defined(TPF) && !defined(CYGWIN)
+  #include <netinet/tcp.h>
+  #endif
+ 
+ @@ -2905,7 +2905,7 @@
+      int x;
+ 
+      chdir("/");
+ -#if !defined(MPE) && !defined(OS2) && !defined(TPF)
+ +#if !defined(MPE) && !defined(OS2) && !defined(TPF) && !defined(CYGWIN)
+  /* Don't detach for MPE because child processes can't survive the death of
+     the parent. */
+      if ((x = fork()) > 0)
+ @@ -2929,8 +2929,8 @@
+   fprintf(stderr, "%s: setpgrp or getpgrp failed\n", ap_server_argv0);
+   exit(1);
+      }
+ -#elif defined(OS2) || defined(TPF)
+ -    /* OS/2 and TPF don't support process group IDs */
+ +#elif defined(OS2) || defined(TPF) || defined(CYGWIN)
+ +    /* OS/2, TPF and Cygwin don't support process group IDs */
+      pgrp = getpid();
+  #elif defined(MPE)
+      /* MPE uses negative pid for process group */
+ @@ -2996,8 +2996,8 @@
+   else
+       name = ap_user_name;
+ 
+ -#if !defined(OS2) && !defined(TPF)
+ - /* OS/2 and TPF don't support groups. */
+ +#if !defined(OS2) && !defined(TPF) && !defined(CYGWIN)
+ +    /* OS/2, TPF and Cygwin don't support groups. */
+ 
+   /*
+    * Set the GID before initgroups(), since on some platforms
+ @@ -4385,7 +4385,7 @@
+  {
+      int remaining_children_to_start;
+ 
+ -#ifdef OS2
+ +#if defined(OS2) || defined(CYGWIN)
+      printf("%s \n", ap_get_server_version());
+  #endif
+ 
+ @@ -6329,7 +6329,7 @@
+ 
+      post_parse_init();
+ 
+ -#ifdef OS2
+ +#if defined(OS2) || defined(CYGWIN)
+      printf("%s running...\n", ap_get_server_version());
+  #endif
+  #ifdef WIN32
+ diff -urN apache-1.3/src/modules/standard/mod_autoindex.c
+ apache-1.3-cygwin/src/modules/standard/mod_autoindex.c
+ --- apache-1.3/src/modules/standard/mod_autoindex.c Sat Jun 05 21:12:46 1999
+ +++ apache-1.3-cygwin/src/modules/standard/mod_autoindex.c Sun Jun 06 03:24:36
+ 1999
+ @@ -1633,7 +1633,24 @@
+   if (r->filename[strlen(r->filename) - 1] != '/') {
+       r->filename = ap_pstrcat(r->pool, r->filename, "/", NULL);
+   }
+ - return index_directory(r, d);
+ +
+ +    /*
+ +     * FIXME: On Cygwin platform running Windows 9x the DocumentRoot
+ +     * may be overriden by calling URI "/.....". This seems to be a bug
+ +     * within the Cygwin DLL. A maximum of 2 dots are allowed, if more
+ +     * dots are within the URI deny access to index
+ +     * -- Stipe Tolj <tolj@uni-duesseldorf.de>
+ +     */
+ +
+ +#if defined(CYGWIN)
+ +    if (strstr(r->filename, "...") != NULL) {
+ +        ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r,
+ +            "Directory index forbidden by rule: %s", r->filename);
+ +        return HTTP_FORBIDDEN;
+ +    } else return index_directory (r, d);
+ +#else
+ +    return index_directory(r, d);
+ +#endif
+      }
+      else {
+   ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r,
+ diff -urN apache-1.3/src/os/cygwin/Makefile.tmpl
+ apache-1.3-cygwin/src/os/cygwin/Makefile.tmpl
+ --- apache-1.3/src/os/cygwin/Makefile.tmpl Thu Jan 01 01:00:00 1970
+ +++ apache-1.3-cygwin/src/os/cygwin/Makefile.tmpl Sun Jun 06 03:24:36 1999
+ @@ -0,0 +1,47 @@
+ +CFLAGS=$(OPTIM) $(CFLAGS1) $(EXTRA_CFLAGS)
+ +LIBS=$(EXTRA_LIBS) $(LIBS1)
+ +INCLUDES=$(INCLUDES1) $(INCLUDES0) $(EXTRA_INCLUDES)
+ +LDFLAGS=$(LDFLAGS1) $(EXTRA_LDFLAGS)
+ +
+ +OBJS= os.o os-inline.o
+ +
+ +LIB= libos.a
+ +
+ +all: $(LIB)
+ +
+ +$(LIB): $(OBJS)
+ + rm -f $@
+ + ar cr $@ $(OBJS)
+ + $(RANLIB) $@
+ +
+ +.c.o:
+ + $(CC) -c $(INCLUDES) $(CFLAGS) $<
+ +
+ +clean:
+ + rm -f $(OBJS) $(LIB)
+ +
+ +distclean: clean
+ + -rm -f Makefile
+ +
+ +# We really don't expect end users to use this rule.  It works only with
+ +# gcc, and rebuilds Makefile.tmpl.  You have to re-run Configure after
+ +# using it.
+ +depend:
+ + cp Makefile.tmpl Makefile.tmpl.bak \
+ +     && sed -ne '1,/^# DO NOT REMOVE/p' Makefile.tmpl > Makefile.new \
+ +     && gcc -MM $(INCLUDES) $(CFLAGS) *.c >> Makefile.new \
+ +     && sed -e '1,$$s: $(INCDIR)/: $$(INCDIR)/:g' \
+ +            -e '1,$$s: $(OSDIR)/: $$(OSDIR)/:g' Makefile.new \
+ +  > Makefile.tmpl \
+ +     && rm Makefile.new
+ +
+ +$(OBJS): Makefile
+ +
+ +# DO NOT REMOVE
+ +os-aix-dso.o: os-aix-dso.c
+ +os-inline.o: os-inline.c $(INCDIR)/ap_config.h \
+ + $(INCDIR)/ap_mmn.h $(INCDIR)/ap_config_auto.h \
+ + $(OSDIR)/os.h $(INCDIR)/ap_ctype.h $(INCDIR)/hsregex.h
+ +os.o: os.c $(INCDIR)/ap_config.h $(INCDIR)/ap_mmn.h \
+ + $(INCDIR)/ap_config_auto.h $(OSDIR)/os.h \
+ + $(INCDIR)/ap_ctype.h $(INCDIR)/hsregex.h os.h
+ diff -urN apache-1.3/src/os/cygwin/os-inline.c
+ apache-1.3-cygwin/src/os/cygwin/os-inline.c
+ --- apache-1.3/src/os/cygwin/os-inline.c Thu Jan 01 01:00:00 1970
+ +++ apache-1.3-cygwin/src/os/cygwin/os-inline.c Sun Jun 06 03:24:36 1999
+ @@ -0,0 +1,31 @@
+ +/*
+ + * This file contains functions which can be inlined if the compiler
+ + * has an "inline" modifier. Because of this, this file is both a
+ + * header file and a compilable module.
+ + *
+ + * Only inlineable functions should be defined in here. They must all
+ + * include the INLINE modifier.
+ + *
+ + * If the compiler supports inline, this file will be #included as a
+ + * header file from os.h to create all the inline function
+ + * definitions. INLINE will be defined to whatever is required on
+ + * function definitions to make them inline declarations.
+ + *
+ + * If the compiler does not support inline, this file will be compiled
+ + * as a normal C file into libos.a (along with os.c). In this case
+ + * INLINE will _not_ be set so we can use this to test if we are
+ + * compiling this source file.
+ + */
+ +
+ +#ifndef INLINE
+ +#define INLINE
+ +
+ +/* Anything required only when compiling */
+ +#include "ap_config.h"
+ +
+ +#endif
+ +
+ +INLINE int ap_os_is_path_absolute(const char *file)
+ +{
+ +  return file[0] == '/';
+ +}
+ diff -urN apache-1.3/src/os/cygwin/os.c apache-1.3-cygwin/src/os/cygwin/os.c
+ --- apache-1.3/src/os/cygwin/os.c Thu Jan 01 01:00:00 1970
+ +++ apache-1.3-cygwin/src/os/cygwin/os.c Sun Jun 06 03:24:36 1999
+ @@ -0,0 +1,16 @@
+ +/*
+ + * This file will include OS specific functions which are not inlineable.
+ + * Any inlineable functions should be defined in os-inline.c instead.
+ + */
+ +
+ +#include "ap_config.h"
+ +#include "os.h"
+ +
+ +
+ +/* some linkers complain unless there's at least one function in each
+ + * .o file... and extra prototype is for gcc -Wmissing-prototypes
+ + */
+ +extern void ap_is_not_here(void);
+ +void ap_is_not_here(void) {}
+ +
+ +
+ diff -urN apache-1.3/src/os/cygwin/os.h apache-1.3-cygwin/src/os/cygwin/os.h
+ --- apache-1.3/src/os/cygwin/os.h Thu Jan 01 01:00:00 1970
+ +++ apache-1.3-cygwin/src/os/cygwin/os.h Sun Jun 06 03:24:36 1999
+ @@ -0,0 +1,113 @@
+ +/* ====================================================================
+ + * Copyright (c) 1998-1999 The Apache Group.  All rights reserved.
+ + *
+ + * Redistribution and use in source and binary forms, with or without
+ + * modification, are permitted provided that the following conditions
+ + * are met:
+ + *
+ + * 1. Redistributions of source code must retain the above copyright
+ + *    notice, this list of conditions and the following disclaimer.
+ + *
+ + * 2. Redistributions in binary form must reproduce the above copyright
+ + *    notice, this list of conditions and the following disclaimer in
+ + *    the documentation and/or other materials provided with the
+ + *    distribution.
+ + *
+ + * 3. All advertising materials mentioning features or use of this
+ + *    software must display the following acknowledgment:
+ + *    "This product includes software developed by the Apache Group
+ + *    for use in the Apache HTTP server project (http://www.apache.org/)."
+ + *
+ + * 4. The names "Apache Server" and "Apache Group" must not be used to
+ + *    endorse or promote products derived from this software without
+ + *    prior written permission. For written permission, please contact
+ + *    apache@apache.org.
+ + *
+ + * 5. Products derived from this software may not be called "Apache"
+ + *    nor may "Apache" appear in their names without prior written
+ + *    permission of the Apache Group.
+ + *
+ + * 6. Redistributions of any form whatsoever must retain the following
+ + *    acknowledgment:
+ + *    "This product includes software developed by the Apache Group
+ + *    for use in the Apache HTTP server project (http://www.apache.org/)."
+ + *
+ + * THIS SOFTWARE IS PROVIDED BY THE APACHE GROUP ``AS IS'' AND ANY
+ + * EXPRESSED OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ + * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ + * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE APACHE GROUP OR
+ + * ITS CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ + * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ + * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ + * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ + * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+ + * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ + * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
+ + * OF THE POSSIBILITY OF SUCH DAMAGE.
+ + * ====================================================================
+ + *
+ + * This software consists of voluntary contributions made by many
+ + * individuals on behalf of the Apache Group and was originally based
+ + * on public domain software written at the National Center for
+ + * Supercomputing Applications, University of Illinois, Urbana-Champaign.
+ + * For more information on the Apache Group and the Apache HTTP server
+ + * project, please see <http://www.apache.org/>.
+ + *
+ + */
+ +
+ +#ifndef APACHE_OS_H
+ +#define APACHE_OS_H
+ +
+ +#include "ap_config.h"
+ +
+ +/*
+ + * Even if the Cygwin platform is an POSIX API layer on top of the
+ + * Win32 API we consider this not to be neither an UNIX nor a Win32
+ + * platform, therefore we specify a "new" platform type for the
+ + * server version token.
+ + */
+ +
+ +#ifndef PLATFORM
+ +#define PLATFORM "Cygwin"
+ +#endif
+ +
+ +/*
+ + * This file in included in all Apache source code. It contains definitions
+ + * of facilities available on _this_ operating system (HAVE_* macros),
+ + * and prototypes of OS specific functions defined in os.c or os-inline.c
+ + */
+ +
+ +#if !defined(INLINE) && defined(USE_GNU_INLINE)
+ +/* Compiler supports inline, so include the inlineable functions as
+ + * part of the header
+ + */
+ +#define INLINE extern ap_inline
+ +
+ +INLINE int ap_os_is_path_absolute(const char *file);
+ +
+ +#include "os-inline.c"
+ +
+ +#else
+ +
+ +/* Compiler does not support inline, so prototype the inlineable functions
+ + * as normal
+ + */
+ +extern int ap_os_is_path_absolute(const char *file);
+ +#endif
+ +
+ +/* Other ap_os_ routines not used by this platform */
+ +
+ +#define ap_os_is_filename_valid(f)          (1)
+ +#define ap_os_kill(pid, sig)                kill(pid, sig)
+ +
+ +/*
+ + *  Abstraction layer for loading
+ + *  Apache modules under run-time via
+ + *  dynamic shared object (DSO) mechanism
+ + */
+ +
+ +#ifdef HAVE_DL_H
+ +#include <dl.h>
+ +#endif
+ +
+ +#endif /* !APACHE_OS_H */
+ 
+ If you have any further questions towards the patch please contact me.
+ 
+ Best regards,
+ Stipe
+ 
+ --
+ Stipe Tolj <tolj@uni-duesseldorf.de>
+ 
+ Cygwin Porting Project -- "We build UNIX on top of Windows"
+ http://www.student.uni-koeln.de/cygwin/
+ 
+ Department of Economical Computer Science
+ University of Cologne, Germany
+ 
+ 
+ 
+State-Changed-From-To: feedback-analyzed
+State-Changed-By: lars
+State-Changed-When: Sun Jun 13 05:00:57 PDT 1999
+State-Changed-Why:
+
+
+State-Changed-From-To: analyzed-closed
+State-Changed-By: martin
+State-Changed-When: Mon Apr  2 02:28:00 PDT 2001
+State-Changed-Why:
+Your patch (as sent to new-httpd) was committed for
+apache_1.3.20 on 04-Apr-2001.
+Originator-Changed-From-To: tolj@uni-duesseldorf.de-tolj@wapme-systems.de
+Originator-Changed-By: martin
+Originator-Changed-When: Mon Apr  2 02:28:00 PDT 2001
+Release-Changed-From-To: 1.3.6-1.3.20
+Release-Changed-By: martin
+Release-Changed-When: Mon Apr  2 02:28:00 PDT 2001
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

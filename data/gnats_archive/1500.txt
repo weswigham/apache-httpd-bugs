@@ -1,0 +1,344 @@
+Received: (qmail 27646 invoked by uid 2012); 1 Dec 1997 20:59:46 -0000
+Message-Id: <19971201205946.27645.qmail@hyperreal.org>
+Date: 1 Dec 1997 20:59:46 -0000
+From: Roy Wood <Roy.Wood@unisys.com>
+Reply-To: Roy.Wood@unisys.com
+To: apbugs@hyperreal.org
+Subject: mod_cern_meta corrupts memory pool
+X-Send-Pr-Version: 3.2
+
+>Number:         1500
+>Category:       mod_cern_meta
+>Synopsis:       mod_cern_meta corrupts memory pool
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Dec  1 14:10:01 PST 1997
+>Last-Modified:  Sat Dec 20 15:45:07 PST 1997
+>Originator:     Roy.Wood@unisys.com
+>Organization:
+>Release:        1.2.4
+>Environment:
+Unixware 2.1.2
+Stronghold 2.1.1
+>Description:
+Running Stronghold 2.1.1 causes the username field of the log to be corrupted
+with HTML from page served.  We added debugging trace statements and determined
+that the base Apache code was at fault.  
+ 
+The problem appears that the cern_meta_module in function add_cern_meta_data()
+calls the destroy_sub_req() function. This frees the memory sub pool that was 
+being used to store the Remote User ID and a lot of other key pieces of 
+information. This free should not take place until the transaction has been 
+totally completed. Normally the http_core module frees all memory pools at the
+end of the transaction which is where it should occur. Because the memory pool 
+that contains the Remote User ID has become free, the content of the Remote 
+User ID field may or may not get over written by allocations that follow the 
+freeing of the pool. 
+
+The addition of the ssl module (Stronghold) generates a lot more memory 
+allocations to occur after the premature freeing of the Remote User ID pool 
+and because of this, we did not see the problem in the basic non-ssl version 
+of the Apache server until after the Stronghold version was installed.
+
+>How-To-Repeat:
+Run something that uses a large amount of memory from the servers memory pool.
+>Fix:
+We believe solution to this problem is to NOT allow the cern_meta_module to 
+free the memory pool (just comment out the two calls destroy_sub_req(rr)). 
+The pool which contains the Remote User ID field will then get freed by the 
+http_core module when everyone is finished with the transaction.
+%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Dec  6 16:07:23 PST 1997
+State-Changed-Why:
+I don't think that destroy_sub_req() is at fault.  It clears
+a sub pool of the main request, not the pool of the main
+request.  Something else must be at issue.  Can you demonstrate
+this bug with plain apache?  Have you reported it to the stronghold
+folks?
+
+Dean
+
+From: "Joe Condon"<joecondon@unn.unisys.com>
+To: dgaudet@apache.org, "Roy Wood"<roywood@unn.unisys.com>
+Cc: apbugs@apache.org
+Subject: Re: mod_cern_meta/1500: mod_cern_meta corrupts memory pool
+Date: Mon, 8 Dec 1997 12:20:33 -0500
+
+ --0__=jHvwgRyGvCtXxWMwaLuVLoaIdwXBMTb1Ah3PTjwwo0vTfqlY4IlKTzDQ
+ Content-type: text/plain; charset=iso-8859-1
+ Content-transfer-encoding: quoted-printable
+ 
+ 
+ Dean,
+ 
+ To provide a little more background, let me describe the problem we wer=
+ e
+ experiencing. The access log would sometimes contain garbage (portions =
+ of
+ HTTP documents) in the Remote User ID field. This corruption only appea=
+ red
+ when with the Stronhold version of Apache. I put together a set of
+ debug/trace routines that logged to a file when documents were served. =
+ With
+ these routines I was able to trace down where I think the problem is.
+ 
+ Because the problem manifests itself as a corrupt User ID, I began addi=
+ ng
+ trace statements throughout the server code in order to determine when =
+ the
+ User ID field became corrupt. This corruption occurred towards the end =
+ of
+ the transaction when a buffer was allocated from the memory pool and a
+ document was read into it from the SSL module. I have to apologize if m=
+ y
+ descriptions are not quite exact, I trouble shot this a couple of weeks=
+  ago
+ and my memory is not 100% and I don?t have the time to refresh it right=
+ 
+ now. Anyway, from the above observation, either the allocation of the
+ buffer overlapped the previous allocation for the User ID or the read i=
+ nto
+ the buffer exceeded the size of the buffer allocation or the area
+ previously allocated for the User ID had been freed and the buffer was
+ allocated in the area of the freed User ID allocation. The later is the=
+ 
+ case, with my trace routines, I listed the address of the User ID
+ allocation at the time it was made. I then traced ALL de-allocations an=
+ d
+ found that the pool containing the User ID allocation was being  freed =
+ in
+ the cern_data module. Once free, that location in memory could be re-us=
+ ed
+ by a future allocation which is what happens with the Stronghold versio=
+ n.
+ 
+ Any frees of the memory containing the Remote User ID must NOT occur pr=
+ ior
+ to the writing of the access log since one of the fields in the log is =
+ the
+ Remote User ID. This problem did not show up before we started using
+ Stronghold probably because the memory containg the value of the Remote=
+ 
+ User ID was not getting overwritten at a later time by the vanilla Apac=
+ he
+ server. If the memory containing the Remote User ID gets freed prematur=
+ ely,
+ it?s value will get written out to the access log correctly unless
+ something else overwrites that area of memory.
+ 
+ We have contacted Stronghold about this but they have not gotten back t=
+ o us
+ with any comments. As far as reproducing this problem without the
+ Stronghold modules, you could temporarily modify the allocation and
+ de-allocation routines in Apache to do a memset() of the area being
+ allocated or de-allocated. Set the area to all ?X?s. This should NOT ca=
+ use
+ any side effects other than a slight performance hit. After doing this,=
+  You
+ will probably notice some corruption in the access log, specifically, t=
+ he
+ Remote User ID field should now contain ?X?s. Of course, you must compi=
+ le
+ Apache with the Cern Meta Module to observe this problem. If you have a=
+ ny
+ additional questions please contact me.
+ 
+ Regards,
+ J. Condon
+ ---------------------- Forwarded by Joe Condon/GCS/US/Unisys on 12/08/9=
+ 7
+ 11:37 AM ---------------------------
+                                                                  =20
+  (Embedded                                                       =20
+  image moved   dgaudet@hyperreal.org                             =20
+  to file:      12/06/97 06:07 PM                                 =20
+  PIC31930.PCX)                                                   =20
+                                                                  =20
+ 
+ 
+ 
+ To:   apache-bugdb@apache.org, dgaudet@apache.org, roy.wood@unisys.com
+ cc:    (bcc: Roy Wood/GCS/US/Unisys)
+ Subject:  Re: mod_cern_meta/1500: mod_cern_meta corrupts memory pool
+ 
+ 
+ =
+ 
+ --0__=jHvwgRyGvCtXxWMwaLuVLoaIdwXBMTb1Ah3PTjwwo0vTfqlY4IlKTzDQ
+ Content-type: text/plain; charset=us-ascii
+ 
+ 
+ [In order for any reply to be added to the PR database, ]
+ [you need to include <apbugs@Apache.Org> in the Cc line ]
+ [and leave the subject line UNCHANGED.  This is not done]
+ [automatically because of the potential for mail loops. ]
+ 
+ Synopsis: mod_cern_meta corrupts memory pool
+ State-Changed-From-To: open-analyzed
+ State-Changed-By: dgaudet
+ State-Changed-When: Sat Dec  6 16:07:23 PST 1997
+ State-Changed-Why:
+ I don't think that destroy_sub_req() is at fault.  It clears
+ a sub pool of the main request, not the pool of the main
+ request.  Something else must be at issue.  Can you demonstrate
+ this bug with plain apache?  Have you reported it to the stronghold
+ folks?
+ Dean
+ 
+ 
+ 
+ 
+ 
+ --0__=jHvwgRyGvCtXxWMwaLuVLoaIdwXBMTb1Ah3PTjwwo0vTfqlY4IlKTzDQ
+ Content-type: application/octet-stream; 
+ 	name="PIC31930.PCX"
+ Content-transfer-encoding: base64
+ 
+ CgUBCAAAAABoACwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+ AAAAAAAAAAABaQABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+ AAAAAAAAAAAAAAAAAAD1E9sTzRPHE8MTwhP1E9sTzRPHE8MTwhP1E9sTzRPHE8MTwhP1E9sTzRPH
+ E8MTwhP1E9sTzRPHE8MTwhP1E9sTzRPHE8MTwhP1E9sTzRPHE8MTwhP1E9sTzRPHE8MTwhP1E9sT
+ zRPHE8MTwhPwEwzIBgzYE8wTxhPDE8IT7hPOBtcTzBPGE8MTE+wTwgbCBwbCEgbCEgbCEsUG1hPL
+ E8YTwxMT6hMMwgYHwgLCAwISwgfEEsMCwwbVE8sTxRPDExPpE8MGAwcCBwMCwhLDB8ISwgISwgLD
+ BtUTyhPFE8MTE+gTwgIHA8ICEw4DDgLDE8USwwLCEMIG1BPKE8UTwxMT5xMCAwcDAg4TDgITwgIS
+ D8ISD8ISBRICEcICwwbUE8oTxRPCExPmEwYCBwMCDgIOwgLDExITEhPCEg8GxgLDBtMMDAfJE8QT
+ whMT5hMGwwITBgMCDhLFEw8SE8ISBgIDwhIDEsMGB9MDxwwHxRPDExPlEwYHAhESAg8CwhMPwhMP
+ xBMPxRIQwgIDAgMCBtMDxwPEDAfDE8IT4RMHwwzCBgLCEhMCDxLIE8MSD8MSwwIQAwIDBgfSDMkD
+ wgPCDAfCExPbEwfGDMIDDAIHERITEhMSwxMPwxMPwxPDEgIDAgMCwwMCBgzREwfHDMYDDMITE9YT
+ B8UMyAMGB8ICBhLDAsYTEhMSExIPwhIHAgcCAwUQAgYRBgfSE8UTB8QMwgMMwhMT0hMHxAzLA8IM
+ BsISDxESExITAw4DxBMSExITwxICBwPCAsMDDMIGB9ITyRMHwwzCExPPEwfDDMkDxQwHwhMGBxIT
+ AhECEwMOAg7DExITDxMPwxIDAgMCBwMCDAYRBgfSE8kTwhPCDMITE8wTB8MMxwPEDMIHxxMGxBLD
+ Ag4DDgIGwg/IEgIDwgIDAgwCEMIGB9ITyRMHDAcMwhMTyhMHwgzGA8MMwgfMEwYHwhLCEAIOAg4C
+ DhDDAhIPxhIFAgXDAgUCEQYH0hPHEwfCDAcPDMITE8gTB8IMxQPDDAfQEwbDEhDEAhAOEA4QwgLG
+ EgcSBhIGBcMCBcIGB9ATB8UMEwfCDA8HDwwHwhMTxhMHwgzEA8MMB9MTBgfCEhADEMICDhAOEMIC
+ EQIDxxIGBwbCAgUCEQYHyxMHxAwHwhMHEwzCEwcPBw8MB8MTE8UTBwzEA8IMB9YTBsQSEAMCA8UC
+ EQIDAgPDEgcSBgfCBgUQAhDCBgfGEwfEDAfGE8INEwzCEw8HwgwHwxPCE8QTBwzDA8IMB9gTBgfE
+ EhACEMYCEQIDAsQSBhLDBsICEALCBgfCEwfDDAfKEwfCDRMHwhPCDAfEE8ITE8MTBwzCA8IMB9oT
+ DBIHwxLDDBEDxQIDAgPDEgYSBgfCBgIQAhAGDAfCEwzDE8MHyRMHwhPCBxMHxRPDExPDEwzCAwwH
+ 3RMGxxICEQPDAgMCA8MSBhIGBwYMBhACEAIGDMMTDBPCB8YTwwfHEwfGE8MTwhPDEwwDDAfeEwYH
+ xxICEQPDAgMCwhIGEgYHBgwGEAIQAsIGB8MTDMYTwwfKEwzGE8MTwhPDE8IMB98TDBLCB8USAgMR
+ xAISB8ISBgcGDAYQBhAGEAYMB8MMB8kTwwfHEwzGE8MTwhPDEwwPwgzfEwYSB8ISB8ISAhECAwID
+ EgcSBwYHBgwGEAYQxgzDD8IHxRPDB8kTBwzGE8MTwhPDEwzDD8QM3BPCBhIGwxIGAhECAwIHBgcG
+ yAzJDxMHzRMHwwwHxxPDE8ITwxMHDMYPxwwH1BMGEgYSBhLLDM4PwwwTDMcTwgfEDAfJE8QTwhMT
+ xBMHwgzLD9sM0w/GDAfDEwzDEwfEDAfLE8YTwxMTxhMHxAztD8gMBgfIE8QMB84TxxPDE8ITyhMH
+ xwzbD8sMEAUMBcIMwgYH1RPKE8UTwxMT0RMH2wwGEAYQBhACBQwFDAUMBgwHBgfWE8sTxRPDExPu
+ EwYMBhAGEAIGDAYMwwYH1xPLE8YTwxMT8BPKBgfYE8wTxhPDExP1E9sTzRPHE8MTwhP1E9sTzRPH
+ E8MTwhMMAAAAgAAAAIAAgIAAAACAgACAAICAwMDAwNzApsrw//vwoKCkgICA/wAAAP8A//8AAAD/
+ /wD/AP//////AAAAgAAAAIAAgIAAAACAgACAAICAwMDAwNzApsrw//vwoKCkgICA/wAAAP8A//8A
+ AAD//wD/AP//////AAAAgAAAAIAAgIAAAACAgACAAICAwMDAwNzApsrw//vwoKCkgICA/wAAAP8A
+ //8AAAD//wD/AP//////AAAAgAAAAIAAgIAAAACAgACAAICAwMDAwNzApsrw//vwoKCkgICA/wAA
+ AP8A//8AAAD//wD/AP//////AAAAgAAAAIAAgIAAAACAgACAAICAwMDAwNzApsrw//vwoKCkgICA
+ /wAAAP8A//8AAAD//wD/AP//////AAAAgAAAAIAAgIAAAACAgACAAICAwMDAwNzApsrw//vwoKCk
+ gICA/wAAAP8A//8AAAD//wD/AP//////AAAAgAAAAIAAgIAAAACAgACAAICAwMDAwNzApsrw//vw
+ oKCkgICA/wAAAP8A//8AAAD//wD/AP//////AAAAgAAAAIAAgIAAAACAgACAAICAwMDAwNzApsrw
+ //vwoKCkgICA/wAAAP8A//8AAAD//wD/AP//////AAAAgAAAAIAAgIAAAACAgACAAICAwMDAwNzA
+ psrw//vwoKCkgICA/wAAAP8A//8AAAD//wD/AP//////AAAAgAAAAIAAgIAAAACAgACAAICAwMDA
+ wNzApsrw//vwoKCkgICA/wAAAP8A//8AAAD//wD/AP//////AAAAgAAAAIAAgIAAAACAgACAAICA
+ wMDAwNzApsrw//vwoKCkgICA/wAAAP8A//8AAAD//wD/AP//////AAAAgAAAAIAAgIAAAACAgACA
+ AICAwMDAwNzApsrw//vwoKCkgICA/wAAAP8A//8AAAD//wD/AP//////AAAAgAAAAIAAgIAAAACA
+ gACA//vwoKCkgICA/wAAAP8A//8AAAD//wD/AP//////
+ 
+ --0__=jHvwgRyGvCtXxWMwaLuVLoaIdwXBMTb1Ah3PTjwwo0vTfqlY4IlKTzDQ--
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Joe Condon <joecondon@unn.unisys.com>
+Cc: Roy Wood <roywood@unn.unisys.com>, apbugs@apache.org
+Subject: Re: mod_cern_meta/1500: mod_cern_meta corrupts memory pool
+Date: Mon, 8 Dec 1997 10:59:50 -0800 (PST)
+
+   This message is in MIME format.  The first part should be readable text,
+   while the remaining parts are likely unreadable without MIME-aware tools.
+   Send mail to mime@docserver.cac.washington.edu for more info.
+ 
+ --0__=jHvwgRyGvCtXxWMwaLuVLoaIdwXBMTb1Ah3PTjwwo0vTfqlY4IlKTzDQ
+ Content-Type: TEXT/PLAIN; CHARSET=iso-8859-1
+ Content-ID: <Pine.LNX.3.95dg3.971208105608.21874G@twinlark.arctic.org>
+ 
+ Which remote user id are you referring to?  The www authentication one, or
+ one from IdentityCheck/rfc1413?  If you know the structure field name
+ that'd be great.
+ 
+ I strongly suspect this is not an apache bug.  You see, sub requests are
+ used extensively by mod_dir (mod_autoindex in 1.3), and they're all
+ destroyed in the same way that mod_cern_meta works.  In 1.3 we have
+ exactly the debugging allocator you suggest, and I've been running it
+ continuously on one of my machines for two or more months, without
+ incident.  I don't use mod_cern_meta however. 
+ 
+ Dean
+ 
+ --0__=jHvwgRyGvCtXxWMwaLuVLoaIdwXBMTb1Ah3PTjwwo0vTfqlY4IlKTzDQ--
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Joe Condon <joecondon@unn.unisys.com>
+Cc: Roy Wood <roywood@unn.unisys.com>, apbugs@apache.org
+Subject: Re: mod_cern_meta/1500: mod_cern_meta corrupts memory pool
+Date: Mon, 8 Dec 1997 14:42:44 -0800 (PST)
+
+   This message is in MIME format.  The first part should be readable text,
+   while the remaining parts are likely unreadable without MIME-aware tools.
+   Send mail to mime@docserver.cac.washington.edu for more info.
+ 
+ --0__=YWpV06K7bc6q4UQbyk4u2g9kNrssA6hy8vcEy3xVm1mHiQDnJDlBW5zv
+ Content-Type: TEXT/PLAIN; CHARSET=iso-8859-1
+ Content-ID: <Pine.LNX.3.95dg3.971208143604.30600E@twinlark.arctic.org>
+ 
+ On Mon, 8 Dec 1997, Joe Condon wrote:
+ 
+ > r->connection->user value is the value that is getting hammered. This value
+ > is set in the http_protocol.c source file in function get_basic_auth_pw()
+ > at approximately line 1019.
+ > 
+ > 1019 r->connection->user = getword_nulls_nc(r->pool, &t, ?:?);
+ > 
+ > Storage allocation for this value occurs in the getword_nulls_nc() function
+ > and it is allocated from the memory pool r->pool passed to the function.
+ 
+ Excellent, thanks for looking into this in such depth.  The problem is
+ that those allocations clearly should be made from r->connection->pool,
+ because they have the same lifetime as r->connection.  Try this patch. 
+ 
+ Dean
+ 
+ --- http_protocol.c.dist	Mon Dec  8 14:29:51 1997
+ +++ http_protocol.c	Mon Dec  8 14:35:26 1997
+ @@ -935,7 +935,11 @@
+      }
+  
+      t = uudecode (r->pool, auth_line);
+ -    r->connection->user = getword_nulls_nc (r->pool, &t, ':');
+ +    /* Note that this allocation has to be made from r->connection->pool
+ +     * because it has the lifetime of the connection.  The other allocations
+ +     * are temporary and can be tossed away any time.
+ +     */
+ +    r->connection->user = getword_nulls_nc (r->connection->pool, &t, ':');
+      r->connection->auth_type = "Basic";
+  
+      *pw = t;
+ 
+ --0__=YWpV06K7bc6q4UQbyk4u2g9kNrssA6hy8vcEy3xVm1mHiQDnJDlBW5zv--
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Dec 20 15:45:07 PST 1997
+State-Changed-Why:
+A patch has been committed to 1.3b4-dev.
+
+Thanks
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

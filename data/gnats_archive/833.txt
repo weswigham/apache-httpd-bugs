@@ -1,0 +1,75 @@
+From nobody@hyperreal.org  Mon Jul  7 12:34:44 1997
+Received: (from nobody@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id MAA18517;
+	Mon, 7 Jul 1997 12:34:44 -0700 (PDT)
+Message-Id: <199707071934.MAA18517@hyperreal.org>
+Date: Mon, 7 Jul 1997 12:34:44 -0700 (PDT)
+From: Fernando Lopez-Lezcano <nando@ccrma.stanford.edu>
+Reply-To: nando@ccrma.stanford.edu
+To: apbugs@hyperreal.org
+Subject: makefiles incorrectly generated when compiling from mod_perl
+X-Send-Pr-Version: 3.2
+
+>Number:         833
+>Category:       os-irix
+>Synopsis:       makefiles incorrectly generated when compiling from mod_perl
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jul  7 12:40:01 1997
+>Last-Modified:  Mon Jul 14 03:06:11 PDT 1997
+>Originator:     nando@ccrma.stanford.edu
+>Organization:
+>Release:        1.2.1
+>Environment:
+Irix 6.3 R10000 running on an O2
+uname -a = IRIX cm 6.3 12161207 IP32
+>Description:
+As perl is compiled with "-n32" libraries in irix, mod_perl wants apache to also be compiled with the same options so that perl can be linked into it. Perl includes the compilation mode in the CC variable, as in 'cc -n32'. When mod_perl  tells apache to compile, the generated makefiles contain calls to "make CC=cc -n32". Note the absence of quote marks around 'cc -n32'. Make bombs as it takes -n32 as an unrecognized option. 
+>How-To-Repeat:
+in the mod_perl directory:
+perl Makefile.PL; answer the questions
+"make" when finished
+>Fix:
+I fixed the problem by adding quotes around $(CC) in:
+
+  - Changed in apache/src/Makefile.tmpl:
+
+    regex/libregex.a:
+	(cd regex; $(MAKE) lib CC='$(CC)' AUX_CFLAGS='$(CFLAGS)' RANLIB='$(RANLIB)')
+
+    modules/last-built:
+	(cd modules; \
+	$(MAKE) CC='$(CC)' AUX_CFLAGS='$(CFLAGS)' RANLIB='$(RANLIB)')
+
+  - Changed in apache/src/Configure
+
+    \$(MODULES): ForceMe
+	(cd \$@; \$(MAKE) 'CC=\$(CC)' AUX_CFLAGS='\$(MOD_CFLAGS)' RANLIB='\$(RANLIB)')
+
+Hope this helps%2
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Mon Jul 14 03:06:11 PDT 1997
+State-Changed-Why:
+This is not a problem with the base Apache package, but
+with mod_perl.  The CC macro is intended to be the name
+of the compiler - and nothing else.  It is *not* supposed
+to include any compiler flags.  Those should be indicated
+in the EXTRA_CFLAGS macro.
+
+That's the right way to do it.  However, quoting the macro
+does no harm, so I've committed the change to the 1.3
+development tree.  Thank you for reporting this, and for
+using Apache!
+Class-Changed-From-To: sw-bug-change-request
+Class-Changed-By: coar
+Class-Changed-When: Mon Jul 14 03:06:11 PDT 1997
+>Unformatted:
+
+

@@ -1,0 +1,183 @@
+From nobody@hyperreal.com  Sat Mar  1 14:28:47 1997
+Received: by taz.hyperreal.com (8.8.4/V2.0) id OAA19827; Sat, 1 Mar 1997 14:28:47 -0800 (PST)
+Message-Id: <199703012228.OAA19827@taz.hyperreal.com>
+Date: Sat, 1 Mar 1997 14:28:47 -0800 (PST)
+From: Dirk Niemeyer <dirk.niemeyer@num.de>
+Reply-To: dirk.niemeyer@num.de
+To: apbugs@hyperreal.com
+Subject: Accessing a virtual host results in the virtual host being referred as remote host in the logfile
+X-Send-Pr-Version: 3.2
+
+>Number:         213
+>Category:       mod_log-any
+>Synopsis:       Accessing a virtual host results in the virtual host being referred as remote host in the logfile
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Mar  1 14:30:01 1997
+>Last-Modified:  Sat Jun  7 19:00:35 PDT 1997
+>Originator:     dirk.niemeyer@num.de
+>Organization:
+>Release:        1.2b7
+>Environment:
+Debian Linux 2.0.28
+gcc 2.7.2.1
+>Description:
+Accessing a virtual host (e.g. www.virtual.de) from a computer in the local net 
+(e.g. host.real.de) results in a log file entry giving the name of the virtual 
+host (www.virtual.de) as remote host.
+This is not the case when the real server (e.g. www.real.de) is accessed from 
+the same host. Then the actual name (host.real.de) is found in the logfile.
+For logging both use the same entry in httpd.conf like this:
+ServerName www.real.de
+CustomLog path_real/access.log "%h %l %u %t \"%r\" %s %b %{Cookie}i"
+<VirtualHost www.virtual.de:80>
+CustomLog path_virtual/access.log "%h %l %u %t \"%r\" %s %b %{Cookie}i"
+</VirtualHost>
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Tue Mar 25 12:46:42 PST 1997
+State-Changed-Why:
+Are you sure this is from any host on the LAN, or are
+you accessing from the webserver itself?  Linux will always
+use the "nearest" address when given a chance, and if you're
+accessing from the webserver itself, that nearest address is
+the same as the vhost.  If this is truly a problem from the LAN
+then please send your httpd.conf and output of "ifconfig".
+
+Thanks
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Subject: mod_log-any/213
+Date: Thu, 22 May 1997 20:51:45 -0700 (PDT)
+
+ 
+ Can someone else look at this?  I suspect it's not apache's fault at all.
+ 
+ Dean
+ 
+ ---------- Forwarded message ----------
+ Date: Thu, 22 May 1997 22:48:56 +0200 (MET DST)
+ From: Dirk Niemeyer <Dirk.Niemeyer@num.de>
+ To: dgaudet@hyperreal.com
+ Subject: Re: Changed information for PR mod_log-any/213
+ 
+ On Tue, 25 Mar 1997 dgaudet@hyperreal.com wrote:
+ 
+ > Synopsis: Accessing a virtual host results in the virtual host being referred as remote host in the logfile
+ > 
+ > State-Changed-From-To: open-feedback
+ > State-Changed-By: dgaudet
+ > State-Changed-When: Tue Mar 25 12:46:42 PST 1997
+ > State-Changed-Why:
+ > Are you sure this is from any host on the LAN, or are
+ > you accessing from the webserver itself?  Linux will always
+ > use the "nearest" address when given a chance, and if you're
+ > accessing from the webserver itself, that nearest address is
+ > the same as the vhost.  If this is truly a problem from the LAN
+ > then please send your httpd.conf and output of "ifconfig".
+ > 
+ > Thanks
+ > Dean
+ > 
+ 
+ Thanks for your reply and sorry for not answering earlier.
+ 
+ To answer your question: it was an access from another host in the LAN.
+ 
+ Meanwhile I found out that the effect described is resulting from a 
+ combination of 
+ tools: Apache (we have b10 now and can reproduce the effect), the CERN 
+ server (v3.0) configured as local proxy only and Netscape 
+ 3.01, all on Linux. As the proxy capability of Apache was always reported 
+ as not being too stable we use the CERN httpd instead.
+ 
+ The situation is as follows:
+ The cern_httpd has a configuration entry 'no_proxy' with a list behind it 
+ for domains not to be caught via proxy.
+ Netscape has in its manual proxy config section an entry 'No proxy for' 
+ where a similar list can be put into.
+ These to sections are not the same (an entry xyz.de is in the cern list 
+ but missing in the Netscape list) and then this virtual server www.xyz.de 
+ is reported to be the accessing client in the log file of this virtual 
+ server.
+ 
+ Does this help explaining the problem or do you still need configuration 
+ infos?
+ 
+ BTW, thanx for Apache to all of you!
+ 
+ Regards 
+ Dirk
+ 
+ num edv-dienstleistungen   ////// //  // //////////    tel +49 (0)4171 781222
+ lueneburger str. 103      //  // //  // //  //  //     fax +49 (0)4171  77642
+ d-21423 winsen/luhe      //  // ////// //  //  //      e-mail     info@num.de
+ germany              niemeyer, mertin und nitsche gbr  www  http://www.num.de
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Dirk Niemeyer <Dirk.Niemeyer@num.de>
+Subject: Re: mod_log-any/213
+Date: Thu, 22 May 1997 23:43:58 -0600 (MDT)
+
+ 
+ On Thu, 22 May 1997, Dean Gaudet wrote:
+ 
+ >  On Tue, 25 Mar 1997 dgaudet@hyperreal.com wrote:
+ >  
+ >  > Synopsis: Accessing a virtual host results in the virtual host being referred as remote host in the logfile
+ >  > 
+ >  > State-Changed-From-To: open-feedback
+ >  > State-Changed-By: dgaudet
+ >  > State-Changed-When: Tue Mar 25 12:46:42 PST 1997
+ >  > State-Changed-Why:
+ >  > Are you sure this is from any host on the LAN, or are
+ >  > you accessing from the webserver itself?  Linux will always
+ >  > use the "nearest" address when given a chance, and if you're
+ >  > accessing from the webserver itself, that nearest address is
+ >  > the same as the vhost.  If this is truly a problem from the LAN
+ >  > then please send your httpd.conf and output of "ifconfig".
+ >  > 
+ >  > Thanks
+ >  > Dean
+ >  > 
+ >  
+ >  Thanks for your reply and sorry for not answering earlier.
+ >  
+ >  To answer your question: it was an access from another host in the LAN.
+ >  
+ >  Meanwhile I found out that the effect described is resulting from a 
+ >  combination of 
+ >  tools: Apache (we have b10 now and can reproduce the effect), the CERN 
+ >  server (v3.0) configured as local proxy only and Netscape 
+ >  3.01, all on Linux. As the proxy capability of Apache was always reported 
+ >  as not being too stable we use the CERN httpd instead.
+ 
+ But is the CERN proxy running on the same machine as the Apache server? 
+ If so, then the real access to the web site is being done from the CERN
+ proxy running on the server, and what Dean writes above holds true; this
+ is the way most Unixes work.  
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: marc
+State-Changed-When: Sat Jun  7 19:00:35 PDT 1997
+State-Changed-Why:
+No feedback from user, assuming resolved.
+>Unformatted:
+
+
+
+

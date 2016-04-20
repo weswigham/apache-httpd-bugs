@@ -1,0 +1,129 @@
+Received: (qmail 23780 invoked by uid 2012); 14 Feb 1998 04:34:12 -0000
+Message-Id: <19980214043412.23779.qmail@hyperreal.org>
+Date: 14 Feb 1998 04:34:12 -0000
+From: Dmitry Cheryasov <dch@technologist.com>
+Reply-To: dch@technologist.com
+To: apbugs@hyperreal.org
+Subject: Proxy would not access another Apache server on the same host, trying to access itself
+X-Send-Pr-Version: 3.2
+
+>Number:         1805
+>Category:       mod_proxy
+>Synopsis:       Proxy would not access another Apache server on the same host, trying to access itself
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Feb 13 20:40:00 PST 1998
+>Last-Modified:  Wed May 20 20:09:14 PDT 1998
+>Originator:     dch@technologist.com
+>Organization:
+>Release:        1.2.4
+>Environment:
+uname -a: OSF1 mustang.vdrea.ru V3.2 214 alpha
+compiler: standard cc of Digital Unix (see above)
+Apache:  Apache/1.2.4 rus/PL21.0
+ The RUS module is a transcoder for different Russian encodings. It does NOT
+ patch mod_proxy, though it DOES patch http_protocol.c. Though, the changes 
+ look like unrelated to the problem, and the whole module looks so.
+ Further info may be found at http://apache.lexa.ru/ (Alas, Russian only;
+ but you can relate to lexa@lexa.ru in English). The problem will be 
+ reported to them, too. I'll check it on an unpatched server and report 
+ the results.
+
+Clients: tried by netscape 4.03 and dull telnet to port 80 (unrelated, IMHO)
+>Description:
+The issue may be related with BR#546 and BR#558.
+
+My setup:
+ intranet www server (www.vdrea.ru) /* not accessible from outside */
+  runs single non-virtual host on ports 80, 8081, 8082, 8083, 8084
+ proxy server (mustang.vdrea.ru)
+  runs a proxy-only, with single <Directory .../dummy>, denied for anyone,
+  and single <Directory proxy:*>, allowed from .vdrea.ru
+  on port 8080
+ They both run as different servers and live in different directory trees,
+ both have the same IP address, but different names (really, aliases).
+
+The problem:
+ if you try to access www.vdrea.ru thru proxy, you see:
+$ telnet mustang.vdrea.ru 8080
+Trying 195.1.1.33...
+Connected to mustang.vdrea.ru.
+Escape character is '^]'.
+GET http://www.vdrea.ru HTTP/0.9
+
+HTTP/1.1 403 Forbidden
+Date: Sat, 14 Feb 1998 04:11:18 GMT
+Server: Apache/1.2.4 rus/PL21.0
+Connection: close
+Content-Type: text/html
+
+<HTML><HEAD>
+<TITLE>403 Forbidden</TITLE>
+</HEAD><BODY>
+<H1>Forbidden</H1>
+You don't have permission to access /www.vdrea.ru
+on this server.<P>
+</BODY></HTML>
+Connection closed by foreign host.
+
+And error-log for proxy says:
+[Sat Feb 14 08:12:02 1998] access to /usr/local/apache-proxy/dummy/www.vdrea.ru
+failed for 195.1.1.33, reason: Client denied by server configuration
+
+Obviously, proxy tried to locally resolve the request, but did not figure out
+that it should not handle it by itself and there is another server on the same 
+host. It happens even if not only protocol, but a port is declared, as in
+http://www.vdrea.ru:80
+
+Why does proxy ever care about local resolution if it has protocol in the URL?
+It, IMHO, should try to go to the given host thru given protocol without any
+thinking is it local or not.
+
+--- Why does all this matter?
+I just tried to use some ErrorDocument directives to make proxy fetch pages
+from the intranet server. It failed. OK, I will make them fetched from the 
+proxy by allowing local access to its documents... 
+
+But why does it not work (as I expect)? I wonder will it be an issue if I setup
+two web servers on the same host with same IP, but differnrt port, will they be
+able to see one another? It may be important if I need one of them run steadily
+while extensively experimenting (restarting) the other.
+>How-To-Repeat:
+
+>Fix:
+Alas, I'm not Apache guru still :-(
+I only can humbly propose to determine protocol in URL first, and if it is 
+present, not to try to understand if FQDN is local, just to go there...
+I may be very wrong... :-%2
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: Lars.Eilebrecht@unix-ag.org
+State-Changed-When: Mon Feb 16 08:50:07 PST 1998
+State-Changed-Why:
+
+This is maybe a problem with the RUS module itself
+or with the virtual host code/configuration.
+
+Have you tried to reproduce the problem with a plain
+1.2.x Apache? If yes, can you please verify if the
+problem is still existent with Apache 1.3b?
+
+State-Changed-From-To: feedback-closed
+State-Changed-By: brian
+State-Changed-When: Wed May 20 20:09:14 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

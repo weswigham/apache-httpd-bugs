@@ -1,0 +1,283 @@
+From nobody@hyperreal.org  Fri Jul 25 15:45:49 1997
+Received: (from nobody@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id PAA15625;
+	Fri, 25 Jul 1997 15:45:49 -0700 (PDT)
+Message-Id: <199707252245.PAA15625@hyperreal.org>
+Date: Fri, 25 Jul 1997 15:45:49 -0700 (PDT)
+From: Tyler Allison <allison@nas.nasa.gov>
+Reply-To: allison@nas.nasa.gov
+To: apbugs@hyperreal.org
+Subject: if not using suexec, apache forces user to use server gid/uid settings
+X-Send-Pr-Version: 3.2
+
+>Number:         918
+>Category:       mod_cgi
+>Synopsis:       if not using suexec, apache forces user to use server gid/uid settings
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jul 25 15:50:01 1997
+>Last-Modified:  Mon Jul 28 14:05:05 PDT 1997
+>Originator:     allison@nas.nasa.gov
+>Organization:
+>Release:        1.2.1
+>Environment:
+Environment is not an issue
+>Description:
+If I do not wish to use suexec, but instead use our own cgiwrap program that
+enforces more strict control on cgi scripts, I must comment out the below 
+section from mod_cgi because it forces the user to set the cgi scripts as the
+same gid/uid of the server.
+
+    if (!suexec_enabled) {
+        if (!can_exec(&r->finfo))
+            return log_scripterror(r, conf, FORBIDDEN,
+                                   "file permissions deny server execution");
+    }
+
+>How-To-Repeat:
+Dont use suexec and try and execute a cgi script as some other uid/gid than the
+server.
+>Fix:
+Yes!
+Please make this "force user to use same uid/gid as server" a compile time option
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Tyler Allison <allison@nas.nasa.gov>
+Subject: Re: mod_cgi/918: if not using suexec, apache forces user to use server gid/uid settings
+Date: Sat, 26 Jul 1997 14:08:41 -0700 (PDT)
+
+ 
+ The last line of can_exec is:
+ 
+ return (finfo->st_mode & S_IXOTH);
+ 
+ Do you not have the o+x bit set? 
+ 
+ Dean
+ 
+ P.S. I'm having a hard time figuring why we use can_exec, except to maybe
+ make the log look prettier. 
+ 
+ 
+
+From: "Tyler J. Allison" <allison@nas.nasa.gov>
+To: Dean Gaudet <dgaudet@arctic.org>
+Subject: Re: mod_cgi/918: if not using suexec, apache forces user to use 
+ server gid/uid settings
+Date: Sat, 26 Jul 1997 21:33:16 -0700
+
+ 
+ > The last line of can_exec is:
+ > 
+ > return (finfo->st_mode & S_IXOTH);
+ > 
+ > Do you not have the o+x bit set? 
+ 
+   Why would I want other people on my system able to execute other peoples 
+ cgi-bin files, just so the web server can do it? In my opinion this 
+ "requirement" that cgi-bin's either be called using apache's suexec program or 
+ be set world executable is unacceptable, and should be placed as a compile 
+ time option.
+ 
+   When placed as a compile time option maybe it can be described as apache 
+ enforcing file mode checking or something.
+ 
+   However, we have our own cgi-bin wrapper that does more extensive checks, 
+ logging, and then the change of user id before execution than the one shipped 
+ with apache.  We would prefer to just use a compile time option instead of 
+ having to patch every release before compiling.
+ 
+ -Tyler
+ 
+ .--                                                                    --.
+ | Tyler Allison      | Sterling Software         | Voice: (415) 604-6629 |
+ | Network Engineer I | M/S 258-6                 |   Fax: (415) 604-4377 |
+ | LAN/Security Group | NASA Ames Research Center +-----------------------+
+ | NAS Facility       | Moffett Field, CA  94035  | allison@nas.nasa.gov  |
+ `--                                                                    --'
+ 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: "Tyler J. Allison" <allison@nas.nasa.gov>
+Subject: Re: mod_cgi/918: if not using suexec, apache forces user to use  server gid/uid settings
+Date: Sat, 26 Jul 1997 22:06:09 -0700 (PDT)
+
+ 
+ I think I mentioned in my previous response that I have no idea why that
+ check is there to begin with.  It's probably just there to make the logged
+ errors "prettier".  I just wanted to check that in fact you did not have
+ o+x set.  I'll see about removing it.
+ 
+ Thanks
+ Dean
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: "Tyler J. Allison" <allison@nas.nasa.gov>
+Subject: Re: mod_cgi/918: if not using suexec, apache forces user to use  server gid/uid settings
+Date: Sat, 26 Jul 1997 22:18:13 -0700 (PDT)
+
+ 
+ Wait a sec.  What are the permissions on your cgiwrap files?  You must
+ have at least the gid set to the webserver's gid... otherwise how the heck
+ are you executing them?
+ 
+ can_exec checks essentially the same thing a call to access() would.
+ 
+ Unless your cgiwrap files have uid == webserver's uid, or gid ==
+ webserver's gid, and the appropriate x bit set.  Or it has the o+x bit set
+ ... then you can't execute the file to begin with.  Unless you're running
+ the webserver as root. 
+ 
+ Dean
+ 
+ 
+
+From: "Tyler J. Allison" <allison@nas.nasa.gov>
+To: Dean Gaudet <dgaudet@arctic.org>
+Subject: Re: mod_cgi/918: if not using suexec, apache forces user to use 
+ server gid/uid settings
+Date: Sat, 26 Jul 1997 23:19:49 -0700
+
+ 
+ > Wait a sec.  What are the permissions on your cgiwrap files?  You must
+ > have at least the gid set to the webserver's gid... otherwise how the heck
+ > are you executing them?
+ 
+   Yes the gid is set to the webserver gid.
+ 
+ > 
+ > can_exec checks essentially the same thing a call to access() would.
+ > 
+ > Unless your cgiwrap files have uid == webserver's uid, or gid ==
+ > webserver's gid, and the appropriate x bit set.  Or it has the o+x bit set
+ > ... then you can't execute the file to begin with.  Unless you're running
+ > the webserver as root. 
+ 
+   Not running as root
+ 
+   Let me explain a bit better...
+ 
+   We run 2 web servers on our development box one using a cgiwrapper and one that just calls cgi programs strait out of the cgi-bin directory.  The user does testing in the none wrapped directory and once it works without the wrapping we make the necessa ry file gid/uid/mode changes and put it under the cgiwrapped server for more testing.
+ 
+   When we upgraded both of them from the latest 1.2 beta to 1.2.1 the non-wrapped server cgi-bin's broke..giving the error message produced by can_exec.  I commented out that function call in the mod_cgi and everything went back to working. I assumed can _exec was a new addition...maybe I was wrong.
+ 
+   Ill do some more testing on monday when I get in to work to make sure its the can_exec function that is causing the problem and not user error on our side. Thank you for the quick response..Ill be sure to send you an update on monday.
+ 
+ -Tyler
+ 
+ .--                                                                    --.
+ | Tyler Allison      | Sterling Software         | Voice: (415) 604-6629 |
+ | Network Engineer I | M/S 258-6                 |   Fax: (415) 604-4377 |
+ | LAN/Security Group | NASA Ames Research Center +-----------------------+
+ | NAS Facility       | Moffett Field, CA  94035  | allison@nas.nasa.gov  |
+ `--                                                                    --'
+ 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: "Tyler J. Allison" <allison@nas.nasa.gov>
+Subject: Re: mod_cgi/918: if not using suexec, apache forces user to use  server gid/uid settings
+Date: Sat, 26 Jul 1997 23:48:22 -0700 (PDT)
+
+ 
+ Ok from "cvs annotate mod_cgi.c util.c" I get this (searching just for
+ can_exec):
+ 
+ 1.30         (randy    25-Jan-97):     if (!suexec_enabled) {
+ 1.30         (randy    25-Jan-97):         if (!can_exec(&r->finfo))
+ 1.30         (randy    25-Jan-97):             return log_scripterror(r, conf, FORBIDDEN,
+ 1.30         (randy    25-Jan-97):                                    "file permissions deny server execution");
+ 1.30         (randy    25-Jan-97):     }
+ 
+ And for can_exec() itself:
+ 
+ 1.61         (ben      13-Jul-97): API_EXPORT(int) can_exec(const struct stat *finfo) {
+ 1.22         (jim      02-Oct-96): #ifdef MULTIPLE_GROUPS
+ 1.19         (jim      23-Sep-96):   int cnt;
+ 1.22         (jim      02-Oct-96): #endif
+ 1.53         (ben      15-Jun-97): #if defined(__EMX__) || defined(WIN32)
+ 1.2          (ben      22-Feb-96):     /* OS/2 dosen't have Users and Groups */
+ 1.37         (randy    28-Dec-96):     return 1;
+ 1.2          (ben      22-Feb-96): #else
+ 1.1          (cvs      14-Jan-96):     if(user_id == finfo->st_uid)
+ 1.1          (cvs      14-Jan-96):         if(finfo->st_mode & S_IXUSR)
+ 1.1          (cvs      14-Jan-96):             return 1;
+ 1.22         (jim      02-Oct-96):     if(group_id == finfo->st_gid)
+ 1.22         (jim      02-Oct-96):         if(finfo->st_mode & S_IXGRP)
+ 1.22         (jim      02-Oct-96):             return 1;
+ 1.22         (jim      02-Oct-96): #ifdef MULTIPLE_GROUPS
+ 1.19         (jim      23-Sep-96):     for(cnt=0; cnt < NGROUPS_MAX; cnt++) {
+ 1.19         (jim      23-Sep-96):         if(group_id_list[cnt] == finfo->st_gid)
+ 1.19         (jim      23-Sep-96):             if(finfo->st_mode & S_IXGRP)
+ 1.19         (jim      23-Sep-96):                 return 1;
+ 1.19         (jim      23-Sep-96):     }
+ 1.22         (jim      02-Oct-96): #endif
+ 1.1          (cvs      14-Jan-96):     return (finfo->st_mode & S_IXOTH);
+ 1.2          (ben      22-Feb-96): #endif
+ 1.1          (cvs      14-Jan-96): }
+ 
+ So it's all pretty old code.  (Note the annotations are from the HEAD
+ which is 1.3a2-dev at the moment rather than 1.2.1 ...)
+ 
+ But it looks to me like it should work if the file is gid of the webserver
+ and g+x is set ... that's one of the tests in there.  So yeah if you
+ could dig a bit further that'd be great.  Thanks
+ 
+ Dean
+ 
+
+From: "Tyler J. Allison" <allison@nas.nasa.gov>
+To: Dean Gaudet <dgaudet@arctic.org>
+Subject: Re: mod_cgi/918: if not using suexec, apache forces user to use 
+ server gid/uid settings
+Date: Mon, 28 Jul 1997 13:39:46 -0700
+
+ 
+ 
+   It's starting to look like a use error on our side.  We have several web 
+ admins and one of them had been messing with uid/gid settings on some of the 
+ cgi-bin scripts when installing our wrapper.  When the server that did not 
+ have the wrapper installed tried to execute the scripts it obviously failed.
+ 
+   Please close out the bug report.
+ 
+   I apologize for wasting your time, but encouraged to see the quick response 
+ time and informative discussion.
+ 
+ -Tyler
+ 
+ .--                                                                    --.
+ | Tyler Allison      | Sterling Software         | Voice: (415) 604-6629 |
+ | Network Engineer I | M/S 258-6                 |   Fax: (415) 604-4377 |
+ | LAN/Security Group | NASA Ames Research Center +-----------------------+
+ | NAS Facility       | Moffett Field, CA  94035  | allison@nas.nasa.gov  |
+ `--                                                                    --'
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Jul 28 14:05:05 PDT 1997
+State-Changed-Why:
+I'm always happy closing out a bug report :)  Glad to know
+it was just a local problem.  (Although we might update that
+code anyhow, at least to make it more meaningful for suexec.)
+
+Dean
+>Unformatted:
+
+
+
+
+
+
+
+
+

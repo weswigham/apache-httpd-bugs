@@ -1,0 +1,139 @@
+Received: (qmail 76986 invoked by uid 501); 9 Oct 2001 21:58:12 -0000
+Message-Id: <20011009215812.76985.qmail@apache.org>
+Date: 9 Oct 2001 21:58:12 -0000
+From: Shamim Mohamed <spmap@languid.org>
+Reply-To: spmap@languid.org
+To: submit@bugz.apache.org
+Subject: ap_send_fd doesn't seem to send the file; no error reported
+X-Send-Pr-Version: 3.110
+
+>Number:         8498
+>Category:       apache-api
+>Synopsis:       ap_send_fd doesn't seem to send the file; no error reported
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 09 15:00:01 PDT 2001
+>Closed-Date:    Thu Apr 04 20:56:12 PST 2002
+>Last-Modified:  Thu Apr 04 20:56:12 PST 2002
+>Originator:     spmap@languid.org
+>Release:        2.0.16-beta
+>Organization:
+>Environment:
+$   uname -a
+Linux artemis.rubiconproject.com 2.4.3-20mdk #1 Sun Apr 15 23:03:10 CEST 2001 i686 unknown
+$  gcc --version
+2.96
+>Description:
+I'm porting a module from 1.3.20 that has a content handler. The sequence of ops is:
+
+    /*
+     * File exists?
+     */
+    if (stat(filename, &st) < 0)
+        return ... ;
+
+    /* Readable? */
+    err = apr_file_open(&fp, filename, APR_READ, APR_OS_DEFAULT, r->pool);
+    if (err != APR_SUCCESS) {
+        ap_log_error(APLOG_MARK, APLOG_NOERRNO | APLOG_DEBUG, err, r->server,
+                     "couldn't open file \"%s\"", filename);
+        return ... ;
+    }
+
+    /* Get file type and size */
+    filesize = st.st_size;
+    filetype = slFileType(filename);
+
+    /* Send HTTP header */
+    r->content_type = filetype;
+    ap_set_content_length(r, filesize);
+    r->status = HTTP_OK;
+    r->status_line = "200 OK";
+    /*ap_send_http_header(r);*/
+ 
+    /* Write the content */
+    err = ap_send_fd(fp, r, 0, filesize, &sent);
+    if (err != APR_SUCCESS || sent != filesize)
+        ap_log_error(APLOG_MARK, APLOG_NOERRNO | APLOG_DEBUG, err, r->server,
+                     "short write (%d/%d) for file \"%s\"",
+                     sent, filesize, filename);
+
+    apr_file_close(fp);
+
+No errors are reported - I'm running httpd at LogLevel debug. But no data is
+actually sent by ap_send_fd:
+
+$ telnet localhost 6060
+Trying 63.95.167.73...
+Connected to localhost.localdomain
+Escape character is '^]'.
+GET /content?pid=4078&f=/some/long/path/foo.txt&vc=23&t=1002662916&ttl=3600&k=1&a=nbGw0cZtf90iHTO0tp6AJg HTTP/1.0
+ 
+HTTP/1.1 200 OK
+Date: Tue, 09 Oct 2001 21:29:12 GMT
+Server: Apache/2.0.16 (Unix)
+Content-Length: 68
+Connection: close
+Content-Type: text/plain; charset=ISO-8859-1
+ 
+Connection closed by foreign host.
+
+As you can see, Content-type and Content-length are set correctly, but no data.
+
+The server was built with:
+
+./configure  --prefix=/usr/local/apache2 --enable-so --with-mpm=threaded --disable-cgid
+
+and it's running on port 6060 as a non-root user.
+>How-To-Repeat:
+I'm trying to trim down the DSO to reproduce the problem.
+>Fix:
+In the next few days I shall try to trace ap_send_fd() and try to figure out what's
+going on.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: slive
+State-Changed-When: Wed Nov 14 12:53:34 PST 2001
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: wrowe
+State-Changed-When: Thu Apr  4 20:56:12 PST 2002
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

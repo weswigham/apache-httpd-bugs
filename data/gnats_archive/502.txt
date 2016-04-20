@@ -1,0 +1,94 @@
+From nobody@hyperreal.com  Tue Apr 29 07:10:10 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id HAA15047;
+	Tue, 29 Apr 1997 07:10:10 -0700 (PDT)
+Message-Id: <199704291410.HAA15047@hyperreal.com>
+Date: Tue, 29 Apr 1997 07:10:10 -0700 (PDT)
+From: Mark Bentley <bentlema@cs.umn.edu>
+Reply-To: bentlema@cs.umn.edu
+To: apbugs@hyperreal.com
+Subject: Keep-Alives not timing out
+X-Send-Pr-Version: 3.2
+
+>Number:         502
+>Category:       general
+>Synopsis:       Keep-Alives not timing out
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Apr 29 07:20:01 1997
+>Last-Modified:  Thu May 29 00:08:35 PDT 1997
+>Originator:     bentlema@cs.umn.edu
+>Organization:
+>Release:        1.2b9
+>Environment:
+IRIX 5.3, cc (also tested with gcc)
+>Description:
+Keep Alive requests seem to stay alive forever.
+
+Take a look at this snap shot of server-status I captured for out server:
+
+     http://www.cs.umn.edu/~bentlema/snap.html
+
+Also, I got this error message when compiling:
+
+	mod_status.c: In function `status_handler':
+	mod_status.c:244: warning: assignment makes pointer from integer without a cast
+
+
+>How-To-Repeat:
+Install 1.2b9 on a heavily loaded server, and watch server-status for 5 minutes,
+and you will see the problem.
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Fri May  2 15:14:10 PDT 1997
+State-Changed-Why:
+Appears to be caused by IdentityCheck On.  A workaround has
+been put together and needs testing.
+
+Dean
+State-Changed-From-To: analyzed-feedback
+State-Changed-By: fielding
+State-Changed-When: Mon May 12 23:49:21 PDT 1997
+State-Changed-Why:
+
+User reports that neither the identitycheck patch nor the
+http_main timeout patch fixed their problem.  As I see it,
+there are two remaining possibilities:
+
+  1) Irix may have a problem with how longjmp and signal are
+     used in rfc1413.c.  Try replacing
+
+       static jmp_buf timebuf;
+
+     with
+
+        JMP_BUF timebuf;
+
+     and replacing the longjmp/setjmp calls with the definitions
+     used within http_main.c
+
+  2) the IdentityCheck dependence may be a race condition being
+     triggered by the extra time spent in the logger handler.
+     The only way to discover this is by attaching gdb on a
+     spinning process and providing us with a backtrace.
+
+State-Changed-From-To: feedback-closed
+State-Changed-By: fielding
+State-Changed-When: Thu May 29 00:08:35 PDT 1997
+State-Changed-Why:
+
+User reports that the longjmp/setjmp patch fixes the problem.
+It will be included in the next release.
+
+....Roy
+>Unformatted:
+
+

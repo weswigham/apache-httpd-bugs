@@ -1,0 +1,442 @@
+Received: (qmail 29008 invoked by uid 2012); 20 Apr 1998 01:03:49 -0000
+Message-Id: <19980420010349.29007.qmail@hyperreal.org>
+Date: 20 Apr 1998 01:03:49 -0000
+From: John Holden <johnh@psych.usyd.edu.au>
+Reply-To: johnh@psych.usyd.edu.au
+To: apbugs@hyperreal.org
+Subject: Enhanced security - Checking IP/hardware address aginst ARP entry in kernel
+X-Send-Pr-Version: 3.2
+
+>Number:         2079
+>Category:       mod_access
+>Synopsis:       Enhanced security - Checking IP/hardware address aginst ARP entry in kernel
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Apr 19 18:10:00 PDT 1998
+>Last-Modified:  Mon Apr 20 19:50:00 PDT 1998
+>Originator:     johnh@psych.usyd.edu.au
+>Organization:
+>Release:        1.2.6
+>Environment:
+DUNIX
+>Description:
+This is NOT a bug. I'm summiting it as it may be usefull to others. I wanted to
+provide a tighter security model for local machines, I have enhanced the
+mod_access.c to allow a new entry in .htaccess as follows:-
+
+	"only from ip_address MAC_address"
+
+The 'only' is similar to 'allow' but will only accept a numeric IP address followed
+by the hardware MAC address. This is checked against the ARP entry from the kernel
+tables to see if the IP address is valid for the machine. This will not stop
+a determined person who could fake the MAC address on their machine. I considered
+changing the 'allow' syntax, but it started looking ugly.
+>How-To-Repeat:
+
+>Fix:
+diff -c follows :-
+*** OLDmod_access.c     Fri Apr 17 13:08:45 1998
+--- mod_access.c        Mon Apr 20 09:49:47 1998
+***************
+*** 63,68 ****
+--- 63,77 ----
+  #include "http_log.h"
+  #include "http_request.h"
+  
++ #include <sys/file.h>
++ #include <sys/socket.h>
++ #include <sys/ioctl.h>
++ 
++ #include <netdb.h>
++ #include <netinet/in.h>
++ #include <net/if.h>
++ #include <netinet/if_ether.h>
++ 
+  typedef struct {
+      char *from;
+      int limited;
+***************
+*** 125,130 ****
+--- 134,159 ----
+      return NULL;
+  }
+  
++ const char *only_cmd (cmd_parms *cmd, void *dv, char *from, char *ip, char *mac)
++ {
++       access_dir_conf *d = (access_dir_conf *)dv;
++       allowdeny *a;
++       char *proto;
++ 
++       if (strcasecmp (from, "from"))
++               return "'only' must be followed by 'from'";
++       if (!is_ip(ip))
++               return "'only' must have numeric IP address";
++       if (!is_hex(mac))
++               return "'only' must have hex MAC address";
++       a = (allowdeny *)push_array (d->allows);
++       proto = palloc(cmd->pool, strlen(ip) + strlen(mac) + 2);
++       sprintf(proto, "%s@%s", ip, mac);
++       a->from = proto;
++       a->limited = cmd->limited;
++       return NULL;
++ }
++ 
+  static char its_an_allow;
+  
+  command_rec access_cmds[] = {
+***************
+*** 132,137 ****
+--- 161,168 ----
+      "'allow,deny', 'deny,allow', or 'mutual-failure'" },
+  { "allow", allow_cmd, &its_an_allow, OR_LIMIT, ITERATE2,
+      "'from' followed by hostnames or IP-address wildcards" },
++ { "only", only_cmd, NULL, OR_LIMIT, TAKE3,
++     "'only' followed by IP-address and MAC address" },
+  { "deny", allow_cmd, NULL, OR_LIMIT, ITERATE2,
+      "'from' followed by hostnames or IP-address wildcards" },
+  {NULL}
+***************
+*** 174,179 ****  }
+  
++ static int is_hex(const char *hex)
++ {
++     while (isxdigit(*hex))
++         hex++;
++     return (*hex == '\0');
++ }
++ 
++ static int is_ip_mac(const char *addr)
++ {
++       while((*addr == '.') || isdigit(*addr))
++               addr++;
++       if(*addr++ != '@')
++               return 0;
++       return is_hex(addr);
++ }
++ 
++ static int match_ip_mac(const char *proto, const char *ipaddr)
++ {
++       struct hostent *hp;
++       struct sockaddr_in *sin;
++       struct arpreq ar;
++       unsigned char *ptr;
++       char *p;
++       static char addr[32];
++       static char arp[32];
++       int s, err;
++ /*
++ **    extract ip address from proto and test for exact match
++ */
++       strncpy(addr, proto, sizeof addr);
++       if((p = strchr(addr, '@')) == NULL)
++               return 0;
++       *p++ = '\0';                    /* truncate string */
++       if(strcmp(addr, ipaddr))
++               return 0;
++ /*
++ **    setup buffer
++ */
++       bzero((caddr_t)&ar, sizeof ar);
++       ar.arp_pa.sa_family = AF_INET;
++       sin = (struct sockaddr_in *)&ar.arp_pa;
++       sin->sin_family = AF_INET;
++ /*
++ **    convert address to binary
++ */
++       if((sin->sin_addr.s_addr = inet_addr(addr)) == -1)
++               return 0;
++ /*
++ **    get a socket and then collect ARP entry
++ */
++       if((s = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
++               return 0;
++       err = ioctl(s, SIOCGARP, (caddr_t)&ar);
++       close(s);
++       if(err < 0)
++               return 0;
++ /*
++ **    we may have an address. Is it complete ?
++ */
++       if (!(ar.arp_flags & ATF_COM))
++               return 0;
++ /*
++ **    convert to hex string
++ */
++       ptr = (unsigned char *)ar.arp_ha.sa_data;
++       sprintf(arp, "%02x%02x%02x%02x%02x%02x",
++               ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5]);
++ /*
++ **    try for MAC address match
++ */
++       return (strcasecmp(p, arp) == 0);
++ }
++ 
+  int find_allowdeny (request_rec *r, array_header *a, int method)
+  {
+      allowdeny *ap = (allowdeny *)a->elts;
+***************
+*** 212,217 ****
+--- 316,331 ----
+                gothost = 1;
+            else
+                gothost = 2;
++       }
++ 
++       if(is_ip_mac(ap[i].from))
++       {
++               if(gothost == 1)
++               {
++                       if(match_ip_mac(ap[i].from, r->connection->remote_ip));
++                               return 1;
++               }
++               continue;
+        }
+  
+          if ((gothost == 2) && in_domain(ap[i].from, remotehost))
+
+--- 205,283 ----
+      return (*host == '\0');
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: brian
+State-Changed-When: Sun Apr 19 23:35:19 PDT 1998
+State-Changed-Why:
+Since we are trying to close up 1.3 for a final release, we're
+not really considering new features at this point; however
+this is nice enough that I've added it to a directory on the
+web site for third-party contributed patches, at 
+http://www.apache.org/dist/contrib/patches/1.2/authMAC.diff.
+It'd be great if you could hack up a patch for 1.3, I'll put
+it in the 1.3 directory in that case.  For 2.0 we're hoping 
+to abstract out authentication so that supporting these
+types of customizations comes much more easily.
+
+Thanks for using Apache, and contributing!
+
+
+
+From: John Holden <johnh@psychvax.psych.usyd.edu.au>
+To: brian@hyperreal.org
+Cc: apbugs@Apache.Org
+Subject: Re: mod_access/2079: Enhanced security - Checking IP/hardware address aginst ARP entry in kernel
+Date: Tue, 21 Apr 1998 12:47:50 +1000
+
+ > It'd be great if you could hack up a patch for 1.3
+ 
+ I have grafted the required changes to allow for ip/mac address checks in
+ V1.3. I have allowed an expanded syntax the mac address :-
+ 
+ 	only from 123.123.123 0123456789av
+ 			or
+ 	only from 123.123.123 01-23-45-67-89-ab
+ 			or
+ 	only from 123.123.123 01:23:45:67:89:ab
+ 
+ There may be more work required for different UNix kernels or Windows, for
+ the ARP lookup.
+ 
+ The general .htaccess handling is FAR more efficient that version 1.2.6.
+ We mere mortals appreciate the excellent work!
+ 
+ 				regards John
+ 
+ diff -c patch follows :-
+ :r /user9/t
+ 
+ *** src/modules/standard/OLDmod_access.c	Sat Apr 11 22:00:43 1998
+ --- src/modules/standard/mod_access.c	Tue Apr 21 12:23:11 1998
+ ***************
+ *** 68,78 ****
+ --- 68,88 ----
+   #include "http_log.h"
+   #include "http_request.h"
+   
+ + #include <sys/file.h>
+ + #include <sys/socket.h>
+ + #include <sys/ioctl.h>
+ +  
+ + #include <netdb.h>
+ + #include <netinet/in.h>
+ + #include <net/if.h>
+ + #include <netinet/if_ether.h>
+ + 
+   enum allowdeny_type {
+       T_ENV,
+       T_ALL,
+       T_IP,
+       T_HOST,
+ +     T_ONLY,
+       T_FAIL
+   };
+   
+ ***************
+ *** 84,89 ****
+ --- 94,103 ----
+   	    unsigned long net;
+   	    unsigned long mask;
+   	} ip;
+ +         struct {
+ +             unsigned long ipaddr;
+ + 	    unsigned char macaddr[6];
+ +         } ip_mac;
+       } x;
+       enum allowdeny_type type;
+   } allowdeny;
+ ***************
+ *** 143,148 ****
+ --- 157,214 ----
+       return (*host == '\0');
+   }
+   
+ + /*
+ + **	get mac address in 12 digit hex form. Allow :-
+ + **	0123456789ab or 01:23:45:67:89:ab or  01-23-45-67-89-ab
+ + */
+ + 
+ + static int cvt_hex (unsigned char *m, const char *mac)
+ + {
+ +     unsigned int val, bin;
+ +     char c;
+ +     int c1, c2;
+ + 
+ +     for(c1 = 0; c1 < 6; c1++)
+ +     {
+ + 	val = 0;
+ + 	for(c2 = 0; c2 < 2; c2++)
+ + 	{
+ + 		c = *mac++;
+ + 		if(c == '-' || c == ':')
+ + 			c = *mac++;
+ + 		if(isdigit(c))
+ + 			bin = c - '0';
+ + 		else if(c >= 'a' && c <= 'f')
+ + 			bin = c - 'a' + 10;
+ + 		else if(c >= 'A' && c <= 'F')
+ + 			bin = c - 'A' + 10;
+ + 		else
+ + 			return 0;
+ + 		val = val * 0x10 + bin;
+ + 	}
+ + 	*m++ = val;
+ +     }
+ +     return 1;
+ + }
+ + 		
+ + const char *only_cmd (cmd_parms *cmd, void *dv, char *from, char *ip, char *mac)
+ + {
+ +     access_dir_conf *d = (access_dir_conf *)dv;
+ +     allowdeny *a;
+ + 
+ +     if (strcasecmp (from, "from"))
+ +         return "'only' must be followed by 'from'";
+ +     a = (allowdeny *)ap_push_array (d->allows);
+ +     a->type = T_FAIL;
+ +     if(!is_ip(ip) || (a->x.ip_mac.ipaddr = inet_addr(ip)) == -1)
+ +         return "'only' must have numeric IP address";
+ +     if (!cvt_hex(a->x.ip_mac.macaddr, mac))
+ +         return "'only' must have 12 digit hex MAC address";
+ +     a->limited = cmd->limited;
+ +     a->type = T_ONLY;
+ +     return NULL;
+ + }
+ + 
+   static const char *allow_cmd(cmd_parms *cmd, void *dv, char *from, char *where)
+   {
+       access_dir_conf *d = (access_dir_conf *) dv;
+ ***************
+ *** 263,268 ****
+ --- 329,336 ----
+        "'allow,deny', 'deny,allow', or 'mutual-failure'"},
+       {"allow", allow_cmd, &its_an_allow, OR_LIMIT, ITERATE2,
+        "'from' followed by hostnames or IP-address wildcards"},
+ +     { "only", only_cmd, NULL, OR_LIMIT, TAKE3,
+ +      "'only' followed by IP-address and MAC address" },
+       {"deny", allow_cmd, NULL, OR_LIMIT, ITERATE2,
+        "'from' followed by hostnames or IP-address wildcards"},
+       {NULL}
+ ***************
+ *** 291,296 ****
+ --- 359,406 ----
+   	return 0;
+   }
+   
+ + static int match_mac(const unsigned long ip, const unsigned char *mac)
+ + {
+ + 	struct sockaddr_in *sin;
+ + 	struct arpreq ar;
+ + 	unsigned char *ptr;
+ + 	int s, err;
+ + /*
+ + **	setup buffer
+ + */
+ + 	bzero((caddr_t)&ar, sizeof ar);
+ + 	ar.arp_pa.sa_family = AF_INET;
+ + 	sin = (struct sockaddr_in *)&ar.arp_pa;
+ + 	sin->sin_family = AF_INET;
+ + 	sin->sin_addr.s_addr = ip;
+ + /*
+ + **	get a socket and then collect ARP entry
+ + */
+ + 	if((s = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
+ + 		return 0;
+ + 	err = ioctl(s, SIOCGARP, (caddr_t)&ar);
+ + 	close(s);
+ + 	if(err < 0)
+ + 		return 0;
+ + /*
+ + **	we may have an address. Is it complete ?
+ + */
+ + 	if (!(ar.arp_flags & ATF_COM))
+ + 		return 0;
+ + /*
+ + **	try for match
+ + */
+ + 	ptr = (unsigned char *)ar.arp_ha.sa_data;
+ + 
+ + 	for(s = 0; s < 5; s++)
+ + 	    	if(*ptr++ != *mac++)
+ + 			return 0;
+ + /*
+ + **	A hit!
+ + */
+ + 	return 1;
+ + }
+ + 
+   static int find_allowdeny(request_rec *r, array_header *a, int method)
+   {
+       allowdeny *ap = (allowdeny *) a->elts;
+ ***************
+ *** 320,326 ****
+   		return 1;
+   	    }
+   	    break;
+ ! 
+   	case T_HOST:
+   	    if (!gothost) {
+   		remotehost = ap_get_remote_host(r->connection, r->per_dir_config,
+ --- 430,440 ----
+   		return 1;
+   	    }
+   	    break;
+ ! 	case T_ONLY:
+ ! 	    if(r->connection->remote_addr.sin_addr.s_addr == ap[i].x.ip_mac.ipaddr)
+ ! 		if(match_mac(ap[i].x.ip_mac.ipaddr, ap[i].x.ip_mac.macaddr))
+ ! 		    return 1;
+ ! 	    break;
+   	case T_HOST:
+   	    if (!gothost) {
+   		remotehost = ap_get_remote_host(r->connection, r->per_dir_config,
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,335 @@
+Received: (qmail 74075 invoked by uid 501); 8 Nov 2001 10:59:57 -0000
+Message-Id: <20011108105957.74074.qmail@apache.org>
+Date: 8 Nov 2001 10:59:57 -0000
+From: David Begley <d.begley@uws.edu.au>
+Reply-To: d.begley@uws.edu.au
+To: submit@bugz.apache.org
+Subject: HTTP authentication variables not propogated to Action scripts
+X-Send-Pr-Version: 3.110
+
+>Number:         8711
+>Category:       mod_actions
+>Synopsis:       HTTP authentication variables not propogated to Action scripts
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Nov 08 03:00:00 PST 2001
+>Closed-Date:
+>Last-Modified:  Thu Apr 04 21:11:16 PST 2002
+>Originator:     d.begley@uws.edu.au
+>Release:        2.0.28
+>Organization:
+>Environment:
+Operating System:
+  Sun Solaris 2.7 (SPARC)
+Compiler:
+  GNU CC (gcc) 2.8.1
+Additional Third-Party Apache Modules:
+  (none)
+Additional Software:
+  PHP/4.0.6 (using the CGI interface)
+>Description:
+The HTTP authentication variables usually seen by CGI scripts, namely AUTH_TYPE
+and REMOTE_USER, are not being propogated to "Action" scripts even though they
+are working for regular CGI scripts.  Tested a number of Apache versions to
+check this, each using an identical httpd.conf/.htaccess environment:
+
+  Apache/1.3.22 (Unix) - works for both CGI and Action
+  Apache/2.0.16 (Unix) - works for CGI, Action fails
+  Apache/2.0.27 (Unix) - works for CGI, Action fails
+
+With each of these versions, if you call the standard "test-cgi" CGI shell
+script after configuring Apache to authenticate access to the script, the
+variables REMOTE_USER and AUTH_TYPE are clearly visible.  If you call a PHP
+script that prints these variables when PHP runs as an Action (see below),
+Apache/1.3.22 works but both Apache 2.0.x versions fail.
+
+Further, access_log shows the authenticated user for each request under 1.3.22
+but under both 2.0.x versions there is no user ID logged;  again, this is using
+an identical httpd.conf/.htaccess configuration.
+
+The action is configured simply as per:
+
+Action application/x-httpd-php /cgi-bin/phpwrap
+
+PHPWrap is a shell script that dumps all environment variables prior to exec'g
+PHP proper - this was done to see if the problem was PHP's or Apache's;  it is
+clear from this that the problem is Apache's as the REMOTE_USER and AUTH_TYPE
+variables are never passed to PHP under 2.0.x but work under 1.3.22.
+
+Unfortunately with both REMOTE_USER and AUTH_TYPE missing, a number of Web
+applications written using HTTP authentication all fail to operate, making
+this a critical fault (certainly before Apache 2.0 goes "production" anyway).
+>How-To-Repeat:
+Configure PHP to use the CGI interface, configure Apache to call PHP using an
+"Action" then try running a few regular CGI scripts versus PHP scripts when
+authenticated - REMOTE_USER and AUTH_TYPE appear for the regular CGI scripts
+but never appear (and no user details are logged) for the Action-driven
+scripts.
+>Fix:
+Unfortunately not;  I've had a quick look at the 2.0.16 source code and there
+does not appear to be any major difference between how REMOTE_ADDR and
+REMOTE_USER are handled, yet REMOTE_ADDR is present for all scripts and has no
+problems - clearly the problem is more fundamental and requires a more
+intimate knowledge of Apache 2.0 internals.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: slive
+State-Changed-When: Wed Nov 14 12:56:39 PST 2001
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+
+From: David J N Begley <d.begley@uws.edu.au>
+To: slive@apache.org
+Cc: apache-bugdb@apache.org, <apbugs@apache.org>
+Subject: Re: general/8711: HTTP authentication variables not propogated to
+ Action scripts
+Date: Thu, 15 Nov 2001 18:57:47 +1100 (EST)
+
+ On 14 Nov 2001, slive@apache.org wrote:
+ 
+ > If there are no outstanding questions, please consider this a request to
+ > try to reproduce the problem with the latest software release, if one has
+ > been made since last contact.
+ 
+ Tested again on Apache/2.0.28 - problem still persists.  Example regular CGI
+ script (that works):
+ 
+   #! /sbin/sh
+   set -f
+   echo Content-type: text/plain
+   echo
+   echo SERVER_SOFTWARE = $SERVER_SOFTWARE
+   echo GATEWAY_INTERFACE = $GATEWAY_INTERFACE
+   echo SERVER_PROTOCOL = $SERVER_PROTOCOL
+   echo HTTP_USER_AGENT = $HTTP_USER_AGENT
+   echo
+   echo REMOTE_ADDR = $REMOTE_ADDR
+   echo REMOTE_USER = $REMOTE_USER
+   echo AUTH_TYPE = $AUTH_TYPE
+ 
+ Example PHP script, called as an Apache "Action" with PHP configured to use
+ the CGI interface (wherein REMOTE_USER and AUTH_TYPE are always missing):
+ 
+   <?php
+     header("Content-type: text/plain");
+     print "SERVER_SOFTWARE = " . $HTTP_ENV_VARS["SERVER_SOFTWARE"] . "\n";
+     print "GATEWAY_INTERFACE = " . $HTTP_ENV_VARS["GATEWAY_INTERFACE"] . "\n";
+     print "SERVER_PROTOCOL = " . $HTTP_ENV_VARS["SERVER_PROTOCOL"] . "\n";
+     print "HTTP_USER_AGENT = " . $HTTP_ENV_VARS["HTTP_USER_AGENT"] . "\n";
+     print "\n";
+     print "REMOTE_ADDR = " . $HTTP_ENV_VARS["REMOTE_ADDR"] . "\n";
+     print "REMOTE_USER = " . $HTTP_ENV_VARS["REMOTE_USER"] . "\n";
+     print "AUTH_TYPE = " . $HTTP_ENV_VARS["AUTH_TYPE"] . "\n";
+   ?>
+ 
+ Works under 1.3.22, fails under 2.0.28.  Manual TELNET to the port and request
+ (GET) the PHP script results in an "Authorization Required" error indicating
+ that the authentication side of things is definitely configured correctly.
+ 
+ Basic Apache compilation information includes:
+ 
+   [ httpd -V ]
+   Server version: Apache/2.0.28
+   Server built:   Nov 15 2001 17:24:48
+   Server's Module Magic Number: 20011002:0
+   Server compiled with....
+    -D APACHE_MPM_DIR="server/mpm/prefork"
+    -D APR_FILE_BASED_SHM
+    -D APR_HAS_MMAP
+    -D APR_USE_FCNTL_SERIALIZE
+    -D APR_USE_PTHREAD_SERIALIZE
+    -D APR_HAS_OTHER_CHILD
+    -D AP_HAVE_RELIABLE_PIPED_LOGS
+    -D HTTPD_ROOT="/opt/cwis"
+    -D SUEXEC_BIN="/opt/cwis/bin/suexec"
+    -D DEFAULT_ERRORLOG="logs/error_log"
+    -D SERVER_CONFIG_FILE="conf/httpd.conf"
+ 
+   [ /server-info ]
+   Server Version: Apache/2.0.28 (Unix)
+   Server Built: Nov 15 2001 17:24:48
+   API Version: 20011002:0
+   Hostname/port: bofh.uws.edu.au:0
+   Timeouts: connection: 300    keep-alive: 15
+   MPM Name: Prefork
+   MPM Information: Max Daemons: 20 Threaded: no Forked: yes
+   Server Root: /opt/cwis
+   Config File: conf/httpd.conf
+ 
+ (Shouldn't the port number be "80" instead of "0"?  There is no "Port"
+ directive in httpd.conf, just a single "Listen" directive which *does* include
+ port 80 as ":80" after the IP address.  Apache is correctly ignoring the
+ other interfaces/IPs on this machine and only listening on the one IP on port
+ 80.)
+ 
+ Any other information you need?
+ 
+State-Changed-From-To: feedback-open
+State-Changed-By: slive
+State-Changed-When: Thu Nov 15 05:45:29 PST 2001
+State-Changed-Why:
+Update Release to 2.0.28 and reopen.
+Release-Changed-From-To: 2.0-2.0.28
+Release-Changed-By: slive
+Release-Changed-When: Thu Nov 15 05:45:29 PST 2001
+Severity-Changed-From-To: critical-serious
+Severity-Changed-By: slive
+Severity-Changed-When: Thu Nov 15 05:45:29 PST 2001
+Category-Changed-From-To: general-mod_actions
+Category-Changed-By: slive
+Category-Changed-When: Thu Nov 15 05:45:29 PST 2001
+
+
+From: David J N Begley <d.begley@uws.edu.au>
+To: slive@apache.org
+Cc: apache-bugdb@apache.org, <apbugs@apache.org>
+Subject: Re: general/8711: HTTP authentication variables not propogated to
+ Action scripts
+Date: Mon, 11 Mar 2002 23:42:54 +1100 (EST)
+
+ Four months later - re-tried with latest release (Apache/2.0.32) - problem
+ still persists;  no improvement to access_log symptom nor CGI environment
+ variable symptom.
+ 
+State-Changed-From-To: open-analyzed
+State-Changed-By: trawick
+State-Changed-When: Mon Mar 11 09:33:22 PST 2002
+State-Changed-Why:
+A bit of progress on this PR:
+
+In Apache 1.3, ap_add_common_vars() sets REMOTE_USER and AUTH_TYPE from c->user and c->ap_auth_type, whereas
+in Apache 2.0, ap_add_common_vars() sets REMOTE_USER and
+AUTH_TYPE from r->user and r->ap_auth_type.
+But mod_actions runs the script as a subrequest, and 
+r->user and r->ap_auth_type aren't set there.
+
+Hopefully this can get resolved in the next few days.
+
+Thanks for your report.
+
+State-Changed-From-To: analyzed-feedback
+State-Changed-By: trawick
+State-Changed-When: Mon Mar 11 10:00:03 PST 2002
+State-Changed-Why:
+After looking at the code, it is clear that with Apache 
+2.0 you need to set up authorization for the target of 
+the subrequest (/cgi-bin/phpwrap in your case).  
+/cgi-bin/phpwrap would need to be protected anyway in
+case the client could request that resource anyway
+(e.g., specify /cgi-bin/phpwrap directly).
+
+Please set up authorization for /cgi-bin/phpwrap and let
+us know if the problem is resolved.
+
+
+From: David J N Begley <d.begley@uws.edu.au>
+To: trawick@apache.org
+Cc: apache-bugdb@apache.org, <apbugs@apache.org>
+Subject: Re: mod_actions/8711: HTTP authentication variables not propogated
+ to Action scripts
+Date: Tue, 12 Mar 2002 12:19:20 +1100 (EST)
+
+ On 11 Mar 2002, trawick@apache.org wrote:
+ 
+ > [In order for any reply to be added to the PR database, you need]
+ > [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ 
+ BTW, is "apache-bugdb@" sufficient or do you need both it and "apbugs@"?
+ There is an inconsistency between the comments in the email and the actual
+ email address used.
+ 
+ > Please set up authorization for /cgi-bin/phpwrap and let us know if the
+ > problem is resolved.
+ 
+ Is the auth'd user now logged in access_log?  Yes.
+ Are the appropriate CGI variables now available to PHP scripts?  Yes.
+ Is this an acceptable solution/work-around?  Not really - see below.
+ 
+ > After looking at the code, it is clear that with Apache 2.0 you need to set
+ > up authorization for the target of the subrequest (/cgi-bin/phpwrap in your
+ > case).
+ 
+ Why such a fundamental shift from Apache 1.3?  There are a number of problems
+ with this approach:
+ 
+ - Subrequests utilising generalised scripting engines are not the ultimate
+   target of authentication anyway, that's the original content.
+ 
+ - The authentication actually happened with the original content, it's just
+   not visible either in the access_log nor to the script (run by the engine,
+   which is in turn run as a subrequest from within Apache).
+ 
+ - Since you'd now need to apply authentication to every subrequest target
+   you can't have just one copy of the generalised scripting engine installed;
+   one for each separate authentication realm on the Web server, plus one for
+   non-authenticated requests.  This is quickly spiralling outta control...
+ 
+ - Then there's the basic end-user confusion of why something that seemed
+   logical and worked with Apache 1.3 no longer works with 2.0.  :-(
+ 
+ I guess I'm asking for some logical rationale as to why this was changed for
+ Apache 2.0 - at this stage, it seems pretty dumb to me.  :-(
+ 
+ > /cgi-bin/phpwrap would need to be protected anyway in case the client could
+ > request that resource anyway (e.g., specify /cgi-bin/phpwrap directly).
+ 
+ At first I agreed whole-heartedly with this (and generally speaking, still
+ agree) - then I remembered (and tried) PHP's built-in security in this regard;
+ I requested "/cgi-bin/phpwrap" directly (with no authentication) and got what
+ I expected:
+ 
+   Security Alert! PHP CGI cannot be accessed directly.
+ 
+   This PHP CGI binary was compiled with force-cgi-redirect enabled. This means
+   that a page will only be served up if the REDIRECT_STATUS CGI variable is
+   set. This variable is set, for example, by Apache's Action directive
+   redirect.
+ 
+ It should be possible to still protect the "subrequest target" in this case
+ anyway by just refusing requests wherein the request URI contains/matches
+ "/cgi-bin/phpwrap" without screwing up subrequest processing (since in that
+ case the _real_ subrequest target would only appear in the SCRIPT_xxx
+ variables, not in REQUEST_xxx, REDIRECT_xxx or PATH_xxx).
+ 
+ Thanks..
+ 
+State-Changed-From-To: feedback-open
+State-Changed-By: wrowe
+State-Changed-When: Thu Apr  4 21:11:16 PST 2002
+State-Changed-Why:
+User provided feedback ... tag we're it :)
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

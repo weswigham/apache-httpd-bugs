@@ -1,0 +1,88 @@
+Received: (qmail 7626 invoked by uid 2012); 2 Apr 1999 14:09:21 -0000
+Message-Id: <19990402140921.7625.qmail@hyperreal.org>
+Date: 2 Apr 1999 14:09:21 -0000
+From: Dave Dykstra <dwd@bell-labs.com>
+Reply-To: dwd@bell-labs.com
+To: apbugs@hyperreal.org
+Subject: Ran into assembler bug in http_protocol.c
+X-Send-Pr-Version: 3.2
+
+>Number:         4189
+>Category:       os-other
+>Synopsis:       Ran into assembler bug in http_protocol.c
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Apr  2 06:10:01 PST 1999
+>Last-Modified:  Tue Apr 20 11:36:28 PDT 1999
+>Originator:     dwd@bell-labs.com
+>Organization:
+>Release:        1.3.6
+>Environment:
+Amdahl's UTS 2.1.2 with ANSI C compiler version 2.7.5 (8/4/94)
+>Description:
+The assembler of the ANSI C compiler on UTS sometimes bombs on apache source
+files.  Before apache 1.3.6 it has only happened in optional modules and I
+just skipped compiling them.  With the latest release, it is bombing in
+the required http_protocol.c so I investigated further for a workaround.
+It turns out that removing the second "const" from the status_lines array
+definition is the easiest way, although it can also be avoided by splitting
+the existing code into two separate files.  I chose to use the easy way.
+This is such an obscure problem that I wouldn't blame you if you don't want
+to incorporate it into the base, but I thought I would submit it anyway just
+in case.
+>How-To-Repeat:
+You'll have to trust me.
+>Fix:
+*** src/main/http_protocol.c.O  Wed Mar 31 09:08:32 1999
+--- src/main/http_protocol.c    Wed Mar 31 09:26:58 1999
+***************
+*** 1170,1176 ****
+   * and must be listed in order.
+   */
+  
+! static const char * const status_lines[RESPONSE_CODES] = {
+      "100 Continue",
+      "101 Switching Protocols",
+      "102 Processing",
+--- 1170,1185 ----
+   * and must be listed in order.
+   */
+  
+! #ifdef UTS21
+! /* The second const triggers an assembler bug on UTS 2.1.
+!  * Another workaround is to move some code out of this file into another,
+!  *   but this is easier.  Dave Dykstra, 3/31/99 
+!  */
+! static const char * status_lines[RESPONSE_CODES] =
+! #else
+! static const char * const status_lines[RESPONSE_CODES] =
+! #endif
+! {
+      "100 Continue",
+      "101 Switching Protocols",
+      "102 Processing",
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 11:36:27 PDT 1999
+State-Changed-Why:
+thanks, committed to 1.3.7-dev
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

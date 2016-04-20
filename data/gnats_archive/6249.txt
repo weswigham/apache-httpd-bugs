@@ -1,0 +1,81 @@
+Received: (qmail 87349 invoked by uid 501); 28 Jun 2000 06:20:20 -0000
+Message-Id: <20000628062020.87348.qmail@locus.apache.org>
+Date: 28 Jun 2000 06:20:20 -0000
+From: Darryl Bond <dbond@nrggos.com.au>
+Reply-To: dbond@nrggos.com.au
+To: submit@bugz.apache.org
+Subject: Jserv & PHP modules together will not spawn the java process
+X-Send-Pr-Version: 3.110
+
+>Number:         6249
+>Category:       mod_jserv
+>Synopsis:       Jserv & PHP modules together will not spawn the java process
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jun 27 23:30:01 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     dbond@nrggos.com.au
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+SunOS stimpy 5.7 Generic_106541-09 sun4u sparc SUNW,Ultra-5_10
+
+gcc version 2.8.1
+ApacheJServ-1.1.2
+Solaris_JDK_1.2.2_05a_sparc
+JSDK2.0
+
+>Description:
+JServ works fine if PHP module is not loaded but only rarely if PHP module is loaded
+The java process does not start
+Log shows that ap_standalone and getppid() are both non-zero
+
+[28/06/2000 14:58:31:960] (INFO) Apache-JServ 1rst  initialization: JVM will be started later 1 16656 16655
+[28/06/2000 14:59:02:291] (INFO) Apache Module was cleaned-up
+
+but java process will not start but the logic in the code is clearly 
+returning without spawning the java process (1rst)
+
+Problem is resolved with the fix below.
+>How-To-Repeat:
+Seems to be a race condition. A slower box with the same OS revision does not 
+have any problems starting the java process with the original code.
+>Fix:
+Code in jserv_wrapper_unix.c shows
+    if (ap_standalone && getppid()==1) {
+        jserv_error(JSERV_LOG_INFO,wrapper_data->config,
+                    "Apache-JServ 2nd  initialization starting JVM now: %d %d %d", ap_standalone, getpid(), getppid()); 
+    }
+    else {
+        jserv_error(JSERV_LOG_INFO,wrapper_data->config,
+                    "Apache-JServ 1rst  initialization: JVM will be started later %d %d %d", ap_standalone, getpid(), getppid()); 
+        return 0;
+    }
+If the if statement is changed to 
+    if (ap_standalone && getppid()) {
+ 
+Then the problem goes away.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

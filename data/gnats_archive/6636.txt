@@ -1,0 +1,130 @@
+Received: (qmail 35911 invoked by uid 501); 6 Oct 2000 23:22:52 -0000
+Message-Id: <20001006232252.35910.qmail@locus.apache.org>
+Date: 6 Oct 2000 23:22:52 -0000
+From: Dan Harkless <apache-bug@dilvish.speed.net>
+Reply-To: apache-bug@dilvish.speed.net
+To: submit@bugz.apache.org
+Subject: apachectl script does not ensure that PID is actually an invocation of httpd
+X-Send-Pr-Version: 3.110
+
+>Number:         6636
+>Category:       general
+>Synopsis:       apachectl script does not ensure that PID is actually an invocation of httpd
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Oct 06 16:30:00 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     apache-bug@dilvish.speed.net
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Irrelevant.
+>Description:
+To see if an httpd is already running, apachectl simply looks at the httpd.pid
+file and then 'kill -0's that process to make sure it still exists.  This is
+insufficient.  Last night we had a power outage and when our machine came back
+up httpd was not restarted because some OTHER process existed with httpd's old
+PID.  It took manual intervention to get the webserver back up. 
+
+apachectl should use ps and egrep to ensure that the PID in the PID file is
+actually an httpd invocation.  I have provided a patch to make it do this.  I 
+have attempted to make it as platform-independent as the 'kill -0' version.
+>How-To-Repeat:
+Note httpd's PID.  Issue 'apachectl stop'.  Manually write httpd's old PID back 
+to the PID file (to simulate non-graceful-shutdown).  Issue 'apachectl start'. 
+httpd will not start.
+>Fix:
+Yes, here's a patch:
+
+*** apachectl.orig      Wed Jun 21 19:37:33 2000
+--- apachectl   Fri Oct  6 15:49:24 2000
+***************
+*** 2,7 ****
+--- 2,8 ----
+  #
+  # Apache control script designed to allow an easy command line interface
+  # to controlling Apache.  Written by Marc Slemko, 1997/08/23
++ # Modified by Dan Harkless, 2000/10/06 to actually check that PID is an httpd.
+  # 
+  # The exit codes returned are:
+  #     0 - operation completed successfully
+***************
+*** 47,60 ****
+  
+  for ARG in $@ $ARGS
+  do
+!     # check for pidfile
+!     if [ -f $PIDFILE ] ; then
+        PID=`cat $PIDFILE`
+!       if [ "x$PID" != "x" ] && kill -0 $PID 2>/dev/null ; then
+!           STATUS="httpd (pid $PID) running"
+!           RUNNING=1
+        else
+!           STATUS="httpd (pid $PID?) not running"
+            RUNNING=0
+        fi
+      else
+--- 48,83 ----
+  
+  for ARG in $@ $ARGS
+  do
+!     # Check for pidfile and make sure that process is running AND is an httpd.
+!     if [ -f $PIDFILE ]; then
+        PID=`cat $PIDFILE`
+!       if [ "x$PID" != "x" ]; then
+!           # To be as platform-independent as possible, we don't assume much
+!           # about the format of ps's output, so it's feasible we could match
+!           # some other process that happens to have "httpd" on the
+!           # commandline.  That's much better, however, than just assuming
+!           # that *any* process with that PID is the httpd (which can cause
+!           # httpd to not be restarted after a system crash / power outage).
+!           # The square brackets stop us from grepping our own egrep process. 
+!           if (ps -ef   | egrep "[ ]$PID[ ].*httpd") 1>/dev/null 2>&1; then
+!               ATT_PS_FOUND_HTTPD=1
+!           else
+!               ATT_PS_FOUND_HTTPD=0
+!           fi
+!           if (ps gaxuw | egrep "[ ]$PID[ ].*httpd") 1>/dev/null 2>&1; then
+!               BSD_PS_FOUND_HTTPD=1
+!           else
+!               BSD_PS_FOUND_HTTPD=0
+!           fi
+!           if [ $ATT_PS_FOUND_HTTPD = 1 -o $BSD_PS_FOUND_HTTPD = 1 ]; then
+!               STATUS="httpd (pid $PID) running"
+!               RUNNING=1
+!           else
+!               STATUS="httpd (was pid $PID) not running"
+!               RUNNING=0
+!           fi
+        else
+!           STATUS="httpd (empty pid file) not running"
+            RUNNING=0
+        fi
+      else
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

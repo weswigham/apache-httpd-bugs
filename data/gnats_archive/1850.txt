@@ -1,0 +1,138 @@
+Received: (qmail 19467 invoked by uid 2012); 20 Feb 1998 18:18:47 -0000
+Message-Id: <19980220181847.19466.qmail@hyperreal.org>
+Date: 20 Feb 1998 18:18:47 -0000
+From: Richard Johnsson <johnsson@interval.com>
+Reply-To: johnsson@interval.com
+To: apbugs@hyperreal.org
+Subject: References to /~user loop extending file name until too long.
+X-Send-Pr-Version: 3.2
+
+>Number:         1850
+>Category:       mod_userdir
+>Synopsis:       References to /~user loop extending file name until too long.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Feb 20 10:20:00 PST 1998
+>Last-Modified:  Sat Feb 21 00:37:35 PST 1998
+>Originator:     johnsson@interval.com
+>Organization:
+>Release:        1.3b5
+>Environment:
+This occurs on two systems:
+uname -a = SunOS interval 5.4 Generic_101945-10 sun4m sparc
+gcc 2.7.2.3
+
+uname -a = SunOS morgan 4.1.2 1 sun4c
+gcc 2.5.8
+>Description:
+Relevant config items:
+UserDir public_html web /share/IntervalShare/Projects/*/public_html /share/Inte
+rvalShare/Projects/*/web
+ 
+DirectoryIndex index.cgi index.html index.htm
+
+References to /~user eventually fail with name too long. Access log shows
+
+johnsson-pc.interval.com - - [20/Feb/1998:10:07:52 -0800] "GET /~johnsson/ HTTP/1.0" 200 200 "Mozilla/4.04 [en] (Win95; U)" -
+johnsson-pc.interval.com - - [20/Feb/1998:10:07:52 -0800] "GET /~johnsson/index.cgi/ HTTP/1.0" 200 210 "Mozilla/4.04 [en] (Win95; U)" -
+johnsson-pc.interval.com - - [20/Feb/1998:10:07:52 -0800] "GET /~johnsson/index.cgi/index.cgi/ HTTP/1.0" 200 220 "Mozilla/4.04 [en] (Win95; U)" -
+johnsson-pc.interval.com - - [20/Feb/1998:10:07:53 -0800] "GET /~johnsson/index.cgi/index.cgi/index.cgi/ HTTP/1.0" 200 230 "Mozilla/4.04 [en] (Win95; U)" -
+johnsson-pc.interval.com - - [20/Feb/1998:10:07:53 -0800] "GET /~johnsson/index.cgi/index.cgi/index.cgi/index.cgi/ HTTP/1.0" 200 240 "Mozilla/4.04 [en] (Win95; U)" -
+
+Note that this occurs whether index.cgi exists or not. If it exists it is not
+opened (utime not updated).
+
+This all worked fine with 1.3b3 with the same config files. Changing the
+DirectoryIndex directive to a single file has no effect. Changing the
+UserDir directive to a single (simple) directory makes the problem go away.
+>How-To-Repeat:
+
+>Fix:
+See what changed between b3 and b5 in handling multiple UserDir items
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Richard Johnsson <johnsson@interval.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_userdir/1850: References to /~user loop extending file name until too long.
+Date: Fri, 20 Feb 1998 16:29:32 -0800 (PST)
+
+ Try this patch please. 
+ 
+ Dean
+ 
+ Index: modules/standard/mod_userdir.c
+ ===================================================================
+ RCS file: /export/home/cvs/apache-1.3/src/modules/standard/mod_userdir.c,v
+ retrieving revision 1.28
+ diff -u -r1.28 mod_userdir.c
+ --- mod_userdir.c	1998/02/14 03:26:58	1.28
+ +++ mod_userdir.c	1998/02/21 00:12:04
+ @@ -313,7 +313,10 @@
+           */
+          if (filename && (!*userdirs || stat(filename, &statbuf) != -1)) {
+              r->filename = pstrcat(r->pool, filename, dname, NULL);
+ -	    if (*userdirs)
+ +	    /* when statbuf contains info on r->filename we can save a syscall
+ +	     * by copying it to r->finfo
+ +	     */
+ +	    if (*userdirs && dname[0] == 0)
+  		r->finfo = statbuf;
+              return OK;
+          }
+ 
+
+From: Richard Johnsson <johnsson@interval.com>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_userdir/1850: References to /~user loop extending file
+  name until too long.
+Date: Fri, 20 Feb 1998 19:14:38 -0800
+
+ Bingo! Works fine with the patch.
+ 
+ At 04:29 PM 2/20/98 -0800, Dean Gaudet wrote:
+ >Try this patch please. 
+ >
+ >Dean
+ >
+ >Index: modules/standard/mod_userdir.c
+ >===================================================================
+ >RCS file: /export/home/cvs/apache-1.3/src/modules/standard/mod_userdir.c,v
+ >retrieving revision 1.28
+ >diff -u -r1.28 mod_userdir.c
+ >--- mod_userdir.c	1998/02/14 03:26:58	1.28
+ >+++ mod_userdir.c	1998/02/21 00:12:04
+ >@@ -313,7 +313,10 @@
+ >          */
+ >         if (filename && (!*userdirs || stat(filename, &statbuf) != -1)) {
+ >             r->filename = pstrcat(r->pool, filename, dname, NULL);
+ >-	    if (*userdirs)
+ >+	    /* when statbuf contains info on r->filename we can save a syscall
+ >+	     * by copying it to r->finfo
+ >+	     */
+ >+	    if (*userdirs && dname[0] == 0)
+ > 		r->finfo = statbuf;
+ >             return OK;
+ >         }
+ >
+ >
+ >
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Feb 21 00:37:35 PST 1998
+State-Changed-Why:
+Patch fixed it.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

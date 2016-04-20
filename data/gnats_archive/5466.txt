@@ -1,0 +1,132 @@
+Received: (qmail 2168 invoked by uid 2012); 14 Dec 1999 13:49:47 -0000
+Message-Id: <19991214134947.2167.qmail@hyperreal.org>
+Date: 14 Dec 1999 13:49:47 -0000
+From: Anders "Börjeson" <anders@ticnet.se>
+Reply-To: anders@ticnet.se
+To: apbugs@hyperreal.org
+Subject: Location: url sent to a MSIE 4. or MSIE 5. Makes all apache server child process die and be restarted
+X-Send-Pr-Version: 3.2
+
+>Number:         5466
+>Category:       general
+>Synopsis:       Location: url sent to a MSIE 4. or MSIE 5. Makes all apache server child process die and be restarted
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Dec 14 05:50:00 PST 1999
+>Last-Modified:
+>Originator:     anders@ticnet.se
+>Organization:
+apache
+>Release:        1.3.4
+>Environment:
+Linux "hostname" 2.2.12-20 #1 Mon Sep 27 10:40:35 EDT 1999 i686 unknown
+RedHat 6.1 
+>Description:
+I have a cgi-script that sends the location-verb
+"Location: http://name.dom.se/cgi-bin/script.cgi?some_variables"
+when the client-browser is a Microsoft Internet Explorer 4. or 5.
+Requesting SERVER_PROTOCOL= HTTP/1.1 
+all my apache child processes dies, and becomes restarted by the apache-father
+process who do not die.
+
+An strace of the father-process looks like this
+wait4(-1, 0xbffffd28, WNOHANG, NULL)    = 0
+select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+time(NULL)                              = 945178042
+wait4(-1, 0xbffffd28, WNOHANG, NULL)    = 0
+select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+time(NULL)                              = 945178043
+wait4(-1, 0xbffffd28, WNOHANG, NULL)    = 0
+select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+--- SIGCHLD (Child exited) ---
+select(0, NULL, NULL, NULL, {0, 280000}) = ? ERESTARTNOHAND (To be restarted)
+--- SIGCHLD (Child exited) ---
+select(0, NULL, NULL, NULL, {0, 280000}) = ? ERESTARTNOHAND (To be restarted)
+--- SIGCHLD (Child exited) ---
+select(0, NULL, NULL, NULL, {0, 280000}) = ? ERESTARTNOHAND (To be restarted)
+--- SIGCHLD (Child exited) ---
+select(0, NULL, NULL, NULL, {0, 280000}) = ? ERESTARTNOHAND (To be restarted)
+--- SIGCHLD (Child exited) ---
+select(0, NULL, NULL, NULL, {0, 280000}) = ? ERESTARTNOHAND (To be restarted)
+--- SIGCHLD (Child exited) ---
+select(0, NULL, NULL, NULL, {0, 280000}) = ? ERESTARTNOHAND (To be restarted)
+--- SIGCHLD (Child exited) ---
+select(0, NULL, NULL, NULL, {0, 270000}) = 0 (Timeout)
+time(NULL)                              = 945178044
+wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 19192
+wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 19191
+wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 19190
+wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 19189
+wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 19175
+wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 19174
+wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 19164
+wait4(-1, 0xbffffd28, WNOHANG, NULL)    = -1 ECHILD (No child processes)
+select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+time(NULL)                              = 945178045
+fork()                                  = 28883
+wait4(-1, 0xbffffd28, WNOHANG, NULL)    = 0
+
+
+>How-To-Repeat:
+Here are two sampe cgi-scripts that can reproduce the problem.
+
+############## one.cgi
+#!/bin/ksh
+
+# disable filename globbing
+set -f
+
+echo "Location: http://name.dom.se/cgi-bin/two.cgi?\c"
+echo "A=23456789012345678901234567890123456789012345678&\c"
+echo "B=23456789012345678901234567890123456789012345678&\c"
+echo "C=23456789012345678901234567890123456789012345678&\c"
+echo "D=23456789012345678901234567890123456789012345678&\c"
+echo "E=23456789012345678901234567890123456789012345678&\c"
+echo "F=23456789012345678901234567890123456789012345678&\c"
+echo "G=23456789012345678901234567890123456789012345678&\c"
+echo "H=23456789012345678901234567890123456789012345678&\c"
+echo "J=23456789012345678901234567890123456789012345678&\c"
+echo "K=\c"
+echo "\n\n"
+###############
+
+############## two.cgi
+#!/bin/sh
+
+# disable filename globbing
+set -f
+
+echo Content-type: text/html
+echo
+
+cat path/file.html
+#####################
+(file.html is a html-file 13590 bytes in size)
+
+These two scripts can reproduce the problem 3 times out of 10 tries
+>Fix:
+# The following two lines in httpd.conf makes the problem dissaper
+#  (instead of 100 death per our it's decreased to 4 to 5.
+BrowserMatch "MSIE 4\." nokeepalive downgrade-1.0 force-response-1.0
+BrowserMatch "MSIE 5\." nokeepalive downgrade-1.0 force-response-1.0
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

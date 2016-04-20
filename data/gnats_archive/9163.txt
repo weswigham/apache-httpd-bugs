@@ -1,0 +1,94 @@
+Received: (qmail 80010 invoked by uid 501); 17 Dec 2001 21:09:10 -0000
+Message-Id: <20011217210910.80009.qmail@apache.org>
+Date: 17 Dec 2001 21:09:10 -0000
+From: Brian Reid <breid@customlogic.com>
+Reply-To: breid@customlogic.com
+To: submit@bugz.apache.org
+Subject: SSL environment variables not accessible when using mod_ssl and suExec
+X-Send-Pr-Version: 3.110
+
+>Number:         9163
+>Category:       suexec
+>Synopsis:       SSL environment variables not accessible when using mod_ssl and suExec
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Dec 17 13:10:00 PST 2001
+>Closed-Date:    Wed Feb 06 07:25:54 PST 2002
+>Last-Modified:  Wed Feb 06 07:25:54 PST 2002
+>Originator:     breid@customlogic.com
+>Release:        All
+>Organization:
+>Environment:
+Any
+>Description:
+I am trying to use suExec for running CGI programs on a server that
+is secured using mod_ssl.  The problem that I am running into is that
+suExec strips out all of the SSL related environment variables when it
+cleans the environment space of the child process.  Since it strips out
+the variables, I lose the ability to detect whether my CGI programs are
+running through SSL.
+>How-To-Repeat:
+Setup a secure virtual host with a cgi-bin that uses suexec.  Put a CGI program in
+the cgi-bin directory that echos its environment variables.  The HTTPS environment
+variable and all the SSL_* variables will not be listed.  If you take away the
+suexec usage, all the SSL_ variables will be listed.
+>Fix:
+The following patch to suexec.c adds the HTTPS variable to the
+"safe_env_lst" variable and adds a check in clean_env() to look for and
+retain all the variables that start with "SSL_".
+
+diff -urN oldhttpd/support/suexec.c httpd-2_0_28/support/suexec.c
+--- oldhttpd/support/suexec.c   Tue Oct 30 09:38:03 2001
++++ httpd-2_0_28/support/suexec.c       Mon Dec 17 10:08:51 2001
+@@ -136,6 +136,7 @@
+     "DOCUMENT_URI",
+     "FILEPATH_INFO",
+     "GATEWAY_INTERFACE",
++    "HTTPS",
+     "LAST_MODIFIED",
+     "PATH_INFO",
+     "PATH_TRANSLATED",
+@@ -227,7 +228,7 @@
+     cidx++;
+
+     for (ep = environ; *ep && cidx < AP_ENVBUF-1; ep++) {
+-       if (!strncmp(*ep, "HTTP_", 5)) {
++       if (!strncmp(*ep, "HTTP_", 5) || !strncmp(*ep, "SSL_",4)) {
+            cleanenv[cidx] = *ep;
+            cidx++;
+        }
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: slive
+State-Changed-When: Wed Feb  6 07:25:54 PST 2002
+State-Changed-Why:
+
+Your suggested fix has been added to the 2.0 tree and
+will be in a future release.
+
+Thanks!
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,80 @@
+Received: (qmail 63705 invoked by uid 501); 2 Mar 2002 22:53:17 -0000
+Message-Id: <20020302225317.63704.qmail@apache.org>
+Date: 2 Mar 2002 22:53:17 -0000
+From: Domingo Alvarez Duarte <domingo@dad-it.com>
+Reply-To: domingo@dad-it.com
+To: submit@bugz.apache.org
+Subject: When exists more than one "Set-Cookie" only the last is sent to client browser.
+X-Send-Pr-Version: 3.110
+
+>Number:         10014
+>Category:       mod_proxy
+>Synopsis:       When exists more than one "Set-Cookie" only the last is sent to client browser.
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          mistaken
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Mar 02 15:00:00 PST 2002
+>Closed-Date:
+>Last-Modified:
+>Originator:     domingo@dad-it.com
+>Release:        1.3.23
+>Organization:
+apache
+>Environment:
+SUSE Linux 7.3
+>Description:
+In proxy_http.c when collecting the received headers and using ap_table_overlap to merge then to the output, every token that is received more than once ends reduced to the last one only.
+
+I discover that problem when trying proxy a IIS running coldfusion and accessing a page set two cookies, doing a direct telnet to the server I saw that it sents then in two separated lines (CFID,CFTOKEN) and after pass through the mod_proxy gets reduced to only one (CFTOKEN).
+
+Diving in the code I discovered that the problem is around line 530 in a call to ap_table_overlap.
+>How-To-Repeat:
+Try to proxy a server running IIS with coldfusion and access a page that needs cookie authentication (CFID, CFTOKEN), only "CFTOKEN" is sent to client browser.
+Because a "ap_table_overlap" is applyied to merge the headers received from the server when the server send more than one cookie in separated lines only the last remain in the merged header sent to the client browser, it applyes to every token sent more than once. 
+I'm sendig a patch that only correct the "Set-Cookie", it's not elegant but it solved the problem for me, probably change the ap_table_overlap by a loop through the received header will be betther.
+>Fix:
+*** proxy_http0.c       Sat Mar  2 23:17:46 2002
+--- proxy_http.c        Sat Mar  2 12:44:23 2002
+***************
+*** 528,533 ****
+--- 528,543 ----
+
+      /* Setup the headers for our client from upstreams response-headers */
+      ap_overlap_tables(r->headers_out, resp_hdrs, AP_OVERLAP_TABLES_SET);
++
++     /* After overlap duplicates Set-Cookie lines are lost so correct it here*/
++     ap_table_unset(r->headers_out, "Set-Cookie");
++     for(i=0; i < resp_hdrs->a.nelts; i++){
++       if(strcmp(((table_entry *)resp_hdrs->a.elts)[i].key,"Set-Cookie") == 0){
++           ap_table_add(r->headers_out,((table_entry *)resp_hdrs->a.elts)[i].key,
++               ((table_entry *)resp_hdrs->a.elts)[i].val);
++       }
++     }
++
+      /* Add X-Cache header */
+      ap_table_setn(r->headers_out, "X-Cache",
+                    ap_pstrcat(r->pool, "MISS from ",
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

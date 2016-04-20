@@ -1,0 +1,88 @@
+Received: (qmail 55904 invoked by uid 501); 1 Mar 2002 14:53:57 -0000
+Message-Id: <20020301145357.55903.qmail@apache.org>
+Date: 1 Mar 2002 14:53:57 -0000
+From: Christian Friedl <vijeno@mediaclan.at>
+Reply-To: vijeno@mediaclan.at
+To: submit@bugz.apache.org
+Subject: Language Variants take whole server down with large variant page
+X-Send-Pr-Version: 3.110
+
+>Number:         10003
+>Category:       other
+>Synopsis:       Language Variants take whole server down with large variant page
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Mar 01 07:00:01 PST 2002
+>Closed-Date:    Mon Mar 11 14:30:52 PST 2002
+>Last-Modified:  Mon Mar 11 14:30:52 PST 2002
+>Originator:     vijeno@mediaclan.at
+>Release:        2.0.32
+>Organization:
+>Environment:
+Linux 2.4.2-2 i686 unknown
+gcc version 2.96 20000731 (Red Hat Linux 7.1 2.96-81)
+>Description:
+When using a variant with very large content (>100 lines) per section as an ErrorDocument, apache hangs at the first request, also sucking up all system resources (cpu). With mozilla 0.9.8, no content is ever displayed in the browser; with IE 5.5, broken content appears (delivered page starting at seemingly random point in variant).
+>How-To-Repeat:
+
+>Fix:
+Check for infinite loops or recursions in mod_negotiation as well as doubtful buffersize restrictions.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: trawick
+State-Changed-When: Mon Mar 11 12:36:45 PST 2002
+State-Changed-Why:
+This seems to be a problem in file buffering in APR on
+Unix.  As a work-around, you can change mod_negotiation
+to stop using buffered file I/O.  In function read_type_map
+in file modules/mappers/mod_negotiation.c, there is a 
+call to apr_file_open near the start of the function.
+Comment out "| APR_BUFFERED" (in the 3rd parameter to
+apr_file_open) and rebuild and your problem should go away.
+
+Can you try that and verify that you don't have any further
+problems?  That got rid of the consume-all-memory behavior
+with HTTP/1.1 requests and I started getting reasonable
+responses for other HTTP levels as well.
+
+(And now, back to debugging buffered I/O :( )
+
+State-Changed-From-To: feedback-closed
+State-Changed-By: trawick
+State-Changed-When: Mon Mar 11 14:30:52 PST 2002
+State-Changed-Why:
+Here's the real fix:
+http://cvs.apache.org/viewcvs.cgi/apr/file_io/unix/seek.c.diff?r1=1.24&r2=1.25&diff_format=h
+
+This will be in the next release of Apache 2.0.
+
+Thanks for your report, and thanks for using Apache!
+
+Category-Changed-From-To: mod_negotiation-other
+Category-Changed-By: trawick
+Category-Changed-When: Mon Mar 11 14:30:52 PST 2002
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

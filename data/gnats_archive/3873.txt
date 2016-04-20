@@ -1,0 +1,106 @@
+Received: (qmail 23134 invoked by uid 2012); 10 Feb 1999 18:53:54 -0000
+Message-Id: <19990210185354.23133.qmail@hyperreal.org>
+Date: 10 Feb 1999 18:53:54 -0000
+From: Lajos Incze <incze@mail.matav.hu>
+Reply-To: incze@mail.matav.hu
+To: apbugs@hyperreal.org
+Subject: Seems to reproduce PR#3190, PR#1950, PR#1940 and PR#3312. httpd children disappear.
+X-Send-Pr-Version: 3.2
+
+>Number:         3873
+>Category:       os-linux
+>Synopsis:       Seems to reproduce PR#3190, PR#1950, PR#1940 and PR#3312. httpd children disappear.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Feb 10 12:10:01 PST 1999
+>Last-Modified:  Tue Apr 20 16:54:05 PDT 1999
+>Originator:     incze@mail.matav.hu
+>Organization:
+>Release:        1.2.6
+>Environment:
+-------------------------------
+[root@web httpd]# uname -a
+Linux web.hbrt.hu 2.0.36 #1 Tue Nov 17 13:01:19 EST 1998 i586 unknown
+[root@web httpd]# rpm -q glibc
+glibc-2.0.7-29
+[root@web httpd]# rpm -q apache
+apache-1.2.6-4
+----------------------------------
+>Description:
+---------------------------------
+Moderately loaded intranet server behind a firewall, children regularly cease
+to work, only the master httpd server remains. When dying no entry in the error
+log, seemingly the master server does not recognize that has no children.
+Since upgraded to 2.0.36 (stock redhat update rpm) I allways experience the
+SYN flood messages in the syslog:
+...
+Feb  9 05:12:44 web kernel: Warning: possible SYN flood from 172.16.128.65 on 172.16.128.65:80.  Sending cookies.
+Feb  9 05:14:14 web kernel: Warning: possible SYN flood from 172.16.128.65 on 172.16.128.65:80.  Sending cookies.
+Feb  9 05:15:44 web kernel: Warning: possible SYN flood from 172.16.128.65 on 172.16.128.65:80.  Sending cookies.
+<snip>
+Feb  9 08:01:36 web kernel: Warning: possible SYN flood from 172.16.68.60 on 172.16.128.65:80.  Sending cookies.
+Feb  9 08:01:54 web PAM_pwdb[399]: (login) session opened for user vili by (uid=0)
+Feb  9 08:01:54 web login[399]: LOGIN ON tty2 BY vili
+Feb  9 08:01:59 web PAM_pwdb[8582]: (su) session opened for user root by vili(uid=0)
+Feb  9 08:02:44 web kernel: Warning: possible SYN flood from 172.16.128.65 on 172.16.128.65:80.  Sending cookies.
+...
+This last four lines show the last SYN flood messages as user 'vili' logs in
+to restart the server. Altough the _start_ of these messages (05:12) does not
+coincide with the death of children. Meantime a htdig facility tried continually
+index the site, and the last access_log entry was about 04:08 am:
+...
+[Tue Feb  9 04:08:40 1999] File does not exist: /home/htdocs/BELSO/hir/sajtofigy/1998/06/09/026439.html
+[Tue Feb  9 04:08:40 1999] File does not exist: /home/htdocs/BELSO/hir/sajtofigy/1998/06/09/026439.html/
+[Tue Feb  9 08:02:48 1999] httpd: caught SIGTERM, shutting down
+[Tue Feb  9 08:02:49 1999] created shared memory segment #512
+[Tue Feb  9 08:02:49 1999] Server configured -- resuming normal operations
+[Tue Feb  9 08:02:51 1999] File does not exist: /home/htdocs/BELSO/hir/sajtofigy/1998/07/10/098665.html
+[Tue Feb  9 08:02:51 1999] File does not exist: /home/htdocs/BELSO/hir/sajtofigy/1998/07/10/098665.html/
+-----------------------------------
+>How-To-Repeat:
+htdig sometimes causes the problem (but not allways). Unfortunately
+whenever I run our scripts from command line it finishes without a
+hitch. When it failed ran from cron. 
+>Fix:
+PR#3312's Ole Tange seems to be on the right track, maybe this all is
+a form of the http://www.apache.org/docs/misc/fin_wait_2.html FIN_WAIT2
+problem. On the other hand knowledgable shooud visit the tcp/ip kernel
+code under what circumstances you can get the TcpAttemptFailed counter
+increased. I see that the counter gets increased at the SYN flood detection,
+but the numbers provided by netstat -s seems to be higher than that.
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Wed Feb 10 12:13:31 PST 1999
+State-Changed-Why:
+As we very clearly state before you submit a PR, we can NOT
+try to debug wacky problems with ancient versions of
+Apache.  Please upgrade to a current version.
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 16:54:05 PDT 1999
+State-Changed-Why:
+Hey I'm going to close this out... this seems like a kernel
+problem... and I'm hoping someone puts all the pieces together
+eventually... but in the meanwhile, it doesn't help us to have
+a dozen of the same report open.  If you figure out anything
+new, send it our way.  Thanks.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

@@ -1,0 +1,122 @@
+Received: (qmail 79535 invoked by uid 501); 9 May 2001 09:32:21 -0000
+Message-Id: <20010509093221.79525.qmail@apache.org>
+Date: 9 May 2001 09:32:21 -0000
+From: Jacob Rief <jacob.rief@tiscover.com>
+Reply-To: jacob.rief@tiscover.com
+To: submit@bugz.apache.org
+Subject: additional RewriteMap: dso
+X-Send-Pr-Version: 3.110
+
+>Number:         7688
+>Category:       mod_rewrite
+>Synopsis:       additional RewriteMap: dso
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed May 09 02:40:04 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     jacob.rief@tiscover.com
+>Release:        1.3.19+
+>Organization:
+apache
+>Environment:
+Linux 2.2.17 #20 Mon Nov 20 10:20:51 CET 2000 i686 unknown
+gcc version 2.96 20000731 (Red Hat Linux 7.0)
+>Description:
+I would like to release a patch for mod_rewrite to add support for 
+an external rewrite-program which links dynamically instead of running
+in a seperate process-space such as 
+RewriteMap prg:/path/to/external/program
+
+I named this additional RewriteMap "dso" (dynamic shared object). 
+It may be used in the same way as an external mapping program. 
+
+This patch is very useful if Your external rewrite-program may hang or may
+crash, because it affects only the requesting http-child and not all of the
+httpd-precesses inside the server-pool. 
+Instead of having an external program communicating with all the
+httpd-childs through a single pipe, an external rewrite-dynamic-shared-object
+runs inside each httpd's-address space communicating through a singe function
+call which I named 'rewrite_lookup_map'. This function takes three parameters,
+a const char* for the key, a char* for the mapping result, and the string 
+length of the result buffer, currently 2048. The function should return 
+zero on failure and one on success. 
+
+Have a look at this example, it just maps lowercase chars to upercase 
+and vice versa. 
+
+  ----- example.c ----- 
+  int rewrite_lookup_map(const char* key, char* result, int size) 
+  { 
+          int i; 
+          const char* c; 
+
+          i = 0; 
+          for (c = key; c; c++) { 
+                  if (*c>='A' && *c<='Z') { 
+                          result[i] = *c|32; 
+                  } else if (*c>='a' && *c<='z') { 
+                          result[i] = *c&223; 
+                  } else { 
+                          result[i] = *c; 
+                  } 
+                  i++; 
+                  if (i==size-1) 
+                          return 0; 
+          } 
+          result[i] = '\0'; 
+          return 1; 
+  } 
+  ----- example.c ----- 
+
+You may build this example program by compiling it as dso: 
+> cc -c example -o example.o 
+> ld -shared example.o -o example.so 
+
+You may also put the functions _init() and _fini() into 
+Your program to initialize it and to cleanup.
+
+Put the following lines into Your httpd.conf: 
+  ----- httpd.conf ----- 
+  ... 
+  RewriteEngine On 
+  RewriteMap togglecase dso:/path/to/example.so 
+  RewriteRule ^(.*)$ ${togglecase:$1} 
+  ... 
+  ----- httpd.conf ----- 
+
+and restart the server. This will toggle the case of Your URL's.
+This new RewriteMap also avoids the need for a RewriteLock directive 
+needed for external rewrite programs.
+Please note that apache must be compiled with dso-support enabled to activate
+this feature.
+>How-To-Repeat:
+
+>Fix:
+Download the patch from:
+http://homes.tiscover.com/jrief/apache_1.3.19-rewrite-dso.patch
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,479 @@
+Received: (qmail 29248 invoked by uid 2012); 6 Jun 1998 19:15:10 -0000
+Message-Id: <19980606191510.29247.qmail@hyperreal.org>
+Date: 6 Jun 1998 19:15:10 -0000
+From: Glenn Fleishman <glenn@glenns.org>
+Reply-To: glenn@glenns.org
+To: apbugs@hyperreal.org
+Subject: DNS lookup in logs reports host, first number in dotted quads
+X-Send-Pr-Version: 3.2
+
+>Number:         2366
+>Category:       mod_log-any
+>Synopsis:       DNS lookup in logs reports host, first number in dotted quads
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Jun  6 12:20:00 PDT 1998
+>Last-Modified:  Tue Jun  9 07:40:00 PDT 1998
+>Originator:     glenn@glenns.org
+>Organization:
+>Release:        1.3.0
+>Environment:
+Sun OS 4.1.3_U1, gcc 2.7.0
+>Description:
+This was reported in a previous bug report in a beta, but the resolution status is "feedback" and the solution is non-optimal. With HostNameLookup set to yes, the log is often giving me just the first number in a dotted quad or the hostname portion of a fully qualified domain names. It's erratic: I sometimes get the FQDN in a subsequent hit. I'm running BIND 4.9.4 - updating to 8.x has been problematic under our OS configuration. This problem has not occurred with Apache 1.1.x or 1.2.x at any time. If I regress to 1.2.x, logging of domain names returns to normal.
+>How-To-Repeat:
+
+>Fix:
+Track down whether it's a DNS/BIND resolver problem or a problem in the log-any module and either fix module or report that BIND 8.x is needed (or whatever is needed) to solve problem if you want HostNameLookups set to yes. Thanks!
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Glenn Fleishman <glenn@glenns.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_log-any/2366: DNS lookup in logs reports host, first number in dotted quads
+Date: Sat, 6 Jun 1998 12:50:54 -0700 (PDT)
+
+ Did you link against the bind libraries explicitly?  Sunos 4.x has some
+ very "interesting" ideas w.r.t. name lookup, DNS, and NIS/YP.  In
+ particular, things should work fine if you use the bind libraries
+ explicitly.  Or if you don't use NIS/YP.  Also take a peek in your
+ /etc/hosts to see if you've got all the entries listed with the FQDN
+ first.
+ 
+ Dean
+ 
+
+From: Glenn Fleishman <glenn@glenns.org>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_log-any/2366: DNS lookup in logs reports host, first
+ number in dotted quads
+Date: Sat, 6 Jun 1998 13:09:09 -0800
+
+ At 11:50 AM -0800 6/6/98, Dean Gaudet wrote:
+ >Did you link against the bind libraries explicitly?  Sunos 4.x has some
+ >very "interesting" ideas w.r.t. name lookup, DNS, and NIS/YP.  In
+ >particular, things should work fine if you use the bind libraries
+ >explicitly.  Or if you don't use NIS/YP.  Also take a peek in your
+ >/etc/hosts to see if you've got all the entries listed with the FQDN
+ >first.
+ 
+ On the bind subject: I didn't do it explicitly, but apache is performing
+ lookups in some cases, just not all. How do I link explicitly? In all the
+ software I've compiled over the last four years, this hasn't been a problem
+ with this OS (or I've been lucky).
+ 
+ On the NIS/YP front: we use it, but barely. Just enough to avoid having to
+ replace it, but not for any real purpose. It's set up to use DNS primarily.
+ 
+ /etc/hosts: not sure why this affects externally looked-up FQDNs - can you
+ explain? Does an FQDN in the /etc/hosts file force DNS involvement in
+ resolver lookups? That seems odd.
+ ------------------------------------------------------------------------
+ Glenn Fleishman, unsolicited pundit.  see my mug:  http://www.glenns.org
+ freelance technical writer, perl hacker, Adobe Magazine columnist/editor
+ co-author of Real World Scanning & Halftones, 2d edition http://rwsh.com
+ technical director, Phinney-Bischoff Design House    http://www.pbdh.com
+ director of operations, i/us Corporation             http://www.i-us.com
+ chair, Web Marketing '98/D.C. http://www.thunderlizard.com/webmarketing/
+ ------------------------------------------------------------------------
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Glenn Fleishman <glenn@glenns.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_log-any/2366: DNS lookup in logs reports host, first number in dotted quads
+Date: Sat, 6 Jun 1998 13:15:34 -0700 (PDT)
+
+ On Sat, 6 Jun 1998, Glenn Fleishman wrote:
+ 
+ > On the bind subject: I didn't do it explicitly, but apache is performing
+ > lookups in some cases, just not all. How do I link explicitly? In all the
+ > software I've compiled over the last four years, this hasn't been a problem
+ > with this OS (or I've been lucky).
+ 
+ It depends on how you've got it installed.  If you've got the "resolv+" 
+ package installed then you probably linked against it, since that modifies
+ the shared libcs.  But otherwise I think you need to add -lresolv or
+ something like that, it's been a long time since I've had to deal with
+ sunos4. 
+ 
+ > On the NIS/YP front: we use it, but barely. Just enough to avoid having to
+ > replace it, but not for any real purpose. It's set up to use DNS primarily.
+ 
+ Yeah that's enough to cause troubles.
+ 
+ > /etc/hosts: not sure why this affects externally looked-up FQDNs - can you
+ > explain? Does an FQDN in the /etc/hosts file force DNS involvement in
+ > resolver lookups? That seems odd.
+ 
+ It won't affect external stuff.  It'll only affect stuff that has entries
+ in /etc/hosts.
+ 
+ Dean
+ 
+
+From: Glenn Fleishman <glenn@glenns.org>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_log-any/2366: DNS lookup in logs reports host, first
+ number in dotted quads
+Date: Sat, 6 Jun 1998 17:39:56 -0800
+
+ At 12:15 PM -0800 6/6/98, Dean Gaudet wrote:
+ >It depends on how you've got it installed.  If you've got the "resolv+"
+ >package installed then you probably linked against it, since that modifies
+ >the shared libcs.  But otherwise I think you need to add -lresolv or
+ >something like that, it's been a long time since I've had to deal with
+ >sunos4.
+ 
+ Iinstalled gcc 2.8.1 and BIND 8.1.2 and still had the problem, so I'm
+ assuming the resolver library is the thing.
+ 
+ Unfortunately, I am not sophisticated enough to figure out where to put
+ -lresolv reference. The new Configuration stuff is great, but I can't
+ figure out where you modify library tags like I used to. Any advice would
+ be useful, as I assume other SunOS users have the potential to have this
+ error, too.
+ ------------------------------------------------------------------------
+ Glenn Fleishman, unsolicited pundit.  see my mug:  http://www.glenns.org
+ freelance technical writer, perl hacker, Adobe Magazine columnist/editor
+ co-author of Real World Scanning & Halftones, 2d edition http://rwsh.com
+ technical director, Phinney-Bischoff Design House    http://www.pbdh.com
+ director of operations, i/us Corporation             http://www.i-us.com
+ chair, Web Marketing '98/D.C. http://www.thunderlizard.com/webmarketing/
+ ------------------------------------------------------------------------
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Glenn Fleishman <glenn@glenns.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_log-any/2366: DNS lookup in logs reports host, first number in dotted quads
+Date: Sat, 6 Jun 1998 18:26:34 -0700 (PDT)
+
+ I don't use the new configuration stuff, I don't know how to do it either. 
+ You can still use the old configuration stuff.  And in that, you should
+ put:
+ 
+ EXTRA_LIBS=-L/usr/local/bind/lib -lbind
+ EXTRA_CFLAGS=-I/usr/local/bind/include
+ 
+ Tell us how that goes... 
+ 
+ Dean
+ 
+
+From: Glenn Fleishman <glenn@glenns.org>
+To: apbugs@hyperreal.org
+Cc:  Subject: Re: mod_log-any/2366: DNS lookup in logs reports host, first
+ number in dotted quads
+Date: Sat, 6 Jun 1998 20:48:58 -0800
+
+ >EXTRA_LIBS=-L/usr/local/bind/lib -lbind
+ >EXTRA_CFLAGS=-I/usr/local/bind/include
+ 
+ These flags can be added to src/Makefile after running configure and they
+ get used. The executable ballooned in size:
+ 
+ Before
+ -rwxr-xr-x  1 root       499712 Jun  6 17:20 /usr/apache13/sbin/httpd
+ After
+ -rwxr-xr-x  1 root      1146880 Jun  6 20:05 src/httpd
+ 
+ However, it did work just fine - but the problem persists. Still getting
+ just the fragment.
+ 
+ Thanks.
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Glenn Fleishman <glenn@glenns.org>
+Cc: apbugs@apache.org
+Subject: Re: mod_log-any/2366: DNS lookup in logs reports host, first number in dotted quads
+Date: Sat, 6 Jun 1998 20:54:54 -0700 (PDT)
+
+ I honestly don't know what to say.  The problem doesn't happen anywhere
+ except sunos 4.x, so I'd say it's a problem on that system... and there's
+ not anything I know to work around it in apache... maybe you can pester
+ folks on a sunos 4.x specific mailing-list/newsgroup.  Someone else has to
+ have solved this issue. 
+ 
+ Dean
+ 
+ On Sat, 6 Jun 1998, Glenn Fleishman wrote:
+ 
+ > >EXTRA_LIBS=-L/usr/local/bind/lib -lbind
+ > >EXTRA_CFLAGS=-I/usr/local/bind/include
+ > 
+ > These flags can be added to src/Makefile after running configure and they
+ > get used. The executable ballooned in size:
+ > 
+ > Before
+ > -rwxr-xr-x  1 root       499712 Jun  6 17:20 /usr/apache13/sbin/httpd
+ > After
+ > -rwxr-xr-x  1 root      1146880 Jun  6 20:05 src/httpd
+ > 
+ > However, it did work just fine - but the problem persists. Still getting
+ > just the fragment.
+ > 
+ > Thanks.
+ > ------------------------------------------------------------------------
+ > Glenn Fleishman, unsolicited pundit.  see my mug:  http://www.glenns.org
+ > freelance technical writer, perl hacker, Adobe Magazine columnist/editor
+ > co-author of Real World Scanning & Halftones, 2d edition http://rwsh.com
+ > technical director, Phinney-Bischoff Design House    http://www.pbdh.com
+ > director of operations, i/us Corporation             http://www.i-us.com
+ > chair, Web Marketing '98/D.C. http://www.thunderlizard.com/webmarketing/
+ > ------------------------------------------------------------------------
+ > 
+ 
+
+From: Glenn Fleishman <glenn@glenns.org>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: mod_log-any/2366: DNS lookup in logs reports host, first
+ number in dotted quads
+Date: Sun, 7 Jun 1998 08:57:24 -0800
+
+ At 7:54 PM -0800 6/6/98, Dean Gaudet wrote:
+ >I honestly don't know what to say.  The problem doesn't happen anywhere
+ >except sunos 4.x, so I'd say it's a problem on that system... and there's
+ >not anything I know to work around it in apache... maybe you can pester
+ >folks on a sunos 4.x specific mailing-list/newsgroup.  Someone else has to
+ >have solved this issue.
+ 
+ I do thank you for the time on this, and it is a bizarre one. I'm running
+ CERN and Apache 1.2.x without any problems in logging on the same box. The
+ problem only appeared with 1.3.0, so I was hoping there was a clear code
+ change that would have caused it. I guess not! I'll poke around on
+ comp.sys.sun.admin and so forth.
+ 
+ Maybe leave this "ticket" in feedback mode so when I find a solution I can
+ cc back to it and you to make sure it gets closed and logged in the
+ database.
+ 
+ Glenn
+
+From: Glenn Fleishman <glenn@glenns.org>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_log-any/2366: DNS lookup in logs reports host, first
+ number in dotted quads
+Date: Sun, 7 Jun 1998 11:20:24 -0800
+
+ One related point, too, before I forget: it may not be a BIND problem per
+ se, as the first number in a dotted quad is being used, too, not just the
+ host name without an FQDN. If it were just the latter, I could log IPs, but
+ the IPs are also broken: just 204 instead of 204.94.44.1. I'll dig through
+ the code again, too, and see if I can find something wrong. Hopefully,
+ someone else will report this - and be a Sun developer with a solution!
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Glenn Fleishman <glenn@glenns.org>
+Cc: apbugs@apache.org
+Subject: Re: mod_log-any/2366: DNS lookup in logs reports host, first number in dotted quads
+Date: Sun, 7 Jun 1998 23:15:22 -0700 (PDT)
+
+ Ack.  Barf.  I'm sorry to make you go through so much work.  It turns out
+ the problem is elsewhere completely... mod_usertrack was corrupting the
+ hostname... which explains exactly the behaviour you saw -- when it
+ generates a new cookie it corrupts the hostname.  Subsequent requests
+ include the cookie, so the code doesn't corrupt the hostname. 
+ 
+ Try this patch. 
+ 
+ Dean
+ 
+ Index: modules/standard/mod_usertrack.c
+ ===================================================================
+ RCS file: /export/home/cvs/apache-1.3/src/modules/standard/mod_usertrack.c,v
+ retrieving revision 1.34
+ diff -u -r1.34 mod_usertrack.c
+ --- mod_usertrack.c	1998/04/11 12:00:53	1.34
+ +++ mod_usertrack.c	1998/06/08 06:08:56
+ @@ -137,13 +137,9 @@
+      /* 1024 == hardcoded constant */
+      char cookiebuf[1024];
+      char *new_cookie;
+ -    char *dot;
+      const char *rname = ap_get_remote_host(r->connection, r->per_dir_config,
+  					REMOTE_NAME);
+  
+ -    if ((dot = strchr(rname, '.')))
+ -        *dot = '\0';            /* First bit of hostname */
+ -
+  #if defined(NO_GETTIMEOFDAY) && !defined(NO_TIMES)
+  /* We lack gettimeofday(), so we must use time() to obtain the epoch
+     seconds, and then times() to obtain CPU clock ticks (milliseconds).
+ @@ -151,7 +147,7 @@
+  
+      mpe_times = times(&mpe_tms);
+  
+ -    ap_snprintf(cookiebuf, sizeof(cookiebuf), "%s%d%ld%ld", rname, (int) getpid(),
+ +    ap_snprintf(cookiebuf, sizeof(cookiebuf), "%s.%d%ld%ld", rname, (int) getpid(),
+                  (long) r->request_time, (long) mpe_tms.tms_utime);
+  #elif defined(WIN32)
+      /*
+ @@ -160,13 +156,13 @@
+       * was started. It should be relatively unique.
+       */
+  
+ -    ap_snprintf(cookiebuf, sizeof(cookiebuf), "%s%d%ld%ld", rname, (int) getpid(),
+ +    ap_snprintf(cookiebuf, sizeof(cookiebuf), "%s.%d%ld%ld", rname, (int) getpid(),
+                  (long) r->request_time, (long) GetTickCount());
+  
+  #else
+      gettimeofday(&tv, &tz);
+  
+ -    ap_snprintf(cookiebuf, sizeof(cookiebuf), "%s%d%ld%d", rname, (int) getpid(),
+ +    ap_snprintf(cookiebuf, sizeof(cookiebuf), "%s.%d%ld%d", rname, (int) getpid(),
+                  (long) tv.tv_sec, (int) tv.tv_usec / 1000);
+  #endif
+  
+ 
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Sun Jun  7 23:26:51 PDT 1998
+State-Changed-Why:
+waiting to find out if the patch I sent does the job
+
+From: Glenn Fleishman <glenn@glenns.org>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: mod_log-any/2366: DNS lookup in logs reports host, first
+ number in dotted quads
+Date: Mon, 8 Jun 1998 08:57:20 -0800
+
+ Installing the revision 1.34 patch did it! No problems. Removing the bind
+ library includes reduced the binary back to reasonable size, too (about
+ 500K, which is unbelievably small for how much it does).
+ 
+ Thanks so much for the help! You can close this ticket.
+ 
+ (I'm experiencing an unrelated problem, I hope, that I have another ticket
+ open for - mod_usertrack doesn't appear to be reading existing Cookie's
+ correctly...I'm hoping it's unrelated.)
+
+From: Glenn Fleishman <glenn@glenns.org>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: mod_log-any/2366: DNS lookup in logs reports host, first
+ number in dotted quads
+Date: Mon, 8 Jun 1998 10:21:11 -0800
+
+ Sorry, I was wrong about one thing. The code change in user track now makes
+ visit cookies (Apache=) that weren't in the same format as 1.2. In 1.2,
+ just the first part (hostname or first number in dotted quad) were
+ concatenated with the tick counter. But with this code change, the logging
+ now works (I see how those two issues are related) but the cookie contains
+ the entire FQDN or IP number.
+ ------------------------------------------------------------------------
+ Glenn Fleishman, unsolicited pundit.  see my mug:  http://www.glenns.org
+ freelance technical writer, perl hacker, Adobe Magazine columnist/editor
+ co-author of Real World Scanning & Halftones, 2d edition http://rwsh.com
+ technical director, Phinney-Bischoff Design House    http://www.pbdh.com
+ director of operations, i/us Corporation             http://www.i-us.com
+ chair, Web Marketing '98/D.C. http://www.thunderlizard.com/webmarketing/
+ ------------------------------------------------------------------------
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Glenn Fleishman <glenn@glenns.org>
+Cc: apbugs@apache.org
+Subject: Re: mod_log-any/2366: DNS lookup in logs reports host, first number in dotted quads
+Date: Mon, 8 Jun 1998 10:49:43 -0700 (PDT)
+
+ That was a deliberate change... it shouldn't break anything, the cookie
+ value is just an opaque token that's supposed to differ from one client to
+ another.  Is it causing you trouble?
+ 
+ Dean
+ 
+ On Mon, 8 Jun 1998, Glenn Fleishman wrote:
+ 
+ > Sorry, I was wrong about one thing. The code change in user track now makes
+ > visit cookies (Apache=) that weren't in the same format as 1.2. In 1.2,
+ > just the first part (hostname or first number in dotted quad) were
+ > concatenated with the tick counter. But with this code change, the logging
+ > now works (I see how those two issues are related) but the cookie contains
+ > the entire FQDN or IP number.
+ > ------------------------------------------------------------------------
+ > Glenn Fleishman, unsolicited pundit.  see my mug:  http://www.glenns.org
+ > freelance technical writer, perl hacker, Adobe Magazine columnist/editor
+ > co-author of Real World Scanning & Halftones, 2d edition http://rwsh.com
+ > technical director, Phinney-Bischoff Design House    http://www.pbdh.com
+ > director of operations, i/us Corporation             http://www.i-us.com
+ > chair, Web Marketing '98/D.C. http://www.thunderlizard.com/webmarketing/
+ > ------------------------------------------------------------------------
+ > 
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Jun  8 11:19:55 PDT 1998
+State-Changed-Why:
+user is happy :)
+
+Thanks for using apache!
+
+Dean
+
+From: Glenn Fleishman <glenn@glenns.org>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: mod_log-any/2366: DNS lookup in logs reports host, first
+ number in dotted quads
+Date: Mon, 8 Jun 1998 10:58:19 -0800
+
+ At 9:49 AM -0800 6/8/98, Dean Gaudet wrote:
+ >That was a deliberate change... it shouldn't break anything, the cookie
+ >value is just an opaque token that's supposed to differ from one client to
+ >another.  Is it causing you trouble?
+ 
+ Thought it was unintentional. It makes it longer, but that's not that big
+ of a deal. We're done, then!
+ 
+ Thanks so much!
+ ------------------------------------------------------------------------
+ Glenn Fleishman, unsolicited pundit.  see my mug:  http://www.glenns.org
+ freelance technical writer, perl hacker, Adobe Magazine columnist/editor
+ co-author of Real World Scanning & Halftones, 2d edition http://rwsh.com
+ technical director, Phinney-Bischoff Design House    http://www.pbdh.com
+ director of operations, i/us Corporation             http://www.i-us.com
+ chair, Web Marketing '98/D.C. http://www.thunderlizard.com/webmarketing/
+ ------------------------------------------------------------------------
+
+From: Rodent of Unusual Size <Ken.Coar@Golux.Com>
+To: Glenn Fleishman <glenn@glenns.org>,
+        Apache bug database <apbugs@Apache.Org>
+Cc:  Subject: Re: mod_log-any/2366: DNS lookup in logs reports host,
+	 first number in dotted quads
+Date: Tue, 09 Jun 1998 10:38:43 -0400
+
+ Glenn Fleishman wrote:
+ > 
+ >  Unfortunately, I am not sophisticated enough to figure out where to put
+ >  -lresolv reference. The new Configuration stuff is great, but I can't
+ >  figure out where you modify library tags like I used to. Any advice would
+ >  be useful, as I assume other SunOS users have the potential to have this
+ >  error, too.
+ 
+ By "new Configuration stuff" I assume you mean the ./configure script.
+ That's an alternate method, not a replacement for what you're used
+ to using.  You can still modify your Configuration file and then
+ do a "./Configure; make" to build the server - that hasn't changed.
+ 
+ #ken	P-)}
+ 
+ Ken Coar                    <http://Web.Golux.Com/coar/>
+ Apache Group member         <http://www.apache.org/>
+ "Apache Server for Dummies" <http://Web.Golux.Com/coar/ASFD/>
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

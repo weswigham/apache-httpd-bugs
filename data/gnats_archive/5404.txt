@@ -1,0 +1,147 @@
+Received: (qmail 2278 invoked by uid 2012); 1 Dec 1999 16:46:21 -0000
+Message-Id: <19991201164621.2277.qmail@hyperreal.org>
+Date: 1 Dec 1999 16:46:21 -0000
+From: William D.Colburn <wcolburn@nmt.edu>
+Reply-To: wcolburn@nmt.edu
+To: apbugs@hyperreal.org
+Subject: Apache seems to back-search bad URLS until it finds a good one, and returns it.  This breaks things, such as my htdig search engine
+X-Send-Pr-Version: 3.2
+
+>Number:         5404
+>Category:       general
+>Synopsis:       Apache seems to back-search bad URLS until it finds a good one, and returns it.  This breaks things, such as my htdig search engine
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Dec  1 08:50:01 PST 1999
+>Last-Modified:  Wed Dec  1 12:30:02 PST 1999
+>Originator:     wcolburn@nmt.edu
+>Organization:
+>Release:        1.3.6 and up?
+>Environment:
+I encountered this problem on linux 2.2.12 and apache 1.3.6, but I can also
+get it to happen off of http://www.apache.org/ as well.
+>Description:
+Pick a URL which exists, for instance "http://www.apache.org/index.html"
+and access it.
+
+Now try a URL that doesn't exist which contains part of the previous one,
+for instance "http://www.apache.org/index.html/this/should/not/work" and
+access it.  My netscape brings up the apache web page with broken image links
+and any CGI scripts that need to be run (none on that particular page) will
+fail mysteriously as well.
+
+I'm pretty certain this should not happen.
+>How-To-Repeat:
+See above.  :)
+>Fix:
+Not really.  I tried to read the source code to apache, but there is a lot of
+it so I gave up and decided to just file this bug report.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Wed Dec  1 09:04:56 PST 1999
+State-Changed-Why:
+That is the correct behaviour.  When SSIs are enabled, this is a feature
+that allows SSIs to use PATH_INFO to do different things.
+
+From: "William Colburn (aka Schlake)" <wcolburn@nmt.edu>
+To: marc@apache.org
+Cc: apbugs@apache.org
+Subject: Re: general/5404: Apache seems to back-search bad URLS until it finds a good one, and returns it.  This breaks things, such as my htdig search engine
+Date: Wed, 1 Dec 1999 12:57:36 -0700
+
+ On Wed, Dec 01, 1999 at 05:04:58PM -0000, marc@apache.org wrote:
+ > Synopsis: Apache seems to back-search bad URLS until it finds a good one, and returns it.  This breaks things, such as my htdig search engine
+ > 
+ > State-Changed-From-To: open-closed
+ > State-Changed-By: marc
+ > State-Changed-When: Wed Dec  1 09:04:56 PST 1999
+ > State-Changed-Why:
+ > That is the correct behaviour.  When SSIs are enabled, this is a feature
+ > that allows SSIs to use PATH_INFO to do different things.
+ 
+ I forwarded this to the htdig developers, and I agree with their
+ response that apache seems to be doing the wrong thing here.  If SSI's
+ are turned on, and someone accidentally puts a / after an html document
+ then all of a sudden all the relative URLs in that document are broken.
+ 
+ Here is the response (snipped) from one of the htdig people back to me:
+ 
+ >From: Gilles Detillieux <grdetil@scrc.umanitoba.ca>
+ >Subject: Re: htdig reindexes the same page over and over (PR#714)
+ >To: wcolburn@nmt.edu (William Colburn)
+ >Date: Wed, 1 Dec 1999 13:12:54 -0600 (CST)
+ 
+ >I still think this in incorrect behaviour on the part of Apache!
+ >It breaks any relative URLs in the document that the server returns for
+ >the faulty URL.
+ >
+ >You gave the example of http://www.apache.org/index.html/eeep, which
+ >does load the index.html page, but two of the three graphics don't load
+ >because they use relative paths.  Also, most of the links on that page
+ >are broken because they too are relative.
+ >
+ >For this feature to work correctly, it would have to either send a
+ >redirect to the client so it could load the page using the correct URL,
+ >or it should parse all relative URLs in the document and convert them
+ >to the correct absolute paths before giving the substitute document to
+ >the client.  Giving the client a substitute document with relative URLs
+ >that it can't use is just wrong, and it's asking for trouble.
+ 
+ --
+ William Colburn, "Sysprog" <wcolburn@nmt.edu>
+ Computer Center, New Mexico Institute of Mining and Technology
+ http://www.nmt.edu/tcc/     http://www.nmt.edu/~wcolburn
+
+From: Rodent of Unusual Size <Ken.Coar@Golux.Com>
+To: Apache bug database <apbugs@Apache.Org>
+Cc:  Subject: Re: general/5404: Apache seems to back-search bad URLS until it finds a good one, and returns it.  This breaks things, such as my htdig search engine
+Date: Wed, 01 Dec 1999 15:20:54 -0500
+
+ William Colburn (aka Schlake) wrote:
+ > 
+ > I forwarded this to the htdig developers, and I agree with
+ > their response that apache seems to be doing the wrong thing
+ > here.  If SSI's are turned on, and someone accidentally puts
+ > a / after an html document  then all of a sudden all the
+ > relative URLs in that document are broken.
+ 
+ I'm sorry, but both you and the htdig people are wrong.
+ This is how Apache is designed to work, and it is working
+ correctly according to its design.  The breakage of
+ relative URLs is a side-effect of the algorithm browsers
+ use to construct absoluteURIs from them: the algorithm
+ simply backs up to the last '/', assuming it's part of
+ the path.  It can't tell, and since URIs are opaque it
+ shouldn't need to, whether the '/' thus found is part of
+ the path or of the path-info.
+ 
+ For what it's worth, the author of the RFC (1808)on relative
+ URLs is Roy Fielding, and he's part of the Apache project
+ team.
+ -- 
+ #ken    P-)}
+ 
+ Ken Coar                    <http://Web.Golux.Com/coar/>
+ Apache Software Foundation  <http://www.apache.org/>
+ "Apache Server for Dummies" <http://ASFD.MeepZor.Com/>
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

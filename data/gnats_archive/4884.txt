@@ -1,0 +1,110 @@
+Received: (qmail 17963 invoked by uid 2012); 20 Aug 1999 20:50:46 -0000
+Message-Id: <19990820205046.17962.qmail@hyperreal.org>
+Date: 20 Aug 1999 20:50:46 -0000
+From: Peter Davis <peter.davis@born.com>
+Reply-To: peter.davis@born.com
+To: apbugs@hyperreal.org
+Subject: "LoadFile  foo.so"  loads foo.so twice from different directories
+X-Send-Pr-Version: 3.2
+
+>Number:         4884
+>Category:       general
+>Synopsis:       "LoadFile  foo.so"  loads foo.so twice from different directories
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          support
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Aug 20 15:10:02 PDT 1999
+>Last-Modified:  Fri Aug 20 15:13:41 PDT 1999
+>Originator:     peter.davis@born.com
+>Organization:
+>Release:        1.3.3, 1.3.6
+>Environment:
+SunOS malt 5.5.1 Generic_103640-24 sun4u sparc SUNW,Ultra-2
+
+software built with Sun WorkShop Compiler C++ 4.2
+>Description:
+I'm attempting the following on an Apache 1.3.x server running on Solaris
+2.5.1:
+
+I have 3 shared objects;  foo.so, bar.so, blah.so.  blah.so is built as a
+module and will be loaded using "LoadModule."  blah.so uses API calls into
+foo.so, which in turn uses API calls into bar.so;  bar.so will ultimately
+open a socket to another application.   My httpd.conf file looks like...
+
+...
+LoadFile    /usr/lib/libC.so.5        // needed by bar.so
+LoadFile    libexec/foo.so
+LoadModule  blah_module  libexec/blah.so
+...
+ClearModuleList
+...
+AddModule mod_blah.c
+
+There is no need to "LoadFile bar.so", as foo.so uses dlopen() to access the
+API routines.
+
+foo.so does a couple things on startup, in its #pragma init routine:
+- spits a message about where it's executing, using the output of getcwd()
+- reads a configuration file from the current directory, and dumps the
+parameters
+- spawns a thread that will periodically reread the configuration file
+- dlopen()'s bar.so, which in turn reads a config file and establishes its
+socket
+
+The behavior is as follows:
+- the stdout line after "apachectl start" displays messages from foo.so;
+'running in $ServerRoot/bin' (or sbin)
+- the configuration file is read and messages displayed, including success
+messages from bar.so
+- stdout says apache is up and running
+
+- the apache error log, $ServerRoot/logs/error_log  (or var/logs/error_log)
+displays messages from foo.so saying 'running in "/" '
+- the error log continues with messages from foo.so about not being able to
+read the config file (it can't, from "/") and lists using default parameters
+- the error log continues with error messages from bar.so, since it can't
+read its config file, either;  no socket is established, since the port
+address is in bar's config file.
+
+It appears that Apache is loading the libraries twice, the second time in a
+directory they're not expecting.
+
+If I change foo.so and config files to chdir() to the "correct" location (to load bar.so and pick up its config file), I get multiple sets of socket connections.  The behavior is as if foo.so got unloaded and reloaded, but bar.so was never unloaded (in particular, it's sockets were never released.)
+
+
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Fri Aug 20 15:13:38 PDT 1999
+State-Changed-Why:
+Your description of how things work is correct.  That is _NOT_
+a bug.  Your code should not rely on the working directory
+being set to any particar directory, since there are
+no defined semantics about what any particular module can
+expect its working directory to be at any particular time.
+
+Like any good daemon, Apache defaults to changing its cwd to
+"/" before doing useful things.
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

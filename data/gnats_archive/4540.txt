@@ -1,0 +1,206 @@
+Received: (qmail 3656 invoked by uid 2012); 7 Jun 1999 15:39:24 -0000
+Message-Id: <19990607153924.3655.qmail@hyperreal.org>
+Date: 7 Jun 1999 15:39:24 -0000
+From: Alexey V.Meledin <sysadmin@pia.ru>
+Reply-To: sysadmin@pia.ru
+To: apbugs@hyperreal.org
+Subject: Apache executes CGI scripts even without Options Exec CGI, AddHandler cgi-script .cgi and so on(configuration is below)
+X-Send-Pr-Version: 3.2
+
+>Number:         4540
+>Category:       config
+>Synopsis:       Apache executes CGI scripts even without Options Exec CGI, AddHandler cgi-script .cgi and so on(configuration is below)
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun  7 08:40:00 PDT 1999
+>Last-Modified:  Mon Jun  7 09:32:16 PDT 1999
+>Originator:     sysadmin@pia.ru
+>Organization:
+>Release:        apache_1.3.6rusPL28.15
+>Environment:
+FreeBSD 3.1 Release
+Pentium 133, 64Mb, 4Gb
+Apache was compileed with php 3.0.8 and fastcgi module:
+Compiled-in modules:
+  http_core.c
+  mod_charset.c
+  mod_env.c
+  mod_log_config.c
+  mod_mime.c
+  mod_negotiation.c
+  mod_status.c
+  mod_include.c
+  mod_autoindex.c
+  mod_dir.c
+  mod_cgi.c
+  mod_asis.c
+  mod_imap.c
+  mod_actions.c
+  mod_userdir.c
+  mod_alias.c
+  mod_rewrite.c
+  mod_access.c
+  mod_auth.c
+  mod_usertrack.c
+  mod_setenvif.c
+  mod_fastcgi.c
+  mod_php3.c
+
+
+>Description:
+I've tried to configure apache to start in /cgi-bin only files with *.cgi and deny execution of others...
+After that I'found that CGI scripts, are executed without any options and handlers.... This is bug and security hole, I thing.
+
+These is my configuration file:
+### Section 1: Global Environment
+ServerType standalone
+ServerRoot "/usr/local/apache"
+LockFile /var/log/apache/httpd.lock
+PidFile /var/run/httpd.pid
+ScoreBoardFile /var/log/apache/httpd.scoreboard
+Timeout 300
+KeepAlive On
+MaxKeepAliveRequests 100
+KeepAliveTimeout 15
+MinSpareServers 5
+MaxSpareServers 10
+StartServers 5
+MaxClients 150
+MaxRequestsPerChild 30
+ExtendedStatus On
+
+### Section 2: 'Main' server configuration
+
+Port 80
+User apache
+Group apache
+ServerAdmin webmaster@pia.ru
+ServerName new.pia.ru
+DocumentRoot "/usr/local/apache/share/htdocs"
+
+<Directory />
+    Options None
+    AllowOverride None
+</Directory>
+
+<Directory "/usr/local/apache/share/htdocs">
+AllowOverride None
+Order allow,deny
+Allow from all
+</Directory>
+
+DirectoryIndex index.shtml index.html
+AccessFileName .htaccess
+#To prevent it from others
+<Files .htaccess>
+    Order allow,deny
+    Deny from all
+</Files>
+
+UseCanonicalName on
+
+DefaultType text/plain
+
+HostnameLookups Off
+
+ErrorLog /var/log/apache/error_log
+LogLevel warn
+LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
+CustomLog /var/log/apache/access_log combined
+ServerSignature Email
+
+ScriptAlias /cgi-bin/ "/usr/local/apache/share/cgi-bin/"
+<Directory "/usr/local/apache/share/cgi-bin">
+     AllowOverride None
+     Order allow,deny
+     Allow from all
+</Directory>
+
+BrowserMatch "Mozilla/2" nokeepalive
+BrowserMatch "MSIE 4\.0b2;" nokeepalive downgrade-1.0 force-response-1.0
+BrowserMatch "RealPlayer 4\.0" force-response-1.0
+BrowserMatch "Java/1\.0" force-response-1.0
+BrowserMatch "JDK/1\.0" force-response-1.0
+==========================================================================
+What else....
+Then I've found that there is such situation and with
+ScriptAlias /fcgi-bin "/usr/local/apache/share/fcgi-bin"
+<Directory /usr/local/apache/share/fcgi-bin>
+     AllowOverride None
+     Order allow,deny
+     Allow from all
+</Directory>
+
+Whithout any OPTIONS apache starts fastcgi application as CGI script...
+PS: FastCGI can be run as CGI
+
+>How-To-Repeat:
+I've thing you'll found this problem in apache 1.3.6 with configuration the same as above
+>Fix:
+Posibly this is a ScriptAlias and mod_cgi bug, but I'm not shure.
+I've spend 5 hour trying to found a error in my configuration, but I've found nothing....
+
+In 
+directory /cgi-bin
+I've tried to use 
+Options None
+Options -ExecCGI
+
+But there gives nothing!
+>Audit-Trail:
+
+From: "Alexey V. Meledin" <sysadmin@pia.ru>
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re[2]: config/4540: Apache executes CGI scripts even without Options Exec CGI, AddHandler cgi-script .cgi and so on(configuration is below)
+Date: Mon, 7 Jun 1999 20:04:12 +0400
+
+ Hello apbugs,
+ 
+ Monday, June 07, 1999, 7:40:00 PM, you wrote:
+ 
+ aho> Thank you very much for your problem report.
+ aho> It has the internal identification `config/4540'.
+ aho> The individual assigned to look at your
+ aho> report is: apache.
+ 
+ >>Category:       config
+ >>Responsible:    apache
+ >>Synopsis:       Apache executes CGI scripts even without Options Exec CGI, AddHandler cgi-script .cgi and so on(configuration is below)
+ >>Arrival-Date:   Mon Jun  7 08:40:00 PDT 1999
+ 
+ 
+ 
+ 
+ Best regards,
+  Alexey                            mailto:sysadmin@pia.ru
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Mon Jun  7 09:32:15 PDT 1999
+State-Changed-Why:
+Erm... let me get this straight.  You are complaining that
+Apache executes scripts in /cgi-bin?  You told it to with the
+ScriptAlias directive!  The ScriptAlias directive says treat
+all files in this tree as CGIs, as the documentation clearly
+states.  If you don't want that then don't use ScriptAlias.
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

@@ -1,0 +1,169 @@
+Received: (qmail 10610 invoked by uid 2012); 13 Feb 1999 17:57:20 -0000
+Message-Id: <19990213175720.10609.qmail@hyperreal.org>
+Date: 13 Feb 1999 17:57:20 -0000
+From: Gaven Cohen <dragon@wastelands.net>
+Reply-To: dragon@wastelands.net
+To: apbugs@hyperreal.org
+Subject: 1.3.4 server starts, seemingly normally...  dies, no children, no errors   not the case with 1.2.0
+X-Send-Pr-Version: 3.2
+
+>Number:         3897
+>Category:       os-linux
+>Synopsis:       1.3.4 server starts, seemingly normally...  dies, no children, no errors   not the case with 1.2.0
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Feb 13 11:10:00 PST 1999
+>Closed-Date:    Mon Oct 30 18:56:17 PST 2000
+>Last-Modified:  Mon Oct 30 18:56:17 PST 2000
+>Originator:     dragon@wastelands.net
+>Release:        1.3.4
+>Organization:
+>Environment:
+Linux dragon 2.2.1 #1 Wed Feb 3 14:41:10 GMT+0200 1999 i686 unknown
+gcc version 2.7.2.3   elf, glibc 2.0.7
+>Description:
+I'm trying to upgrade from 1.2.0 to 1.3.4.  The compile is fine, but 1.3.4 will
+not start.  It starts, as usual, but dies without error, as seen here:
+
+dragon:/usr/local/apache/bin# apachectl start
+././apachectl: kill: (31663) - No such pid
+././apachectl start: httpd started
+dragon:/usr/local/apache/bin# apachectl start
+././apachectl: kill: (31710) - No such pid
+././apachectl start: httpd started
+
+It is apparently exiting normally:
+
+dragon:/usr/local/apache/bin# gdb httpd
+(gdb) run
+Starting program: /usr/local/apache/bin/httpd
+
+Program exited normally.
+         
+I did a completely new install, even so far as resorting to the dist config file,
+with the same results.
+>How-To-Repeat:
+n/a
+>Fix:
+none
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Sat Feb 13 13:54:06 PST 1999
+State-Changed-Why:
+Is there anything in the error log?
+
+What does strace-ing httpd while starting it do?
+
+From: Gaven Cohen <dragon@wastelands.net>
+To: marc@apache.org
+Cc: apache-bugdb@apache.org, apbugs@apache.org
+Subject: Re: os-linux/3897: 1.3.4 server starts, seemingly normally...  dies, no children, no errors   not the case with 1.2.0
+Date: Sun, 14 Feb 1999 13:41:31 +0200 (GMT+0200)
+
+ Hi Marc,
+ 
+ Thanks for the quick reply.
+ 
+ On 13 Feb 1999 marc@apache.org wrote:
+ 
+ > What does strace-ing httpd while starting it do?
+ 
+ Alright, being more awake I decided to do an strace -f this time, which
+ shows a segfault.  I added in a sleep and gdb'd the child process (the
+ detached parent) and it seems to be dying during the return from
+ set_signals() called from standalone_main():
+ 
+ (gdb) info break
+ Num Type           Disp Enb Address    What
+ 1   breakpoint     keep y   0x0807411e in set_signals at http_main.c:2794
+ 2   breakpoint     keep y   0x0807411e in set_signals at http_main.c:2797
+ 3   breakpoint     keep y   0x08075ec7 in standalone_main at 
+ http_main.c:4274
+ 4   breakpoint     keep y   0x08075ecc in standalone_main at
+ http_main.c:4275
+ (gdb) continue
+ Continuing.
+ 
+ Breakpoint 3, standalone_main (argc=1, argv=0xbffffbe4) at
+ http_main.c:4274
+ 4274            set_signals();
+ (gdb)
+ Continuing.
+ 
+ Breakpoint 1, set_signals () at http_main.c:2797
+ 2797    }
+ (gdb)
+ Continuing.
+ 
+ Program received signal SIGSEGV, Segmentation fault.
+ 0x0 in ?? ()
+ 
+ (its not reaching line 4275, the first line after returning)
+ 
+ something i forgot to mention previously is that 1.2.0 was compiled libc5,
+ and 1.3.4 glibc.  could this be a library problem?
+ 
+ Thanks,
+ Gaven
+ 
+ ------------------------------------------------------------------------
+ Gaven Cohen aka Kinslayer                         http://wastelands.net/
+ dragon@wastelands.net                      hkp://keys.pgp.com/0x2042AD07
+ freelance sysadmin/programmer          linux, fantasy, female enthusiast
+ ------------------------------------------------------------------------
+  RSA/1024: fingerprint 79 BC B3 3F E2 05 71 4B  F7 C8 B2 45 EF 70 55 D1
+ 
+ 
+Comment-Added-By: dgaudet
+Comment-Added-When: Tue Mar 16 08:54:14 PST 1999
+Comment-Added:
+Yeah it could totally be a library problem.  If you installed
+glibc over top a libc5 system I'd suspect the installation.  If
+it's a fresh glibc system... dunno.  I've never been happy
+with any attempts to make libc5 and glibc dev environments
+co-exist -- it's just not worth the headaches.
+
+Dean
+Comment-Added-By: dgaudet
+Comment-Added-When: Sat May  1 10:56:49 PDT 1999
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: slive
+State-Changed-When: Mon Oct 30 18:56:16 PST 2000
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

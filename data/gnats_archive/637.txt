@@ -1,0 +1,168 @@
+From nobody@hyperreal.com  Fri May 30 12:13:38 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id MAA18370;
+	Fri, 30 May 1997 12:13:38 -0700 (PDT)
+Message-Id: <199705301913.MAA18370@hyperreal.com>
+Date: Fri, 30 May 1997 12:13:38 -0700 (PDT)
+From: Gregg TeHennepe <gat@jax.org>
+Reply-To: gat@jax.org
+To: apbugs@hyperreal.com
+Subject: ~user requests are served regardless of server access config
+X-Send-Pr-Version: 3.2
+
+>Number:         637
+>Category:       config
+>Synopsis:       ~user requests are served regardless of server access config
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri May 30 12:20:01 1997
+>Originator:     gat@jax.org
+>Organization:
+>Release:        1.2b10
+>Environment:
+SunOS 4.1.3_U1; gcc 2.6.0; EXTRA_LIBS=lresolv
+>Description:
+When mod_userdir is enabled, requests for ~user will be served even if the
+entire filesystem is set deny from all (as per security example). My current 
+config as reported by server-info:
+
+Module Name: mod_access.c 
+Current Configuration: 
+access.conf 
+       <Directory /> 
+         order deny,allow
+         deny from all
+       </Directory> 
+       <Location /server-info> 
+         <Limit GET> 
+           order deny,allow
+           deny from all
+           allow from .jax.org
+         </Limit> 
+       </Location> 
+
+Module Name: mod_userdir.c 
+Current Configuration: 
+srm.conf 
+       UserDir htdocs
+
+Module Name: http_core.c 
+access.conf 
+       <Location /server-info> 
+         AuthName
+         AuthType Basic
+       <Location /server-info> 
+         <Limit GET> 
+           require group cs
+         </Limit> 
+       </Location> 
+
+With this config I am able to retrieve ~user pages.
+>How-To-Repeat:
+Should be straight-forward, I can provide URLs for sample user and server-info 
+if not repeatable locally.
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Fri May 30 12:31:50 PDT 1997
+State-Changed-Why:
+Can't duplicate the problem here.  Please send a copy of 
+your config files.  You may also want to give b11 a try.
+State-Changed-From-To: analyzed-closed
+State-Changed-By: marc
+State-Changed-When: Fri May 30 14:35:11 PDT 1997
+State-Changed-Why:
+User config error.
+
+From: coar@decus.org (Rodent of Unusual Size)
+To: APBugs@apache.org, Coar@decus.org
+Subject: Re: config/637:
+Date: Sun, 01 Jun 1997 00:33:54 -0400
+
+ 
+ [Response from user that didn't get logged..]
+ 
+ Date: Fri, 30 May 1997 15:57:49 -0400 (EDT)
+ From: Gregg TeHennepe <gat@aretha.jax.org>
+ To: marc@hyperreal.com
+ Subject: Re: Changed information for PR config/637
+ 
+ On Fri, 30 May 1997 marc@hyperreal.com wrote:
+ 
+ > Synopsis: ~user requests are served regardless of server access config
+ > 
+ > State-Changed-From-To: open-analyzed
+ > State-Changed-By: marc
+ > State-Changed-When: Fri May 30 12:31:50 PDT 1997
+ > State-Changed-Why:
+ > Can't duplicate the problem here.  Please send a copy of 
+ > your config files.  You may also want to give b11 a try.
+ 
+ Hi Marc,
+ 
+ Erf, I've discovered my confusion. When using the directive suggested by the
+ "Protect server files by default" section security of the Security Tips (ie
+ without AllowOverride), I am able to override <Limit> from a ~user's
+ .htaccess. However with AllowOverride None in the server config file, I am
+ denied (as is mentioned in the section "Stopping user overriding system wide
+ settins...").  My mistaken assumption was that the default for a
+ Directory/Location directive not explicity setting Options and AllowOverride
+ was None and None.  Perhaps it would be a good idea to mention AllowOverride
+ None in the "Protect server files..." section of the Security Tips as well.
+ Also, some mention of the default behavior in the doc pages for the
+ AllowOverride and Options directives would be a good thing.
+ 
+ Apologies for the misreport...   Cheers  - Gregg
+ 
+ Gregg TeHennepe  | Unix Systems Administrator  | The Jackson Laboratory
+ gat@jax.org      | http://www.jax.org/~gat     | Bar Harbor, Maine  USA
+>Unformatted:
+
+>Last-Modified:  Fri May 30 14:40:11 PDT 1997
+
+
+From gat@jax.org  Fri May 30 12:28:09 1997
+Received: from aretha.jax.org (aretha.jax.org [192.43.249.2])
+	by hyperreal.com (8.8.5/8.8.5) with SMTP id MAA20752
+	for <apbugs@hyperreal.com>; Fri, 30 May 1997 12:27:55 -0700 (PDT)
+Message-Id: <Pine.SUN.3.96.970530152225.3493W-100000@mollie>
+Date: Fri, 30 May 1997 15:27:42 -0400 (EDT)
+From: Gregg TeHennepe <gat@aretha.jax.org>
+To: apbugs@hyperreal.com
+Subject: Clarification of PR number 637
+
+
+
+Howdy Apache folks,
+
+I just submitted a bug report which needs clarification:
+
+After further poking, it appears that the server is denying access to userdirs
+with the exception of those explicity overriding the server directive in a
+.htaccess file. Using the same config reported earlier plus:
+
+Module Name: http_core.c 
+access.conf 
+       <Directory /> 
+         AllowOverride None
+       </Directory> 
+
+I am able to override <Limit> access with a .htaccess in the user dir like so:
+
+<Limit GET>
+order allow,deny
+allow from all
+</Limit>
+
+Cheers - Gregg
+
+Gregg TeHennepe  | Unix Systems Administrator  | The Jackson Laboratory
+gat@jax.org      | http://www.jax.org/~gat     | Bar Harbor, Maine  USA
+

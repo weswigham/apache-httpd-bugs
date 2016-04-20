@@ -1,0 +1,424 @@
+Received: (qmail 9151 invoked by uid 2012); 16 Feb 1998 05:31:40 -0000
+Message-Id: <19980216053140.9150.qmail@hyperreal.org>
+Date: 16 Feb 1998 05:31:40 -0000
+From: John Mechalas <johnm@ichips.intel.com>
+Reply-To: johnm@ichips.intel.com
+To: apbugs@hyperreal.org
+Subject: Suggestion for improving authentication modules and core source code, problem with 401 and ErrorDocument
+X-Send-Pr-Version: 3.2
+
+>Number:         1809
+>Category:       mod_auth-any
+>Synopsis:       Suggestion for improving authentication modules and core source code, problem with 401 and ErrorDocument
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Feb 15 21:40:00 PST 1998
+>Last-Modified:  Tue May 19 18:14:09 PDT 1998
+>Originator:     johnm@ichips.intel.com
+>Organization:
+>Release:        1.3b3
+>Environment:
+The OS doesn't matter, since the "problem" is with the source code itself.
+However, I have built apache on AIX 4.1, Solaris 2.4 and 2.5.1 and SunOS 4.1.3,
+and experienced this on all builds.
+>Description:
+One "problem", or rather, limitation that I have noticed with Apache is the 
+interactions of the authentication code in the http_protocol.c code with the
+ErrorDocument directive for 401 errors.  If you specify a CGI script as a
+handler for 401 errors, Apache sends a blank WWW-Authenticate header, like so:
+
+   WWW-Authenticate:
+
+Instead of the full header:
+
+   WWW-Authenticate: Basic realm="Your realm name here"
+
+This causes the Web browser/client to put up a username/password dialogue box
+that reads, 
+
+  "Enter username for unknown at <server>"
+
+instead of,
+
+  "Enter username for <realm name here> at <server>"
+
+This makes it pretty inconvenient to use an ErrorDocument directive to handle
+401 errors, since all your protected pages are now, from the browser's point
+of view, "nameless".  This can be confusing to the user.
+
+Further, the usefullness of an error handler for 401 requests is severely limited
+by the lack of any useful information that the handling CGI script can act upon.
+We wanted to implement a 401 handler CGI in order to provide the user with
+basic information on why their authentication failed, and what groups they
+need to join in order to get access to that page.  This is a very useful thing
+in an environment where you have thousands of users hitting your site each
+day, running into protected pages...and then some of them filing requests to
+get added to the access list...only they don't know what access they need and
+you waste a lot of time extracting the information from them.  The problem is,
+the CGI script that handles the 401 error gets absolutely no information about
+the authentication realm and what access requirements exist.  Short of parsing
+the access.conf file (and/or access files in the target directory), there's
+no way to know this information...and parsing the access files is not exactly
+efficient.
+>How-To-Repeat:
+Set up an ErrorDocument 401 /to/any/cgi/script
+
+Have the cgi script dump it's environment to stdout...you'll notice there is
+no information there regarding the access restrictions of the page you just
+tried to access.
+>Fix:
+We solved both of these problems, the blank WWW-Authenticate header and the
+lack of authentication information in the 401 handler, by modifying http_protocol.c and
+mod_auth.c (and mod_auth_db.c, though we haven't tested this yet).  The changes
+are as follows; I am not claiming that these are the most efficient or the
+best ways of addressing the problems, but they work...and I honestly believe
+that these kinds of additions to the Apache source would make life easier on
+webmasters that want to do what we are doing.
+
+* http_protocol.c
+
+   - Added table_set commands to set environment variables AUTH_NAME and
+     AUTH_TYPE.  This allows the 401 error handling CGI to properly generate
+     the WWW-Authenticate header by "putting together" the REDIRECT_AUTH_TYPE
+     and REDIRECT_AUTH_NAME environment variables that get passed to the 
+     subprocess.
+
+* mod_auth*.c
+
+   - Set environment variables via table_set to describe why the authentication
+     failed.  AUTH_ERROR is the error message ("user not found", "password
+     incorrect" or "permission denied" if they aren't on the ACL for the 
+     directory).  AUTH_REQUIRE is set to "user", "group" or "valid-user" as
+     per the "require" directive.  AUTH_REQUIRE_ID is the list of users or
+     groups that are allowed access to the page, as per the "require" directive.
+
+I have diffs of the distribution source for http_protocol.c, mod_auth.c and
+mod_auth_db.c, taken against the modifications that we made to achieve the
+above.  There are only a handful of lines of code that need to be added;
+http_protocolc gets three new lines.  The auth modules each get about a dozen
+new lines.  If you are interested, I can send these to you, or send the full
+source.  I have currently modified the 1.2.5 distribution, since that is what
+we are running.  I can do the same for 1.3b3 if you wish.
+
+Please consider these additions, or ones with similar effects.
+%0
+>Audit-Trail:
+Release-Changed-From-To: All releases, up to 1.3b3-1.3b3
+Release-Changed-By: Lars.Eilebrecht@unix-ag.org
+Release-Changed-When: Tue Feb 17 10:28:12 PST 1998
+Comment-Added-By: Lars.Eilebrecht@unix-ag.org
+Comment-Added-When: Tue Feb 17 11:31:23 PST 1998
+Comment-Added:
+
+If you want to add the diffs to your change-request please
+reply to this message (without changing the subject line)
+and include the diffs.
+Thanks in advance.
+
+
+From: John Mechalas <johnm@ichips.intel.com>
+To: Lars.Eilebrecht@unix-ag.org
+Cc: apbugs@Apache.Org
+Subject: Re: mod_auth-any/1809: Suggestion for improving authentication modules and core source code, problem with 401 and ErrorDocument
+Date: Tue, 17 Feb 1998 12:09:15 -0800 (PST)
+
+ > If you want to add the diffs to your change-request please
+ > reply to this message (without changing the subject line)
+ > and include the diffs.
+ > Thanks in advance.
+ 
+ Okay...here they are.  Note that these are from the apache 1.2.5 source.
+ The mods to http_protocol.c and mod_auth.c have been fully tested and are 
+ in production here.  I have not fully tested mod_auth_db.c
+ 
+ The http_protocol.c changes make two environment variables available
+ to the subprocess (CGI script):
+ 
+    AUTH_TYPE
+    AUTH_NAME
+ 
+ their values come straight from the directives that define access
+ control for the requested URL.  They can be used to generate the
+ WWW-Authenticate: header (though you have to access them as
+ REDIRECT_AUTH_TYPE and REDIRECT_AUTH_NAME because of the way Apache
+ handles environment varaibles during a redirection).
+ 
+ The mods to mod_auth*.c set variables to provide info on what
+ authorization is required, and why authorization failed.  This is
+ described in the original bug report text.
+ 
+ I wanted to be able to make all modification to the module colde,
+ only, but it was not possible.  Apparently, Apache does not consult
+ the authentication modules (mod_auth*) if the browser doesn't send an
+ authentication string in its requests (and a browser won't send this
+ string unless the server sends a "WWW-Authenticate:" header...hence,
+ an unresolvable situation, requiring the modification be made in the
+ http_protocol.c source).
+ 
+ 
+ Cheers,
+ John
+ 
+ ------------------------------ 8< Cut here 8< ---------------------------------
+ 
+ *** mod_auth.c.dist	Fri Feb 13 17:45:45 1998
+ --- mod_auth.c	Tue Feb 17 11:49:48 1998
+ ***************
+ *** 188,193 ****
+ --- 188,194 ----
+       conn_rec *c = r->connection;
+       char *sent_pw, *real_pw;
+       char errstr[MAX_STRING_LEN];
+ +     table *e = r->subprocess_env;
+       int res;
+       
+       if ((res = get_basic_auth_pw (r, &sent_pw))) return res;
+ ***************
+ *** 201,206 ****
+ --- 202,208 ----
+           ap_snprintf(errstr, sizeof(errstr), "user %s not found",c->user);
+   	log_reason (errstr, r->uri, r);
+   	note_basic_auth_failure (r);
+ + 	table_set(e, "AUTH_ERROR", "user not found");
+   	return AUTH_REQUIRED;
+       }
+       /* anyone know where the prototype for crypt is? */
+ ***************
+ *** 208,213 ****
+ --- 210,216 ----
+           ap_snprintf(errstr, sizeof(errstr), "user %s: password mismatch",c->user);
+   	log_reason (errstr, r->uri, r);
+   	note_basic_auth_failure (r);
+ + 	table_set(e, "AUTH_ERROR", "password incorrect");
+   	return AUTH_REQUIRED;
+       }
+       return OK;
+ ***************
+ *** 226,231 ****
+ --- 229,235 ----
+       table *grpstatus;
+       array_header *reqs_arr = requires (r);
+       require_line *reqs;
+ +     table *e = r->subprocess_env;
+       
+       /* BUG FIX: tadc, 11-Nov-1995.  If there is no "requires" directive, 
+        * then any user will do.
+ ***************
+ *** 247,257 ****
+ --- 251,263 ----
+   
+           t = reqs[x].requirement;
+           w = getword(r->pool, &t, ' ');
+ + 	table_set(e, "AUTH_REQUIRE", w);
+           if(!strcmp(w,"valid-user"))
+               return OK;
+           if(!strcmp(w,"user")) {
+               while(t[0]) {
+                   w = getword_conf (r->pool, &t);
+ + 		table_merge(e, "AUTH_REQUIRE_ID", w);
+                   if(!strcmp(user,w))
+                       return OK;
+               }
+ ***************
+ *** 262,267 ****
+ --- 268,274 ----
+   	    
+               while(t[0]) {
+                   w = getword_conf(r->pool, &t);
+ + 		table_merge(e, "AUTH_REQUIRE_ID", w);
+                   if(table_get (grpstatus, w))
+   		    return OK;
+               }
+ ***************
+ *** 274,279 ****
+ --- 281,287 ----
+       if (!(sec -> auth_authoritative))
+         return DECLINED;
+   
+ +     table_set(e, "AUTH_ERROR", "permission denied");
+       note_basic_auth_failure (r);
+       return AUTH_REQUIRED;
+   }
+ ***************
+ *** 296,298 ****
+ --- 304,307 ----
+      NULL,			/* logger */
+      NULL				/* header parser */
+   };
+ + 
+ 
+ 
+ 
+ *** mod_auth_db.c.dist	Sun Feb 15 20:44:44 1998
+ --- mod_auth_db.c	Sun Feb 15 20:51:52 1998
+ ***************
+ *** 190,195 ****
+ --- 190,196 ----
+       conn_rec *c = r->connection;
+       char *sent_pw, *real_pw, *colon_pw;
+       char errstr[MAX_STRING_LEN];
+ +     table *e = r->subprocess_env;
+       int res;
+       
+       if ((res = get_basic_auth_pw (r, &sent_pw)))
+ ***************
+ *** 204,209 ****
+ --- 205,211 ----
+           ap_snprintf(errstr, sizeof(errstr), "DB user %s not found", c->user);
+   	log_reason (errstr, r->filename, r);
+   	note_basic_auth_failure (r);
+ + 	table_set(e, "AUTH_ERROR", "user not found");
+   	return AUTH_REQUIRED;
+       }    
+       /* Password is up to first : if exists */
+ ***************
+ *** 215,220 ****
+ --- 217,223 ----
+   		"user %s: password mismatch",c->user);
+   	log_reason (errstr, r->uri, r);
+   	note_basic_auth_failure (r);
+ + 	table_set(e, "AUTH_ERROR", "password incorrect");
+   	return AUTH_REQUIRED;
+       }
+       return OK;
+ ***************
+ *** 232,240 ****
+       
+       array_header *reqs_arr = requires (r);
+       require_line *reqs = reqs_arr ? (require_line *)reqs_arr->elts : NULL;
+   
+       register int x;
+ !     const char *t;
+       char *w;
+   
+       if (!sec->auth_dbgrpfile) return DECLINED;
+ --- 235,244 ----
+       
+       array_header *reqs_arr = requires (r);
+       require_line *reqs = reqs_arr ? (require_line *)reqs_arr->elts : NULL;
+ +     table *e = r->subprocess_env;
+   
+       register int x;
+ !     const char *orig_t, *t;
+       char *w;
+   
+       if (!sec->auth_dbgrpfile) return DECLINED;
+ ***************
+ *** 247,255 ****
+ --- 251,267 ----
+           t = reqs[x].requirement;
+           w = getword(r->pool, &t, ' ');
+   	
+ + 	table_set(e, "AUTH_REQUIRE", w);
+           if(!strcmp(w,"group") && sec->auth_dbgrpfile) {
+   	   const char *orig_groups,*groups;
+              char *v;
+ + 
+ + 	   orig_t = t;
+ + 	   while(t[0]) {
+ + 		w = getword(r->pool, &t, ' ');
+ + 		table_merge(e, "AUTH_REQUIRE_ID", w);
+ + 	   }
+ + 	   t = orig_t;
+   
+              if (!(groups = get_db_grp(r, user, sec->auth_dbgrpfile))) {
+   	       if (!(sec->auth_dbauthoritative))
+ 
+ 
+ 
+ *** http_protocol.c.dist        Sat Feb 14 19:14:26 1998
+ --- http_protocol.c     Sat Feb 14 19:19:57 1998
+ ***************
+ *** 913,918 ****
+ --- 913,922 ----
+   {
+       const char *auth_line = table_get (r->headers_in, "Authorization");
+       char *t;
+ +     table *e = r->subprocess_env;
+ + 
+ +     table_set(e, "AUTH_TYPE", auth_type(r));
+ +     table_set(e, "AUTH_NAME", auth_name(r));
+       
+       if(!(t = auth_type(r)) || strcasecmp(t, "Basic"))
+           return DECLINED;
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: mod_auth-any/1809: Suggestion for improving authentication modules and core source code, problem with 401 and ErrorDocument (fwd)
+Date: Fri, 20 Feb 1998 00:57:43 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ From: John Mechalas <johnm@ichips.intel.com>
+ Subject: Re: mod_auth-any/1809: Suggestion for improving authentication modules and core source code, problem with 401 and ErrorDocument
+ To: Lars.Eilebrecht@unix-ag.org
+ Date: Tue, 17 Feb 1998 10:35:34 -0800 (PST)
+ Cc: apache-bugdb@apache.org, johnm@ichips.intel.com
+ 
+ > 
+ > Synopsis: Suggestion for improving authentication modules and core source code, problem with 401 and ErrorDocument
+ 
+ Real quick...in my note I mis-spokle (although all the modifications and
+ problems are still valid).  When you use a 401 ErrorDocument handler, I
+ stated that Apache sends a blank "WWW-Authenticate:" header.  This was
+ incorrect...Apache doesn't send _any_ "WWW-Authenticate:" header.  It is
+ up to the CGI script to generate it correctly.
+ 
+ The original problem still stands, though...you can't generate the
+ WWW-Authenticate header in the CGI script since you don't have any
+ information regarding the authentication method that triggered the 401
+ error.
+ 
+ 
+ Cheers,
+ John
+ 
+ -- 
+ John Mechalas                    \               carpe cavy!
+ Intel MD6 Engineering Computing   \
+ JF1-22, 1st floor, pole H16        \        (seize the guinea pig!)
+ (503) 264-0658                      \
+ 
+State-Changed-From-To: open-suspended
+State-Changed-By: brian
+State-Changed-When: Tue May 19 18:14:09 PDT 1998
+State-Changed-Why:
+In light testing with the current 1.3 betas, it looks like
+the WWW-Authenticate header *IS* being sent when the 
+ErrorDocument 401 is a CGI script, even if the CGI itself 
+doesn't send it.  All of our energies are
+currently focusing on getting 1.3 out the door out of beta,
+so I would consider this bug "fixed".  Your patch, though,
+is really about adding new env variables to the 401 errordoc
+environment, which isn't a bad idea, but being in a feature
+freeze right now it's tough for us to consider adding it.  
+We do know that auth will have to be revamped for 2.0 (which
+is where we'll be focusing after 1.3 is done), so it may be
+best for us to focus on making that environment rich then.
+
+For the time being, it would be great if you could rev your
+patch against 1.3.0 (when it comes out), making sure to update
+the api calls (e.g. table_set -> ap_table_set) and registering
+it at modules.apache.org.
+
+Thanks!  And please let us know if 1.3 doesn't fix this 
+problem - you can get the latest CVS version from
+http://dev.apache.org/from-cvs/, or the latest beta from
+http://www.apache.org/dist/.
+
+    Brian
+
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

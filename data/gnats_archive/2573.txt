@@ -1,0 +1,97 @@
+Received: (qmail 22228 invoked by uid 2012); 8 Jul 1998 22:28:18 -0000
+Message-Id: <19980708222818.22227.qmail@hyperreal.org>
+Date: 8 Jul 1998 22:28:18 -0000
+From: Sander Steffann <steffann@nederland.net>
+Reply-To: steffann@nederland.net
+To: apbugs@hyperreal.org
+Subject: CGI's for general use still have to be run as another user with suExec
+X-Send-Pr-Version: 3.2
+
+>Number:         2573
+>Category:       suexec
+>Synopsis:       CGI's for general use still have to be run as another user with suExec
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jul  8 15:30:00 PDT 1998
+>Last-Modified:  Sat Feb 20 17:27:12 PST 1999
+>Originator:     steffann@nederland.net
+>Organization:
+>Release:        1.3
+>Environment:
+All operating systems. In my case:
+Linux canary.computel.nl 2.0.34 #1 Fri May 8 16:05:57 EDT 1998 i586 unknown
+>Description:
+We have a few CGI's that can be used by all virtual hosts. The most important 
+one (for us) is PHP. But we want the CGI to run with suExec.
+
+The only option (as far as I can see) is to have a CGI for every virtual
+host, owned by the user of that virtual host. With a lot of virtual hosts this 
+uses a LOT of diskspace, and it is a lot of work to update a CGI.
+>How-To-Repeat:
+See the description.
+>Fix:
+Allow files owned by a certain user, in a directory owned bij that user,
+to be executed by suExec, so you can make a special directory with CGI's that
+everyone can use. I used the user apache runs as. I made the following
+patch to support this:
+
+--- suexec.c       Wed Jul  8 23:14:17 1998
++++ suexec.c    Wed Jul  8 23:29:38 1998
+@@ -236,6 +236,7 @@
+     int userdir = 0;           /* ~userdir flag             */
+     uid_t uid;                 /* user information          */
+     gid_t gid;                 /* target group placeholder  */
++    uid_t httpd_uid;           /* httpd information         */
+     char *target_uname;                /* target user name          */
+     char *target_gname;                /* target group name         */
+     char *target_homedir;      /* target home directory     */
+@@ -270,6 +271,7 @@
+      * running this program.  Error out if invalid.
+      */
+     uid = getuid();
++    httpd_uid = uid;
+     if ((pw = getpwuid(uid)) == NULL) {
+        log_err("invalid uid: (%ld)\n", uid);
+        exit(102);
+@@ -472,10 +474,15 @@
+      * Error out if the target name/group is different from
+      * the name/group of the cwd or the program.
+      */
+-    if ((uid != dir_info.st_uid) ||
+-       (gid != dir_info.st_gid) ||
+-       (uid != prg_info.st_uid) ||
+-       (gid != prg_info.st_gid)) {
++    if ((
++        (httpd_uid != dir_info.st_uid) ||
++        (httpd_uid != prg_info.st_uid)
++       ) && (
++        (uid != dir_info.st_uid) ||
++        (gid != dir_info.st_gid) ||
++        (uid != prg_info.st_uid) ||
++        (gid != prg_info.st_gid)
++       )) {
+        log_err("target uid/gid (%ld/%ld) mismatch with directory (%ld/%ld) or program (%ld/%ld)\n",
+                uid, gid,
+                dir_info.st_uid, dir_info.st_gid,
+
+Any security problems I am missing?
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: lars
+State-Changed-When: Sat Feb 20 17:27:12 PST 1999
+State-Changed-Why:
+Marked for future consideration.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

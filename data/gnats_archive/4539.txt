@@ -1,0 +1,349 @@
+Received: (qmail 12407 invoked by uid 2012); 7 Jun 1999 14:29:58 -0000
+Message-Id: <19990607142958.12406.qmail@hyperreal.org>
+Date: 7 Jun 1999 14:29:58 -0000
+From: Graham Leggett <graham@vwv.com>
+Reply-To: graham@vwv.com
+To: apbugs@hyperreal.org
+Subject: Reverse proxy & Apache authentication returns incorrect MIME header
+X-Send-Pr-Version: 3.2
+
+>Number:         4539
+>Category:       mod_proxy
+>Synopsis:       Reverse proxy & Apache authentication returns incorrect MIME header
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun  7 07:30:01 PDT 1999
+>Last-Modified:
+>Originator:     graham@vwv.com
+>Organization:
+apache
+>Release:        v1.3.6
+>Environment:
+SunOS infobase 5.6 Generic_105181-13 sun4u sparc SUNW,Ultra-250
+gcc v2.8.1
+>Description:
+If an Apache server is configured to incorporate a reverse proxy website
+into the web tree like so:
+
+<VirtualHost blah:80>
+ProxyPass		/bar	http://other.site/foo
+ProxyPassReverse	/bar	http://other.site/foo
+</VirtualHost>
+
+And, if this directory is password protected, like so:
+
+<Location /bar>
+AuthType basic
+... (other authentication directives)
+</Location>
+
+Then the webserver should respond with a WWW-Authenticate MIME header when
+an attempt is made to fetch a file from this directory.
+
+However - because the request is in reality a (reverse) proxy request, Apache
+responds instead with the header Proxy-Authenticate. Because the browser is
+not expecting to be requested to proxy-authenticate on a normal HTTP connection
+the browser ignores the request and displays the resulting error message to the
+user:
+
+Proxy Authentication Failed.
+>How-To-Repeat:
+
+>Fix:
+Inside each request, a field r->proxyreq exists which when non zero indicates
+that the request is a proxy request. This variable has been extended to indicate
+three states:
+
+0 - No Proxy Request
+1 - Normal Proxy Request
+2 - Reverse Proxy Request
+
+If proxy-req is 1 (normal proxy) and authentication is requested, Apache returns
+Proxy-authenticate, otherwise (no proxy or reverse proxy) Apache returns
+WWW-authenticate.
+
+diff -C3 -r apache-1.3-old/src/include/httpd.h apache-1.3/src/include/httpd.h
+*** apache-1.3-old/src/include/httpd.h  Tue Mar 23 03:12:43 1999
+--- apache-1.3/src/include/httpd.h      Thu Apr 29 16:01:14 1999
+***************
+*** 653,659 ****
+      char *the_request;                /* First line of request, so we can log it */
+      int assbackwards;         /* HTTP/0.9, "simple" request */
+      int proxyreq;             /* A proxy request (calculated during
+!                                * post_read_request or translate_name) */
+      int header_only;          /* HEAD request, as opposed to GET */
+      char *protocol;           /* Protocol, as given to us, or HTTP/0.9 */
+      int proto_num;            /* Number version of protocol; 1.1 = 1001 */
+--- 653,661 ----
+      char *the_request;                /* First line of request, so we can log it */
+      int assbackwards;         /* HTTP/0.9, "simple" request */
+      int proxyreq;             /* A proxy request (calculated during
+!                                * post_read_request or translate_name)
+!                                * possible values PROXYREQ_NONE,
+!                                * PROXYREQ_PROXY, PROXYREQ_REVERSE */
+      int header_only;          /* HEAD request, as opposed to GET */
+      char *protocol;           /* Protocol, as given to us, or HTTP/0.9 */
+      int proto_num;            /* Number version of protocol; 1.1 = 1001 */
+***************
+*** 780,786 ****
+--- 782,797 ----
+   */
+  };
+  
++ /* Possible values of request_rec->proxyreq. A request could be normal,
++  * proxied or reverse proxied. Normally proxied and reverse proxied are
++  * grouped together as just "proxied", but sometimes it's necessary to
++  * tell the difference between the two, such as for authentication.
++  */
+  
++ #define PROXYREQ_NONE 0
++ #define PROXYREQ_PROXY 1
++ #define PROXYREQ_REVERSE 2
++ 
+  /* Things which are per connection
+   */
+  
+Common subdirectories: apache-1.3-old/src/main/CVS and apache-1.3/src/main/CVS
+diff -C3 -r apache-1.3-old/src/main/http_protocol.c apache-1.3/src/main/http_protocol.c
+*** apache-1.3-old/src/main/http_protocol.c     Wed Apr 28 03:12:51 1999
+--- apache-1.3/src/main/http_protocol.c Thu Apr 29 16:02:28 1999
+***************
+*** 1113,1119 ****
+          ap_note_auth_failure(r);
+      else
+          ap_table_setn(r->err_headers_out,
+!                   r->proxyreq ? "Proxy-Authenticate" : "WWW-Authenticate",
+                    ap_pstrcat(r->pool, "Basic realm=\"", ap_auth_name(r), "\"",
+                            NULL));
+  }
+--- 1113,1119 ----
+          ap_note_auth_failure(r);
+      else
+          ap_table_setn(r->err_headers_out,
+!                   (r->proxyreq == PROXYREQ_PROXY) ? "Proxy-Authenticate" : "WWW-Authenticate",
+                    ap_pstrcat(r->pool, "Basic realm=\"", ap_auth_name(r), "\"",
+                            NULL));
+  }
+***************
+*** 1121,1127 ****
+  API_EXPORT(void) ap_note_digest_auth_failure(request_rec *r)
+  {
+      ap_table_setn(r->err_headers_out,
+!           r->proxyreq ? "Proxy-Authenticate" : "WWW-Authenticate",
+            ap_psprintf(r->pool, "Digest realm=\"%s\", nonce=\"%lu\"",
+                ap_auth_name(r), r->request_time));
+  }
+--- 1121,1127 ----
+  API_EXPORT(void) ap_note_digest_auth_failure(request_rec *r)
+  {
+      ap_table_setn(r->err_headers_out,
+!           (r->proxyreq == PROXYREQ_PROXY) ? "Proxy-Authenticate" : "WWW-Authenticate",
+            ap_psprintf(r->pool, "Digest realm=\"%s\", nonce=\"%lu\"",
+                ap_auth_name(r), r->request_time));
+  }
+***************
+*** 1129,1135 ****
+  API_EXPORT(int) ap_get_basic_auth_pw(request_rec *r, const char **pw)
+  {
+      const char *auth_line = ap_table_get(r->headers_in,
+!                                       r->proxyreq ? "Proxy-Authorization"
+                                                    : "Authorization");
+      const char *t;
+  
+--- 1129,1135 ----
+  API_EXPORT(int) ap_get_basic_auth_pw(request_rec *r, const char **pw)
+  {
+      const char *auth_line = ap_table_get(r->headers_in,
+!                                       (r->proxyreq == PROXYREQ_PROXY) ? "Proxy-Authorization"
+                                                    : "Authorization");
+      const char *t;
+  
+diff -C3 -r apache-1.3-old/src/main/http_request.c apache-1.3/src/main/http_request.c
+*** apache-1.3-old/src/main/http_request.c      Wed Apr 21 03:12:51 1999
+--- apache-1.3/src/main/http_request.c  Thu Apr 29 16:02:34 1999
+***************
+*** 981,987 ****
+       * about proxy authentication.  They treat it like normal auth, and then
+       * we tweak the status.
+       */
+!     if (r->status == AUTH_REQUIRED && r->proxyreq) {
+          r->status = HTTP_PROXY_AUTHENTICATION_REQUIRED;
+      }
+  
+--- 981,987 ----
+       * about proxy authentication.  They treat it like normal auth, and then
+       * we tweak the status.
+       */
+!     if (r->status == AUTH_REQUIRED && r->proxyreq == PROXYREQ_PROXY) {
+          r->status = HTTP_PROXY_AUTHENTICATION_REQUIRED;
+      }
+  
+diff -C3 -r apache-1.3-old/src/modules/proxy/mod_proxy.c apache-1.3/src/modules/proxy/mod_proxy.c
+*** apache-1.3-old/src/modules/proxy/mod_proxy.c        Wed Mar 10 21:12:56 1999
+--- apache-1.3/src/modules/proxy/mod_proxy.c    Thu Apr 29 16:02:56 1999
+***************
+*** 153,159 ****
+            && !strcasecmp(r->parsed_uri.scheme, ap_http_method(r))
+            && ap_matches_request_vhost(r, r->parsed_uri.hostname,
+                 r->parsed_uri.port_str ? r->parsed_uri.port : ap_default_port(r)))) {
+!           r->proxyreq = 1;
+            r->uri = r->unparsed_uri;
+            r->filename = ap_pstrcat(r->pool, "proxy:", r->uri, NULL);
+            r->handler = "proxy-server";
+--- 153,159 ----
+            && !strcasecmp(r->parsed_uri.scheme, ap_http_method(r))
+            && ap_matches_request_vhost(r, r->parsed_uri.hostname,
+                 r->parsed_uri.port_str ? r->parsed_uri.port : ap_default_port(r)))) {
+!           r->proxyreq = PROXYREQ_PROXY;
+            r->uri = r->unparsed_uri;
+            r->filename = ap_pstrcat(r->pool, "proxy:", r->uri, NULL);
+            r->handler = "proxy-server";
+***************
+*** 163,169 ****
+      else if (conf->req && r->method_number == M_CONNECT
+             && r->parsed_uri.hostname
+             && r->parsed_uri.port_str) {
+!           r->proxyreq = 1;
+            r->uri = r->unparsed_uri;
+            r->filename = ap_pstrcat(r->pool, "proxy:", r->uri, NULL);
+            r->handler = "proxy-server";
+--- 163,169 ----
+      else if (conf->req && r->method_number == M_CONNECT
+             && r->parsed_uri.hostname
+             && r->parsed_uri.port_str) {
+!           r->proxyreq = PROXYREQ_PROXY;
+            r->uri = r->unparsed_uri;
+            r->filename = ap_pstrcat(r->pool, "proxy:", r->uri, NULL);
+            r->handler = "proxy-server";
+***************
+*** 198,204 ****
+             r->filename = ap_pstrcat(r->pool, "proxy:", ent[i].real,
+                                   r->uri + len, NULL);
+             r->handler = "proxy-server";
+!            r->proxyreq = 1;
+             return OK;
+        }
+      }
+--- 198,204 ----
+             r->filename = ap_pstrcat(r->pool, "proxy:", ent[i].real,
+                                   r->uri + len, NULL);
+             r->handler = "proxy-server";
+!            r->proxyreq = PROXYREQ_REVERSE;
+             return OK;
+        }
+      }
+***************
+*** 304,310 ****
+        int maxfwd = strtol(maxfwd_str, NULL, 10);
+        if (maxfwd < 1) {
+            int access_status;
+!           r->proxyreq = 0;
+            if ((access_status = ap_send_http_trace(r)))
+                ap_die(access_status, r);
+            else
+--- 304,310 ----
+        int maxfwd = strtol(maxfwd_str, NULL, 10);
+        if (maxfwd < 1) {
+            int access_status;
+!           r->proxyreq = PROXYREQ_NONE;
+            if ((access_status = ap_send_http_trace(r)))
+                ap_die(access_status, r);
+            else
+diff -C3 -r apache-1.3-old/src/modules/proxy/proxy_ftp.c apache-1.3/src/modules/proxy/proxy_ftp.c
+*** apache-1.3-old/src/modules/proxy/proxy_ftp.c        Fri Apr  9 15:12:28 1999
+--- apache-1.3/src/modules/proxy/proxy_ftp.c    Thu Apr 29 16:03:12 1999
+***************
+*** 414,420 ****
+   */
+  static int ftp_unauthorized (request_rec *r, int log_it)
+  {
+!     r->proxyreq = 0;
+      /* Log failed requests if they supplied a password
+       * (log username/password guessing attempts)
+       */
+--- 414,420 ----
+   */
+  static int ftp_unauthorized (request_rec *r, int log_it)
+  {
+!     r->proxyreq = PROXYREQ_NONE;
+      /* Log failed requests if they supplied a password
+       * (log username/password guessing attempts)
+       */
+diff -C3 -r apache-1.3-old/src/modules/standard/mod_digest.c apache-1.3/src/modules/standard/mod_digest.c
+*** apache-1.3-old/src/modules/standard/mod_digest.c    Fri Jan  1 21:12:24 1999
+--- apache-1.3/src/modules/standard/mod_digest.c        Thu Apr 29 16:03:49 1999
+***************
+*** 137,143 ****
+  static int get_digest_rec(request_rec *r, digest_header_rec * response)
+  {
+      const char *auth_line = ap_table_get(r->headers_in,
+!                                     r->proxyreq ? "Proxy-Authorization"
+                                      : "Authorization");
+      int l;
+      int s, vk = 0, vv = 0;
+--- 137,143 ----
+  static int get_digest_rec(request_rec *r, digest_header_rec * response)
+  {
+      const char *auth_line = ap_table_get(r->headers_in,
+!                                     (r->proxyreq == PROXYREQ_PROXY) ? "Proxy-Authorization"
+                                      : "Authorization");
+      int l;
+      int s, vk = 0, vv = 0;
+diff -C3 -r apache-1.3-old/src/modules/standard/mod_rewrite.c apache-1.3/src/modules/standard/mod_rewrite.c
+*** apache-1.3-old/src/modules/standard/mod_rewrite.c   Thu Apr 22 15:12:40 1999
+--- apache-1.3/src/modules/standard/mod_rewrite.c       Thu Apr 29 16:04:03 1999
+***************
+*** 1128,1134 ****
+              }
+  
+              /* now make sure the request gets handled by the proxy handler */
+!             r->proxyreq = 1;
+              r->handler  = "proxy-server";
+  
+              rewritelog(r, 1, "go-ahead with proxy request %s [OK]",
+--- 1128,1134 ----
+              }
+  
+              /* now make sure the request gets handled by the proxy handler */
+!             r->proxyreq = PROXYREQ_REVERSE;
+              r->handler  = "proxy-server";
+  
+              rewritelog(r, 1, "go-ahead with proxy request %s [OK]",
+***************
+*** 1388,1394 ****
+              }
+  
+              /* now make sure the request gets handled by the proxy handler */
+!             r->proxyreq = 1;
+              r->handler  = "proxy-server";
+  
+              rewritelog(r, 1, "[per-dir %s] go-ahead with proxy request "
+--- 1388,1394 ----
+              }
+  
+              /* now make sure the request gets handled by the proxy handler */
+!             r->proxyreq = PROXYREQ_REVERSE;
+              r->handler  = "proxy-server";
+  
+              rewritelog(r, 1, "[per-dir %s] go-ahead with proxy request "
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

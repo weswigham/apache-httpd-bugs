@@ -1,0 +1,327 @@
+Received: (qmail 20792 invoked by uid 2012); 2 Jan 1998 05:11:34 -0000
+Message-Id: <19980102051134.20791.qmail@hyperreal.org>
+Date: 2 Jan 1998 05:11:34 -0000
+From: steven filling <steven@panopticon.csustan.edu>
+Reply-To: steven@panopticon.csustan.edu
+To: apbugs@hyperreal.org
+Subject: compile warnings, compiled object will not execute [no log entries produced]
+X-Send-Pr-Version: 3.2
+
+>Number:         1612
+>Category:       os-linux
+>Synopsis:       compile warnings, compiled object will not execute [no log entries produced]
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jan  1 21:20:00 PST 1998
+>Last-Modified:  Mon Sep  7 05:56:44 PDT 1998
+>Originator:     steven@panopticon.csustan.edu
+>Organization:
+>Release:        1.3b3
+>Environment:
+RedHat Linux 5.0/kernel 2.0.30 on an alpha [axppci33]
+>Description:
+IN http_main.c:
+
+line 2863: warning passing arg 3 of 'accept' from incompatible pointer type
+
+line 2917: warning passing arg 3 of 'getsockname' from incompatible pointer type
+
+line 3585: warning passing arg 3 of 'getpeername' from incompatible pointer type
+
+line 3592: warning passing arg 3 of 'getsockname' from incompatible pointer type
+--------------------------------------------------------------------------------
+IN http_config.c:
+
+line 878: warning cast from pointer to integer of different size
+--------------------------------------------------------------------------------
+NB 1.2.4 [which came with the dist] runs fine, and the 1.3b3 source compiled fine 
+on intel & sparc linux systems.  
+There are two variables here - system type - alpha vs. intel/sparc, and OS 
+version - RH 5 [glibc] vs. RH 4.2
+I've tried the fix suggested in #806 [The error is beause, for some reason, your system doesn't
+support shared memory.  Remove the HAVE_SHMGET line from
+the LINUX section of conf.h and try recompiling.] with no success.
+>How-To-Repeat:
+Compile on a vanilla RH 5.0 alpha dist.  I'd be happy to provide accounts.
+>Fix:
+sadly, no - I'm not much with 
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: steven filling <steven@panopticon.csustan.edu>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-linux/1612: compile warnings, compiled object will not execute [no log entries produced]
+Date: Thu, 1 Jan 1998 21:30:58 -0800 (PST)
+
+ I'd say wait for 1.3b4, I made a few changes in this area... and you
+ should probably upgrade to glibc 2.0.6.  I've actually been able to get it
+ to compile and run on an alpha redhat 5.0 system without any extra tweaks.
+ But the system wasn't put together by me so it's possible the owner
+ already made some suggested tweak. 
+ 
+ If you're brave you can edit the src/main/conf.h file, find the LINUX
+ section and hardcode the NET_SIZE_T define to socklen_t instead of size_t.
+ See if that works.
+ 
+ Actually your best bet is probably to ask in one of the redhat newsgroups
+ for help.  We'll certainly want to support it by the time we do 1.3
+ release, but right now redhat 5.0 and glibc are in a bit too new and not
+ done moving yet. 
+ 
+ Dean
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Thu Jan  1 21:33:28 PST 1998
+State-Changed-Why:
+Hoping user can find answer in a redhat newsgroup and report back.
+
+Dean
+
+From: Steven Filling <steven@panoptic.csustan.edu>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: os-linux/1612: compile warnings, compiled object will not ex
+Date: Thu, 01 Jan 1998 22:09:51 -0800 (PST)
+
+ On 02-Jan-98 Dean Gaudet extemporized:
+ > I'd say wait for 1.3b4, I made a few changes in this area... and you
+ > should probably upgrade to glibc 2.0.6.  I've actually been able to get
+ > it
+ > to compile and run on an alpha redhat 5.0 system without any extra
+ > tweaks.
+ > But the system wasn't put together by me so it's possible the owner
+ > already made some suggested tweak.=20
+ >=20
+ > If you're brave you can edit the src/main/conf.h file, find the LINUX
+ > section and hardcode the NET_SIZE_T define to socklen_t instead of
+ > size_t.
+ 
+ Dean -
+ 
+ thanks for the lightning response!  I altered conf.h [fixed the
+ http_main.c item per the above], and altered http_config.c line 878 to:
+  int offset =3D (int) (long) cmd->info;
+                              ^^  added
+ 
+ This eliminates the warning messages, and seems to get things a bit
+ further along, as now when I attempt to start httpd I get the following
+ message in error_log:
+ [crit] (45)Operation not supported: setsockopt: (SO_REUSEADDR)
+ 
+ I'll post a message at axp-list.redhat.com as well.
+ 
+ thanks again
+ S.
+ ----------------------------------
+ Steven Filling
+ E-Mail: steven@panopticon.csustan.edu
+ Date: 01-Jan-98 Time: 21:33:14
+ ----------------------------------
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Steven Filling <steven@panoptic.csustan.edu>
+Cc: apbugs@apache.org
+Subject: Re: os-linux/1612: compile warnings, compiled object will not ex
+Date: Thu, 1 Jan 1998 22:21:16 -0800 (PST)
+
+ That looks like you've already got a server running on that socket under a
+ different user id.
+ 
+ 1.3b4 already contains a change like the one I suggested... so I'm gonna
+ close this one out.  But feel free to reply to it and tell us if you find
+ out any more. 
+ 
+ Laters
+ Dean
+ 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Steven Filling <steven@panoptic.csustan.edu>
+Cc: apbugs@apache.org
+Subject: Re: os-linux/1612: compile warnings, compiled object will not ex
+Date: Thu, 1 Jan 1998 22:25:22 -0800 (PST)
+
+ On 2 Jan 1998, Steven Filling wrote:
+ 
+ >  [crit] (45)Operation not supported: setsockopt: (SO_REUSEADDR)
+ 
+ Er wait no, I'm wrong in what I just said.  This looks like a kernel or
+ libc problem.  It shouldn't refuse this, it does implement SO_REUSEADDR.
+ 
+ Oh hmm!  I wonder if it's got a problem with the sizeof(int) parameter.
+ But the Single Unix spec says it's supposed to take an int there, so it
+ should be ok.  Dunno, tell me what you find out from axp-list... leaving
+ this open.
+ 
+ Thanks
+ Dean
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: os-linux/1612: compile warnings, compiled object will not ex (fwd)
+Date: Thu, 8 Jan 1998 21:25:23 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ X-Priority: 3 (Normal)
+ Date: Thu, 08 Jan 1998 19:11:58 -0800 (PST)
+ From: Steven Filling <steven@panoptic.csustan.edu>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: os-linux/1612: compile warnings, compiled object will not ex
+ 
+ 
+ On 02-Jan-98 Dean Gaudet extemporized:
+ > Oh hmm!  I wonder if it's got a problem with the sizeof(int) parameter.
+ > But the Single Unix spec says it's supposed to take an int there, so it
+ > should be ok.  Dunno, tell me what you find out from axp-list... leaving
+ > this open.
+ > 
+ axp-list produced nothing of use.  In the mean time, I grabbed a 'spare'
+ intel box and loaded RH 5.0 on it.  apache compiled and runs without a
+ murmur.  So, I think it's pretty certain that this is an alpha specific
+ bug, I suspect something to do with the glibc transition, but I don't have
+ a spare alpha to load a prior RH version on to test compile.
+ 
+ If the blinding light of understanding suddenly comes on, I'll forward
+ details.
+ 
+ cheers
+ S.
+ ----------------------------------
+ Steven Filling
+ E-Mail: steven@panopticon.csustan.edu
+ Date: 08-Jan-98 Time: 19:08:49
+ ----------------------------------
+ 
+Comment-Added-By: dgaudet
+Comment-Added-When: Mon Feb 23 03:22:14 PST 1998
+Comment-Added:
+Any luck yet getting apache 1.3bX to compile on alpha redhat 5.0?
+
+Dean
+
+From: Steven Filling <steven@panoptic.csustan.edu>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: os-linux/1612: compile warnings, compiled object will not ex
+Date: Sun, 15 Mar 1998 18:44:15 -0800 (PST)
+
+ On 02-Jan-98 Dean Gaudet extemporized:
+ >=20
+ >>  [crit] (45)Operation not supported: setsockopt: (SO_REUSEADDR)
+ >=20
+ > Er wait no, I'm wrong in what I just said.  This looks like a kernel or
+ > libc problem.  It shouldn't refuse this, it does implement SO_REUSEADDR.
+ >=20
+ > Oh hmm!  I wonder if it's got a problem with the sizeof(int) parameter.
+ > But the Single Unix spec says it's supposed to take an int there, so it
+ > should be ok. =20
+ 
+ Dean -
+ 
+ Just an update on 1.3b5 : this version compiles with no perceptible
+ errors, but when I attempt to run it error_log gets the following:
+ 
+  [crit] (45)Operation not supported: setsockopt: (SO_REUSEADDR)
+ 
+ Guess there continues to be a disparity on alpha, as this compiles and
+ runs fine on intel [Red Hat 4.2 and 5.0] and Sparc [Red Hat 4.2].  If you
+ think it is a kernel problem, I'll see if I can find someone running one
+ of the 2.1.x kernels on alpha and have them give it a shot.
+ 
+ cheers
+ S.
+ ----------------------------------
+ Steven Filling
+ E-Mail: steven@panopticon.csustan.edu
+ Date: 15-Mar-98 Time: 18:38:04
+ ----------------------------------
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Steven Filling <steven@panoptic.csustan.edu>
+Cc: apbugs@apache.org
+Subject: Re: os-linux/1612: compile warnings, compiled object will not ex
+Date: Sun, 15 Mar 1998 19:11:58 -0800 (PST)
+
+ On Sun, 15 Mar 1998, Steven Filling wrote:
+ 
+ >  [crit] (45)Operation not supported: setsockopt: (SO_REUSEADDR)
+ > 
+ > Guess there continues to be a disparity on alpha, as this compiles and
+ 
+ Ah, alpha!  This one is already in the problem database, no resolution
+ yet.  I've doublechecked what apache is doing there against the single
+ unix spec and apache is right, so glibc is what I'd blame.  glibc does
+ massage some parameters before calling the kernel, so it may or may not be
+ the kernel.
+ 
+ Unfortunately I can't reproduce the problem on the alpha I have access to
+ -- which claims to have glibc-2.0.6-9 and a 2.0.32 kernel installed. 
+ 
+ Dean
+ 
+ 
+Comment-Added-By: coar
+Comment-Added-When: Fri Apr 24 04:21:06 PDT 1998
+Comment-Added:
+[Attaching mail that got misdirected because of a
+nonconformant subject line.. grrr.]
+
+Dean -
+
+Just an update - the latest beta seems to build fine on my linux alpha
+[Red Hat 2.0.30], but when I attempt to start the server I get the
+following in error_log:
+
+---------------------------------------------------------------------------
+[Wed Apr 22 17:00:25 1998] [crit] (45)Operation not supported: make_sock:
+for po
+rt 80, setsockopt: (SO_REUSEADDR)
+[Wed Apr 22 17:00:25 1998] [error] (9)Bad file descriptor: accept: (client
+socke
+t)
+<snip lots of previous message>
+--------------------------------------------------------------------------
+
+As before, the problem seems to revolve around (SO_REUSEADDR).   If access
+to an alpha running linux would help I'd be real willing to setup an
+account for someone @ apache to test with.
+
+
+TIA
+S.
+----------------------------------
+Steven Filling
+E-Mail: steven@panopticon.csustan.edu
+Date: 22-Apr-98 Time: 17:09:40
+----------------------------------
+Comment-Added-By: coar
+Comment-Added-When: Tue Aug  4 19:22:47 PDT 1998
+Comment-Added:
+
+Is this still an issue?  Since it doesn't appear to be
+an Apache problem per se, it probably doesn't matter
+what version you're running -- but you might want to
+upgrade to 1.3.1 on general principles.
+
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Mon Sep  7 05:56:44 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

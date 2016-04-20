@@ -1,0 +1,97 @@
+Received: (qmail 24657 invoked by uid 2012); 28 Apr 1999 06:59:15 -0000
+Message-Id: <19990428065915.24656.qmail@hyperreal.org>
+Date: 28 Apr 1999 06:59:15 -0000
+From: Chris Maltby <chris@sw.oz.au>
+Reply-To: chris@sw.oz.au
+To: apbugs@hyperreal.org
+Subject: Run queue spikes occur with many instances of Apache (parent procs become synchronised)
+X-Send-Pr-Version: 3.2
+
+>Number:         4318
+>Category:       os-solaris
+>Synopsis:       Run queue spikes occur with many instances of Apache (parent procs become synchronised)
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Apr 28 00:00:01 PDT 1999
+>Last-Modified:
+>Originator:     chris@sw.oz.au
+>Organization:
+apache
+>Release:        1.3.4
+>Environment:
+Solaris 2.5.1 on Ultra-Enterprise server system.
+Compiler unknown - not a compiler issue.
+>Description:
+This problem is occurring at a customer site who are running 1000 separate
+apache instances on a large Sun server (web hosting service). They are using
+our ShareII resource management product to provide service guarantees to
+separate client domains (which is why there are so many servers: 1 per
+customer). The problem is occurring with the parent procs becoming
+synchronised due to kernel implementation of the waitpid(2) call (as used
+in main/http_main.c:wait_or_timeout()) and other kernel internals. The effect
+is to produce very large run-queue spikes (400 or more) when the synchronised
+parents intersect the run-queue sampling code. The run-queue spikes cause
+other daemons (eg sendmail) to behave strangely. While this is essentially
+a kernel implementation problem, it is triggered only by the apache parent
+implementation.
+>How-To-Repeat:
+I can supply some test code or put you in contact with our customer if needed.
+I can also supply sar output, truss output and kernel traces if you think that
+will help :-)
+>Fix:
+I have two suggestions - one easy, one a little more difficult. The more
+difficult but "correct" approach is to utilise the SIGCHLD signal in the
+parent to set a "child is dead" flag and interrupt the scoreboard maintenance
+sleep. The waitpid() call should only be made if a SIGCHLD has been received.
+This approach will work on just about all variants of Unix and is not specific
+to Solaris.
+
+The quick-and-dirty approach is to add some random jitter to the timeout period
+(SCOREBOARD_MAINTENANCE_INTERVAL) in main/http_main.c:wait_or_timeout(). I have
+tried out the following code, which adds a tunable amount of jitter:
+
+old:
+    tv.tv_sec = SCOREBOARD_MAINTENANCE_INTERVAL / 1000000;
+    tv.tv_usec = SCOREBOARD_MAINTENANCE_INTERVAL % 1000000;
+    ap_select(0, NULL, NULL, NULL, &tv);
+
+new:
+#define JITTER_PERCENT 10	/* Actual delay will be plus or minus this much */
+    {
+        time_t delaytime = SCOREBOARD_MAINTENANCE_INTERVAL;
+        static int seeded;
+        static unsigned int seed;
+
+        if (!seeded) {
+                ++seeded;
+                seed = getpid();
+        }
+
+        /* delaytime +/- selected randomness avoiding overflow and unsigned arith */
+        delaytime += (((long)(rand_r(&seed) * (delaytime >> 8)) >> 6) - (long)de
+laytime) / (100 / JITTER_PERCENT);
+        tv.tv_sec = delaytime / 1000000;
+        tv.tv_usec = delaytime % 1000000;
+    }
+    ap_select(0, NULL, NULL, NULL, &tv);
+
+Sleeping for a (uniformly distributed) random time should break up the convoys
+of synchronised apache parents.
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

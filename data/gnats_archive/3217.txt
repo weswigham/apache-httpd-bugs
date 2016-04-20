@@ -1,0 +1,183 @@
+Received: (qmail 27136 invoked by uid 2012); 15 Oct 1998 05:40:57 -0000
+Message-Id: <19981015054057.27135.qmail@hyperreal.org>
+Date: 15 Oct 1998 05:40:57 -0000
+From: Meng Wong <mengwong@pobox.com>
+Reply-To: mengwong@pobox.com
+To: apbugs@hyperreal.org
+Subject: proxy_util.c's ap_proxy_doconnect logs error 22 EINVAL "invalid argument" when target is a round-robin dns host
+X-Send-Pr-Version: 3.2
+
+>Number:         3217
+>Category:       mod_proxy
+>Synopsis:       proxy_util.c's ap_proxy_doconnect logs error 22 EINVAL "invalid argument" when target is a round-robin dns host
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          feedback
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Oct 14 22:50:00 PDT 1998
+>Closed-Date:
+>Last-Modified:  Wed May 24 12:47:44 PDT 2000
+>Originator:     mengwong@pobox.com
+>Release:        1.3.3
+>Organization:
+>Environment:
+stock redhat 5.1
+Linux io.starnet.gov.sg 2.0.35 #1 Sat Oct 3 09:38:05 SGT 1998 i686 unknown
+Reading specs from /usr/lib/gcc-lib/i386-redhat-linux/2.7.2.3/specs
+gcc version 2.7.2.3
+
+i installed bind 8.1.2 but i don't think it touches my resolver libs.
+
+19981015-12:40:22 root@io:/usr/lib% ll *resolv*
+-rw-r--r--   1 root     root       240416 May 10 11:48 libresolv.a
+lrwxrwxrwx   1 root     root           24 Oct  3 16:35 libresolv.so -> ../../lib/libresolv.so.2*
+19981015-12:40:25 root@io:/usr/lib% cd /lib
+19981015-12:42:33 root@io:/lib% ll *resolv*
+-rwxr-xr-x   1 root     root       149537 May 10 11:48 libresolv-2.0.7.so*
+lrwxrwxrwx   1 root     root           18 Oct  3 16:31 libresolv.so.2 -> libresolv-2.0.7.so*
+>Description:
+excerpts from the error log:
+[Thu Oct 15 11:48:47 1998] [error] [client 203.116.83.17] (22)Invalid argument: proxy connect to 204.160.241.19 port 80 failed
+[Thu Oct 15 11:48:47 1998] [error] [client 203.116.83.17] (22)Invalid argument: proxy connect to 204.160.241.83 port 80 failed
+[Thu Oct 15 11:48:49 1998] [error] [client 203.116.83.17] (22)Invalid argument: proxy connect to 204.160.241.19 port 80 failed
+[Thu Oct 15 11:49:01 1998] [error] [client 203.116.83.17] (22)Invalid argument: proxy connect to 204.160.241.83 port 80 failed
+[Thu Oct 15 11:49:21 1998] [error] [client 203.116.82.103] (22)Invalid argument: proxy connect to 147.178.1.121 port 80 failed
+[Thu Oct 15 11:49:21 1998] [error] [client 203.116.82.103] (22)Invalid argument: proxy connect to 147.178.1.122 port 80 failed
+[Thu Oct 15 11:49:21 1998] [error] [client 203.116.82.103] (22)Invalid argument: proxy connect to 147.178.1.123 port 80 failed
+
+my correlation of errors with the access log, with a check for round-robin dns status
+19981015-12:27:26 root@io:/usr/local/apache/var/log% perl -le 'open (ERROR, shift); while (<ERROR>) { my ($hhmm, $client, $dest) = /(\d\d:\d\d).*client (\S+)\] .22.Invalid argument: proxy connect to (\S+) port/ or next; $error{$hhmm}{$client}{$dest}++; 0 && printf "error: at $hhmm, client %-16s had trouble reaching $dest\n", $client }; close ERROR; open (ACCESS, shift); while (<ACCESS>) { my ($client, $hhmm, $dest) = m(^(\S+).*\d\d\d\d:(\d\d:\d\d).*://([^/]+)); next unless exists $error{$hhmm}{$client}; my ($name, $aliases, $addrtype, $length, @addrs) = gethostbyname($dest) or next; my @ips = grep { exists $error{$hhmm}{$client}{$_} } map { join(".", unpack ("C4", $_)) } @addrs; for (@ips) { $plaint{sprintf("at $hhmm, client %-16s got EINVAL when trying for a " . (@addrs>1 ? "" : "non-") . "round-robin host, $dest.", $client)}++ } } foreach (sort keys %plaint) { print }' error_log.19981015 access_log.19981015
+at 11:16, client 203.116.83.16    got EINVAL when trying for a round-robin host, www.altavista.telia.com.
+at 11:17, client 203.116.82.142   got EINVAL when trying for a round-robin host, soccernet.com.
+at 11:17, client 203.116.82.170   got EINVAL when trying for a round-robin host, www.lycosuk.co.uk.
+at 11:18, client 203.116.82.123   got EINVAL when trying for a round-robin host, mail.yahoo.com.
+at 11:18, client 203.116.83.17    got EINVAL when trying for a round-robin host, www.infoseek.com.
+at 11:19, client 203.116.82.123   got EINVAL when trying for a round-robin host, mail.yahoo.com.
+at 11:19, client 203.116.83.17    got EINVAL when trying for a round-robin host, www.infoseek.com.
+at 11:20, client 203.116.82.194   got EINVAL when trying for a round-robin host, www.infoseek.com.
+at 11:20, client 203.116.83.26    got EINVAL when trying for a round-robin host, www.infoseek.com.
+at 11:21, client 203.116.82.194   got EINVAL when trying for a round-robin host, www.infoseek.com.
+at 11:21, client 203.116.83.26    got EINVAL when trying for a round-robin host, www.altavista.com.
+at 11:38, client 203.116.82.105   got EINVAL when trying for a round-robin host, www.atitech.com..
+at 11:38, client 203.116.82.190   got EINVAL when trying for a round-robin host, ads.msn.com.
+at 11:38, client 203.116.83.25    got EINVAL when trying for a round-robin host, www.geocities.com.
+at 11:48, client 203.116.83.17    got EINVAL when trying for a round-robin host, www.javasoft.com.
+at 11:49, client 203.116.82.103   got EINVAL when trying for a round-robin host, www.iomega.com.
+at 11:49, client 203.116.83.17    got EINVAL when trying for a round-robin host, www.javasoft.com.
+at 12:07, client 203.116.83.44    got EINVAL when trying for a round-robin host, activex.microsoft.com.
+at 12:07, client 203.116.83.44    got EINVAL when trying for a round-robin host, www.microsoft.com.
+at 12:24, client 203.116.82.141   got EINVAL when trying for a round-robin host, mail.yahoo.com.
+at 12:24, client 203.116.82.182   got EINVAL when trying for a round-robin host, www.rocketmail.com.
+at 12:25, client 203.116.82.12    got EINVAL when trying for a round-robin host, www.classicalinsites.com.
+at 12:25, client 203.116.82.182   got EINVAL when trying for a round-robin host, www.rocketmail.com.
+at 12:26, client 203.116.82.182   got EINVAL when trying for a round-robin host, www.rocketmail.com.
+at 12:26, client 203.116.82.94    got EINVAL when trying for a round-robin host, builder.cnet.com.
+at 12:26, client 203.116.83.18    got EINVAL when trying for a round-robin host, search.yahoo.com.sg.
+at 12:27, client 203.116.83.16    got EINVAL when trying for a round-robin host, www.altavista.com.
+at 12:27, client 203.116.83.16    got EINVAL when trying for a round-robin host, www.altavista.digital.com.
+
+observe that there are no "invalid argument" errors for non-round-robin hosts.
+>How-To-Repeat:
+it happens intermittently.  ask the proxy for any url whose host has multiple a records.
+keep trying with different hosts until you get "invalid argument" in error_log.
+hit reload and this time you'll usually get through.
+>Fix:
+i regret not fully specifying the bug but i haven't had the chance to get into the C code yet.
+this happens with 1.3.1, 1.3.2, 1.3.3.
+>Release-Note:
+>Audit-Trail:
+Comment-Added-By: ask
+Comment-Added-When: Sat Oct 17 08:38:47 PDT 1998
+Comment-Added:
+Have you tried recompiling apache after upgrading bind?
+
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Sun Oct 18 12:12:29 PDT 1998
+State-Changed-Why:
+Waiting for feedback to question.
+
+From: Meng Weng Wong <mengwong@starnet.gov.sg>
+To: ask@apache.org
+Cc: apbugs@apache.org
+Subject: Re: mod_proxy/3217: proxy_util.c's ap_proxy_doconnect logs error 22 EINVAL "invalid argument" when target is a round-robin dns host
+Date: Wed, 21 Oct 1998 16:14:30 +0800
+
+ the apache was compiled after the bind upgrade.  the bind
+ upgrade should be irrelevant to this problem, come to think
+ of it, because the resolver libraries weren't affected; i
+ have commented out the localhost nameserver from resolv.conf
+ and the problem is still happening, so i'm pretty sure the
+ error doesn't have anything to do with the bind upgrade.
+ 
+ On Sat, Oct 17, 1998 at 03:38:48PM -0000, ask@apache.org wrote:
+ | [In order for any reply to be added to the PR database, ]
+ | [you need to include <apbugs@Apache.Org> in the Cc line ]
+ | [and leave the subject line UNCHANGED.  This is not done]
+ | [automatically because of the potential for mail loops. ]
+ | [If you do not include this Cc, your reply may be ig-   ]
+ | [nored unless you are responding to an explicit request ]
+ | [from a developer.                                      ]
+ | [Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+ | 
+ | 
+ | Synopsis: proxy_util.c's ap_proxy_doconnect logs error 22 EINVAL "invalid argument" when target is a round-robin dns host
+ | 
+ | Comment-Added-By: ask
+ | Comment-Added-When: Sat Oct 17 08:38:47 PDT 1998
+ | Comment-Added:
+ | Have you tried recompiling apache after upgrading bind?
+ | 
+ | 
+
+From: Ask Bjoern Hansen <ask@netcetera.dk>
+To: apbugs@Apache.Org
+Cc:  Subject: Re: mod_proxy/3217: proxy_util.c's ap_proxy_doconnect logs error
+ 22 EINVAL "invalid argument" when target is a round-robin dns host 
+Date: Thu, 22 Oct 1998 03:53:09 +0200 (CEST)
+
+ ---------- Forwarded message ----------
+ Date: Wed, 21 Oct 1998 16:12:19 +0800
+ From: Meng Weng Wong <mengwong@starnet.gov.sg>
+ To: ask@apache.org
+ 
+ the apache was compiled after the bind upgrade.  the bind
+ upgrade should be irrelevant to this problem, come to think
+ of it, because the resolver libraries weren't affected; i
+ have commented out the localhost nameserver from resolv.conf
+ and the problem is still happening, so i'm pretty sure the
+ error doesn't have anything to do with the bind upgrade.
+ 
+Comment-Added-By: coar
+Comment-Added-When: Wed May 24 12:47:43 PDT 2000
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

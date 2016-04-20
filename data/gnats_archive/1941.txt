@@ -1,0 +1,504 @@
+Received: (qmail 13217 invoked by uid 2012); 13 Mar 1998 11:59:11 -0000
+Message-Id: <19980313115911.13216.qmail@hyperreal.org>
+Date: 13 Mar 1998 11:59:11 -0000
+From: Mike Brudenell <pmb1@york.ac.uk>
+Reply-To: pmb1@york.ac.uk
+To: apbugs@hyperreal.org
+Subject: AllowOverride ignored in <Directory ~ pattern> and <DirectoryMatch pattern>
+X-Send-Pr-Version: 3.2
+
+>Number:         1941
+>Category:       config
+>Synopsis:       AllowOverride ignored in <Directory ~ pattern> and <DirectoryMatch pattern>
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Mar 13 05:10:00 PST 1998
+>Last-Modified:  Thu May 28 12:26:39 PDT 1998
+>Originator:     pmb1@york.ac.uk
+>Organization:
+>Release:        1.3b5
+>Environment:
+pump1> uname -a
+SunOS pump1.york.ac.uk 5.5.1 Generic_103640-08 sun4u sparc SUNW,Ultra-2
+
+pump1> which cc
+  /opt/SUNWspro/bin/cc
+pump1> cc -V
+cc: SC4.0 18 Oct 1995 C 4.0
+>Description:
+The AllowOverride directive is apparently being ignored if used within a
+<Directory> block that uses a regular expression "~" pattern or in a
+<DirectoryMatch> block.
+
+It IS honoured within <Directory> blocks using an exact name or a glob-tyle "*"
+pattern.
+
+This prevents the AllowOverride settings to be changed for directories selected
+by regular expression so as, for example, to allow them to use a .htaccess
+file to override access rights.
+>How-To-Repeat:
+First set up access controls to your http document root as usual.  I will be
+assuming this is /htdocs, and that URLs are relative to this.  Turn off
+AllowOverride by default for the entire filestore tree:
+
+<Directory />
+    Allow from all
+    AllowOverride None
+</Directory>
+
+The aim is to set up a mechanism whereby any directory whose name ends ".ltd"
+is NOT accessible UNLESS it contains an .htaccess file specifically granting
+access.
+
+First set up a block denying access to /htdocs/.../*.ltd directories and test:
+
+<Directory ~ "^/htdocs/.*\.ltd">
+    Deny from all
+</Directory>
+
+Attempting to access a directory such as /physics/secret.ltd is correctly
+denied access.
+
+Now set up an .htaccess in the /htdocs/physics/secret.ltd directory to allow
+access:
+
+<FilesMatch *>
+    Allow from all
+</FilesMatch>
+
+and then modify the server's access block for ".ltd" directories to allow
+the .htaccess file to override the Limit category of directives.  The block
+then becomes:
+
+<Directory ~ "^/htdocs/.*\.ltd">
+    Deny from all
+    AllowOverride Limit
+</Directory>
+
+Test this configuration by requesting the /physics/secret.ltd/ URL.
+The request STILL FAILS, showing that the "Deny from all" in the server
+configuration is NOT being overridden by the directories .htaccess file.
+
+Now change the block to name the directory explicitly rather than using a
+regular expression:
+
+<Directory "/htdocs/physics/secret.ltd">
+    Deny from all
+    AllowOverride Limit
+</Directory>
+
+When tested the request now SUCCEEDS, showing the .htaccess file IS now
+correctly overriding the configuration file's "Deny form all" default.
+
+To confirm that this difference is not just down to a bad pattern, change this
+latest block to use an equivalent, simple-minded, regular expression consisting
+of exactly the directory name (ie, no wild-cards):
+
+<Directory ~ "/htdocs/physics/secret\.ltd">
+    Deny from all
+    AllowOverride Limit
+</Directory>
+
+Requesting the /physics/secret.ltd URL now FAILS, even though this "pattern" is
+functionally equivalent to the preceding exactly specified, non-expression,
+name.
+
+In Summary:
+
+*  The AllowOverride directive is apparently ignored for <Directory> blocks
+   making use of "~" regular expressions or <DirectoryMatch> blocks (even when
+   no wild-cards are used in the pattern).
+
+*  The AllowOverride directive IS apparently honoured for <Directory> directives
+   using either an exact name or a glob-type "*" pattern.
+
+*  Not all directive are affected: in the above examples changing the "Deny from
+   all" to "Allow from all" always allows access.  This implies that the "Deny"
+   and "Allow" directives within <Directory> + regular expression blocks are
+   being seen and honoured.
+   Therefore the problem seems to lie with something peculiar to the
+   AllowOverride directive.
+
+If you have problems reproducing the problem or need further information please
+feel free to contact me.
+>Fix:
+I'm sorry, but I don't have any suggestions for a fix
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Fri Mar 13 11:04:30 PST 1998
+State-Changed-Why:
+What happens if you change your htaccess to have _just_
+an "allow from all" line, ie. no <files ...>?
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: config/1941: AllowOverride ignored in <Directory ~ pattern> and <DirectoryMatch pattern> (fwd)
+Date: Mon, 16 Mar 1998 07:50:39 -0700 (MST)
+
+ ---------- Forwarded message ----------
+ Date: Mon, 16 Mar 1998 11:56:34 +0000
+ From: Mike Brudenell <pmb1@york.ac.uk>
+ To: marc@hyperreal.org
+ Cc: apache-bugdb@apache.org, marc@apache.org
+ Subject: Re: config/1941: AllowOverride ignored in <Directory ~ pattern> and <DirectoryMatch pattern>
+ 
+ Hello!
+ 
+ --On Fri, Mar 13, 1998 7:04 pm +0000 marc@hyperreal.org wrote: 
+ 
+ > Synopsis: AllowOverride ignored in <Directory ~ pattern> and
+ <DirectoryMatch pattern>
+ > 
+ > State-Changed-From-To: open-analyzed
+ > State-Changed-By: marc
+ > State-Changed-When: Fri Mar 13 11:04:30 PST 1998
+ > State-Changed-Why:
+ > What happens if you change your htaccess to have _just_
+ > an "allow from all" line, ie. no <files ...>?
+ 
+ Changing the .htaccess to just:
+     Allow from all
+ makes no difference; access is still denied.
+ 
+ Please forgive me for asking, but are you sure this _should_ work?  I ask
+ because of the following...
+ 
+ 0.  If I alter the server's access.conf file to:
+ 
+         <Directory />
+             Allow from all
+             AllowOverride Limit
+         </Directory>
+ 
+         <DirectoryMatch "^/htdocs/.*\.ltd">
+             Deny from all
+         </DirectoryMatch>
+ 
+ in order to allow directories' .htaccess files to override the server's
+ settings.  Then...
+ 
+ 1.  If the /htdocs/physics/secret.ltd/.htaccess file contains:
+         <FilesMatch *>
+             Allow from all
+         </FilesMatch>
+     access IS (correctly) allowed (because the .htaccess file's "Allow"
+     is overriding the "Deny" established by the pattern in the access.conf
+     file).
+ 
+ 2.  BUT if I then alter the .htaccess file to just:
+         Allow from all
+     then access is no longer allowed.  This seems to suggest that it is now
+     syntactically wrong and is being ignored?
+ 
+ [When I originally tried (2) I assumed that this was because Allow/Deny had
+ to be within a <Files> or <FilesMatch> block for an area's .htaccess file. 
+ But your question now makes me wonder whether I was wrong in assuming this. 
+ If it _should_ work then there may be a problem as it doesn't seem to!]
+ 
+ 
+ There seems to be another funny which may or may not be related (I asked
+ this on comp.infosystems.www.servers.unix last week but no-one there has yet
+ replied)...
+ 
+ If I set up the (1) environment above again, ie:
+ 
+ *   Server's access.conf includes:
+ 
+         <Directory />
+             Allow from all
+             AllowOverride Limit
+         </Directory>
+ 
+         <DirectoryMatch "^/htdocs/.*\.ltd">
+             Deny from all
+         </DirectoryMatch>
+ 
+ *   And the /htdocs/physics/secret.ltd/.htaccess is:
+ 
+         <FilesMatch *>
+             Allow from all
+         </FilesMatch>
+ 
+ Then, as expected, requests for documents in the area are satisfied.
+ 
+ And if I change the first block of the above access.conf file to:
+ 
+     <Directory />
+         Allow from all
+         AllowOverride None
+     </Directory>
+ 
+ then again, as expected, requests are now _denied_ (because the server does
+ not allow the .htaccess file to override the Allow/Deny directives)..
+ 
+ HOWEVER... if I now change the first block of the above access.conf file to:
+ 
+     <Directory />
+         Allow from all
+         AllowOverrides Indexes
+     </Directory>
+ 
+ I would *expect* requests to still be denied (after all the ability of an
+ .htaccess file to override the "Indexes" category of directives shouldn't
+ have any effect on being able to override Allow/Deny, which are part of the
+ "Limit" category).
+ 
+ However in actual fact this DOES let requests be satisfied!
+ 
+ This, along with my main report, makes me think there is something Really
+ Funny happening in the parsing or processing of the AllowOverride directive
+ in Apache 1.3b5 (also present in 1.3b3).
+ 
+ Do please feel free to let me know if you want any more information, or for
+ me to try anything else.
+ 
+ Cheers,
+ 
+ Mike Brudenell
+ 
+ -- 
+ The Computing Service, University of York, Heslington, York, YO1 5DD, UK
+ Tel: +44-1904-433811  FAX: +44-1904-433740  http://www.york.ac.uk/~pmb1/
+ 
+ * Unsolicited commercial e-mail is NOT welcome at this e-mail address. *
+ 
+
+From: "Mike Brudenell" <pmb1@york.ac.uk>
+To: apbugs@apache.org
+Cc:  Subject: Re: config/1941: AllowOverride ignored in <Directory ~ pattern> and <DirectoryMatch pattern>
+Date: Wed, 25 Mar 1998 17:51:06 +0000
+
+ Hmmm... I think I've just experienced a blinding flash of light that =
+ answers
+ my original problem/bug-report, so here's my confession.  :-}
+ 
+ However I think there is still a problem lurking that I raised in a
+ subsequent follow-up message (see entry dated Mon 16 Mar 1998 in this
+ problem report within the bugs database).  I mention this again, hopefully =
+ a
+ little more clearly, towards the end of this message.
+ 
+ 
+ Resum=E9
+ ------
+ The difficulty I was having was in establishing a "default" environment
+ through the server's central configuration file whereby:
+     *  The /htdocs/ tree was set to AllowOverride None
+     *  Directories matching a certain pattern:
+             <DirectoryMatch "/^htdocs/.*\.ltd">
+        were set within this section to "Deny from all" and "AllowOverride
+        AuthConfig Limit"
+ 
+ This latter was to establish a "default" of no access to the contents of a
+ directory whose name ended ".ltd" UNLESS it contained an .htaccess file
+ specifically allowing access from particular sources.
+ 
+ In my bug report I claimed that although the <DirectoryMatch> section's
+ "Deny from all" was being honoured (tested by changing it to an "Allow =
+ from
+ all") the "AllowOverride" directive was apparently being ignored: the
+ .htaccess file was not being processed.
+ 
+ Changing to using an exactly specified name (using <Directory>) eliminated
+ the problem and allowed the .htaccess file to be obeyed.
+ 
+ 
+ The Explanation
+ ---------------
+ The reason, of course, is "obvious" after the umpteenth re-reading of the
+ manual pages...  Apache FIRST processes <Directory> and .htaccess files
+ (with the latter overriding the former) and THEN pattern matches set with
+ <DirectoryMatch>
+ 
+ I was attempting to do this:
+     1.  Set up the "Deny from all" + "AllowOverride AuthConfig Limit" for
+         pattern-matched directories using <DirectoryMatch>
+     2.  Later override this with settings from an .htaccess file (which is
+         now allowed to override courtesy of step 1 above).
+ 
+ In practice Apache reverses the order of this testing to become:
+     1.  Ignore the .htacess file (because of the entire tree's
+ "AllowOverride
+         None" setting).
+     2.  Process the pattern-match in the <DirectoryMatch> section and:
+             a) deny access from all sources
+             b) turn on the AllowOverride categories for .htaccess files
+ 
+ Of course (2b) in now too late as the .htaccess file processing step has
+ already passed!  Hence access is denied: as I was seeing and tearing my =
+ hair
+ out over.
+ 
+ Personally I still find this ordering not terribly intuitive... I keep
+ thinking in terms of "use pattern-matches to establish general settings,
+ then override with specifics".  This is the exact opposite of Apache's
+ interpretation for
+ <Directory> and <DirectoryMatch> directives.  I suppose this is due to =
+ what
+ I think of as an "exact match" affecting not only that directory but also
+ all its subdirectories (hence is more of a prefix-match rather than an =
+ exact
+ match).
+ 
+ However as I said at the start I still think there's an oddity lurking...
+ 
+ 
+ 
+ But a Problem Remains?
+ ---------------------
+ However the question I raised in a follow-up message (dated Mon, 16 Mar =
+ 1998
+ in this problem report within the bugs database) still stands, I think...
+ 
+ Forgetting all about my <Directory> and <DirectoryMatch> stuff and
+ backtracking to basics...
+ 
+ *   If I set "AllowOverride AuthConfig Limit" for the htdocs tree then an
+     .htaccess file somewhere in it containing:
+         allow from all
+         require group some-users
+     then a request for a document in the area is honoured (subject to
+     authentication).
+ 
+ *   If I modify the .htaccess file to contain:
+         <FilesMatch "*">
+             allow from all
+             require group some-users
+         </FilesMatch>
+     then the .htaccess file is still (correctly) obeyed and the request =
+ for
+ a
+     document in the area is honoured (subject to authentication).
+ 
+ Now for the funny behaviour...
+ 
+ *   If I instead set the htdocs tree to "AllowOverride Indexes" I would
+ expect
+     this to NOT allow the request at all (not even ask for athentication)
+     because an .htaccess file is supposed to only allow "allow" if and =
+ only
+ if
+     "AllowOverride Limit" is in force, (likewise "require" if and only if
+     "AllowOverride AuthConfig" is set).
+ 
+     But instead the request IS honoured (subject to authentication).
+ 
+ This suggests that setting "AllowOverride Indexes" for an area correctly
+ prevents "allow", "require", etc from working if they are "loose" within =
+ an
+ .htaccess file, *BUT* (surely wrongly?) allows them if they appear within =
+ a
+ <FilesMatch> section in the .htaccess file.
+ 
+ Doesn't this behaviour mean that users could still apply access =
+ restrictions
+ to items in an area even if the server administrator though they were
+ disabled because the "AuthConfig" and "Limit" categories were not included
+ in the AllowOverride directive?
+ 
+ Cheers,
+ 
+ Mike Brudenell
+ 
+ -- 
+ The Computing Service, University of York, Heslington, York, YO1 5DD, UK
+ Tel: +44-1904-433811  FAX: +44-1904-433740  http://www.york.ac.uk/~pmb1/
+ 
+ * Unsolicited commercial e-mail is NOT welcome at this e-mail address. *
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Mike Brudenell <pmb1@york.ac.uk>
+Cc: apbugs@apache.org
+Subject: Re: config/1941: AllowOverride ignored in <Directory ~ pattern> and <DirectoryMatch pattern>
+Date: Fri, 27 Mar 1998 01:20:22 -0800 (PST)
+
+ You sure do like to create complex configurations!  Honestly I'd be afraid
+ of the number of potential errors even if Apache were bug free.
+ 
+ On 25 Mar 1998, Mike Brudenell wrote:
+ 
+ >  The reason, of course, is "obvious" after the umpteenth re-reading of the
+ >  manual pages...  Apache FIRST processes <Directory> and .htaccess files
+ >  (with the latter overriding the former) and THEN pattern matches set with
+ >  <DirectoryMatch>
+ 
+ Without this ordering it is impossible to optimize the directory walking
+ process.  You would end up with an O(NM) process where N is the number of
+ <Directory>/<DirectoryMatch> sections and M is the number of directories
+ in the path to be examined.  This is how 1.2 and earlier behave.  1.3 on
+ the other hand is O(N+M)... a situation I find far more appealing. 
+ 
+ I suppose there's another option too -- O(N'M + N'') where N' is the
+ number of DirectoryMatch sections, and N'' is the number of Directory
+ sections.  I still find this ugly. 
+ 
+ >  Personally I still find this ordering not terribly intuitive...
+ 
+ There's a reason for it that I can't remember right now.  You can argue it
+ both ways. 
+ 
+ >          <FilesMatch "*">
+ 
+ Depending on the regex library that could be a bogus regex... I think you
+ want ".*". 
+ 
+ >  *   If I instead set the htdocs tree to "AllowOverride Indexes" I would
+ >  expect
+ >      this to NOT allow the request at all (not even ask for athentication)
+ >      because an .htaccess file is supposed to only allow "allow" if and =
+ >  only
+ >  if
+ >      "AllowOverride Limit" is in force, (likewise "require" if and only if
+ >      "AllowOverride AuthConfig" is set).
+ >  
+ >      But instead the request IS honoured (subject to authentication).
+ 
+ It should actually give you a 500 error because the .htaccess file is
+ malformed.  But to be honest, I can't follow any of what you said, and if
+ you want me to look at it further then please send a MINIMAL configuration
+ file (i.e. less than 25 lines) and .htaccess file which show this
+ behaviour.  It's far easier for me to look at a config file than it is to
+ follow a long string of "suppose this" and "then change that"s...
+ 
+ >  This suggests that setting "AllowOverride Indexes" for an area correctly
+ >  prevents "allow", "require", etc from working if they are "loose" within =
+ >  an
+ >  .htaccess file, *BUT* (surely wrongly?) allows them if they appear within =
+ >  a
+ >  <FilesMatch> section in the .htaccess file.
+ 
+ <FilesMatch> are dealt with after all <Directory>s and .htaccess files. 
+ It's entirely possible/likely that some other directive is changing the
+ AllowOverride again before <Files> are dealt with. 
+ 
+ I will readily admit that the whole process is terribly confusing, and
+ subject to many errors.  Which is why I try to KISS in my own configs. 
+ Unfortunately I've yet to figure out a way to make the whole process
+ magically simple or easily debuggable.  Pretty much every time we get a
+ report like yours it ends up being "oh yeah that's expected behaviour
+ because you've got some little thing hiding somewhere in some other config
+ file which you forgot about". 
+ 
+ Dean
+ 
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: coar
+State-Changed-When: Thu May 28 12:26:39 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

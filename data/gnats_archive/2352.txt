@@ -1,0 +1,174 @@
+Received: (qmail 4059 invoked by uid 2012); 4 Jun 1998 22:01:21 -0000
+Message-Id: <19980604220121.4058.qmail@hyperreal.org>
+Date: 4 Jun 1998 22:01:21 -0000
+From: Curtis Wood <mail4cw@cyberis.net>
+Reply-To: mail4cw@cyberis.net
+To: apbugs@hyperreal.org
+Subject: The limited number of VIRTUAL DOMAINS...
+X-Send-Pr-Version: 3.2
+
+>Number:         2352
+>Category:       mod_log-any
+>Synopsis:       The limited number of VIRTUAL DOMAINS...
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jun  4 15:10:01 PDT 1998
+>Last-Modified:  Sat Jun  6 12:40:00 PDT 1998
+>Originator:     mail4cw@cyberis.net
+>Organization:
+>Release:        1.2.6
+>Environment:
+Apache 1.2.6
+Kernel 2.0.X or 2.1.X 
+>Description:
+I'm sure you already know about the limited number of virtual domains avialiable to
+Apache because of the method behind the logging... I'm not reporting a bug, just
+how I've gotten around this delima...
+>How-To-Repeat:
+@120+ Virtual domains in the configuration file...
+>Fix:
+  I'm assuming that the reasoning behind keeping the file descriptors open for each
+and every log is for speed, not having to open and close the file each and every time
+the given log has to be updated, seems logical. Although, the solution I've come up with 
+enables Apache to virtually have an unlimited number of virtual domains - limited only to 
+the maximum that will fit into memory, a far greater magnitude that what is
+viable now. Plus, I believe (although I could be wrong) that it will speed up
+the server(s) by elliminating any file IO - I don't know how to bench mark this
+or I would have verified it...
+  Basically, my solution goes back opening and closing the given logs as the time 
+arises, but then comes the speed factor, and possibly the runtime error of two or 
+more servers requiring access to the same log at the same time. The solution comes from
+having an external application do all the logging and communicate with all the servers
+via a message que. The need for the logger to keep up with all the servers at once is not 
+neccesary since the messages will just get "backed up" in the que - the logger 
+can take it's own sweet time to elliminate the que, and mean while the 
+servers are mearly writing to memory - inwhich you can't really speed up...
+  Being the system administrator of a fairly large ISP is Salem, Oregon, I needed
+to find away around this problem of a limited number of virtual domains. After
+hacking apart the code for a day or so I came up with the "hacked" server, and
+have been running it as our web server. Before we could only support upto 120
+virtual domains, now we have 131 virtual domains - with only 5 file 
+descriptors open... Everything seems to working just fine...
+  I really didn't know who to email about this, so I'm using this page. I hope 
+I'm not stepping on anyones toes or annoying someone for not using the propper
+channels, I just figured that you might be interested in this since it elliminates
+one of the limitiations of Apache - making it that much more supperior :) I do
+have a patch for version 1.2.6, but it only has the TRANSFER and ERROR log's 
+addressed - it's not that big of a deal to modify the code, I just don't know
+where and or what to check...
+>Audit-Trail:
+
+From: Manoj Kasichainula <manojk@raleigh.ibm.com>
+To: mail4cw@cyberis.net, apbugs@hyperreal.org
+Cc:  Subject: Re: mod_log-any/2352: The limited number of VIRTUAL DOMAINS...
+Date: Thu, 4 Jun 1998 18:39:58 -0400
+
+ On Thu, Jun 04, 1998 at 10:01:21PM -0000, Curtis Wood wrote:
+ > I'm sure you already know about the limited number of virtual
+ > domains avialiable to Apache because of the method behind the
+ > logging... I'm not reporting a bug, just how I've gotten around this
+ > delima...
+ 
+ FYI, there are other ways of getting around this problem without extra
+ code, such as using a single log file where each entry includes the
+ name of the virtual host. This log can then be split up either by
+ using a piped log or a log postprocessor.
+ 
+ See http://www.apache.org/docs/misc/FAQ.html#fdlim for more
+ information.
+ 
+ Hope this helps, and thanks for using Apache!
+ 
+ -- 
+ Manoj Kasichainula - manojk@raleigh.ibm.com
+
+From: Curtis Wood <mail4cw@cyberis.net>
+To: Manoj Kasichainula <manojk@raleigh.ibm.com>
+Cc: apbugs@apache.org
+Subject: Re: mod_log-any/2352: The limited number of VIRTUAL DOMAINS...
+Date: Thu, 04 Jun 1998 16:42:04 -0700 (PDT)
+
+ Manoj,
+ 
+      I forgot about cc'ing the reply, sorry - although I am confused about you
+ wanting to put it in the bug-databse because it's not really a bug... It's
+ quite possible that I have the bug-database confused with something else but
+ isn't it what the normal users go through to find solutions to what they are
+ having problems with? If so what would be the benifit of posting the comment???
+ Anyway, if you feel that it would benifit anything, be my guest to post it...
+ 
+ Curtis Wood
+ 
+ On 04-Jun-98 Manoj Kasichainula wrote:
+ > On Thu, Jun 04, 1998 at 04:20:57PM -0700, Curtis Wood wrote:
+ >>   I do know about the multiple "work-arounds" for this limitation.
+ >>   But that is all they are - just work arounds. Although such an
+ >>   improvement may be a low priority - if at all, the ellimination of
+ >>   ANY work-around I would hope to be some kind of priority on some
+ >>   ones list at the Apache group...
+ > 
+ > Mind if I post your comment to the bug database so that others see it?
+ > (you can do this when you reply normally by cc:ing apbugs@apache.org)
+ > 
+ > -- 
+ > Manoj Kasichainula - manojk@raleigh.ibm.com
+ 
+ ----------------------------------
+ E-Mail: Curtis Wood <mail4cw@cyberis.net>
+ Date: 04-Jun-98
+ Time: 16:30:55
+ 
+ This message was sent by XFMail
+ ----------------------------------
+State-Changed-From-To: open-closed
+State-Changed-By: brian
+State-Changed-When: Thu Jun  4 19:53:35 PDT 1998
+State-Changed-Why:
+Apache 1.3 has reliable piped logs, which means you can
+use something like
+
+  TransferLog "|/usr/local/bin/logger"
+
+make sure your logformat has %v in it so that the virtual
+host can be seen.
+
+
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Curtis Wood <mail4cw@cyberis.net>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_log-any/2352: The limited number of VIRTUAL DOMAINS...
+Date: Sat, 6 Jun 1998 12:39:35 -0700 (PDT)
+
+ On 4 Jun 1998, Curtis Wood wrote:
+ 
+ >   I'm assuming that the reasoning behind keeping the file descriptors open for each
+ > and every log is for speed, not having to open and close the file each and every time
+ > the given log has to be updated, seems logical.
+ 
+ It's also for security.  The children do not run as root.  Unless you use
+ suexec, CGIs run as the same uid as the children.  Therefore if the
+ children can open logs to write on them, then so could CGIs.  This could
+ compromise the logs.
+ 
+ > more servers requiring access to the same log at the same time. The solution comes from
+ > having an external application do all the logging and communicate with all the servers
+ > via a message que.
+ 
+ This is what piped logs are for.
+ 
+ Dean
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

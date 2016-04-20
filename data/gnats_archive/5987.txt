@@ -1,0 +1,268 @@
+Received: (qmail 84291 invoked by uid 65534); 13 Apr 2000 17:08:36 -0000
+Message-Id: <20000413170836.84288.qmail@locus.apache.org>
+Date: 13 Apr 2000 17:08:36 -0000
+From: Mark Claassen <mac@donnell.com>
+Reply-To: mac@donnell.com
+To: submit@bugz.apache.org
+Subject: Hundreds of sockets in CLOSE_WAIT state
+X-Send-Pr-Version: 3.110
+
+>Number:         5987
+>Category:       general
+>Synopsis:       Hundreds of sockets in CLOSE_WAIT state
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Apr 13 10:10:00 PDT 2000
+>Closed-Date:    
+>Last-Modified:  Thu Apr 13 12:20:00 PDT 2000
+>Originator:     mac@donnell.com
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Solaris 2.6 with recommended patch cluster released by Sun earlier this year.
+gnu compiler from gnu.org (obtained over a year ago)
+SunOS idgiot 5.6 Generic_105181-19 sun4u sparc SUNW,Ultra-1
+>Description:
+Similar to PR 5412
+
+Start apache and watch the output of netstat.  The number of sockets in a CLOSE_WAIT / TIME_WAIT state will increase steadily, finally stabilizing (for me) around 85.  
+
+We added code so everytime a call was made to ap_psocket() and cleanup_socket() (in alloc.c) they would each send output to a file.  Every second or so (with NO web server activity) a socket was opened.  It always received file descriptor 5 on our system.  Every call to ap_psocket() seems to be followed by a call to cleanup_socket().  
+
+This is a descriptive sample of the netstat output:
+localhost.8007       localhost.44227      32768      0 32768      0 TIME_WAIT
+localhost.8007       localhost.44228      32768      0 32768      0 TIME_WAIT
+localhost.8007       localhost.44229      32768      0 32768      0 TIME_WAIT
+localhost.8007       localhost.44230      32768      0 32768      0 TIME_WAIT
+localhost.8007       localhost.44231      32768      0 32768      0 TIME_WAIT
+localhost.8007       localhost.44232      32768      0 32768      0 TIME_WAIT
+localhost.8007       localhost.44233      32768      0 32768      0 TIME_WAIT
+localhost.8007       localhost.44234      32768      0 32768      0 TIME_WAIT
+localhost.8007       localhost.44235      32768      0 32768      0 TIME_WAIT
+
+We use apache to handle a servlet and when this gets accessed, the number of sockets in a CLOSE_WAIT / TIME_WAIT state will go into the hundreds.  We noticed this behaviour thinking it was jserv, but when we saw that these sockets increased with no activity, we were thinking it was likely in the core product.
+
+Netstat sample after running servlet:
+
+localhost.8007       localhost.45369      32768      0 32768      0 TIME_WAIT
+idgiot.80            idgiot.45368         32768      0 32768      0 TIME_WAIT
+localhost.8007       localhost.45372      32768      0 32768      0 TIME_WAIT
+idgiot.80            idgiot.45371         32768      0 32768      0 TIME_WAIT
+localhost.8007       localhost.45374      32768      0 32768      0 TIME_WAIT
+idgiot.80            idgiot.45373         32768      0 32768      0 TIME_WAIT
+localhost.8007       localhost.45376      32768      0 32768      0 TIME_WAIT
+localhost.8007       localhost.45378      32768      0 32768      0 TIME_WAIT
+localhost.8007       localhost.45379      32768      0 32768      0 TIME_WAIT
+idgiot.80            idgiot.45377         32768      0 32768      0 TIME_WAIT
+
+When the servlet was accessed, calls were made to ap_psocket(), but none to cleanup_socket().  However, each one of these calls also had the same file descriptor...8.  This implies that the socket was being closed elsewhere.
+
+
+The file where the ap_psocket() was writing to looked like this when there was no activity:
+Opening 5
+Opening 5
+Opening 5
+Opening 5
+Opening 5
+When the servlet was being accessed, it looked like:
+Opening 8
+Opening 8
+Opening 5
+Opening 8
+Opening 5
+Opening 8
+Opening 8
+Opening 8
+
+Bringing up html pages does not appear to have any affect.  It does not appear that calls to ap_psocket() were made in response to these requests.
+
+The servlet we are running reads data through a stream from the client created by a call to the JSDK getInputStream().  I don't know if this is part of the problem.
+
+>How-To-Repeat:
+Start apache
+In a cmdtool write a loop to monitor the sockets
+Example in ksh:
+while [ 1 ]; do
+netstat -a | grep WAIT | wc -l
+sleep 1
+done
+
+Watch the netstat output.  The number of sockets in WAIT states will steadily increase...about 1 a second.  For me it eventually stabilized around 85.  
+This was done on a "quiet" web server.  Following a tail on the access_log confirmed that there was no access to the web server since it was started, yet the number of sockets in a WAIT state steadily increased.
+
+Stop apache, and eventually they all go away.
+>Fix:
+We tried adding lingers to the sockets in places like ap_psocket()...this did not seem to help.
+>Release-Note:
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Mark Claassen <mac@donnell.com>
+Cc: submit@bugz.apache.org
+Subject: Re: general/5987: Hundreds of sockets in CLOSE_WAIT state
+Date: Thu, 13 Apr 2000 11:12:58 -0600 (MDT)
+
+ On 13 Apr 2000, Mark Claassen wrote:
+ 
+ > 
+ > >Number:         5987
+ > >Category:       general
+ > >Synopsis:       Hundreds of sockets in CLOSE_WAIT state
+ > >Confidential:   no
+ > >Severity:       serious
+ > >Priority:       medium
+ > >Responsible:    apache
+ > >State:          open
+ > >Class:          sw-bug
+ > >Submitter-Id:   apache
+ > >Arrival-Date:   Thu Apr 13 10:10:00 PDT 2000
+ > >Closed-Date:
+ > >Last-Modified:
+ > >Originator:     mac@donnell.com
+ > >Release:        1.3.12
+ > >Organization:
+ > apache
+ > >Environment:
+ > Solaris 2.6 with recommended patch cluster released by Sun earlier this year.
+ > gnu compiler from gnu.org (obtained over a year ago)
+ > SunOS idgiot 5.6 Generic_105181-19 sun4u sparc SUNW,Ultra-1
+ > >Description:
+ > Similar to PR 5412
+ > 
+ > Start apache and watch the output of netstat.  The number of sockets in a CLOSE_WAIT / TIME_WAIT state will increase steadily, finally stabilizing (for me) around 85.  
+ 
+ I don't see anything in CLOSE_WAIT in your below example.
+ 
+ > 
+ > We added code so everytime a call was made to ap_psocket() and cleanup_socket() (in alloc.c) they would each send output to a file.  Every second or so (with NO web server activity) a socket was opened.  It always received file descriptor 5 on our system.  Every call to ap_psocket() seems to be followed by a call to cleanup_socket().  
+ > 
+ > This is a descriptive sample of the netstat output:
+ > localhost.8007       localhost.44227      32768      0 32768      0 TIME_WAIT
+ > localhost.8007       localhost.44228      32768      0 32768      0 TIME_WAIT
+ > localhost.8007       localhost.44229      32768      0 32768      0 TIME_WAIT
+ > localhost.8007       localhost.44230      32768      0 32768      0 TIME_WAIT
+ > localhost.8007       localhost.44231      32768      0 32768      0 TIME_WAIT
+ > localhost.8007       localhost.44232      32768      0 32768      0 TIME_WAIT
+ > localhost.8007       localhost.44233      32768      0 32768      0 TIME_WAIT
+ > localhost.8007       localhost.44234      32768      0 32768      0 TIME_WAIT
+ > localhost.8007       localhost.44235      32768      0 32768      0 TIME_WAIT
+ > 
+ > We use apache to handle a servlet and when this gets accessed, the number of sockets in a CLOSE_WAIT / TIME_WAIT state will go into the hundreds.  We noticed this behaviour thinking it was jserv, but when we saw that these sockets increased with no activity, we were thinking it was likely in the core product.
+ 
+ This is 100% jserv related.  8007 is the port that jserv uses.
+ Even when there is no traffic, it connects to the JVM to ensure it
+ is still alive.  More the the point, there is absolutely nothing
+ "wrong" about having sockets in TIME_WAIT.  It is a normal part of
+ the TCP protocol, and they go away after a certain timeout.
+ 
+ > 
+ > Netstat sample after running servlet:
+ > 
+ > localhost.8007       localhost.45369      32768      0 32768      0 TIME_WAIT
+ > idgiot.80            idgiot.45368         32768      0 32768      0 TIME_WAIT
+ > localhost.8007       localhost.45372      32768      0 32768      0 TIME_WAIT
+ > idgiot.80            idgiot.45371         32768      0 32768      0 TIME_WAIT
+ > localhost.8007       localhost.45374      32768      0 32768      0 TIME_WAIT
+ > idgiot.80            idgiot.45373         32768      0 32768      0 TIME_WAIT
+ > localhost.8007       localhost.45376      32768      0 32768      0 TIME_WAIT
+ > localhost.8007       localhost.45378      32768      0 32768      0 TIME_WAIT
+ > localhost.8007       localhost.45379      32768      0 32768      0 TIME_WAIT
+ > idgiot.80            idgiot.45377         32768      0 32768      0 TIME_WAIT
+ > 
+ > When the servlet was accessed, calls were made to ap_psocket(), but none to cleanup_socket().  However, each one of these calls also had the same file descriptor...8.  This implies that the socket was being closed elsewhere.
+ > 
+ > 
+ > The file where the ap_psocket() was writing to looked like this when there was no activity:
+ > Opening 5
+ > Opening 5
+ > Opening 5
+ > Opening 5
+ > Opening 5
+ > When the servlet was being accessed, it looked like:
+ > Opening 8
+ > Opening 8
+ > Opening 5
+ > Opening 8
+ > Opening 5
+ > Opening 8
+ > Opening 8
+ > Opening 8
+ > 
+ > Bringing up html pages does not appear to have any affect.  It does not appear that calls to ap_psocket() were made in response to these requests.
+ > 
+ > The servlet we are running reads data through a stream from the client created by a call to the JSDK getInputStream().  I don't know if this is part of the problem.
+ > 
+ > >How-To-Repeat:
+ > Start apache
+ > In a cmdtool write a loop to monitor the sockets
+ > Example in ksh:
+ > while [ 1 ]; do
+ > netstat -a | grep WAIT | wc -l
+ > sleep 1
+ > done
+ > 
+ > Watch the netstat output.  The number of sockets in WAIT states will steadily increase...about 1 a second.  For me it eventually stabilized around 85.  
+ > This was done on a "quiet" web server.  Following a tail on the access_log confirmed that there was no access to the web server since it was started, yet the number of sockets in a WAIT state steadily increased.
+ > 
+ > Stop apache, and eventually they all go away.
+ > >Fix:
+ > We tried adding lingers to the sockets in places like ap_psocket()...this did not seem to help.
+ > >Release-Note:
+ > >Audit-Trail:
+ > >Unformatted:
+ >  [In order for any reply to be added to the PR database, you need]
+ >  [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ >  [subject line starts with the report component and number, with ]
+ >  [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ >  ["Re: general/1098:").  If the subject doesn't match this       ]
+ >  [pattern, your message will be misfiled and ignored.  The       ]
+ >  ["apbugs" address is not added to the Cc line of messages from  ]
+ >  [the database automatically because of the potential for mail   ]
+ >  [loops.  If you do not include this Cc, your reply may be ig-   ]
+ >  [nored unless you are responding to an explicit request from a  ]
+ >  [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ >  
+ >  
+ > 
+ 
+
+From: "Mark Claassen" <mac@donnell.com>
+To: "Marc Slemko" <marcs@znep.com>
+Cc: <submit@bugz.apache.org>
+Subject: RE: general/5987: Hundreds of sockets in CLOSE_WAIT state
+Date: Thu, 13 Apr 2000 14:19:19 -0500
+
+ Sorry, when I saw it was 8007, I should have immediately put it together
+ that this was a jserv issue.
+ 
+ I realize that TIME_WAIT is a normal thing, but while doing testing we have
+ seen hundreds of these.  Imagine having a web site that was constantly
+ accessed; it would be possible to use all the ports up.  (Unless the OS is
+ smart enough to grab some of these first.)
+ 
+ I am running a test now which is putting the servlet under a moderate load.
+ The number of ports in the TIME_WAIT state now is stabilizing at about 2500.
+ That seems pretty high.
+ 
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

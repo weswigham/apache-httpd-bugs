@@ -1,0 +1,133 @@
+Received: (qmail 15390 invoked by uid 2012); 13 Feb 1998 01:48:12 -0000
+Message-Id: <19980213014812.15389.qmail@hyperreal.org>
+Date: 13 Feb 1998 01:48:12 -0000
+From: Jeff Lewis <lewis@stanford.edu>
+Reply-To: lewis@stanford.edu
+To: apbugs@hyperreal.org
+Subject: mod_mime's mapping to handler and content_type gets confused by some filenames
+X-Send-Pr-Version: 3.2
+
+>Number:         1799
+>Category:       mod_mime
+>Synopsis:       mod_mime's mapping to handler and content_type gets confused by some filenames
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          analyzed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Feb 12 17:50:00 PST 1998
+>Last-Modified:  Fri Feb 20 00:49:27 PST 1998
+>Originator:     lewis@stanford.edu
+>Organization:
+>Release:        1.3b3
+>Environment:
+SunOS 5.5.1 Generic_103640-14 sun4u sparc SUNW,Ultra-1
+gcc version 2.7.2.2
+>Description:
+If you've got a filename, with two substrings that qualify as extensions,
+and one of them is bound to a handler and one of them is bound to a content-type
+(map files and gifs, for instance), you'll end up with both the handler and
+the content-type set.  Since the handler takes precedence, this'll sometimes
+do what you want and sometimes not.  My problem case was a GIF named 
+assu.map.gif that'd end up getting handled by mod_imap.
+
+>How-To-Repeat:
+with mod_imap in your server, handling files with the ".map" ext, 
+name a gif "something.map.gif" then grab it, it'll be a broken
+image because the map handler's trying to deliver it
+>Fix:
+Don't know if it's the best way, but I reset the handler
+back to orighandler if the content-type gets set or
+changed based a string later in the filename:
+
+*** mod_mime.c.orig     Thu Feb 12 16:31:53 1998
+--- mod_mime.c  Thu Feb 12 16:32:31 1998
+***************
+*** 256,261 ****
+--- 256,262 ----
+          if ((type = table_get(conf->forced_types, ext))
+              || (type = table_get(hash_buckets[hash(*ext)], ext))) {
+              r->content_type = type;
++           r->handler = orighandler;
+              found = 1;
+          }
+%0
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Jeff Lewis <lewis@stanford.edu>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_mime/1799: mod_mime's mapping to handler and content_type gets confused by some filenames
+Date: Thu, 12 Feb 1998 18:03:40 -0800 (PST)
+
+ I think this just falls into the "don't do that" category.  I've found
+ that I frequently need to change the imap extension from .map to .imap
+ because folks just tend to name geographical maps .map.
+ 
+ Your change probably breaks some legitimate uses of SetHandler and such. 
+ 
+ Dean
+ 
+ 
+
+From: Jeff Lewis <lewis@stanford.edu>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: mod_mime/1799: mod_mime's mapping to handler and content_type 
+ gets confused by some filenames
+Date: Fri, 13 Feb 1998 15:39:35 -0800
+
+ > Your change probably breaks some legitimate uses of SetHandler and such. 
+ 
+ It seems like the change would only affect AddHandler mappings, 
+ since SetHandler is applied after and overrides the extension mappings.
+ 
+ But if you don't like that, how about adding a "default" or "none" keyword 
+ to SetHandler and AddHandler so it's possible to clear the handler that 
+ gets assigned to a file?  Right now, if I want to have a directory full 
+ of GIFs, and have them all served regardless of extensions, including any
+ extensions that get added in the future, I can't do it because there's 
+ no way to say "SetHandler to nothing so you do that default server thing 
+ where you just copy this file out".  If I put
+ 
+ ForceType image/gif
+ 
+ in that dir, any file with, for instance, ".asis.gif" or ".map.gif" 
+ or ".map" will get a handler assigned and it'll choke.  But if I could 
+ also do
+ 
+ SetHandler default
+ or
+ SetHandler none
+ 
+ everything would work fine regardless of extensions.  And if I want to
+ worry about it on a server-wide basis, I can put
+ 
+ AddHandler default gif
+ 
+ in my server conf.  It just seems that the common, uncomplicated, 
+ and reasonable user expectation is that, if my file ends in ".gif" 
+ it's an image and I want it served.
+ 
+ thanks,
+ Jeff
+ 
+ 
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Feb 20 00:49:27 PST 1998
+State-Changed-Why:
+I like the suggestion to add "default" as a handler which overrides
+other handlers... lemme see what others think.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,168 @@
+Received: (qmail 5383 invoked by uid 2012); 9 Nov 1998 00:06:33 -0000
+Message-Id: <19981109000633.5382.qmail@hyperreal.org>
+Date: 9 Nov 1998 00:06:33 -0000
+From: Kevin Goddard <draddog@draddog.com>
+Reply-To: draddog@draddog.com
+To: apbugs@hyperreal.org
+Subject: I am getting this - (11)Resource temporarily unavailable: couldn't spawn child process - on very busy servers
+X-Send-Pr-Version: 3.2
+
+>Number:         3366
+>Category:       mod_cern_meta
+>Synopsis:       I am getting this - (11)Resource temporarily unavailable: couldn't spawn child process - on very busy servers
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Nov  8 16:10:00 PST 1998
+>Closed-Date:    Tue Mar 26 06:27:54 PST 2002
+>Last-Modified:  Tue Mar 26 06:27:54 PST 2002
+>Originator:     draddog@draddog.com
+>Release:        1.3.3
+>Organization:
+>Environment:
+Here is the output from a Uname -a:
+Linux server.domain.com 2.0.34 #9 Wed Nov 4 15:46:51 EST 1998 i686 unknown
+The server is a Dell Poweredge 2300 with 256 MB of RAM and a Pentium II 400 processor.  I am having the exact same problem on three identical machines.  All running the same version of Linux with identical Hard ware configuration
+>Description:
+Okay I have seen this problem listed before, and I have applied every single fix listed.  The server is not listening to any port but 80.  Here is a list of a ulimit -a:
+core file size (blocks)  1000000
+data seg size (kbytes)   unlimited
+file size (blocks)       unlimited
+max memory size (kbytes) unlimited
+stack size (kbytes)      8192
+cpu time (seconds)       unlimited
+max user processes       unlimited
+pipe size (512 bytes)    8
+open files               1024
+virtual memory (kbytes)  2105343
+
+As you can see, but the user processes and the open files is very high.  I am currently getting this error message on one machine which has 227 httpd processes running and 600 tcp connections to it.  I have the HARD_SERVER_LIMIT set to 1000.  The following info is in my config:
+MaxClients 400
+StartServers 100
+MinSpareServers 50
+MaxSpareServers 100
+MaxRequestsPerChild 100000
+The server works fine after restarting it for a certain lenght of time (less then 30 minutes) and then proceeds to generate (11)Resource temporarily unavailable: couldn't spawn child process for any CGi's that run on it.  Though we can restart the server every 15 or so minutes, I believe that Apache should run a bit better.  I have the same version running on 3 other machines that are a different hardware configuration (they have Pentium II 300's) that are running fine.  They all run anywhere between 200 to 1000 tcp connections at one time.
+>How-To-Repeat:
+You can go to http://www.draddog.com/sanctum/calcrank.html and enter 100 for both boxes and hit submit.  It may or may not error out.
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Kevin Goddard <draddog@draddog.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_cern_meta/3366: I am getting this - (11)Resource temporarily
+ unavailable: couldn't spawn child process - on very busy servers
+Date: Sun, 8 Nov 1998 16:16:13 -0800 (PST)
+
+ On 9 Nov 1998, Kevin Goddard wrote:
+ 
+ > Here is the output from a Uname -a:
+ > Linux server.domain.com 2.0.34 #9 Wed Nov 4 15:46:51 EST 1998 i686 unknown
+ > The server is a Dell Poweredge 2300 with 256 MB of RAM and a Pentium II 400 processor.  I am having the exact same problem on three identical machines.  All running the same version of Linux with identical Hard ware configuration
+ > >Description:
+ > Okay I have seen this problem listed before, and I have applied every single fix listed.  The server is not listening to any port but 80.  Here is a list of a ulimit -a:
+ > core file size (blocks)  1000000
+ > data seg size (kbytes)   unlimited
+ > file size (blocks)       unlimited
+ > max memory size (kbytes) unlimited
+ > stack size (kbytes)      8192
+ > cpu time (seconds)       unlimited
+ > max user processes       unlimited
+ > pipe size (512 bytes)    8
+ > open files               1024
+ > virtual memory (kbytes)  2105343
+ > 
+ > As you can see, but the user processes and the open files is very high.  I am currently getting this error message on one machine which has 227 httpd processes running and 600 tcp connections to it.  I have the HARD_SERVER_LIMIT set to 1000.  The follo wing info is in my config:
+ 
+ How many processes are running at the time, both total and for the user
+ Apache runs as?
+ 
+ What does cat /proc/sys/kernel/file-max show?
+ 
+ Do you have any reason to think this is anything other than Linux simply
+ running into file or process number restrictions?  Linux has some very
+ annoying such restrictions that can be a pain to remove.
+ 
+ What ulimit returns means nothing if the kernel limits are lower.
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Kevin Goddard <draddog@draddog.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: mod_cern_meta/3366: I am getting this - (11)Resource temporarily
+ unavailable: couldn't spawn child process - on very busy servers
+Date: Sun, 8 Nov 1998 17:02:02 -0800 (PST)
+
+ On Sun, 8 Nov 1998, Kevin Goddard wrote:
+ 
+ > >How many processes are running at the time, both total and for the user
+ > >Apache runs as?
+ > 
+ > 323 for all of the users
+ > 293 for nobody (the user Apache runs as)
+ 
+ And this is when the problem is happening?
+ 
+ So "ps ax | wc" will show those numbers?
+ 
+ Are you sure that the ulimits you show are the ones set when Apache is
+ started?
+ 
+ > >What does cat /proc/sys/kernel/file-max show?
+ > 1024
+ > 
+ > >Do you have any reason to think this is anything other than Linux simply
+ > >running into file or process number restrictions?  Linux has some very
+ > >annoying such restrictions that can be a pain to remove.
+ > Yeah I have removed as many file limits as I could find.  Unfortunatly the 3 other machines are running the exact same config without the problem popping up.  
+ > Either it is a hard ware problem with the PII 400's or it is something I cannot figure.
+ 
+ This is most likely a Linux problem.
+ 
+ The other servers may well have slightly different traffic distribution,
+ different numbers of CGIs, etc.
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Wed Mar 24 11:08:22 PST 1999
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: jim
+State-Changed-When: Tue Mar 26 06:27:54 PST 2002
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

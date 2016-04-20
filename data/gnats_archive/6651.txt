@@ -1,0 +1,128 @@
+Received: (qmail 64508 invoked by uid 501); 10 Oct 2000 17:20:21 -0000
+Message-Id: <20001010172021.64482.qmail@locus.apache.org>
+Date: 10 Oct 2000 17:20:21 -0000
+From: Wade Klaver <wade@wavefire.com>
+Reply-To: wade@wavefire.com
+To: submit@bugz.apache.org
+Subject: ap_send_fd API call causes SIGPIPE/child coredump when transfer is aborted.
+X-Send-Pr-Version: 3.110
+
+>Number:         6651
+>Category:       os-freebsd
+>Synopsis:       ap_send_fd API call causes SIGPIPE/child coredump when transfer is aborted.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 10 10:30:03 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     wade@wavefire.com
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+FreeBSD 3.5-STABLE i386 code base, with gcc v 2.7.2.3
+Browser: MSIE 5.00.2919.6307
+>Description:
+I found the problem with the following code:
+
+     if (!(upfile = ap_pfopen( r->pool, upfile_path, "r" ) ))
+     {
+       ap_log_error( RX_LOG, r->server,
+          "[retreive] Failed to open local file: %s\n", r->args );
+       return HTTP_NOT_FOUND;
+     }
+     user_agent = ap_table_get( r->headers_in, "User-Agent" );
+     if ( user_agent && strstr( user_agent, "MSIE 5" ) )
+     {
+          disposition = ap_psprintf( r->pool, " attachment; filename=%s",
+               r->path_info + 1);
+          fprintf(stderr, "[retrieve] Got MS user agent: %s\n\n", user_agent);
+          r->content_type = "application/octet-stream";
+          ap_table_set( r->headers_out, "Content-Disposition", disposition);
+          ap_table_set( r->headers_out, "Pragma", "no-cache");
+          ap_table_set( r->headers_out, "Expires", "0" );
+     }
+
+     ap_soft_timeout( "retrieve_handler... download", r );
+
+     ap_send_http_header(r);
+
+     ap_send_fd( upfile, r );
+
+     ap_kill_timeout(r);
+
+     ap_pfclose( r->pool, upfile );
+
+Using the application/octet-stream content-type, If one presses cancel on the
+browser's "Save To Disk" window, or in any way aborts the transfer once it has 
+started, a SIGPIPE is raised, a core dump ensues, and the child dies.
+Hopefully the following back trace will provide you with some helpful info.
+
+
+Program received signal SIGPIPE, Broken pipe.
+0x18132fa0 in write () from /usr/lib/libc.so.3
+(gdb) bt
+#0  0x18132fa0 in write () from /usr/lib/libc.so.3
+#1  0x806a2d2 in ap_write (fb=0x80e5044, buf=0xbfbfba34, nbyte=8192)
+    at buff.c:332
+#2  0x806bbb6 in buff_write (fb=0x80e5044, buf=0xbfbfba34, nbyte=8192)
+    at buff.c:356
+#3  0x806b0d8 in write_with_errors (fb=0x80e5044, buf=0xbfbfba34, nbyte=8192)
+    at buff.c:1108
+#4  0x806b1a1 in bcwrite (fb=0x80e5044, buf=0xbfbfba34, nbyte=8192)
+    at buff.c:1145
+#5  0x806b629 in ap_bwrite (fb=0x80e5044, buf=0xbfbfba34, nbyte=8192)
+    at buff.c:1359
+#6  0x807b6fa in ap_send_fd_length (f=0x1817e054, r=0x8108034, length=-1)
+    at http_protocol.c:2112
+#7  0x807b5ca in ap_send_fd (f=0x1817e054, r=0x8108034) at http_protocol.c:2082
+#8  0x8064f4d in retrieve_handler (r=0x8108034) at mod_template.c:1801
+#9  0x806c5db in ap_invoke_handler (r=0x8108034) at http_config.c:508
+#10 0x807f0ad in process_request_internal (r=0x8108034) at http_request.c:1215
+#11 0x807f10c in ap_process_request (r=0x8108034) at http_request.c:1231
+#12 0x8076b35 in child_main (child_num_arg=0) at http_main.c:4177
+#13 0x8076cc0 in make_child (s=0x80d1034, slot=0, now=971170908)
+    at http_main.c:4281
+#14 0x8076e1b in startup_children (number_to_start=2) at http_main.c:4363
+#15 0x80773cc in standalone_main (argc=2, argv=0xbfbfdc0c) at http_main.c:4651
+---Type <return> to continue, or q <return> to quit---
+#16 0x8077c2b in main (argc=2, argv=0xbfbfdc0c) at http_main.c:4973
+(gdb) q
+
+If you know of/find a workaround to this problem, or i am doing something 
+blatantly wrong, could you please contact me... wade@wavefire.com
+Thank you
+>How-To-Repeat:
+The above code should allow you to repeat the problem...
+Just supply "upfile" with a large enough file to allow you to abort the xfer
+before it is complete.
+>Fix:
+Is there some way of introducing a check for an incomplete transfer, and then 
+intercept a SIGPIPE before it is raised?.
+Another way may be to define a SIGPIPE handler specific to ap_send_fd.
+Sorry i cannot suggest something more complete.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

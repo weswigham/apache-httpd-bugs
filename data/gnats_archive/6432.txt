@@ -1,0 +1,152 @@
+Received: (qmail 51825 invoked by uid 501); 19 Aug 2000 08:04:55 -0000
+Message-Id: <20000819080455.51824.qmail@locus.apache.org>
+Date: 19 Aug 2000 08:04:55 -0000
+From: Chris Pirazzi <chris_pirazzi@hotmail.com>
+Reply-To: chris_pirazzi@hotmail.com
+To: submit@bugz.apache.org
+Subject: HERE IS A FIX for Win32 CGI server-push
+X-Send-Pr-Version: 3.110
+
+>Number:         6432
+>Category:       mod_cgi
+>Synopsis:       HERE IS A FIX for Win32 CGI server-push
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Aug 19 01:10:00 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     chris_pirazzi@hotmail.com
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Windows NT4 sp6 pre-built 1.3.12 images from Apache mirror.
+>Description:
+Identical to problem described in PR number 4893 (but I cannot
+seem to add to that problem report, sorry):
+Under Win32 1.3.12 apache, CGI programs can never do server push,
+regardless of whether they are "nph-" CGI programs.  Apache
+will always buffer the output of the CGI program into
+huge (IOBUFSIZE) chunks.  Specifically, Apache will buffer
+the output in the BUFF object that represents the connection
+back to the client browser.
+
+The reason for this can be found in http_protocol.c
+in ap_send_fb_length().  The code has the general 
+structure of:
+
+  while (1)
+    { 
+    while (1) 
+      {
+      nread = read stuff from CGI using ap_bread();
+      if (nread > 0)
+        break;
+      // nread==0: XXX NEVER HAPPENS ON WINDOWS
+      flush BUFF that goes to browser using ap_bflush();
+      call select() to wait until data arrives;
+      }
+    write nread bytes to the browser
+  }
+
+the code therefore assumes that ap_bread() will return
+if no data is avaialble.  unfortunately, on win32, 
+the connection to the CGI program is a Win32 Pipe,
+and as documented in ReadFile, a Win32 pipe does
+not return at all until some data arrives (or there
+are no pipe writers).
+
+therefore, the code path marked XXX above never happens
+on windows, and we pretty much never flush the output
+to the client browser (unless we actually reach
+IOBUFSIZE bytes of output).
+>How-To-Repeat:
+any server push CGI program will do.  example:
+
+#!g:\slave\tcsh.exe
+echo 'Connection: close'
+echo 'Content-type: text/html'
+echo 'cache-control: private, no-store, no-cache'
+echo 'Expires: Tue, 23 Jun 1998 01:01:01 GMT'
+echo 'PRAGMA: NO-CHACHE'
+echo ''
+echo 'testing<P>'
+./sleep 1
+echo 'testing 2<P>'
+./sleep 1
+echo 'testing 3<P>'
+./sleep 1
+echo 'testing 4<P>'
+./sleep 1
+echo 'testing 5<P>'
+./sleep 1
+echo 'testing 6<P>'
+
+notice that all the numbers come out at once.
+>Fix:
+
+yup.  this is one way.  not the best performance
+but it works.  one optimization may be to only do
+this when processing a CGI program (would need to pass
+that down).  another optimization may be to pre-test
+the need for a flush by using the Win32 PeekNamedPipe()
+function, which purports to return total bytes currently
+available.  The NT documentation on anonymous pipes
+claims that the named pipe functions should work on 
+anonymous pipes, but I have not tried it.  I hope this
+helps you.
+
+--- http_protocol.c     Sun Feb 20 01:14:47 2000
++++ http_protocol.c.new Sat Aug 19 07:59:11 2000
+@@ -2221,6 +2221,26 @@
+             len = IOBUFSIZE;
+
+         do {
++#if defined(WIN32)
++            /* stupid WIN32 pipes will ALWAYS block until data arrives.
++             * therefore they ap_bread() will NEVER return 0.
++             * therefore we will never flush r->connection->client.
++             * therefore the client will only get data when we have
++             * pushed in enough to write to the socket (IOBUFSIZE
++             * probably) or the script finishes.
++             * therefore server push does not work.
++             * work around this by always flushing before a read.
++             * this is probably quite inefficient in some cases.
++             */
++            if (ap_bflush(r->connection->client) < 0) {
++                ap_log_rerror(APLOG_MARK, APLOG_INFO, r,
++                    "client stopped connection before send body completed");
++                ap_bsetflag(r->connection->client, B_EOUT, 1);
++                r->connection->aborted = 1;
++                break;
++            }
++#endif
++
+             n = ap_bread(fb, buf, len);
+ #ifdef NDELAY_PIPE_RETURNS_ZERO
+            if ((n > 0) || (n == 0 && afterselect))
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

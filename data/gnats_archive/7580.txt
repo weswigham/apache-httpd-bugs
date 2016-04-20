@@ -1,0 +1,152 @@
+Received: (qmail 93457 invoked by uid 501); 17 Apr 2001 20:28:48 -0000
+Message-Id: <20010417202848.93456.qmail@apache.org>
+Date: 17 Apr 2001 20:28:48 -0000
+From: Taketo Kabe <kabe@sra-tohoku.co.jp>
+Reply-To: kabe@sra-tohoku.co.jp
+To: submit@bugz.apache.org
+Subject: [PATCH] CGI environment REQUEST_URI did not hold original URI after redirection
+X-Send-Pr-Version: 3.110
+
+>Number:         7580
+>Category:       mod_cgi
+>Synopsis:       [PATCH] CGI environment REQUEST_URI did not hold original URI after redirection
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Apr 17 13:30:00 PDT 2001
+>Closed-Date:    Mon Sep 03 18:38:02 PDT 2001
+>Last-Modified:  Mon Sep 03 18:38:02 PDT 2001
+>Originator:     kabe@sra-tohoku.co.jp
+>Release:        2.0.16
+>Organization:
+>Environment:
+SunOS 5.8 Generic_108528-05 sun4u sparc SUNW,Ultra-60
+gcc version 2.95.2 19991024 (release)
+>Description:
+The Apache custom CGI environment variable, REQUEST_CGI, pointed to
+the client's request-URI path for previous releases. But for
+current beta (I guess from 2.0a8) REQUEST_URI seems to points to a
+*redirected* URI, after (internal) redirection.
+
+I guess this was caused by optimization done for server/util_script.c
+version 1.45 (use unparsed_uri instead of original_uri(r)).
+Unfortunately these two are not equal after a redirection occurs;
+r->unparsed_uri gets updated on every redirection while original_uri(r)
+(which uses r->the_request) is constant.
+>How-To-Repeat:
+* prepare an "index.html" which dumps environment:
+	#!/bin/sh
+	echo "Content-Type:text/plain"
+	echo ""
+	printenv
+
+* (don't forget to chmod +x)
+
+* set "index.html" as CGI script, like
+	Options +ExecCGI
+	<Files *.html>
+	  AddHandler cgi-script
+	</Files>
+
+* Access the CGI without "index.html", like "/~user/testdir/"
+
+* the REQUEST_URI will be "/~user/testdir/index.html",
+  not the original "/~user/testdir/" .
+>Fix:
+First of all, REQUEST_URI is not a standard CGI env and there's nobody
+to stop changing what it is; but since 
+* currently it'll be hard to obtain the original client't URI, and
+* it's not compatible with Apache-1.[2-],
+I would like to revert to pre-"r->unparsed_uri" logic.
+
+The follwing patch basically reverts the server/util_script.c version 1.45 
+changes with modern APRize fixes. "client_uri" came from 
+draft-coar-cgi-v11-03.txt mentioning "Client-URI" as the client's request.
+
+At least this fixes my problem in hand.
+(or should we pass whole r->the_request as THE_REQUEST env
+ just like mod_rewrite instead?)
+
+
+diff -u httpd-2_0_16/server/util_script.c.dist httpd-2_0_16/server/util_script.c
+--- httpd-2_0_16/server/util_script.c.dist	Fri Mar  9 20:30:34 2001
++++ httpd-2_0_16/server/util_script.c	Tue Apr 17 19:46:22 2001
+@@ -307,6 +319,34 @@
+     return lu;
+ }
+ 
++/* Obtain the Client-URI from the original request-line, returning
++ * a new string from the request pool containing the URI or "".
++ */
++static char *client_uri(request_rec *r)
++{
++    char *first, *last;
++
++    if (r->the_request == NULL) {
++	return (char *) apr_pstrdup(r->pool, "");
++    }
++
++    first = r->the_request;	/* use the request-line */
++
++    while (*first && !apr_isspace(*first)) {
++	++first;		/* skip over the method */
++    }
++    while (apr_isspace(*first)) {
++	++first;		/*   and the space(s)   */
++    }
++
++    last = first;
++    while (*last && !apr_isspace(*last)) {
++	++last;			/* end at next whitespace */
++    }
++
++    return apr_pstrndup(r->pool, first, last - first);
++}
++
+ AP_DECLARE(void) ap_add_cgi_vars(request_rec *r)
+ {
+     apr_table_t *e = r->subprocess_env;
+@@ -315,7 +355,7 @@
+     apr_table_setn(e, "SERVER_PROTOCOL", r->protocol);
+     apr_table_setn(e, "REQUEST_METHOD", r->method);
+     apr_table_setn(e, "QUERY_STRING", r->args ? r->args : "");
+-    apr_table_setn(e, "REQUEST_URI", r->unparsed_uri);
++    apr_table_setn(e, "REQUEST_URI", client_uri(r));
+ 
+     /* Note that the code below special-cases scripts run from includes,
+      * because it "knows" that the sub_request has been hacked to have the
+>Release-Note:
+>Audit-Trail:
+Release-Changed-From-To: 2_0_16-beta-2.0.16
+Release-Changed-By: wrowe
+Release-Changed-When: Thu Aug 30 12:04:58 PDT 2001
+State-Changed-From-To: open-closed
+State-Changed-By: rbb
+State-Changed-When: Mon Sep  3 18:38:02 PDT 2001
+State-Changed-Why:
+I have backed out this change.  It is very important that
+we be compatible with older versions of Apache, so that
+migrating from Apache 1.3 to 2.0 is seamless for CGI
+scripts.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

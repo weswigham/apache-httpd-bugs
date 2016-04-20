@@ -1,0 +1,573 @@
+Received: (qmail 39672 invoked by uid 65534); 15 Mar 2000 07:20:07 -0000
+Message-Id: <20000315072007.39671.qmail@locus.apache.org>
+Date: 15 Mar 2000 07:20:07 -0000
+From: Ng Hong I <nghi@comp.nus.edu.sg>
+Reply-To: nghi@comp.nus.edu.sg
+To: submit@bugz.apache.org
+Subject: error in loading shared libraries libamzi.so: cannot open shared object file: No such file or directory
+X-Send-Pr-Version: 3.110
+
+>Number:         5883
+>Category:       other
+>Synopsis:       error in loading shared libraries libamzi.so: cannot open shared object file: No such file or directory
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          mistaken
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Mar 14 23:30:00 PST 2000
+>Closed-Date:    Wed May 24 13:20:55 PDT 2000
+>Last-Modified:  Wed May 24 13:20:55 PDT 2000
+>Originator:     nghi@comp.nus.edu.sg
+>Release:        1.3.9-4
+>Organization:
+>Environment:
+[nghi@spnp57217 a5-0-18]$ uname -a
+Linux spnp57217.spnp.nus.edu.sg 2.2.12-20 #7 Fri Mar 3 11:04:20 SGT 2000 i586 unknown
+[nghi@spnp57217 a5-0-18]$ 
+>Description:
+I was trying to get a shared library working on my Apache web-server. To start
+with, I have a web-page which contains a form. When I click the "submit" button
+below the web-page which contains the form, the "infoform" executable is suppose
+to be executed. So it is, but I get the following message on my web-page:
+
+<start of message>
+Internal Server Error
+
+The server encountered an internal error or misconfiguration and was unable to complete your request.
+
+Please contact the server administrator, root@localhost and inform them of the time the error occurred, and anything you might have done that may have caused the error.
+
+More information about this error may be available in the server error log.
+<end of message>
+
+When I do a "tail -f /etc/httpd/logs/error_log", I get:
+
+<start of message>
+infoform: error in loading shared libraries: libamzi.so: cannot open shared object file: No such file or directory
+[Sat Feb 26 08:51:00 2000] [error] [client 127.0.0.1] Premature end of script headers: /home/httpd/cgi-bin/infoform
+<end of message>
+
+So, what I did was:
+
+<start of action>
+[root@stf-205 lib]# /usr/sbin/apxs -i -a -n libamzi libamzi.so 
+cp libamzi.so /usr/lib/apache/libamzi.so
+chmod 755 /usr/lib/apache/libamzi.so
+[activating module `libamzi' in /etc/httpd/conf/httpd.conf]
+[root@stf-205 lib]#
+<end of action>
+
+After that I change the line "LoadModule libamzi_module lib/apache/libamzi.so"
+to "LoadModule libamzi_module modules/libamzi.so" because there is a symbolic
+link from /etc/httpd/modules to /usr/lib/apache and the dynamic shared objects
+(DSO) are loaded from /etc/httpd/modules.
+
+fter that, what I did was:
+
+<start of action>
+[root@stf-205 lib]# /usr/sbin/httpd -t
+Syntax error on line 69 of /etc/httpd/conf/httpd.conf:
+Cannot load /etc/httpd/modules/libamzi.so into server: /etc/httpd/modules/libamzi.so: undefined symbol: cout
+[root@stf-205 lib]#
+<end of action>
+
+After this, I have also tried these:
+
+<start of actions>
+[nghongi@stf-205 lib]$ ld -Bshareable -o libgpp.so /usr/lib/libg++.so.2.7.2.8
+[nghongi@stf-205 lib]$ su
+Password:
+[root@stf-205 lib]# /usr/sbin/apxs -i -a -n libgpp libgpp.so
+cp libgpp.so /usr/lib/apache/libgpp.so
+chmod 755 /usr/lib/apache/libgpp.so
+[activating module `libgpp' in /etc/httpd/conf/httpd.conf] (As before, I change the path of libgpp.so to modules in /etc/httpd/conf/httpd.conf")
+[root@stf-205 lib]# /usr/sbin/httpd -t
+Syntax error on line 69 of /etc/httpd/conf/httpd.conf:
+Cannot load /etc/httpd/modules/libamzi.so into server: /etc/httpd/modules/libamzi.so: undefined symbol: cout
+<end of actions>
+
+At this point, I reverse the arrangement of "LoadModule libamzi_module..." and
+"LoadModule libgpp_module..." in /etc/httpd/conf/httpd.conf so that
+libgpp_module is above libamzi_module. When I try "httpd -t" again, this is what
+I get:
+
+<start of message>
+Syntax error on line 69 of /etc/httpd/conf/httpd.conf:
+Can't locate API module structure `libgpp_module' in file /etc/httpd/modules/libgpp.so: /etc/httpd/modules/libgpp.so: undefined symbol: libgpp_module
+<end of message>
+
+I tried to use cout.so while redoing the above from "ld -Bshareable..." onwards, but to no avail.
+
+May I present you with the following configurations of my system please?
+
+I'm using RedHat 6.0.
+
+[nghongi@stf-205 jdk1.2]$ uname -a
+Linux stf-205.comp.nus.edu.sg 2.2.5-15 #21 Fri Aug 6 11:02:05 SGT 1999 i686 unknown
+[nghongi@stf-205 jdk1.2]$ rpm -q glibc
+glibc-2.1.1-6
+[nghongi@stf-205 jdk1.2]$ rpm -q libc
+libc-5.3.12-31
+[nghongi@stf-205 jdk1.2]$ /sbin/ldconfig -D (the rests are outputs of this command. You may want to skip them)
+/sbin/ldconfig: version 1999-02-21
+/usr/lib:
+/sbin/ldconfig: warning: /usr/lib/libstdc++-2-libc6.1-1-2.9.0.so has inconsistent soname (libstdc++-libc6.1-1.so.2)
+        libz.so.1 => libz.so.1.1.3
+        libtk8.0.so => libtk8.0.so
+        libtixsam4.1.8.0.so => libtixsam4.1.8.0.so
+        libtix4.1.8.0.so => libtix4.1.8.0.so
+        libtkx8.0.4.so => libtkx8.0.4.so
+        libtclx8.0.4.so => libtclx8.0.4.so
+        libtcl8.0.so => libtcl8.0.so
+        libvgagl.so.1 => libvgagl.so.1.3.1
+        libvga.so.1 => libvga.so.1.3.1
+        libslang.so.1 => libslang.so.1.2.2
+        libreadline.so.3 => libreadline.so.3.0
+        libhistory.so.3 => libhistory.so.3.0
+        libqt.so.1 => libqt.so.1.44
+        libpisock.so.3 => libpisock.so.3.0.1
+        libORBitutil.so.0 => libORBitutil.so.0.4.3
+        libORBitCosNaming.so.0 => libORBitCosNaming.so.0.4.3
+        libORBit.so.0 => libORBit.so.0.4.3
+        libIIOP.so.0 => libIIOP.so.0.4.3
+        libIDL-0.6.so.0 => libIDL-0.6.so.0.4.2
+        libnewt.so.0.40 => libnewt.so.0.40
+        libmikmod.so.1 => libmikmod.so.1.0.0
+        libxml.so.0 => libxml.so.0.0.0
+        libungif.so.4 => libungif.so.4.1.0
+        libungif.so.3 => libungif.so.3.1.0
+        libtiff.so.3 => libtiff.so.3.4
+        libstdc++.so.2.8 => libstdc++.so.2.8.0
+        libstdc++.so.2.7.2 => libstdc++.so.2.7.2.8
+        libg++.so.2.7.2 => libg++.so.2.7.2.8
+        libpng.so.2 => libpng.so.2.1.0.3
+        libjpeg.so.62 => libjpeg.so.62.0.0
+        libgtop_sysdeps.so.1 => libgtop_sysdeps.so.1.0.0
+        libgtop_suid_common.so.1 => libgtop_suid_common.so.1.0.0
+        libgtop_names.so.1 => libgtop_names.so.1.0.0
+        libgtop_guile_names.so.1 => libgtop_guile_names.so.1.0.0
+        libgtop_guile.so.1 => libgtop_guile.so.1.0.0
+        libgtop_common.so.1 => libgtop_common.so.1.0.0
+        libgtop.so.1 => libgtop.so.1.0.0
+        librle.so.1 => librle.so.1.0.0
+        libppm.so.1 => libppm.so.1.0.0
+        libpnm.so.1 => libpnm.so.1.0.0
+        libpgm.so.1 => libpgm.so.1.0.0
+        libpbm.so.1 => libpbm.so.1.0.0
+        libfbm.so.1 => libfbm.so.1.0.0
+        libghttp.so.1 => libghttp.so.1.0.0
+        libuulib.so.5 => libuulib.so.5.0.13
+        libmimelib.so.1 => libmimelib.so.1.0.0
+        libjs.so.0 => libjs.so.0.2.0
+        libQwSpriteField.so.1 => libQwSpriteField.so.1.5.0
+        libpuke.so.0 => libpuke.so.0.0.1
+        libmediatool.so.2 => libmediatool.so.2.0.0
+        libkspell.so.2 => libkspell.so.2.0.0
+        libkimgio.so.2 => libkimgio.so.2.0.0
+        libkhtmlw.so.2 => libkhtmlw.so.2.0.0
+        libkfm.so.2 => libkfm.so.2.0.0
+        libkfile.so.2 => libkfile.so.2.0.0
+        libkdeui.so.2 => libkdeui.so.2.0.0
+        libkdecore.so.2 => libkdecore.so.2.0.0
+        libkab.so.2 => libkab.so.2.0.0
+        libjscript.so.2 => libjscript.so.2.0.0
+        libimlib-xpm.so => libimlib-xpm.so
+        libimlib-tiff.so => libimlib-tiff.so
+        libimlib-ps.so => libimlib-ps.so
+        libimlib-ppm.so => libimlib-ppm.so
+        libimlib-png.so => libimlib-png.so
+        libimlib-jpeg.so => libimlib-jpeg.so
+        libimlib-gif.so => libimlib-gif.so
+        libimlib-bmp.so => libimlib-bmp.so
+        libgdk_imlib.so.1 => libgdk_imlib.so.1.9.5
+        libImlib.so.1 => libImlib.so.1.9.5
+        libguile.so.4 => libguile.so.4.0.0
+        libgtk.so.1 => libgtk.so.1.0.6
+        libgdk.so.1 => libgdk.so.1.0.6
+        libgtk-1.2.so.0 => libgtk-1.2.so.0.1.0
+        libgdk-1.2.so.0 => libgdk-1.2.so.0.1.0
+        libgpm.so.1 => libgpm.so.1.17.5
+        libobgtk.so.1 => libobgtk.so.1.2.1
+        libobgnome.so.0 => libobgnome.so.0.0.0
+        libzvt.so.2 => libzvt.so.2.2.2
+        libgtkxmhtml.so.1 => libgtkxmhtml.so.1.0.1
+        libgnorbagtk.so.0 => libgnorbagtk.so.0.0.0
+        libgnorba.so.27 => libgnorba.so.27.1.5
+        libgnomeui.so.32 => libgnomeui.so.32.9.0
+        libgnomesupport.so.0 => libgnomesupport.so.0.0.0
+        libgnome.so.32 => libgnome.so.32.3.2
+        libart_lgpl.so.2 => libart_lgpl.so.2.0.0
+        libutempter.so.0 => libutempter.so.0.5
+        libgdkcardimage.so.0 => libgdkcardimage.so.0.0.0
+        libpanel_applet.so.0 => libpanel_applet.so.0.0.0
+        libgkb_applet.so.0 => libgkb_applet.so.0.0.0
+        libfish_applet.so.0 => libfish_applet.so.0.0.0
+        libgmp.so.2 => libgmp.so.2.0.2
+        libglib.so.1 => libglib.so.1.0.6
+        libgthread-1.2.so.0 => libgthread-1.2.so.0.0.1
+        libgmodule-1.2.so.0 => libgmodule-1.2.so.0.0.1
+        libglib-1.2.so.0 => libglib-1.2.so.0.0.1
+        libgimpui.so.1 => libgimpui.so.1.0.4
+        libgimp.so.1 => libgimp.so.1.0.4
+        libgck.so.1 => libgck.so.1.0.0
+        libgdbm.so.2 => libgdbm.so.2.0.0
+        libgd.so.1 => libgd.so.1.2
+        libttf.so.2 => libttf.so.2.1.0
+        libFnlib.so.0 => libFnlib.so.0.4.0
+        libexpect5.28.so => libexpect5.28.so
+        libesddsp.so.0 => libesddsp.so.0.2.10
+        libesd.so.0 => libesd.so.0.2.10
+        libstdc++-libc6.1-1.so.2 => libstdc++-2-libc6.1-1-2.9.0.so
+        libcrack.so.2 => libcrack.so.2.7
+        libcapplet.so.0 => libcapplet.so.0.0.0
+        libctutils.so.0 => libctutils.so.0.0.0
+        libconsole.so.0 => libconsole.so.0.0.0
+        libcfont.so.0 => libcfont.so.0.0.0
+        libopcodes-2.9.1.0.23.so => libopcodes-2.9.1.0.23.so
+        libbfd-2.9.1.0.23.so => libbfd-2.9.1.0.23.so
+        libaudiofile.so.0 => libaudiofile.so.0.0.0
+        libpanel.so.4 => libpanel.so.4.2
+        libncurses.so.4 => libncurses.so.4.2
+        libmenu.so.4 => libmenu.so.4.2
+        libform.so.4 => libform.so.4.2
+/usr/i486-linux-libc5/lib:
+/sbin/ldconfig: warning: /usr/i486-linux-libc5/lib/libform.so.1.9.9e has inconsistent soname (libform.so.3.0)
+/sbin/ldconfig: warning: /usr/i486-linux-libc5/lib/libmenu.so.1.9.9e has inconsistent soname (libmenu.so.3.0)
+/sbin/ldconfig: warning: /usr/i486-linux-libc5/lib/libncurses.so.1.9.9e has inconsistent soname (libncurses.so.3.0)
+/sbin/ldconfig: warning: /usr/i486-linux-libc5/lib/libpanel.so.1.9.9e has inconsistent soname (libpanel.so.3.0)
+        libz.so.1 => libz.so.1.0.4
+        libvgagl.so.1 => libvgagl.so.1.2.13
+        libvga.so.1 => libvga.so.1.2.13
+        libtermcap.so.2 => libtermcap.so.2.0.8
+        libstdc++.so.27 => libstdc++.so.27.1.4
+        libpanel.so.3.0 => libpanel.so.1.9.9e
+        libncurses.so.3.0 => libncurses.so.1.9.9e
+        libmenu.so.3.0 => libmenu.so.1.9.9e
+        libm.so.5 => libm.so.5.0.6
+        libg++.so.27 => libg++.so.27.1.4
+        libform.so.3.0 => libform.so.1.9.9e
+        libdb.so.2 => libdb.so.2.0.0
+        libc.so.5 => libc.so.5.3.12
+        libXtst.so.6 => libXtst.so.6.1
+        libXt.so.6 => libXt.so.6.0
+        libXpm.so.4 => libXpm.so.4.9
+        libXp.so.6 => libXp.so.6.2
+        libXmu.so.6 => libXmu.so.6.0
+        libXi.so.6 => libXi.so.6.0
+        libXext.so.6 => libXext.so.6.3
+        libXaw3d.so.6 => libXaw3d.so.6.1
+        libXaw.so.6 => libXaw.so.6.1
+        libXIE.so.6 => libXIE.so.6.0
+        libX11.so.6 => libX11.so.6.1
+        libSM.so.6 => libSM.so.6.0
+        libPEX5.so.6 => libPEX5.so.6.0
+        libICE.so.6 => libICE.so.6.3
+usr/X11R6/lib:
+        libXpm.so.4 => libXpm.so.4.10
+        libXtst.so.6 => libXtst.so.6.1
+        libXt.so.6 => libXt.so.6.0
+        libXp.so.6 => libXp.so.6.2
+        libXmu.so.6 => libXmu.so.6.0
+        libXi.so.6 => libXi.so.6.0
+        libXext.so.6 => libXext.so.6.3
+        libXaw.so.6 => libXaw.so.6.1
+        libXIE.so.6 => libXIE.so.6.0
+        libX11.so.6 => libX11.so.6.1
+        libSM.so.6 => libSM.so.6.0
+        libPEX5.so.6 => libPEX5.so.6.0
+        libICE.so.6 => libICE.so.6.3
+        libXaw3d.so.6 => libXaw3d.so.6.1
+        libx11amp.so.0 => libx11amp.so.0.9.0
+        libMagick.so.4 => libMagick.so.4.0.22
+/usr/lib:
+/sbin/ldconfig: warning: /usr/lib/libstdc++-2-libc6.1-1-2.9.0.so has inconsistent soname (libstdc++-libc6.1-1.so.2)
+        libz.so.1 => libz.so.1.1.3
+        libtk8.0.so => libtk8.0.so
+        libtixsam4.1.8.0.so => libtixsam4.1.8.0.so
+        libtix4.1.8.0.so => libtix4.1.8.0.so
+        libtkx8.0.4.so => libtkx8.0.4.so
+        libtclx8.0.4.so => libtclx8.0.4.so
+        libtcl8.0.so => libtcl8.0.so
+        libvgagl.so.1 => libvgagl.so.1.3.1
+        libvga.so.1 => libvga.so.1.3.1
+        libslang.so.1 => libslang.so.1.2.2
+        libreadline.so.3 => libreadline.so.3.0
+        libhistory.so.3 => libhistory.so.3.0
+        libqt.so.1 => libqt.so.1.44
+        libpisock.so.3 => libpisock.so.3.0.1
+        libORBitutil.so.0 => libORBitutil.so.0.4.3
+        libORBitCosNaming.so.0 => libORBitCosNaming.so.0.4.3
+        libORBit.so.0 => libORBit.so.0.4.3
+        libIIOP.so.0 => libIIOP.so.0.4.3
+        libIDL-0.6.so.0 => libIDL-0.6.so.0.4.2
+        libnewt.so.0.40 => libnewt.so.0.40
+        libmikmod.so.1 => libmikmod.so.1.0.0
+        libxml.so.0 => libxml.so.0.0.0
+        libungif.so.4 => libungif.so.4.1.0
+        libungif.so.3 => libungif.so.3.1.0
+        libtiff.so.3 => libtiff.so.3.4
+        libstdc++.so.2.8 => libstdc++.so.2.8.0
+        libstdc++.so.2.7.2 => libstdc++.so.2.7.2.8
+        libg++.so.2.7.2 => libg++.so.2.7.2.8
+        libpng.so.2 => libpng.so.2.1.0.3
+        libjpeg.so.62 => libjpeg.so.62.0.0
+        libgtop_sysdeps.so.1 => libgtop_sysdeps.so.1.0.0
+        libgtop_suid_common.so.1 => libgtop_suid_common.so.1.0.0
+        libgtop_names.so.1 => libgtop_names.so.1.0.0
+        libgtop_guile_names.so.1 => libgtop_guile_names.so.1.0.0
+        libgtop_guile.so.1 => libgtop_guile.so.1.0.0
+        libgtop_common.so.1 => libgtop_common.so.1.0.0
+        libgtop.so.1 => libgtop.so.1.0.0
+        librle.so.1 => librle.so.1.0.0
+        libppm.so.1 => libppm.so.1.0.0
+        libpnm.so.1 => libpnm.so.1.0.0
+        libpgm.so.1 => libpgm.so.1.0.0
+        libpbm.so.1 => libpbm.so.1.0.0
+        libfbm.so.1 => libfbm.so.1.0.0
+        libghttp.so.1 => libghttp.so.1.0.0
+        libuulib.so.5 => libuulib.so.5.0.13
+        libmimelib.so.1 => libmimelib.so.1.0.0
+        libjs.so.0 => libjs.so.0.2.0
+        libQwSpriteField.so.1 => libQwSpriteField.so.1.5.0
+        libpuke.so.0 => libpuke.so.0.0.1
+        libmediatool.so.2 => libmediatool.so.2.0.0
+        libkspell.so.2 => libkspell.so.2.0.0
+        libkimgio.so.2 => libkimgio.so.2.0.0
+        libkhtmlw.so.2 => libkhtmlw.so.2.0.0
+        libkfm.so.2 => libkfm.so.2.0.0
+        libkfile.so.2 => libkfile.so.2.0.0
+        libkdeui.so.2 => libkdeui.so.2.0.0
+        libkdecore.so.2 => libkdecore.so.2.0.0
+        libkab.so.2 => libkab.so.2.0.0
+        libjscript.so.2 => libjscript.so.2.0.0
+        libimlib-xpm.so => libimlib-xpm.so
+        libimlib-tiff.so => libimlib-tiff.so
+        libimlib-ps.so => libimlib-ps.so
+        libimlib-ppm.so => libimlib-ppm.so
+        libimlib-png.so => libimlib-png.so
+        libimlib-jpeg.so => libimlib-jpeg.so
+        libimlib-gif.so => libimlib-gif.so
+        libimlib-bmp.so => libimlib-bmp.so
+        libgdk_imlib.so.1 => libgdk_imlib.so.1.9.5
+        libImlib.so.1 => libImlib.so.1.9.5
+        libguile.so.4 => libguile.so.4.0.0
+        libgtk.so.1 => libgtk.so.1.0.6
+        libgdk.so.1 => libgdk.so.1.0.6
+        libgtk-1.2.so.0 => libgtk-1.2.so.0.1.0
+        libgdk-1.2.so.0 => libgdk-1.2.so.0.1.0
+        libgpm.so.1 => libgpm.so.1.17.5
+        libobgtk.so.1 => libobgtk.so.1.2.1
+        libobgnome.so.0 => libobgnome.so.0.0.0
+        libzvt.so.2 => libzvt.so.2.2.2
+        libgtkxmhtml.so.1 => libgtkxmhtml.so.1.0.1
+        libgnorbagtk.so.0 => libgnorbagtk.so.0.0.0
+        libgnorba.so.27 => libgnorba.so.27.1.5
+        libgnomeui.so.32 => libgnomeui.so.32.9.0
+        libgnomesupport.so.0 => libgnomesupport.so.0.0.0
+        libgnome.so.32 => libgnome.so.32.3.2
+        libart_lgpl.so.2 => libart_lgpl.so.2.0.0
+        libutempter.so.0 => libutempter.so.0.5
+        libgdkcardimage.so.0 => libgdkcardimage.so.0.0.0
+        libpanel_applet.so.0 => libpanel_applet.so.0.0.0
+        libgkb_applet.so.0 => libgkb_applet.so.0.0.0
+        libfish_applet.so.0 => libfish_applet.so.0.0.0
+        libgmp.so.2 => libgmp.so.2.0.2
+        libglib.so.1 => libglib.so.1.0.6
+        libgthread-1.2.so.0 => libgthread-1.2.so.0.0.1
+        libgmodule-1.2.so.0 => libgmodule-1.2.so.0.0.1
+        libglib-1.2.so.0 => libglib-1.2.so.0.0.1
+        libgimpui.so.1 => libgimpui.so.1.0.4
+        libgimp.so.1 => libgimp.so.1.0.4
+        libgck.so.1 => libgck.so.1.0.0
+        libgdbm.so.2 => libgdbm.so.2.0.0
+        libgd.so.1 => libgd.so.1.2
+        libttf.so.2 => libttf.so.2.1.0
+        libFnlib.so.0 => libFnlib.so.0.4.0
+        libexpect5.28.so => libexpect5.28.so
+        libesddsp.so.0 => libesddsp.so.0.2.10
+        libesd.so.0 => libesd.so.0.2.10
+        libstdc++-libc6.1-1.so.2 => libstdc++-2-libc6.1-1-2.9.0.so
+        libcrack.so.2 => libcrack.so.2.7
+        libcapplet.so.0 => libcapplet.so.0.0.0
+        libctutils.so.0 => libctutils.so.0.0.0
+        libconsole.so.0 => libconsole.so.0.0.0
+        libcfont.so.0 => libcfont.so.0.0.0
+        libopcodes-2.9.1.0.23.so => libopcodes-2.9.1.0.23.so
+        libbfd-2.9.1.0.23.so => libbfd-2.9.1.0.23.so
+        libaudiofile.so.0 => libaudiofile.so.0.0.0
+        libpanel.so.4 => libpanel.so.4.2
+        libncurses.so.4 => libncurses.so.4.2
+        libmenu.so.4 => libmenu.so.4.2
+        libform.so.4 => libform.so.4.2
+/lib:
+/sbin/ldconfig: warning: /lib/ld-2.1.1.so has inconsistent soname (ld-linux.so.2)
+/sbin/ldconfig: warning: /lib/libBrokenLocale-2.1.1.so has inconsistent soname (libBrokenLocale.so.1)
+/sbin/ldconfig: warning: /lib/libNoVersion-2.1.1.so has inconsistent soname (libNoVersion.so.1)
+/sbin/ldconfig: warning: /lib/libc-2.1.1.so has inconsistent soname (libc.so.6)
+/sbin/ldconfig: warning: /lib/libcrypt-2.1.1.so has inconsistent soname (libcrypt.so.1)
+/sbin/ldconfig: warning: /lib/libdb-2.1.1.so has inconsistent soname (libdb.so.3)
+/sbin/ldconfig: warning: /lib/libdb1-2.1.1.so has inconsistent soname (libdb.so.2)
+/sbin/ldconfig: warning: /lib/libdl-2.1.1.so has inconsistent soname (libdl.so.2)
+/sbin/ldconfig: warning: /lib/libm-2.1.1.so has inconsistent soname (libm.so.6)
+/sbin/ldconfig: warning: /lib/libnsl-2.1.1.so has inconsistent soname (libnsl.so.1)
+/sbin/ldconfig: warning: /lib/libnss1_compat-2.1.1.so has inconsistent soname (libnss_compat.so.1)
+/sbin/ldconfig: warning: /lib/libnss1_db-2.1.1.so has inconsistent soname (libnss_db.so.1)
+/sbin/ldconfig: warning: /lib/libnss1_dns-2.1.1.so has inconsistent soname (libnss_dns.so.1)
+/sbin/ldconfig: warning: /lib/libnss1_files-2.1.1.so has inconsistent soname (libnss_files.so.1)
+/sbin/ldconfig: warning: /lib/libnss1_nis-2.1.1.so has inconsistent soname (libnss_nis.so.1)
+/sbin/ldconfig: warning: /lib/libnss_compat-2.1.1.so has inconsistent soname (libnss_compat.so.2)
+/sbin/ldconfig: warning: /lib/libnss_db-2.1.1.so has inconsistent soname (libnss_db.so.2)
+/sbin/ldconfig: warning: /lib/libnss_dns-2.1.1.so has inconsistent soname (libnss_dns.so.2)
+/sbin/ldconfig: warning: /lib/libnss_files-2.1.1.so has inconsistent soname (libnss_files.so.2)
+/sbin/ldconfig: warning: /lib/libnss_hesiod-2.1.1.so has inconsistent soname (libnss_hesiod.so.2)
+/sbin/ldconfig: warning: /lib/libnss_nis-2.1.1.so has inconsistent soname (libnss_nis.so.2)
+/sbin/ldconfig: warning: /lib/libnss_nisplus-2.1.1.so has inconsistent soname (libnss_nisplus.so.2)
+/sbin/ldconfig: warning: /lib/libpthread-0.8.so has inconsistent soname (libpthread.so.0)
+/sbin/ldconfig: warning: /lib/libresolv-2.1.1.so has inconsistent soname (libresolv.so.2)
+/sbin/ldconfig: warning: /lib/librt-2.1.1.so has inconsistent soname (librt.so.1)
+/sbin/ldconfig: warning: /lib/libutil-2.1.1.so has inconsistent soname (libutil.so.1)
+        libproc.so.2.0.0 => libproc.so.2.0.0
+        libpam_misc.so.0 => libpam_misc.so.0.66
+        libpam.so.0 => libpam.so.0.66
+        libpwdb.so.0 => libpwdb.so.0.58
+        libdl.so.1 => libdl.so.1.9.5
+        ld-linux.so.1 => ld-linux.so.1.9.5
+        libuuid.so.1 => libuuid.so.1.2
+        libss.so.2 => libss.so.2.0
+        libext2fs.so.2 => libext2fs.so.2.4
+        libe2p.so.2 => libe2p.so.2.3
+        libcom_err.so.2 => libcom_err.so.2.0
+        libtermcap.so.2 => libtermcap.so.2.0.8
+        libutil.so.1 => libutil-2.1.1.so
+        libresolv.so.2 => libresolv-2.1.1.so
+        libpthread.so.0 => libpthread-0.8.so
+        libnss_nisplus.so.2 => libnss_nisplus-2.1.1.so
+        libnss_nis.so.2 => libnss_nis-2.1.1.so
+        libnss_hesiod.so.2 => libnss_hesiod-2.1.1.so
+        libnss_files.so.2 => libnss_files-2.1.1.so
+        librt.so.1 => librt-2.1.1.so
+        libnss_dns.so.2 => libnss_dns-2.1.1.so
+        libnss_db.so.2 => libnss_db-2.1.1.so
+        libnss_compat.so.2 => libnss_compat-2.1.1.so
+        libnss_nis.so.1 => libnss1_nis-2.1.1.so
+        libnss_files.so.1 => libnss1_files-2.1.1.so
+        libnss_dns.so.1 => libnss1_dns-2.1.1.so
+        libnss_db.so.1 => libnss1_db-2.1.1.so
+        libnss_compat.so.1 => libnss1_compat-2.1.1.so
+        libnsl.so.1 => libnsl-2.1.1.so
+        libm.so.6 => libm-2.1.1.so
+        libdl.so.2 => libdl-2.1.1.so
+        libdb.so.2 => libdb1-2.1.1.so
+        libdb.so.3 => libdb-2.1.1.so
+        libcrypt.so.1 => libcrypt-2.1.1.so
+        libc.so.6 => libc-2.1.1.so
+        libSegFault.so => libSegFault.so
+        libNoVersion.so.1 => libNoVersion-2.1.1.so
+        libBrokenLocale.so.1 => libBrokenLocale-2.1.1.so
+        ld-linux.so.2 => ld-2.1.1.so
+>How-To-Repeat:
+I hope you need not do this. If you have to do this, please send me an e-mail
+and I'll need to send you some files. Right now, I don't know your e-mail
+address.
+
+
+>Fix:
+Should I recompile apache using g++?
+
+Please let me say this: I'm so sorry that I don't know what should be the
+category, class and severity of the problem. I tried to ask for help here 3
+weeks ago, but I read your message and asked for help at
+comp.infosystems.www.servers.unix. Nevertheless, I did not get an answer. I
+hope you could help me with this.
+
+Thank you very much in advance.
+>Release-Note:
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: nghi@comp.nus.edu.sg
+Cc: submit@bugz.apache.org
+Subject: Re: general/5883: error in loading shared libraries libamzi.so:
+ cannot open shared object file: No such file or directory
+Date: Wed, 15 Mar 2000 08:52:02 -0700 (MST)
+
+ On 15 Mar 2000, Ng Hong I wrote:
+ 
+ > I was trying to get a shared library working on my Apache web-server. To start
+ > with, I have a web-page which contains a form. When I click the "submit" button
+ > below the web-page which contains the form, the "infoform" executable is suppose
+ > to be executed. So it is, but I get the following message on my web-page:
+ > 
+ > <start of message>
+ > Internal Server Error
+ > 
+ > The server encountered an internal error or misconfiguration and was unable to complete your request.
+ > 
+ > Please contact the server administrator, root@localhost and inform them of the time the error occurred, and anything you might have done that may have caused the error.
+ > 
+ > More information about this error may be available in the server error log.
+ > <end of message>
+ > 
+ > When I do a "tail -f /etc/httpd/logs/error_log", I get:
+ > 
+ > <start of message>
+ > infoform: error in loading shared libraries: libamzi.so: cannot open shared object file: No such file or directory
+ > [Sat Feb 26 08:51:00 2000] [error] [client 127.0.0.1] Premature end of script headers: /home/httpd/cgi-bin/infoform
+ > <end of message>
+ > 
+ > So, what I did was:
+ > 
+ > <start of action>
+ > [root@stf-205 lib]# /usr/sbin/apxs -i -a -n libamzi libamzi.so 
+ > cp libamzi.so /usr/lib/apache/libamzi.so
+ > chmod 755 /usr/lib/apache/libamzi.so
+ > [activating module `libamzi' in /etc/httpd/conf/httpd.conf]
+ > [root@stf-205 lib]#
+ 
+ Erm... no.  Everything you did below is for activating Apache modules
+ that come in the form of shared libraries.  Not for random other 
+ shared libraries that CGIs use.  
+ 
+ If your CGI can't find a shared library, that has nothing to do
+ with Apache.  You have to make sure you can execute it from outside
+ Apache.  Maybe there is some permissions problem with the shared
+ library.  Maybe you need to have a LD_LIBRARY_PATH set that isn't
+ set when it is run from Apache.  etc.
+ 
+ But it has nothing to do with the httpd binary itself.
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Wed May 24 13:20:54 PDT 2000
+State-Changed-Why:
+[This is a standard response.]
+This problem report has nothing to do with the Apache
+software.
+Class-Changed-From-To: support-mistaken
+Class-Changed-By: coar
+Class-Changed-When: Wed May 24 13:20:54 PDT 2000
+Category-Changed-From-To: general-other
+Category-Changed-By: coar
+Category-Changed-When: Wed May 24 13:20:54 PDT 2000
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

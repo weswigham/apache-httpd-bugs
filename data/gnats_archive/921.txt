@@ -1,0 +1,424 @@
+From nobody@hyperreal.org  Fri Jul 25 23:57:02 1997
+Received: (from nobody@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id XAA22851;
+	Fri, 25 Jul 1997 23:57:02 -0700 (PDT)
+Message-Id: <199707260657.XAA22851@hyperreal.org>
+Date: Fri, 25 Jul 1997 23:57:02 -0700 (PDT)
+From: Jason Riedy <ejr@cise.ufl.edu>
+Reply-To: ejr@cise.ufl.edu
+To: apbugs@hyperreal.org
+Subject: Uses cwd before filling it in, doesn't use syslog
+X-Send-Pr-Version: 3.2
+
+>Number:         921
+>Category:       suexec
+>Synopsis:       Uses cwd before filling it in, doesn't use syslog
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Jul 26 00:00:03 1997
+>Last-Modified:  Thu May 28 04:04:37 PDT 1998
+>Originator:     ejr@cise.ufl.edu
+>Organization:
+>Release:        1.2.1
+>Environment:
+SunOS trail 5.5 Generic_103093-12 sun4m sparc SUNW,SPARCstation-10
+shouldn't matter...
+>Description:
+Yeah, I should separate these, but I'm lazy.
+
+First: There are multiple references to cwd before it's set.
+
+Second (how I noticed): suexec doesn't have a syslog option.  It's
+kinda important for serious breakins.  
+
+I picked LOG_INFO as the type of entry to show up where we have cgiwrap 
+messages going.  Also, I use ../src/conf.h and ../src/util_snprintf.o
+directly.  I changed the LOG_EXEC directive to USE_LOGFILE...  Twiddled
+a message or two...  Can't remember the other changes...  Could probably
+use the config info to determine if you have syslog, but you're changing
+the error setup anyways...
+
+Third:  You were using unguarded printfs, etc.  That's bad.  Buffer over-
+flow; game over...  I think I cleared out all the possible run-time 
+overflows by using snprintf.  There is the printf(...SAFE_PATH...), but
+that should be OK.
+>How-To-Repeat:
+Try to print something with cwd to syslog...  ;)
+>Fix:
+Unified diff to follow...
+
+--- suexec.c.orig       Sat Jul 26 02:40:21 1997
++++ suexec.c    Sat Jul 26 02:29:02 1997
+@@ -69,6 +69,8 @@
+ 
+ #include "suexec.h"
+ 
++#include "../src/conf.h"
++
+ #include <sys/param.h>
+ #include <stdlib.h>
+ #include <unistd.h>
+@@ -81,6 +83,10 @@
+ #include <time.h>
+ #include <sys/stat.h>
+ 
++#ifdef USE_SYSLOG
++#include <syslog.h>
++#endif
++
+ #if defined(PATH_MAX)
+ #define AP_MAXPATH PATH_MAX
+ #elif defined(MAXPATHLEN)
+@@ -92,7 +98,12 @@
+ #define AP_ENVBUF 256
+ 
+ extern char **environ;
++#ifdef USE_SYSLOG
++static int syslog_opened_p = 0;
++#endif /* USE_SYSLOG */
++#ifdef USE_LOGFILE
+ static FILE *log;
++#endif /* USE_LOGFILE */
+ 
+ char *safe_env_lst[] =
+ {
+@@ -140,35 +151,53 @@
+ {
+     time_t timevar;
+     struct tm *lt;
++    char buff[BUFFLEN + 10];
++    int c_len;
+ 
++#ifdef USE_SYSLOG
++    if (!syslog_opened_p) {
++        syslog_opened_p = 1;
++        openlog ("suexec", LOG_PID | LOG_NOWAIT, LOG_DAEMON);
++    }
++#endif /* USE_SYSLOG */
++#ifdef USE_LOGFILE
+     if (!log)
+-       if ((log = fopen(LOG_EXEC, "a")) == NULL) {
++       if ((log = fopen(USE_LOGFILE, "a")) == NULL) {
+            fprintf(stderr, "failed to open log file\n");
+            perror("fopen");
+            exit(1);
+        }
++#endif /* USE_LOGFILE */
+ 
+     time(&timevar);
+     lt = localtime(&timevar);
+     
+-    fprintf(log, "[%.2d:%.2d:%.2d %.2d-%.2d-%.2d]: ", lt->tm_hour, lt->tm_min,
+-           lt->tm_sec, lt->tm_mday, (lt->tm_mon + 1), lt->tm_year);
++    c_len = ap_snprintf (buff, BUFFLEN, "[%.2d:%.2d:%.2d %.2d-%.2d-%.2d]: ", 
++                         lt->tm_hour, lt->tm_min, lt->tm_sec, lt->tm_mday, 
++                         (lt->tm_mon + 1), lt->tm_year);
+     
+-    vfprintf(log, fmt, ap);
++    ap_vsnprintf (&buff[c_len], BUFFLEN - c_len, fmt, ap);
+ 
++#ifdef USE_SYSLOG
++    syslog (LOG_INFO, "%s", buff);
++#endif /* USE_SYSLOG */
++
++#ifdef USE_LOGFILE
++    fprintf (log, "%s", buff);
+     fflush(log);
++#endif /* USE_LOGFILE */
+     return;
+ }
+ 
+ void log_err(const char *fmt, ...)
+ {
+-#ifdef LOG_EXEC
++#if defined(USE_SYSLOG) | defined (USE_LOGFILE)
+     va_list     ap;
+ 
+     va_start(ap, fmt);
+     err_output(fmt, ap);
+     va_end(ap);
+-#endif /* LOG_EXEC */
++#endif /* USE_SYSLOG | USE_LOGFILE */
+     return;
+ }
+ 
+@@ -243,6 +272,14 @@
+     target_gname = argv[2];
+     cmd = argv[3];
+ 
++    /* 
++     * Determine the CWD here rather than after it's used.
++     */
++    if (getcwd(cwd, AP_MAXPATH) == NULL) {
++        log_err("cannot get current working directory\n");
++        exit(111);
++    }
++
+     /*
+      * Check existence/validity of the UID of the user
+      * running this program.  Error out if invalid.
+@@ -323,10 +360,10 @@
+      * Log the transaction here to be sure we have an open log 
+      * before we setuid().
+      */
+-    log_err("uid: (%s/%s) gid: (%s/%s) %s\n",
++    log_err("uid: (%s/%s) gid: (%s/%s) %s/%s\n",
+              target_uname, actual_uname,
+              target_gname, actual_gname,
+-             cmd);
++             cwd, cmd);
+ 
+     /*
+      * Error out if attempt is made to execute as root or as
+@@ -375,10 +412,12 @@
+      * Use chdir()s and getcwd()s to avoid problems with symlinked
+      * directories.  Yuck.
+      */
++    /* Um, cwd has already been referenced...  Moved this up...
+     if (getcwd(cwd, AP_MAXPATH) == NULL) {
+         log_err("cannot get current working directory\n");
+         exit(111);
+     }
++    */
+     
+     if (userdir) {
+         if (((chdir(target_homedir)) != 0) ||
+@@ -463,12 +502,18 @@
+ 
+     clean_env();
+ 
++#ifdef USE_SYSLOG
++    closelog ();
++#endif
++
++#ifdef USE_LOGFILE
+     /* 
+      * Be sure to close the log file so the CGI can't
+      * mess with it.  If the exec fails, it will be reopened 
+      * automatically when log_err is called.
+      */
+     fclose(log);
++#endif /* USE_LOGFILE */
+     log = NULL;
+     
+     /*
+--- suexec.h.orig       Sat Jul 26 02:40:26 1997
++++ suexec.h    Sat Jul 26 02:12:33 1997
+@@ -80,7 +80,7 @@
+  *            for suEXEC.  For most systems, 100 is common.
+  */
+ #ifndef GID_MIN
+-#define GID_MIN 100
++#define GID_MIN 11
+ #endif
+ 
+ /*
+@@ -108,22 +108,34 @@
+ #define USERDIR_SUFFIX "public_html"
+ #endif
+ 
++/* 
++ * BUFFLEN -- Length of error message buffer.  All messages longer than
++ *            this will be truncated.
++ */
++#define BUFFLEN 255
++
+ /*
+- * LOG_EXEC -- Define this as a filename if you want all suEXEC
+- *             transactions and errors logged for auditing and
+- *             debugging purposes.
++ * USE_LOGFILE -- Define this as a filename if you want all suEXEC
++ *                transactions and errors logged for auditing and
++ *                debugging purposes.
+  */
+-#ifndef LOG_EXEC
+-#define LOG_EXEC "/usr/local/etc/httpd/logs/cgi.log" /* Need me? */
++#ifndef USE_LOGFILE
++/*#define USE_LOGFILE "/usr/local/etc/httpd/logs/cgi.log" /* Need me? */
++#define USE_LOGFILE "/var/log/suexec.log"
+ #endif
+ 
+ /*
++ * USE_SYSLOG -- Define this to log to LOG_INFO as "suexec".
++ */
++#define USE_SYSLOG
++
++/*
+  * DOC_ROOT -- Define as the DocumentRoot set for Apache.  This
+  *             will be the only hierarchy (aside from UserDirs)
+  *             that can be used for suEXEC behavior.
+  */
+ #ifndef DOC_ROOT
+-#define DOC_ROOT "/usr/local/etc/httpd/htdocs"
++#define DOC_ROOT "/cise/web/htdocs"
+ #endif
+ 
+ /*
+--- Makefile.orig       Sat Jul 26 02:48:25 1997
++++ Makefile    Sat Jul 26 02:20:08 1997
+@@ -7,7 +7,7 @@
+ OPTIM=-O2
+ CFLAGS1= -DSOLARIS2 -DSTATUS
+ INCLUDES1= -Iregex
+-LIBS1= -lsocket -lnsl
++LIBS1= -lsocket -lnsl 
+ LFLAGS1=
+ BROKEN_BPRINTF_FLAGS=
+ REGLIB=regex/libregex.a
+@@ -46,6 +46,9 @@
+ 
+ logresolve: logresolve.c
+        $(CC) $(INCLUDES) $(CFLAGS) logresolve.c -o logresolve $(LIBS)
++
++suexec:        suexec.c
++       $(CC) $(INCLUDES) $(CFLAGS) suexec.c -o suexec ../src/util_snprintf.o $(
+LIBS)
+ 
+ clean:
+        rm -f $(TARGETS)
+%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Sat Jul 26 00:43:10 PDT 1997
+State-Changed-Why:
+The references to cwd before it is set are in error, however
+the getcwd() is after the setuid() on purpose due to issues
+with NFS mapping root --> nobody.  The fix will probably involve
+changing the uses of cwd before it is set.
+I see nothing wrong with the *printf*'s you claimed were a problem.  They
+are not printing to a string, but to a file descriptor
+so there is no buffer to overflow.
+
+We will consider if we want to include some form of your
+syslog modifications.
+
+Thanks.
+
+From: Marc Slemko <marcs@znep.com>
+To: apbugs@apache.org
+Subject: Re: suexec/921: Uses cwd before filling it in, doesn't use syslog  (fwd)
+Date: Sat, 26 Jul 1997 02:47:25 -0600 (MDT)
+
+ 
+   This message is in MIME format.  The first part should be readable text,
+   while the remaining parts are likely unreadable without MIME-aware tools.
+   Send mail to mime@docserver.cac.washington.edu for more info.
+ 
+ --==_Exmh_16382602920
+ Content-Type: TEXT/PLAIN; CHARSET=us-ascii
+ Content-ID: <Pine.BSF.3.95.970726024714.14902H@alive.znep.com>
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Sat, 26 Jul 1997 04:35:50 -0400
+ From: Jason Riedy <ejr@cise.ufl.edu>
+ To: Marc Slemko <marc@hyperreal.org>
+ Subject: Re: suexec/921: Uses cwd before filling it in, doesn't use syslog 
+ 
+ Oh well.  And Marc Slemko writes:
+  - The references to cwd before it is set are in error, however
+  - the getcwd() is after the setuid() on purpose due to issues
+  - with NFS mapping root --> nobody.  The fix will probably involve
+  - changing the uses of cwd before it is set.
+ 
+ Good point.  It doesn't matter in our application...  The server's
+ already running as nobody, so nobody must already have enough access 
+ to the directory for a cwd.  I can see alternate setups, though.
+ 
+ Replacing the cwd() with getenv("SCRIPT_FILENAME") should work
+ up until you really need the cwd().  Actually, that even gives a
+ nicer filename with automounters.  I've attached a patch against the
+ original suexec for only the cwd() thing.  It'd be possible to use
+ the script's filename even after getting the cwd(), but...
+ 
+  - I see nothing wrong with the *printf*'s you claimed were a problem.  They
+  - are not printing to a string, but to a file descriptor
+  - so there is no buffer to overflow.
+ 
+ I don't trust Solaris's file buffers and printf implementation.  ;)  
+ We've been able to trivially overflow too many pieces of their code.  
+ And 2.6 still has the output of mount reversed (mount-point on device); 
+ that doesn't raise my confidence level.
+ 
+ The snprintfs don't really hurt anything.
+ 
+  - We will consider if we want to include some form of your
+  - syslog modifications.
+ 
+ yeah!
+ 
+ I had to add them locally to meet our security policies (duplicate,
+ non-local logs for most suid apps), so I thought I'd pass them along.
+ 
+ Jason, who really will go back to working on his thesis soon...
+ 
+ 
+ --==_Exmh_16382602920
+ Content-Type: TEXT/PLAIN; NAME="suexec.patch.2"; CHARSET=us-ascii
+ Content-ID: <Pine.BSF.3.95.970726024714.14902I@alive.znep.com>
+ Content-Description: Pure cwd patch...
+ 
+ --- suexec.c.orig	Sat Jul 26 04:21:54 1997
+ +++ suexec.c	Sat Jul 26 04:23:25 1997
+ @@ -222,4 +222,5 @@
+      char *prog;             /* name of this program      */
+      char *cmd;              /* command to be executed    */
+ +    char *script_filename;  /* SCRIPT_FILENAME CGI environment var */
+      char cwd[AP_MAXPATH];   /* current working directory */
+      char dwd[AP_MAXPATH];   /* docroot working directory */
+ @@ -324,8 +325,9 @@
+       * before we setuid().
+       */
+ +    script_filename = getenv ("SCRIPT_FILENAME");
+      log_err("uid: (%s/%s) gid: (%s/%s) %s\n",
+               target_uname, actual_uname,
+               target_gname, actual_gname,
+ -             cmd);
+ +             script_filename);
+  
+      /*
+ @@ -356,5 +358,5 @@
+       */
+      if (((setgid(gid)) != 0) || (initgroups(actual_uname,gid) != 0)) {
+ -        log_err("failed to setgid (%ld: %s/%s)\n", gid, cwd, cmd);
+ +        log_err("failed to setgid (%ld: %s)\n", gid, script_filename);
+          exit(109);
+      }
+ @@ -364,5 +366,5 @@
+       */
+      if ((setuid(uid)) != 0) {
+ -	log_err("failed to setuid (%ld: %s/%s)\n", uid, cwd, cmd);
+ +	log_err("failed to setuid (%ld: %s)\n", uid, script_filename);
+  	exit(110);
+      }
+ 
+ --==_Exmh_16382602920--
+Comment-Added-By: coar
+Comment-Added-When: Fri Jan 30 06:56:45 PST 1998
+Comment-Added:
+The 'using "cwd" before setting it' issue has been
+addressed in the 1.2 and 1.3 development streams.  The
+fix should appear in the next releases after 1.2.5 and
+1.3b3.
+
+The syslog issue has not been addressed.
+State-Changed-From-To: analyzed-suspended
+State-Changed-By: coar
+State-Changed-When: Thu May 28 04:04:36 PDT 1998
+State-Changed-Why:
+Suspending request to use syslog with suexec; will be
+considered during feature cycle.
+Class-Changed-From-To: sw-bug-change-request
+Class-Changed-By: coar
+Class-Changed-When: Thu May 28 04:04:36 PDT 1998
+>Unformatted:
+
+
+

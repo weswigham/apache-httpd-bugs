@@ -1,0 +1,91 @@
+Received: (qmail 59123 invoked by uid 65534); 6 Mar 2000 17:05:49 -0000
+Message-Id: <20000306170549.59122.qmail@locus.apache.org>
+Date: 6 Mar 2000 17:05:49 -0000
+From: Anthony Heading <heading_anthony@jpmorgan.com>
+Reply-To: heading_anthony@jpmorgan.com
+To: submit@bugz.apache.org
+Subject: http cacheing appears seriously broken: I suspect line c->hdrs = resp_hdrs;
+X-Send-Pr-Version: 3.110
+
+>Number:         5834
+>Category:       mod_proxy
+>Synopsis:       http cacheing appears seriously broken: I suspect line c->hdrs = resp_hdrs;
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Mar 06 09:10:00 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     heading_anthony@jpmorgan.com
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Solaris 2.5.1;  Linux 2.2.14
+>Description:
+Expired cache data is *always* refetched from the server, even if 304-not-
+modified was returned from the probe.   Further, many headers including
+for example Content-Length are lost. 
+
+Observable example effect is when running an http-based Debian package
+update through an Apache cache, it fails with a "Size mismatch error"
+
+What is happening is the following:
+
+When the cache contains expired data, (ap_proxy_cache_check returns DECLINED),
+I read that an "If-Modified-Since" request is sent to the server to cheeck
+the data validity.   If 304 (not modified) is returned, by my experiments it
+seems that the accompanying returned headers are minimal (i.e. no
+application type or content length or so on).
+
+However proxy_http.c line 452 discards the cache headers for these
+minimal headers!   Much of the later code suggests that this is
+wrong - the resp_headers are passed into ap_proxy_cache_update directly
+anyhow so there's no need to do this, and then ap_proxy_cache_update
+very clearly makes the following call sequence:
+
+    expire = ap_table_get(resp_hdrs, "Expires");
+	...
+    if (expire == NULL && c->fp != NULL) {
+		/* no expiry data sent in response */
+        expire = ap_table_get(c->hdrs, "Expires");
+
+This is obviously inconsistent with a design where the caller
+has set these pointers equal!
+
+These minimal headers are then forwarded to the original client, who thus
+loses any other headers info, and ap_proxy_cache_update declines to use
+the (valid) cache data since it no longer knows what it is!!!!
+
+>How-To-Repeat:
+wget -d http://www.google.com:80/images/Title_Left.gif
+
+Note that on a clean cache machine, the first call will work fine
+(full headers and Content-Length passed to the client) but
+second and subsequent calls will
+	1) fail to use the cache;
+	2) not show a Content-Length header (or any others)
+>Fix:
+Simply removing the line mentioned above improves things for me, but
+I'm not an expert on the protocol.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

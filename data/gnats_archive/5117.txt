@@ -1,0 +1,123 @@
+Received: (qmail 7651 invoked by uid 2012); 9 Oct 1999 13:11:23 -0000
+Message-Id: <19991009131123.7650.qmail@hyperreal.org>
+Date: 9 Oct 1999 13:11:23 -0000
+From: Peter Santoro <peter@pscomp.com>
+Reply-To: peter@pscomp.com
+To: apbugs@hyperreal.org
+Subject: Servlet's destroy method does not appear to be called on server restart or stop
+X-Send-Pr-Version: 3.2
+
+>Number:         5117
+>Category:       mod_jserv
+>Synopsis:       Servlet's destroy method does not appear to be called on server restart or stop
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Oct  9 06:20:01 PDT 1999
+>Last-Modified:  Tue Oct 12 20:10:36 PDT 1999
+>Originator:     peter@pscomp.com
+>Organization:
+apache
+>Release:        1.3.6
+>Environment:
+Apache 1.3.6 and JServ 1.0
+RedHat Linux 6.0 with updates and kernel 2.2.12
+JSDK 2.0 and JDK 1.17B
+>Description:
+It appears that a servlet's destroy method is only called when the ServletManager
+re-initializes a servlet.  I've verified this using the log() API call and have
+also tried to write to my own log file.  This is not serious for simple servlets, but
+is more of a concern for servlets that rely on using cached resources to improve
+performance or want to save state before being destroyed.  Looking through the bug
+database suggests that this problem may have been around as early as 1.3.4, but
+it is not documented as such.
+
+Further testing shows that destroy() is called when you update the servlet's
+class file when autoreload.classes=true.
+>How-To-Repeat:
+Make sure autoreload.classes=true in zone file.
+
+Add init() and destroy() methods to Hello.java example.  Add a log() call to
+the init() and destroy() methods, recompile, and run servlet from browser.
+View log file to see init's log() message.  Restart and/or stop Apache.
+View log again and message from destroy is NOT in the log.
+
+Re-run servlet from browser and see init's log() message in log file.  Recompile
+Hello.java and re-run servlet from browser.  View log to see that destroy() is
+called a few messages after the "Re-initing ServletManager servlet" message.
+>Fix:
+If the destroy method is really being called on server start or restart,
+perhaps the log needs to be flushed.  However, the fact that I cannot write to
+my own log file suggests that this may not be the case.
+
+Perhaps this is a timing issue?
+>Audit-Trail:
+
+From: Peter Santoro <peter@pscomp.com>
+To: apbugs@hyperreal.org, jserv-bugdb@apache.org, apbugs@apache.org
+Cc:  Subject: Re: mod_jserv/5117: Servlet's destroy method does not appear to be 
+ called on server restart or stop
+Date: Sun, 10 Oct 1999 11:46:00 -0400
+
+ With full jserv logging turned on, the last messages printed from
+ mod_jserv are as follows during a server stop or restart:
+ 
+ ... jserv_watchdog:(...) watchdog_cleanup()
+ ... Apache Module was cleaned-up
+ 
+ I'm not an expert in mod_jserv and its source code, but it appears that
+ the problem is related to mod_jserv's load balancing logic and/or an
+ improper configuration on my part.  Adding additional log statements to
+ jserv_watchdog.c revealed that cfg->shmfile was null inside
+ watchdog_cleanup() causing it to return without doing anything --
+ further suggesting that ApJServShmFile was not set in the config file
+ (which it was not).  Although, LOAD_BALANCE is #defined in jserv.h by
+ default, no load balancing statements appear in my jserv config files. 
+ (BTW, when I attempted to comment out the #define LOAD_BALANCE statement
+ in jserv.h and rebuild, I got compile errors.  I believe
+ jserv_cfg_shmfile() in mod_jserv.c needs to be wrapped using #ifdef
+ LOAD_BALANCE ... #endif preprocessor statements.)
+
+From: Peter Santoro <peter@pscomp.com>
+To: apbugs@hyperreal.org, jserv-bugdb@apache.org, apbugs@apache.org
+Cc:  Subject: Re: mod_jserv/5117: Servlet's destroy method does not appear to be 
+ called on server restart or stop
+Date: Sun, 10 Oct 1999 11:46:00 -0400
+
+ With full jserv logging turned on, the last messages printed from
+ mod_jserv are as follows during a server stop or restart:
+ 
+ ... jserv_watchdog:(...) watchdog_cleanup()
+ ... Apache Module was cleaned-up
+ 
+ I'm not an expert in mod_jserv and its source code, but it appears that
+ the problem is related to mod_jserv's load balancing logic and/or an
+ improper configuration on my part.  Adding additional log statements to
+ jserv_watchdog.c revealed that cfg->shmfile was null inside
+ watchdog_cleanup() causing it to return without doing anything --
+ further suggesting that ApJServShmFile was not set in the config file
+ (which it was not).  Although, LOAD_BALANCE is #defined in jserv.h by
+ default, no load balancing statements appear in my jserv config files. 
+ (BTW, when I attempted to comment out the #define LOAD_BALANCE statement
+ in jserv.h and rebuild, I got compile errors.  I believe
+ jserv_cfg_shmfile() in mod_jserv.c needs to be wrapped using #ifdef
+ LOAD_BALANCE ... #endif preprocessor statements.)
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

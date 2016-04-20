@@ -1,0 +1,131 @@
+Received: (qmail 24258 invoked by uid 2012); 12 Oct 1998 09:16:53 -0000
+Message-Id: <19981012091653.24257.qmail@hyperreal.org>
+Date: 12 Oct 1998 09:16:53 -0000
+From: Steven Uggowitzer <uggowitzers@who.int>
+Reply-To: uggowitzers@who.int
+To: apbugs@hyperreal.org
+Subject: Proxy returns 407 code to browser when secure <Directory> or <Location> defined
+X-Send-Pr-Version: 3.2
+
+>Number:         3188
+>Category:       mod_proxy
+>Synopsis:       Proxy returns 407 code to browser when secure <Directory> or <Location> defined
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Oct 12 02:20:04 PDT 1998
+>Last-Modified:  Wed Mar 24 10:07:26 PST 1999
+>Originator:     uggowitzers@who.int
+>Organization:
+>Release:        1.3.3
+>Environment:
+Linux RedHat 5.1
+Linux proxy-gw 2.1.117 #3 Mon Sep 14 19:25:18 CEST 1998 i686 unknown
+>Description:
+I require an Apache web server to proxy to a specialized web server (IIS --yuck)
+on the inside of our corporate firewall.  This works fine, however I needed to 
+define authentification to restrict access by user name and password.  When I
+did this, web clients get 407 errors returned to them.  Unfortunately neither 
+Netscape nor IE seeme to know what to do with this response code. This problem
+seems to have been similarly reported as PR#2978 but never resolved.
+
+Here is an excerpt from my httpd.conf (IP addresses not real):
+
+<VirtualHost 10.10.10.10:80>
+  ServerAdmin  webmaster@who.int
+  ErrorLog logs/intranet/error_log
+  TransferLog logs/intranet/access_log
+  ServerName foobar-ext.who.int
+  DocumentRoot /home/httpd/html-blank
+ <Directory proxy:*>
+   Options None
+   AllowOverride None
+   <Limit GET POST>
+       require valid-user
+   </Limit>
+   AuthType Basic
+   AuthName foobarexternal
+   AuthUserFile /home/httpd/conf/intranet.pwd
+  </Directory>
+  ProxyRequests on
+  ProxyPass / http://iis.who.int/
+  ProxyPassReverse / http://iis.who.int/
+  RewriteEngine On
+  RewriteLog logs/intranet/rewrite_log
+  RewriteLogLevel 3
+  RewriteRule ^/$  http://iis.who.int/index.ext.html [P]
+  RewriteRule ^/(.*)$ http://iis.who.int/$1 [P]
+</VirtualHost>
+
+
+Oddly, if a user accesses this proxy server thru another proxy it works.  The
+user gets challenged properly.  i.e.:
+
+client <-> client proxy <-> Apache Proxy <-> IIS Server
+
+I suppose the client proxy knows how to deal with the 407 error.
+
+Help! I needed to get this working yesterday.
+
+Thanks.
+>How-To-Repeat:
+Set up 2 web servers.  Have one proxy the other using the above <VirtualHost>
+Section.  Netscape reports 407 Proxy Authentification required.  IE4 reports
+Not Enough memory to complete operation	
+>Fix:
+Can we simply have Apache return a standard Auth required code to the browser
+instead of the 407 code.  This would then cause a standard challenge-response
+cycle to occur.  I've started to hack the code to do this, but would appreciate
+some guidance.
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Steven Uggowitzer <uggowitzers@who.int>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_proxy/3188: Proxy returns 407 code to browser when secure
+ <Directory> or <Location> defined
+Date: Mon, 12 Oct 1998 08:53:11 -0700 (PDT)
+
+ On 12 Oct 1998, Steven Uggowitzer wrote:
+ 
+ > >Description:
+ > I require an Apache web server to proxy to a specialized web server (IIS --yuck)
+ > on the inside of our corporate firewall.  This works fine, however I needed to 
+ > define authentification to restrict access by user name and password.  When I
+ > did this, web clients get 407 errors returned to them.  Unfortunately neither 
+ > Netscape nor IE seeme to know what to do with this response code. This problem
+ > seems to have been similarly reported as PR#2978 but never resolved.
+ 
+ Both netscape and IE know what to do with a 407 response code, since that
+ is the proper response code for a proxy.
+ 
+ You, however, are doing a "reverse proxy" or whatever so the clients don't
+ know they are talking to a proxy.  There is currently no way to configure
+ Apache to do normal auth instead of proxy auth in this situation.
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Wed Mar 24 10:07:23 PST 1999
+State-Changed-Why:
+
+[Marc's answer closed the PR.]
+
+Severity-Changed-From-To: critical-non-critical
+Severity-Changed-By: coar
+Severity-Changed-When: Wed Mar 24 10:07:23 PST 1999
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

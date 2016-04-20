@@ -1,0 +1,236 @@
+Received: (qmail 14321 invoked by uid 501); 2 Jun 2001 08:49:55 -0000
+Message-Id: <20010602084955.14320.qmail@apache.org>
+Date: 2 Jun 2001 08:49:55 -0000
+From: Soeren Sonnenburg <sonnenburg@informatik.hu-berlin.de>
+Reply-To: sonnenburg@informatik.hu-berlin.de
+To: submit@bugz.apache.org
+Subject: filesmatch/directoryindex access
+X-Send-Pr-Version: 3.110
+
+>Number:         7804
+>Category:       mod_dir
+>Synopsis:       filesmatch/directoryindex access
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          mistaken
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Jun 02 01:50:00 PDT 2001
+>Closed-Date:    Mon Sep 03 12:07:10 PDT 2001
+>Last-Modified:  Tue Oct 30 00:30:00 PST 2001
+>Originator:     sonnenburg@informatik.hu-berlin.de
+>Release:        Apache/1.3.19 (Unix) Debian/GNU
+>Organization:
+>Environment:
+Linux server 2.4.4 #1 Sat May 12 14:29:28 CEST 2001 i586 unknown
+>Description:
+Hi.
+If you try to protect your server by the following directives:
+
+<Directory />
+    Options None
+    AllowOverride None
+    Order deny,allow
+    Deny from all
+</Directory>
+
+<FilesMatch "*">
+    Options None
+    AllowOverride None
+    Order deny,allow
+    Deny from all
+</FilesMatch>
+
+and then only allow access for the document root like
+
+<Directory /var/www/>
+    Order allow,deny
+    Allow from all
+  <FilesMatch "\.(html|png|gif|jpeg|jpg|php)$">
+    Order allow,deny
+    Allow from all
+  </FilesMatch>
+</Directory>
+
+where mod_dir is loaded and
+DirectoryIndex i index.php
+
+you _should_ be able to see http://server/
+
+instead access is denied. BUT if you change FilesMatch above to:
+<FilesMatch "^.{1,3}$|\.(html|png|gif|jpeg|jpg|php)$">
+
+http://server works !
+
+the term '^.{1,3}$' somehow coincides with the length of the file in the DirectoryIndex, e.g. if I replace i with index.html it must be ^.{1,10}$ to get access ! If it was desired to not let anyone in than this is a security flaw. If not then it is just a too secure apache :-) 
+However access is allowed for FilesMatch patterns like "*" or when leaving out the Deny at the beginning.
+>How-To-Repeat:
+to repeat this problem set include the following:
+
+<FilesMatch "*">
+Options Indexes
+AllowOverride None
+Order Deny,Allow
+Deny from All
+</FilesMatch>
+
+<Directory />
+Options Indexes
+AllowOverride None
+Order Deny,Allow
+Deny from All
+</Directory>
+
+<Directory /var/www>
+        order allow,deny
+        allow from all
+        <FilesMatch "\.(html|php|gif|jpeg|jpg|png)$">
+                order allow,deny
+                allow from all
+        </FilesMatch>
+</Directory>
+
+and include mod_dir and then try to access the serverroot. it won't work.
+>Fix:
+it looks as if for entries in DirectoryIndex access is denied before checking the whole new uri (for Alias directives such as Alias /bla /index.html there is no problem)
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: slive
+State-Changed-When: Sat Jun  2 11:27:40 PDT 2001
+State-Changed-Why:
+It looks to me like you have a misunderstanding of how
+<Directory> and <Files> sections are merged in Apache.
+A discussion of this issue is available at
+http://httpd.apache.org/docs/sections.html
+
+In particular, without spending time to replicate
+your configuration in detail, it looks like
+the two sets of <FilesMatch> sections are being
+evaluated together, the "Order deny,allow" is 
+overriding the "Order allow,deny", and therefore
+the "Deny from all" is being evaluated last and
+denying all access.
+
+If what you want is to deny all access to files
+other than those in the docroot with specific 
+extensions, then I believe you want something
+like (untested):
+
+<Directory />
+Order deny,allow
+deny from all
+</Directory>
+
+<Directory /var/www>
+<FilesMatch "\.(html|png|gif|jpeg|jpg|php)$">
+allow from all
+</FilesMatch>
+</Directory>
+
+Thanks for using Apache!
+State-Changed-From-To: closed-open
+State-Changed-By: slive
+State-Changed-When: Tue Jun  5 16:40:38 PDT 2001
+State-Changed-Why:
+OK, I'm opening this again, because my simplified
+configuration also fails.  I've looked into
+something similar to this before and I couldn't find
+the cause.
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Mon Sep  3 12:07:10 PDT 2001
+State-Changed-Why:
+
+This fails for a very specific reason.  The _filename_ / wasn't permitted before mod_dir ever had a chance to
+recover from your misconfiguration.
+
+Drop the <Files "*"> (and don't use FilesMatch anyway for
+simple wildcards, since regex processing is far more 
+expensive, and * isn't a regex, while .* is).
+
+This was nothing more than a misconfiguration.
+
+
+Class-Changed-From-To: sw-bug-mistaken
+Class-Changed-By: wrowe
+Class-Changed-When: Mon Sep  3 12:07:10 PDT 2001
+
+From: "Soeren Sonnenburg" <sonnenburg@informatik.hu-berlin.de>
+To: <wrowe@apache.org>
+Cc: <apbugs@Apache.Org>
+Subject: Re: mod_dir/7804: filesmatch/directoryindex access
+Date: Tue, 30 Oct 2001 09:17:04 +0100
+
+ > This fails for a very specific reason.  The _filename_ / wasn't permitted
+ before > mod_dir ever had a chance to
+ > recover from your misconfiguration.
+ >
+ > Drop the <Files "*"> (and don't use FilesMatch anyway for
+ > simple wildcards, since regex processing is far more
+ > expensive, and * isn't a regex, while .* is).
+ >
+ > This was nothing more than a misconfiguration.
+ 
+ 
+ I do not think so. Even after dropping the FilesMatch section ending in a
+ simple configuration like
+ 
+ <Directory />
+ Order deny,allow
+ deny from all
+ </Directory>
+ 
+ <Directory /var/www>
+ <FilesMatch "\.(html|png|gif|jpeg|jpg|php)$">
+ Order allow,deny
+ allow from all
+ </FilesMatch>
+ </Directory>
+ 
+ apache _does_ not allow http://server or http://server/.
+ 
+ This should work, but wrongly http://server is not expanded to
+ http://server/index.html and therefore denied !
+ 
+ However I can see any file in matching the specific endings below /var/www/
+ when explicitely stating them (http://server/index.html)
+ 
+ Moreover I do not see why
+ 
+ <FilesMatch "^...$|\.(html|php|gif|jpeg|jpg|png|js|css|jar)$">
+ 
+ allows http://server and not  ^.$
+ 
+ 
+ As it is now, I can not protect the web server (denying all directory access
+ and selectively allowing files with specific fileendings in certain
+ directories and below) and allowing http://server ! If you can please tell
+ me how.
+ 
+ 
+ Thanks for paying attention,
+ Soeren.
+ 
+ PS: Sorry for replying _that_ late.
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

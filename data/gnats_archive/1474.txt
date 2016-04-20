@@ -1,0 +1,107 @@
+Received: (qmail 10318 invoked by uid 2012); 24 Nov 1997 20:47:59 -0000
+Message-Id: <19971124204759.10317.qmail@hyperreal.org>
+Date: 24 Nov 1997 20:47:59 -0000
+From: M.D.Parker <mdpc@netcom.com>
+Reply-To: mdpc@netcom.com
+To: apbugs@hyperreal.org
+Subject: No logging when killing above MaxSpareServers -- suggested patch included
+X-Send-Pr-Version: 3.2
+
+>Number:         1474
+>Category:       general
+>Synopsis:       No logging when killing above MaxSpareServers -- suggested patch included
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          analyzed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Nov 24 12:50:00 PST 1997
+>Last-Modified:  Thu May 28 16:27:04 PDT 1998
+>Originator:     mdpc@netcom.com
+>Organization:
+>Release:        1.3b3
+>Environment:
+Unix
+>Description:
+When the server become busy, an INFO message is generated to the error log
+indicating that more server processes were created to be in line with the
+configured MinSpareServers.  The current message generated implies three
+factors...but this message really helps identify when the MinSpareServers is 
+possibly set too low.
+
+Now an administrator needs a way to determine when the MaxSpareServers is too
+generous.  I suggest that this can be done by adding an INFO message to the
+log when spare servers are killed off in http_main.c.
+
+ 
+>How-To-Repeat:
+No problem...
+>Fix:
+Yes...here is a suggested diff -c for this issue:
+
+*** http_main.c.dist    Fri Nov 21 22:29:29 1997
+--- http_main.new       Mon Nov 24 12:40:26 1997
+***************
+*** 3192,3197 ****
+--- 3192,3211 ----
+      }
+      max_daemons_limit = last_non_dead + 1;
+      if (idle_count > daemons_max_free) {
++ /*
++ * send out message for killing off high daemons
++ */
++ if (idle_spawn_rate >= 1) {
++                 aplog_error(APLOG_MARK, APLOG_NOERRNO|APLOG_INFO, server_conf,
++                     "server idle ( "
++                     "kill rate %d, idle %d, "
++                     "total %d )", idle_spawn_rate,
++                     idle_count, total_non_dead);  
++             }
++ /* 
++ *
++ */ 
++ 
+        /* kill off one child... we use SIGUSR1 because that'll cause it to
+         * shut down gracefully, in case it happened to pick up a request
+         * while we were counting
+%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Feb 27 01:36:08 PST 1998
+State-Changed-Why:
+So I've been running a patch like this on one of my servers and it
+generates a large amount of log traffic... mostly when it's
+exactly one child over MaxSpare... but maybe at debug level it
+would be useful.
+State-Changed-From-To: analyzed-feedback
+State-Changed-By: coar
+State-Changed-When: Thu May 28 13:02:49 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+State-Changed-From-To: feedback-analyzed
+State-Changed-By: coar
+State-Changed-When: Thu May 28 16:27:03 PDT 1998
+State-Changed-Why:
+[Response from submitter, PR keepalive activated]
+I believe that this is still a problem.....or a change request.
+
+Mike
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

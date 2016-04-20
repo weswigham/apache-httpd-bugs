@@ -1,0 +1,173 @@
+Received: (qmail 2175 invoked by uid 65534); 22 Jan 2000 17:45:51 -0000
+Message-Id: <20000122174551.2174.qmail@locus.apache.org>
+Date: 22 Jan 2000 17:45:51 -0000
+From: rainer scherg <Rainer.Scherg@rexroth.de>
+Reply-To: Rainer.Scherg@rexroth.de
+To: submit@bugz.apache.org
+Subject: Change of AddLanguage behaviour
+X-Send-Pr-Version: 3.110
+
+>Number:         5625
+>Category:       mod_mime
+>Synopsis:       Change of AddLanguage behaviour
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Jan 22 09:50:00 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     Rainer.Scherg@rexroth.de
+>Release:        1.3.9
+>Organization:
+apache
+>Environment:
+all
+>Description:
+Due to a discussion in comp.infosystems.server.unix there is a problem
+in the behavior of "AddLanguage".
+
+One file extension can only be linked to one language type. (IMO this behavior
+was not documented...)
+This could cause problems if a document serves several languages... 
+
+e.g.:
+  AddLanguage en    .en
+  AddLanguage en-US .en
+  AddLanguage en.GB .en
+
+is not possible. There were several "workarounds" posted:
+ - symlinks
+ - foo.html.en.en-US.en-GB
+These workarounds are sometimes hard to handle...
+
+Please find a code snipset, which fixes this problem:
+Advantage:  
+  - More flexible behavior of AddLanguage
+  - Fully compat. with old behavior
+
+Disadvantage:
+  - Small performance penalty...
+
+How it works:
+  - Only one "value per "key" were sored in a table for AddLanguage
+  - Checking Languages returned a result on the first hit of the
+    data in the internal language tables (AddLanguage)...
+
+  - Now all AddLanguage defs will be stored...
+    Per request there is a loop checking all languages per extension...
+
+Things to check:
+  Behavior when inheriting to virtual-server or per-dir-configs...
+  Maybe a problem.
+
+
+
+
+
+
+
+>How-To-Repeat:
+AddLanguage  en    .en
+AddLanguage  en-US .en
+>Fix:
+*** mod_mime.c-org	Sat Jan 22 18:13:51 2000
+--- mod_mime.c	Sat Jan 22 18:23:37 2000
+***************
+*** 161,167 ****
+      if (*ext == '.')
+          ++ext;
+      ap_str_tolower(lang);
+!     ap_table_setn(m->language_types, ext, lang);
+      return NULL;
+  }
+  
+--- 161,167 ----
+      if (*ext == '.')
+          ++ext;
+      ap_str_tolower(lang);
+!     ap_table_add(m->language_types, ext, lang);
+      return NULL;
+  }
+  
+***************
+*** 308,325 ****
+              found = 1;
+          }
+  
+-         /* Check for Content-Language */
+-         if ((type = ap_table_get(conf->language_types, ext))) {
+-             const char **new;
+  
+-             r->content_language = type;         /* back compat. only */
+-             if (!r->content_languages)
+-                 r->content_languages = ap_make_array(r->pool, 2, sizeof(char *));
+-             new = (const char **) ap_push_array(r->content_languages);
+-             *new = type;
+-             found = 1;
+-         }
+  
+          /* Check for Content-Encoding */
+          if ((type = ap_table_get(conf->encoding_types, ext))) {
+              if (!r->content_encoding)
+--- 308,347 ----
+              found = 1;
+          }
+  
+  
+  
++ 
++ 	/* check for Content-Language
++ 	   2000-01-21 - rasc: AddLanguage may now be n:1
++ 	               this means: cycle thru all language defs.
++                        old code allowed only one lang per extension
++ 	 */
++ 	
++ 	{
++ 	  int i;
++ 	  table *lang_t = conf->language_types;
++ 	  table_entry *lang_elts = (table_entry *) ap_table_elts(lang_t)->elts;
++ 
++ 	  for (i=0; i<ap_table_elts(lang_t)->nelts; i++) {
++ 	    if (lang_elts[i].key!=NULL && !strcasecmp(lang_elts[i].key,ext)) {
++               const char **new;
++ 
++               type = lang_elts[i].val;
++               r->content_language = type;         /* back compat. only */
++               if (!r->content_languages)
++                 r->content_languages = ap_make_array(r->pool,2,sizeof(char *));
++               new = (const char **) ap_push_array(r->content_languages);
++               *new = type;
++               found = 1;
++ 
++ 	    }
++ 	  }
++ 	}
++ 
++ 
++ 
++ 
++ 
+          /* Check for Content-Encoding */
+          if ((type = ap_table_get(conf->encoding_types, ext))) {
+              if (!r->content_encoding)
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

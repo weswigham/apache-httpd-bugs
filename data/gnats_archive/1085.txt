@@ -1,0 +1,124 @@
+From apwww@hyperreal.org  Tue Sep  2 04:26:09 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id EAA15397;
+	Tue, 2 Sep 1997 04:26:09 -0700 (PDT)
+Message-Id: <199709021126.EAA15397@hyperreal.org>
+Date: Tue, 2 Sep 1997 04:26:09 -0700 (PDT)
+From: Dongbo Bu <dongbobu@usa.net>
+Reply-To: dongbobu@usa.net
+To: apbugs@hyperreal.org
+Subject: ProxyRemote make a dead cycle.
+X-Send-Pr-Version: 3.2
+
+>Number:         1085
+>Category:       mod_proxy
+>Synopsis:       ProxyRemote make a dead cycle.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Sep  2 04:30:02 1997
+>Last-Modified:  Thu May 28 04:13:59 PDT 1998
+>Originator:     dongbobu@usa.net
+>Organization:
+>Release:        1.2.4
+>Environment:
+AIX rock 1 4 001DEB36E000
+GNU cc
+>Description:
+In Apache 1.2.0: 
+ 
+   In the file proxy_http.c, line 172, 
+   url +=7; /* skip http:// */
+   It is a bug for proxyremote ftp:// and others. 
+
+In Apache 1.2.4: 
+
+   It still has a bug that the desthost is NOT correct when 
+proxyremote ftp://user:passwd@host.domain:port. The server will 
+send a head: 
+     GET ftp://user:passwd@host.domain:port
+     Host: user:passwd@host.domain:port
+
+In Apache 1.2.4: 
+
+    When a cluster host who make proxyremote a cycle, then all
+the machine will consume the resource and will be down. 
+    I have a solution that add an extended header called PathPassed to 
+record all the host the request travelled, then when a machine found 
+that he has already been added in the PathPassed, then he would refuse
+serve the request, so the cycle is cut off. 
+
+    For an example: 
+    In host tango: 
+           (httpd.conf) 
+             ProxyRemote ftp http://rock.ncic.ac.cn
+    In host rock: 
+           (httpd.conf) 
+             ProxyRemote ftp http://tango.ncic.ac.cn
+    A cycle is made! 
+    But when PathPassed added, rock will forward 
+       PathPassed: rock.ncic.ac.cn 
+    to tango. And tango forward 
+       PathPassed: rock.ncic.ac.cn, tango.ncic.ac.cn
+    to rock. But rock found that he is already included in the headers,
+so he would NOT forward the request to tango. Then enevythingis OK.
+    Is it right? 
+
+ever 
+  Dongbo Bu 
+>How-To-Repeat:
+ For an example: 
+    In host tango: 
+           (httpd.conf) 
+             ProxyRemote ftp http://rock.ncic.ac.cn
+    In host rock: 
+           (httpd.conf) 
+             ProxyRemote ftp http://tango.ncic.ac.cn
+    A dead cycle is made! 
+>Fix:
+ I have a solution that add an extended header called PathPassed to 
+record all the host the request travelled, then when a machine found 
+that he has already been added in the PathPassed, then he would refuse
+serve the request, so the cycle is cut off. 
+
+    For an example: 
+    In host tango: 
+           (httpd.conf) 
+             ProxyRemote ftp http://rock.ncic.ac.cn
+    In host rock: 
+           (httpd.conf) 
+             ProxyRemote ftp http://tango.ncic.ac.cn
+    A cycle is made! 
+    But when PathPassed added, rock will forward 
+       PathPassed: rock.ncic.ac.cn 
+    to tango. And tango forward 
+       PathPassed: rock.ncic.ac.cn, tango.ncic.ac.cn
+    to rock. But rock found that he is already included in the headers,
+so he would NOT forward the request to tango. Then enevythingis OK.
+%0
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: Lars.Eilebrecht@unix-ag.org
+State-Changed-When: Tue Oct 21 14:41:18 PDT 1997
+State-Changed-Why:
+
+mod_proxy maybe updated at a later time to support
+and check HTTP/1.1 "Via" headers so that a loop
+can be detected.
+
+Class-Changed-From-To: sw-bug-change-request
+Class-Changed-By: Lars.Eilebrecht@unix-ag.org
+Class-Changed-When: Tue Oct 21 14:41:18 PDT 1997
+Release-Changed-From-To: 1.2.0 1.2.4-1.2.4
+Release-Changed-By: coar
+Release-Changed-When: Thu Jan 22 08:44:22 PST 1998
+Severity-Changed-From-To: critical-serious
+Severity-Changed-By: coar
+Severity-Changed-When: Thu May 28 04:13:59 PDT 1998
+>Unformatted:
+
+

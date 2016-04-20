@@ -1,0 +1,91 @@
+Received: (qmail 29839 invoked by uid 501); 9 Mar 2001 15:58:22 -0000
+Message-Id: <20010309155822.29838.qmail@apache.org>
+Date: 9 Mar 2001 15:58:22 -0000
+From: Nick Holloway <Nick.Holloway@pyrites.org.uk>
+Reply-To: Nick.Holloway@pyrites.org.uk
+To: submit@bugz.apache.org
+Subject: Apache as non-caching proxy doesn't abort transfer when client aborts
+X-Send-Pr-Version: 3.110
+
+>Number:         7383
+>Category:       mod_proxy
+>Synopsis:       Fix from PR 8090 applied
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Mar 09 08:00:01 PST 2001
+>Closed-Date:    Mon Sep 24 13:23:04 PDT 2001
+>Last-Modified:  Mon Sep 24 13:23:04 PDT 2001
+>Originator:     Nick.Holloway@pyrites.org.uk
+>Release:        1.3.19
+>Organization:
+>Environment:
+Linux 2.2.18, Debian stable
+>Description:
+If Apache is configured as a non-caching proxy, then when the client disconnects
+the proxy will continue to read the content, despite there being no need for it.
+
+If the URL referenced is a streaming image, then there will be no termination
+of this process.  This has the effect of tying up bandwith (of both the proxy
+and the server) and preventing dial-on-demand links from disconnecting.
+
+Although I have actually experienced this with Apache 1.3.9, I am reporting
+this against 1.3.19 as I see that the source of 1.3.19 is unchanged and will
+have the same problem.
+>How-To-Repeat:
+Apache is configured as a non-caching proxy as follows (note no CacheRoot):
+    ProxyRequests on
+    CacheForceCompletion 100
+
+Now access a URL containing a streaming image, such as:
+    http://www.wareonline.co.uk/webcam/default.asp
+
+After page has loaded close the browser (I've used Netscape 4.76).
+
+Trace the system calls on the apache process handling the proxy request -- you
+will see that it just performs endless "read()" syscalls.  This will continue
+until Apache is stopped.
+>Fix:
+In proxy_util.c, when the client aborts the connection, the decision to
+continue is made on line 599 based on the cache completion setting, and the
+amount of data seen so far.
+
+However, this code is protected by the "if" on line 594, which means that it
+is never executed if the proxied contents are not also being cached.
+
+I suggest putting "ok = 0;" between lines 593, and 594 so that the default
+action is to abort the transfer.  If the content is being cached, and has
+sufficient has transferred, then "ok" will be set to continue as before.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: chuck
+State-Changed-When: Mon Sep 24 13:23:04 PDT 2001
+State-Changed-Why:
+Fix from PR 8090 applied
+Synopsis-Changed-From: Apache as non-caching proxy doesn't abort transfer when client aborts
+Synopsis-Changed-To: Fix from PR 8090 applied
+Synopsis-Changed-By: chuck
+Synopsis-Changed-When: Mon Sep 24 13:23:04 PDT 2001
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

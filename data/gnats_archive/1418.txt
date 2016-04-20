@@ -1,0 +1,166 @@
+Received: (qmail 11791 invoked by uid 2012); 14 Nov 1997 12:54:53 -0000
+Message-Id: <19971114125453.11790.qmail@hyperreal.org>
+Date: 14 Nov 1997 12:54:53 -0000
+From: Vincent Partington <vinny@nmg.nl>
+Reply-To: vinny@nmg.nl
+To: apbugs@hyperreal.org
+Subject: htaccess files can be bypassed when actions are used
+X-Send-Pr-Version: 3.2
+
+>Number:         1418
+>Category:       mod_actions
+>Synopsis:       htaccess files can be bypassed when actions are used
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Nov 14 06:10:00 PST 1997
+>Last-Modified:  Tue Nov 18 01:00:00 PST 1997
+>Originator:     vinny@nmg.nl
+>Organization:
+>Release:        1.2.4
+>Environment:
+FreeBSD 2.1.5, gcc 2.6.3
+`uname -a` = FreeBSD nmg.nl 2.1.5-RELEASE FreeBSD 2.1.5-RELEASE #0: Sat Sep 21 20:55:20 MET DST 1996 joep@p17.hg.asd.euronet.nl:/usr/src/sys/compile/NMG  i386
+>Description:
+In most of my projects I use the Apache webserver because it is the best
+there is. Unfortunately I stumbles upon the following problem when investigating
+writing a CGI program that will process all files ending in a certain extensions
+(e.g. to make a server-side programming langauge like PHP or Cold Fusion).
+
+There is a security problem when an action is installed to let a CGI program
+process all files ending in a certain extension, e.g.:
+  AddHandler prhtml-action prhtml
+  Action prhtml-action /cgi-bin/process.cgi
+
+When access to the URL
+http://host.com/secure/file.prhtml
+is secured by a password (because the directory "/secure" is), it is still
+possible to get at the file _without_ giving the proper credentials by
+accessing the URL
+http://host.com/cgi-bin/process.cgi/secure/file.prhtml
+when the directory "/cgi-bin" is not protected by a password.
+
+Thanks, Vincent.
+>How-To-Repeat:
+1) Intall a handler by adding the following lines to httpd.conf:
+     AddHandler prhtml-action prhtml
+     Action prhtml-action /cgi-bin/process.cgi
+2) Write a CGI program called process.cgi that displays the environment
+   and prints the file passed in PATH_TRANSLATED, and place this CGI
+   program in /cgi-bin.
+3) Make a directory "/secure" and place an .htaccess-file in it that
+   prohibits all access (deny from all)
+4) Put a file called "file.prhtml" in that directory.
+5) Access the URI "/secure/file.prhtml". This should give a "permission
+   denied" error.
+6) Access the URI "/cgi-bin/process.cgi/secure/file.prhtml". This will
+   give you the contents of "/secure/file.prhtml".
+>Fix:
+The module "mod_actions" seems to use an internal_redirect to implements
+actions like these. Maybe a subrequest could be made with a special flag
+that prevents access-checking. That way the directory "/cgi-bin" could
+be secured without harming access to a file like "/notsecure/file.prhtml".
+
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Nov 17 22:33:56 PST 1997
+State-Changed-Why:
+Apache is behaving correctly, the /cgi-bin URL is not
+protected.  If you want to use Action this way then make
+another ScriptAlias which is protected.
+
+Thanks for using Apache!
+Dean
+
+From: Marc Slemko <marcs@znep.com>
+To: dgaudet@hyperreal.org
+Cc: vinny@nmg.nl, Apache bugs database <apbugs@apache.org>
+Subject: Re: mod_actions/1418: htaccess files can be bypassed when actions are used
+Date: Mon, 17 Nov 1997 23:39:40 -0700 (MST)
+
+ On 18 Nov 1997 dgaudet@hyperreal.org wrote:
+ 
+ > [In order for any reply to be added to the PR database, ]
+ > [you need to include <apbugs@Apache.Org> in the Cc line ]
+ > [and leave the subject line UNCHANGED.  This is not done]
+ > [automatically because of the potential for mail loops. ]
+ > 
+ > 
+ > Synopsis: htaccess files can be bypassed when actions are used
+ > 
+ > State-Changed-From-To: open-closed
+ > State-Changed-By: dgaudet
+ > State-Changed-When: Mon Nov 17 22:33:56 PST 1997
+ > State-Changed-Why:
+ > Apache is behaving correctly, the /cgi-bin URL is not
+ > protected.  If you want to use Action this way then make
+ > another ScriptAlias which is protected.
+ 
+ You should be able to have your script check the appropriate environment
+ variables to verify that it is not being called directly.  You would have
+ to look at them and examine the differences to see if this is workable
+ though; haven't looked.
+ 
+
+From: Vincent Partington <Vincent.Partington@nmg.nl>
+To: Marc Slemko <marcs@znep.com>
+Cc: dgaudet@hyperreal.org, vinny@nmg.nl,
+        Apache bugs database <apbugs@apache.org>
+Subject: Re: mod_actions/1418: htaccess files can be bypassed when actions are used
+Date: Tue, 18 Nov 1997 09:55:03 +0100
+
+ Marc Slemko wrote:
+ > On 18 Nov 1997 dgaudet@hyperreal.org wrote:
+ > 
+ > > [In order for any reply to be added to the PR database, ]
+ > > [you need to include <apbugs@Apache.Org> in the Cc line ]
+ > > [and leave the subject line UNCHANGED.  This is not done]
+ > > [automatically because of the potential for mail loops. ]
+ > >
+ > >
+ > > Synopsis: htaccess files can be bypassed when actions are used
+ > >
+ > > State-Changed-From-To: open-closed
+ > > State-Changed-By: dgaudet
+ > > State-Changed-When: Mon Nov 17 22:33:56 PST 1997
+ > > State-Changed-Why:
+ > > Apache is behaving correctly, the /cgi-bin URL is not
+ > > protected.  If you want to use Action this way then make
+ > > another ScriptAlias which is protected.
+ > 
+ > You should be able to have your script check the appropriate environment
+ > variables to verify that it is not being called directly.  You would have
+ > to look at them and examine the differences to see if this is workable
+ > though; haven't looked.
+ 
+ Hi Marc and Dean,
+ 
+ Thank you for replying, it's interaction like this that makes Apache such a
+ great server to use.
+ 
+ Dean is correct; Apache is behaving correctly. The problem I faced was the
+ fact that is always possible for a user to access a secured file by directly
+ accessing the URL starting with "/cgi-bin/process.cgi". However, protecting
+ the /cgi-bin directory would also disallow access to "/notsecure/file.prhtml",
+ so that is too severe a solution.
+ 
+ But, the hint Marc gives is a good one; the environment variables REQUEST_URI,
+ REDIRECT_URL, REDIRECT_STATUS and sometimes REDIRECT_QUERY_STRING are
+ different when the cgi program is called directly. As I will be developing the
+ process.cgi myself I can make use of these.
+ 
+ Maybe it's a good idea to add this question to the FAQ list. When I posted a
+ question about this problem in comp.infosystems.www.servers.unix, I got no
+ useful reply, but I did get an email from someone asking me if I had gotten an
+ answer yet. The only thing is; it's very difficult to explain this problem
+ clearly. :-)
+ 
+ Regards, Vincent.
+>Unformatted:
+

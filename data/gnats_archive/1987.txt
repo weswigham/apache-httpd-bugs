@@ -1,0 +1,122 @@
+Received: (qmail 17737 invoked by uid 2012); 24 Mar 1998 19:55:10 -0000
+Message-Id: <19980324195510.17736.qmail@hyperreal.org>
+Date: 24 Mar 1998 19:55:10 -0000
+From: Martin Plechsmid <plechsmi@karlin.mff.cuni.cz>
+Reply-To: plechsmi@karlin.mff.cuni.cz
+To: apbugs@hyperreal.org
+Subject: Apache dumps core when handling unacceptable variants
+X-Send-Pr-Version: 3.2
+
+>Number:         1987
+>Category:       mod_negotiation
+>Synopsis:       Apache dumps core when handling unacceptable variants
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    lars
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Mar 24 12:00:01 PST 1998
+>Last-Modified:  Mon Nov 23 01:59:00 PST 1998
+>Originator:     plechsmi@karlin.mff.cuni.cz
+>Organization:
+>Release:        1.2.5
+>Environment:
+no need
+>Description:
+There's an error in is_variant_better_na() function in mod_negotiation.c.
+  If the first treated variant is unacceptable (first => best==NULL,bestq==0;
+  unacceptable => q==0), the test "if (q == bestq)" is true, and then
+  "best->charset_quality" makes SIGSEGV.
+>How-To-Repeat:
+The error occurs whenever e.g.:
+	the module is compiled with "#define  TCN_02" uncommented
+		at the beggining of file mod_negotiation.c  &&
+	the browser sends any Accept-* header  &&
+	the request creates several variants (via multiviews)  &&
+	but none of them is acceptable
+>Fix:
+Include the following test (marked with '<') at line 1442 (into the
+function is_variant_better_na()):
+
+!	if (q == 0)  return 0;
+	if (q > bestq) {
+	    *p_bestq = q;
+	    return 1;
+	}
+%0
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: lars
+State-Changed-When: Sat Jul 18 13:08:06 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+
+From: Martin Plechsmid <plechsmi@karlin.mff.cuni.cz>
+To: lars@Apache.Org
+Cc: apbugs@Apache.Org
+Subject: Re: mod_negotiation/1987: Apache dumps core when handling unacceptable variants
+Date: Sat, 3 Oct 1998 22:22:42 +0200 (MET DST)
+
+ The bug is still present in Apache 1.3.1, and nothing has changed about it in 1.3.2. So it's there also.
+ 
+ >How-to-repeat:
+ Uncoment "#define  TCN_02" at the beggining of the file mod_negotiation.c and recompile server.
+ Put files "xxx.html.en" and "xxx.html.fr" into a directory and send the following headers to the server:
+ 
+ GET /..../xxx.html HTTP/1.0
+ Negotiate: 1.0
+ Accept-Language: it
+ 
+ The server will crash.
+ 
+ >Fix:
+ The following patch for Apache 1.3.1 solves the problem:
+ 
+ --- mod_negotiation.c.orig      Sat Oct  3 22:05:04 1998
+ +++ mod_negotiation.c   Sat Oct  3 22:06:27 1998
+ @@ -1566,6 +1566,7 @@
+              variant->definite);
+  #endif
+  
+ +    if (q == 0)  return 0;
+      if (q > bestq) {
+          *p_bestq = q;
+          return 1;
+State-Changed-From-To: feedback-analyzed
+State-Changed-By: lars
+State-Changed-When: Sat Nov 14 08:33:55 PST 1998
+State-Changed-Why:
+Thanks, I'll check this...
+Responsible-Changed-From-To: apache-lars
+Responsible-Changed-By: lars
+Responsible-Changed-When: Sat Nov 14 08:33:55 PST 1998
+Responsible-Changed-Why:
+
+
+State-Changed-From-To: analyzed-closed
+State-Changed-By: pcs
+State-Changed-When: Mon Nov 23 01:59:00 PST 1998
+State-Changed-Why:
+Your patch has been added to the current Apache code. 
+However TCN negotiation in Apache is now out-of-date
+and needs more work to bring it up to RFC2295/2296, so
+it may not be a good idea to use TCN_02 in a production
+server at present.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

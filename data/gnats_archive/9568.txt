@@ -1,0 +1,129 @@
+Received: (qmail 6439 invoked by uid 501); 23 Jan 2002 11:10:22 -0000
+Message-Id: <20020123111022.6377.qmail@apache.org>
+Date: 23 Jan 2002 11:10:22 -0000
+From: Tobias Wiersch <swift@3d4x.de>
+Reply-To: swift@3d4x.de
+To: submit@bugz.apache.org
+Subject: Apache's child processes don't die and sometimes use all CPU resources!
+X-Send-Pr-Version: 3.110
+
+>Number:         9568
+>Category:       general
+>Synopsis:       Apache's child processes don't die and sometimes use all CPU resources!
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan 23 03:20:00 PST 2002
+>Closed-Date:    
+>Last-Modified:  Thu Jan 24 04:00:00 PST 2002
+>Originator:     swift@3d4x.de
+>Release:        1.3.20
+>Organization:
+apache
+>Environment:
+Suse Linux 7.3 Kernel 2.4.16-20011220
+Apache-rpm from Suse 7.3 (including mod_ssl and mod_perl).
+mod_ssl/2.8.4 OpenSSL/0.9.6b mod_perl/1.26 mod_gzip/1.3.19.1a
+>Description:
+We have a high-traffic-server here (6000 visitors/day) and one week ago I needed to reinstall this server. I used the latest components (rpms) available @ Suse (see Environment).
+
+But under normal load, Apache produces every 1 or 2 hours a child-process who doesn't die. With "top" and "apachectl fullstatus" I was able to catch some information (see below). At first I thought that the problem may be the PHP-lib but there are also other childs who doesn't die (.gif-files for example!!). Sometimes one of these childs eats up all CPU resources. One day there were 5 processes who eat up all CPU-time (this was severe!!)!
+Then I thought the problem is in mod_gzip and I deactivated it, but after some hours there was again one non-dying child (82,2% of CPU!).
+
+I can make a "killall -HUP httpd" to fix the problem for a short time. There is nothing suspicious in the error_log.
+
+Here is the information of 4 of these processes (sorry, I was not able to catch some info from a "CPU-time eating child" - I will send it later when I was able to catch the info):
+Snippet from "top":
+  PID USER     PRI  NI  SIZE  RSS SHARE STAT %CPU %MEM   TIME COMMAND
+18835 wwwrun     9   0  9436 5148  3408 S     0.0  0.8   0:42 httpd
+18818 wwwrun     9   0  9720 5472  2624 S     0.3  0.8   0:39 httpd
+19008 wwwrun     9   0  9836 5660  2892 S     0.0  0.8   0:39 httpd
+18981 wwwrun     9   0  9876 5640  2904 S     0.1  0.8   0:38 httpd
+[...]
+Snippet from "apachectl fullstatus":
+Srv   PID   Acc         M CPU   SS Req Conn Child Slot Host            VHost Request
+11-2  18835 0/2255/2255 _ 42.93 53  9  0.0   5.15 5.15 193.98.108.XXX  www.mageknight.de GET /banner.swift?NoBG=1&CloseOpt=0&Closed=0&MK=1 HTTP/1.0
+0-2   18818 1/2193/2193 K 39.55  6  0  0.8   3.94 3.94 62.54.1.XXX     www.fanpro.com GET /fun/chatdata/bar1-9.gif HTTP/1.0
+119-2 19008 0/2309/2309 _ 39.49 22  0  0.0   3.35 3.35 145.254.118.XXX www.fanpro.com GET /forum/templates/subSilver/images/icon_edit_german.gif HTTP
+92-2  18981 0/1993/1993 _ 37.83 15  0  0.0   6.44 6.44 195.37.69.XXX   www.fanpro.com GET /box/b4.gif HTTP/1.0
+I cannot reproduce the problem because it seems to happen randomly.
+Thanks for your help and support!
+T.Wiersch from germany
+>How-To-Repeat:
+
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+
+From: Tobias Wiersch <swift@3d4x.de>
+To: apache-bugdb@apache.org
+Cc: apbugs@Apache.org
+Subject: Re: general/9568: Apache's child processes don't die and sometimes use all CPU resources!
+Date: Wed, 23 Jan 2002 16:35:39 +0100
+
+ Addition:
+ I deactivated again mod_gzip and now also PHP4 and mod_ssl to make sure 
+ it's not a problem of these modules.
+ Now it takes a little bit longer but there are also non-dying childs 
+ after some time (sometimes, as I said before, with heavy CPU load). This 
+ brings me to the opinion that the problem is in Apache.
+ 
+ But I could get some more information:
+ I looked at "top" and suddenly there were 12 childs who don't die 
+ anymore - all of them were created approx. at the same time! After that 
+ (1 or 2 seconds later), all was normal again (besides of the 12 
+ non-dying childs).
+ Maybe this will help you to find the bug. At least I hope so, because 
+ our server needs quick help.
+ 
+ Thanks again for your support and help.
+ T.Wiersch
+ 
+ 
+
+From: Tobias Wiersch <swift@3d4x.de>
+To: apache-bugdb@apache.org
+Cc: apbugs@Apache.org
+Subject: Re: general/9568: Apache's child processes don't die and sometimes use all CPU resources!
+Date: Thu, 24 Jan 2002 10:08:18 +0100
+
+ Addition 2:
+ This problem is severe!
+ To have a quick fix for the problem, I call "apachectl graceful" from a 
+ hourly cron-job. Before that I send me a mail with current "top".
+ 
+ Currently, there are approx. 20-30 non-dying childs - at and of every 
+ hour! When cron does the "apachectl graceful", there is a significant 
+ time-delay in accessing apache (5-15 seconds). The non-dying childs are 
+ marked "<defunct>" and then they die (finally).
+ 
+ Is there something I can do? Should I down- or upgrade Apache? Can I 
+ provide more information about this bug for you? The problem also 
+ happens when I disable all the non-standard-Apache-Modules (like PHP4 
+ and mod_ssl). HELP!
+ 
+ Greetings .. T.Wiersch
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

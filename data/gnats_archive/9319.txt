@@ -1,0 +1,88 @@
+Received: (qmail 71937 invoked by uid 501); 30 Dec 2001 15:45:55 -0000
+Message-Id: <20011230154555.71936.qmail@apache.org>
+Date: 30 Dec 2001 15:45:55 -0000
+From: Glen Towndrow <glent@nifs.fsnet.co.uk>
+Reply-To: glent@nifs.fsnet.co.uk
+To: submit@bugz.apache.org
+Subject: proxy will not forward https connections from explorer 5.0 or konqueror 2.2.1
+X-Send-Pr-Version: 3.110
+
+>Number:         9319
+>Category:       mod_proxy
+>Synopsis:       proxy will not forward https connections from explorer 5.0 or konqueror 2.2.1
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Dec 30 07:50:00 PST 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     glent@nifs.fsnet.co.uk
+>Release:        1.3.22
+>Organization:
+apache
+>Environment:
+Linux: 2.4.13/2.2.16 Compiler: gcc version 2.95.2 1999102
+Mainly a SuSE 7.0 build with additions
+>Description:
+I use the proxy on apache 1.3.22 running on a linux box as a way of allowing
+other local machines to share the internet connection for web usage only.
+
+Although it the past this has worked fine I am now having problems logging
+onto hotmail using internet explorer 5.0 (on win98SE). While chasing this down 
+I also found Konqueror 2.2.1 has the same problem.
+
+It seems the https CONNECT request is made using an HTTP/1.1 format header - I
+presume this was HTTP/1.0 until recently. Apache rejects such requests as 
+improperly formatted. I have tried accessing the same sites (via apache proxy)
+using a simple telnet session and it works for HTTP/1.0 but not for HTTP/1.1.
+>How-To-Repeat:
+See above
+>Fix:
+My local fix is as follows:
+module http_protocol.c, lines 1177..1179
+
+Replace:
+
+    if ((!r->hostname && (r->proto_num >= HTTP_VERSION(1,1))) ||
+        ((r->proto_num == HTTP_VERSION(1,1)) &&
+         !ap_table_get(r->headers_in, "Host"))) {
+
+With:
+
+    if ((!r->hostname && (r->proto_num >= HTTP_VERSION(1,1))) &&
+        ((r->proto_num == HTTP_VERSION(1,1)) &&
+         !ap_table_get(r->headers_in, "Host"))) {
+
+The comment seems to imply that the host name must be sent EITHER with a full
+URL or Host: header. The code however requires both. My change relaxes this 
+condition.
+
+IE-5.0 & Konqueror 2.2.1 both send the full URL but do not (seem to) send
+Host: headers
+
+It may be that this is design intent and HTTP/1.1 should have both a full URL
+and host: headers. Your call.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

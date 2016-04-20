@@ -1,0 +1,107 @@
+Received: (qmail 26245 invoked by uid 501); 20 Aug 2001 16:39:49 -0000
+Message-Id: <20010820163949.26244.qmail@apache.org>
+Date: 20 Aug 2001 16:39:49 -0000
+From: Yngve Pettersen <yngve@opera.com>
+Reply-To: yngve@opera.com
+To: submit@bugz.apache.org
+Subject: Content-Encoding:  Apache sends incorrect Content-Length when gzip is used on a response body
+X-Send-Pr-Version: 3.110
+
+>Number:         8210
+>Category:       mod_negotiation
+>Synopsis:       Content-Encoding:  Apache sends incorrect Content-Length when gzip is used on a response body
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Aug 20 09:40:01 PDT 2001
+>Closed-Date:    Mon Aug 20 10:04:44 PDT 2001
+>Last-Modified:  Mon Aug 20 10:04:44 PDT 2001
+>Originator:     yngve@opera.com
+>Release:        1.3.19
+>Organization:
+>Environment:
+Server: Apache/1.3.19 (Unix)  (Red-Hat/Linux) PHP/4.0.6 mod_perl/1.24_01
+Unknown Hardware/compiler
+
+Browser: Opera v5.12+ (Windows 2000)
+>Description:
+
+I am a developer at Opera Software, in charge of the HTTP protocol support in the Opera Browser.
+
+We recently received a report of a problem on http://www.amdforums.com .
+
+When I investigating this report I found that the problem was caused by an incorrect Content-Length header in combination with a Content-Encoding: gzip header.
+
+The length indicated by the Content-Length is actually the length of the original, uncompressed body, but it should have been the length of the compressed body (References: RFC 2616 section 4.4, 7.2 and 14.13). 
+
+The mismatch between the indicated Content-Length and the actual amount of received data causes Opera to do repeated load attempts (This is a fallback primarily used to handle problems with pipelining and persistent connections)
+
+I suspect that the CGI on the server adds a Content-Length header, and that this header is forwarded by Apache without taking into consideration any compression used by the mod-negotiation module.
+
+This is an example session:
+
+GET / HTTP/1.1
+User-Agent Mozilla/3.0 (Windows 2000; U) Opera 5.50  [en]
+Host www.amdforums.com
+Accept text/html, image/png, image/jpeg, image/gif, image/x-xbitmap, */*
+Accept-Language en
+Accept-Charset iso-8859-1,*,utf-8
+Accept-Encoding deflate, gzip, x-gzip, identity, *;q=0
+Connection Keep-Alive, TE
+TE deflate, gzip, chunked, identity, trailers
+
+(Cookie header removed)
+with the following response from the server
+
+HTTP/1.1 200 OK
+Date Mon, 13 Aug 2001 175609 GMT
+Server Apache/1.3.19 (Unix)  (Red-Hat/Linux) PHP/4.0.6 mod_perl/1.24_01
+X-Powered-By PHP/4.0.6
+Content-Length 60928
+Content-Encoding gzip
+Vary Accept-Encoding
+Keep-Alive timeout=15, max=100
+Connection Keep-Alive
+Content-Type text/html
+
+followed by an entity body of 9562 bytes of gzipped data. The gzipped data 
+expands to 60928 bytes of data, as specified in the content length 
+header.
+>How-To-Repeat:
+As per August 20, 2001 : http://www.amdforums.com
+Browser must send Accept-Encoding: gzip
+
+A CGI script that returns a Content-Length header to the server should probably be able to recreate the problem as well, under the same circumstances.
+>Fix:
+When Content-Encoding is added to a response body, the Content-Length header provided by CGI-scripts must be replaced with a correct Content-Length header, or removed.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Mon Aug 20 10:04:44 PDT 2001
+State-Changed-Why:
+Apache does not add a gzip content encoding; if there is a file on disk already gzipped, apache can be configured to send a content-encoding, but it won't actually gzip any content itself.  This functionality may be implemented on this particular site by a CGI, etc. itself or the user may be using some third party module that adds it... I have no idea which of these possibilities is involved with this particular server.
+
+If a module sets a content length, then Apache has no choice but to listen to it, since we aren't going to buffer the entire response body to see if it is really accurate or if the module was lying.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

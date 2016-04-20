@@ -1,0 +1,325 @@
+Received: (qmail 10316 invoked by uid 2012); 10 Apr 1999 00:18:28 -0000
+Message-Id: <19990410001828.10315.qmail@hyperreal.org>
+Date: 10 Apr 1999 00:18:28 -0000
+From: Godmar Back <gback@cs.utah.edu>
+Reply-To: gback@cs.utah.edu
+To: apbugs@hyperreal.org
+Subject: JServ1.0b3 does not build: only compiles Hello.java
+X-Send-Pr-Version: 3.2
+
+>Number:         4219
+>Category:       mod_jserv
+>Synopsis:       JServ1.0b3 does not build: only compiles Hello.java
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Apr  9 17:20:01 PDT 1999
+>Last-Modified:  Sun May  9 10:51:51 PDT 1999
+>Originator:     gback@cs.utah.edu
+>Organization:
+>Release:        1.0b3
+>Environment:
+Linux RedHat 5.2
+Linux peerless.cs.utah.edu 2.2.3 #6 SMP Sun Mar 21 19:58:18 MST 1999 i686 unknown
+>Description:
+This is in reference to my previous report about configure not telling me
+anything.
+So I've figured out that the "/path/to/apache/installation"
+is the output apxs -q PREFIX, which is
+
+> echo `apxs -q PREFIX`
+/usr
+
+Fine, so I guess giving --with-apache-dir doesn't help.
+
+Here is the output of make:
+
+gback@peerless [72](/opt/Apache-JServ-1.0b3) > make
+Making all in src
+make[1]: Entering directory `/opt/Apache-JServ-1.0b3/src'
+Making all in c
+make[2]: Entering directory `/opt/Apache-JServ-1.0b3/src/c'
+make[2]: Nothing to be done for `all'.
+make[2]: Leaving directory `/opt/Apache-JServ-1.0b3/src/c'
+Making all in java
+make[2]: Entering directory `/opt/Apache-JServ-1.0b3/src/java'
+make[2]: Nothing to be done for `all'.
+make[2]: Leaving directory `/opt/Apache-JServ-1.0b3/src/java'
+make[1]: Leaving directory `/opt/Apache-JServ-1.0b3/src'
+Making all in docs
+make[1]: Entering directory `/opt/Apache-JServ-1.0b3/docs'
+make[1]: Nothing to be done for `all'.
+make[1]: Leaving directory `/opt/Apache-JServ-1.0b3/docs'
+Making all in example
+make[1]: Entering directory `/opt/Apache-JServ-1.0b3/example'
+CLASSPATH=/x/gback/classes/jsdk.jar:$CLASSPATH /x/gback/transvirtual/install-plain/bin/javac Hello.java
+
+And that's it.
+
+
+>How-To-Repeat:
+Simply configure and make, like so
+./configure --with-jsdk=...
+make
+>Fix:
+No, I don't.  Probably an automake problem.
+I guess now I'll have to dig through Makefiles, then Makefile.ins, then
+Makefile.am to figure out why it isn't doing anything...
+Isn't automake great?
+
+>Audit-Trail:
+
+From: Godmar Back <gback@cs.utah.edu>
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc: gback@cs.utah.edu
+Subject: Re: general/4219: JServ1.0b3 does not build: only compiles Hello.java
+Date: Sat, 10 Apr 1999 11:23:14 -0600 (MDT)
+
+  I assume that replying to this confirmation mail will update my
+ bug report.  Well, I've figured out why make isn't doing anything.
+ 
+ Here's the relevant parts from the Makefile created by 
+ automake/autoconf/configure:
+ 
+ ...
+ #lib_LTLIBRARIES = libjserv.la
+ ...
+ LTLIBRARIES =  $(lib_LTLIBRARIES)
+ ...
+ all: Makefile $(LTLIBRARIES)
+ 
+ 
+ No wonder it doesn't do anything.
+ 
+ I must say I find it somewhat sad that I, wanting to play with JServ,
+ have to debug automake related stuff now.
+ 
+ Funny enough, this seems to happen in all projects using automake that
+ I've had contact with.  I guess that restrict the circle of suspects to
+ two: me and automake.  I really wish people would stop using it.
+ 
+ Cheers,
+ 
+ 	- Godmar
+ 
+
+From: Godmar Back <gback@cs.utah.edu>
+To: gback@cs.utah.edu (Godmar Back)
+Cc: apbugs@hyperreal.org, apache-bugdb@apache.org
+Subject: Re: general/4219: JServ1.0b3 does not build: only compiles Hello.java
+Date: Sat, 10 Apr 1999 11:56:30 -0600 (MDT)
+
+ Aha.  Further investigation reveals that it's not automake that is to
+ blame per se, automake in its infinite wisdom only hides what's going on.
+ 
+ Apparently, you need to specify --with-apache-src, because of
+ AM_CONDITIONAL(MAKE_LIBJSERV, test x$apache_dir_is_src = xfalse)
+ in configure.in
+ 
+ The question boils down to what is an "apache src" directory.
+ Why should you need the Apache source to build mod_jserv?
+ I see no reason; I can see that you need the include files, which
+ RedHat puts in /usr/include/apache.
+ 
+ I'd suggest you either rename
+ --with-apache-src to --with-apache-include or point out that all you
+ need is the header files.  (If that's indeed true, and I'm not simply
+ trying to achieve the impossible when attempting to build JServ without
+ having built apache).
+ 
+ Secondly, you may want to consider printing a warning if MAKE_LIBJSERV
+ is false, because that basically means that you don't build the main
+ component of your distribution; something you may want to tell the user
+ about.
+ 
+ 
+ I'm feeling kind of bad of putting my fudging with this in a bug report;
+ it's rather a testimonial of how automake and using its features can totally
+ obscure and screw up what would otherwise be a straightforward build process.
+ 
+ I know that the include files are in /usr/include/apache,
+ and indeed I see:
+ > echo `apxs -q INCLUDEDIR`
+ /usr/include/apache
+ 
+ (That's a test configure does too)
+ So I try:
+ 
+ ./configure --with-jsdk=/x/gback/classes/jsdk.jar --prefix=/opt/local --with-apa
+ che-dir=/usr --with-apache-src=/usr
+ 
+ checking for httpd.h... no
+ configure: error: Could not locate one or more of the necessary Apache header fi
+ les.
+ 
+ 
+ Then I try:
+ 
+ ./configure --with-jsdk=/x/gback/classes/jsdk.jar --prefix=/opt/local --with-apa
+ che-dir=/usr --with-apache-src=/usr/local
+ ing for httpd.h... no
+ configure: error: Could not locate one or more of the necessary Apache header fi
+ les.
+ 
+ Hmmm, maybe:
+ ./configure --with-jsdk=/x/gback/classes/jsdk.jar --prefix=/opt/local --with-apa
+ che-dir=/usr --with-apache-src=/usr/local/apache
+ 
+ checking for Apache directory... configure: error: Directory  is not a valid Apa
+ che source distribution
+ 
+ Hmmm, I guess it's back to studying the configure/configure.in file
+ some more... 
+ 
+ Cheers,
+ 
+         - Godmar
+ 
+ 
+
+From: Godmar Back <gback@cs.utah.edu>
+To: gback@cs.utah.edu (Godmar Back)
+Cc: gback@cs.utah.edu, apbugs@hyperreal.org, apache-bugdb@apache.org
+Subject: Re: general/4219: JServ1.0b3 does not build: only compiles Hello.java
+Date: Sat, 10 Apr 1999 12:16:34 -0600 (MDT)
+
+ > 
+ > 
+ > Aha.  Further investigation reveals that it's not automake that is to
+ > blame per se, automake in its infinite wisdom only hides what's going on.
+ > 
+ > Apparently, you need to specify --with-apache-src, because of
+ > AM_CONDITIONAL(MAKE_LIBJSERV, test x$apache_dir_is_src = xfalse)
+ > in configure.in
+ > 
+ 
+ Hmmm, but your doc at
+ http://java.apache.org/jserv/install/howto.unix_install.html
+ says that I only have to give --with-apache-src for a static compile,
+ which is not what I want to do.
+ Then why this test in configure.in?
+ 
+ How do I get this thing to build as a DSO?
+ 
+ 	- Godmar
+ 
+
+From: Godmar Back <gback@cs.utah.edu>
+To: gback@cs.utah.edu (Godmar Back)
+Cc: gback@cs.utah.edu, apbugs@hyperreal.org, apache-bugdb@apache.org
+Subject: Re: general/4219: JServ1.0b3 does not build: only compiles Hello.java
+Date: Sun, 11 Apr 1999 22:23:43 -0600 (MDT)
+
+  I again fell victim to this time not automake, but autoconf
+ (and my own stupidity).  It's not --with-apache-dir, it's --with-apache-install.
+ Of course, configure never complains if you specify an option that doesn't
+ exist.  It's like it doesn't care.
+ 
+ With --with-apache-install, Apache configures successfully, even without giving
+ --with-apache-src.  Now I'm even more confused: how did
+ MAKE_LIBJSERV get set?  I thought it required $apache_dir_is_src to be
+ true... but wait, let's look at it again:
+ 
+ AM_CONDITIONAL(MAKE_LIBJSERV, test x$apache_dir_is_src = xfalse)
+ 
+ This probably means: set MAKE_LIBJSERV to true *unless* apache_dir_is_src
+ is set to false (in which case it wouldn't make sense...)  
+ Then it would make more sense.
+ 
+ So, I guess this leave only two problems on your end of things:
+ First, the problem with configuring outside the srcdir, and second the
+ problem with configure not reporting what is going wrong.
+ 
+ Thanks,
+ 
+ 	- Godmar
+ 
+
+From: Godmar Back <gback@cs.utah.edu>
+To: gback@cs.utah.edu (Godmar Back)
+Cc: gback@cs.utah.edu, apbugs@hyperreal.org, apache-bugdb@apache.org
+Subject: Re: general/4219: JServ1.0b3 does not build: only compiles Hello.java
+Date: Sun, 11 Apr 1999 22:32:08 -0600 (MDT)
+
+ Here's a fix you may want to apply:
+ 
+ --- Apache-JServ-1.0b3/configure.in     Fri Feb 19 11:59:10 1999
+ +++ configure.in        Sun Apr 11 22:28:29 1999
+ @@ -234,6 +234,8 @@
+  
+  if test ! x${apache_dir} = x; then
+      AC_MSG_RESULT(${apache_dir})
+ +else
+ +    AC_MSG_ERROR(did not find a suitable Apache installation)
+  fi
+  
+  AC_MSG_CHECKING(for Java Servlet classes)
+ 
+ 
+
+From: Godmar Back <gback@marker.cs.utah.edu>
+To: gback@cs.utah.edu (Godmar Back)
+Cc: gback@cs.utah.edu, apbugs@hyperreal.org, apache-bugdb@apache.org
+Subject: Re: general/4219: JServ1.0b3 does not build: only compiles Hello.java
+Date: Mon, 12 Apr 1999 00:02:37 -0600 (MDT)
+
+ Now that I was finally able to run the sample servlet, here's
+ a bit more feedback you may or may not find useful:
+ 
+ First I should mention that I'm using Kaffe as my JVM.
+ Therefore,
+ wrapper.classpath=@JDK_CLASSES@
+ 
+ produced this
+ wrapper.classpath=
+ 
+ (I assume because I didn't define JDK_HOME?) 
+ which in turn made JServ crash like so.
+ [11/04/1999 23:46:22:246] (EMERGENCY) Error initializing protocols
+ [11/04/1999 23:48:54:736] (ERROR) wrapper: file /opt/Apache-JServ-1.0b3/example/jserv.properties (line 53) wrapper.classpath must be called with a parameter
+ [11/04/1999 23:48:54:737] (ERROR) an error returned initializing protocol "wrapper"
+ [11/04/1999 23:48:54:737] (ERROR) in init all protocols "wrapper" returned an error
+ [11/04/1999 23:48:54:737] (EMERGENCY) Error initializing protocols
+ 
+ You may be able to fix this with something like
+ @HAVE_JDK_CLASSES@wrapper.classpath=@JDK_CLASSES@
+ and set HAVE_JDK_CLASSES accordingly.
+ 
+ Secondly, in examples/jserv.conf.in, this line is wrong:
+ 
+ @LOAD_OR_NOT@LoadModule jserv_module libexec/mod_jserv.so
+ 
+ It does not take the $prefix and $exec_prefix variables into
+ account.  After make install, mod_jserv.so ended up in 
+ $prefix/lib/mod_jserv.so for me.  Note that I specified an alternate
+ location with --prefix when configuring.
+ Unfortunately, I don't know how to fix this easily.
+ 
+ 	- Godmar
+ 
+Category-Changed-From-To: general-mod_jserv
+Category-Changed-By: coar
+Category-Changed-When: Mon Apr 12 08:30:10 PDT 1999
+
+Responsible-Changed-From-To: apache-jserv
+Responsible-Changed-By: lars
+Responsible-Changed-When: Sun May  9 10:51:50 PDT 1999
+Responsible-Changed-Why:
+
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

@@ -1,0 +1,258 @@
+Received: (qmail 17989 invoked by uid 2012); 11 Jul 1998 01:30:43 -0000
+Message-Id: <19980711013043.17988.qmail@hyperreal.org>
+Date: 11 Jul 1998 01:30:43 -0000
+From: Ted Keller <keller@bfg.com>
+Reply-To: keller@bfg.com
+To: apbugs@hyperreal.org
+Subject: ftp proxy adds extra CRs in binary file transfers
+X-Send-Pr-Version: 3.2
+
+>Number:         2588
+>Category:       mod_proxy
+>Synopsis:       ftp proxy adds extra CRs in binary file transfers
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jul 10 18:40:00 PDT 1998
+>Last-Modified:  Mon Aug 31 15:24:31 PDT 1998
+>Originator:     keller@bfg.com
+>Organization:
+>Release:        1.3.0
+>Environment:
+Irix 5.3 using gcc-2.7.2.3
+
+root@d8544-cs 321: uname -a
+IRIX d8544-cs 5.3 11091810 IP7 mips
+>Description:
+When accessing a ftp site via the ftp proxy and downloading a binary image, the
+binary image is coorupted with extra CR characters embeded in the file.
+
+FTP proxy code is patched with LF corrections patches from bug report # 2412 and
+additional patches listed in the Jul 1 developers tar file.
+
+Accessing the file direct (without apache ftp proxy) the file is of total length
+6118 bytes
+
+Accessing the file using the apache ftp proxy, the file increases to 61345 bytes.
+
+Dumping the file (od -x) I noted the following character string differences
+
+File without proxy ....
+
+120c 0b0a 0a0b 1710
+
+File with proxy .....
+
+120c 0b0d 0a0d 0a0b 1710
+
+Note the extra 0d characters inserted into the file.
+>How-To-Repeat:
+Random example url
+
+
+ftp://ftp.sunet.se/pub/pictures/people/faces/angel.gif
+>Fix:
+Suspect strongly that the problem lies in bwrite (main/buff.c).  That routine
+always attempts to add CRLF to the end of each buffer write.  This is called from
+ap_proxy_send_fb which is called from proxy_ftp.c.
+
+The problem, I believe, originates in ap_proxy_send_fb (called from proxy_ftp
+when it start to pump data from the incomming connection and sends it both to 
+the cache and the output connection. (see lines 466-490).
+
+ap_proxy_send_fb calls ap_bwrite - once for the cache output and a second time
+to transmit the data to the client.  ap_bwrite then calls the bwrite routing which 
+I suspect is doing the real damage.
+
+The concept of adding CR/LF should be examined to ensure it is correct. 
+
+These should be binary transfers - no special processing required (other than the
+desired buffering for the cache files).
+>Audit-Trail:
+
+From: Ted Keller <keller@bfg.com>
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: mod_proxy/2588: ftp proxy adds extra CRs in binary file transfers
+Date: Wed, 5 Aug 1998 18:18:12 -0400 (EDT)
+
+ Further testing has identified the following data relevant to this bug
+ report.  First, my first suspicions regarding bwrite are incorrect.  That
+ routine seems to be operarting properly.
+ 
+ What I determined is the following.
+ 
+ Apache atempts to determine the type of document being retruned to the
+ client.  On FTP sites, it executes the following set of instructions in
+ proxy_ftp.c
+ 
+ 
+   1010      else {
+   1011      if (r->content_type != NULL) {
+   1012          ap_proxy_add_header(resp_hdrs, "Content-Type",
+ r->content_type,
+   1013                   HDR_REP);
+   1014          Explain1("FTP: Content-Type set to %s", r->content_type);
+   1015      }
+   1016      else {
+   1017          ap_proxy_add_header(resp_hdrs, "Content-Type",
+ "image/jpeg", HDR
+ _REP);
+   1018      }
+ 
+ 
+ normally, line 1017 is set to text/plain.  For this experiment, I had it
+ default to image/jpeg.  When set this way, jpeg images are properly
+ displayed.
+ 
+ This would seem to indicate that some browser implementations then modify
+ the incoming stream based on the content type.  In my case, netscape 4.05
+ added the cr characters with the download.  By having apache default to
+ image/jpeg, netscape behaved better and properly displayed the image.
+ 
+ So now, the problem focuses on why didn't apache properly determine the
+ content type - and set the headers appropriately.
+ 
+ I will look into that next.  If any of you have good ideas, please direct
+ my research.
+ 
+ ted keller - bfg.com
+ 
+ 
+ On 11 Jul 1998 apbugs@hyperreal.org wrote:
+ 
+ > Thank you very much for your problem report.
+ > It has the internal identification `mod_proxy/2588'.
+ > The individual assigned to look at your
+ > report is: apache. 
+ > 
+ > >Category:       mod_proxy
+ > >Responsible:    apache
+ > >Synopsis:       ftp proxy adds extra CRs in binary file transfers
+ > >Arrival-Date:   Fri Jul 10 18:40:00 PDT 1998
+ > 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Ted Keller <keller@bfg.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_proxy/2588: ftp proxy adds extra CRs in binary file
+ transfers
+Date: Thu, 6 Aug 1998 00:18:05 -0700 (PDT)
+
+ On Wed, 5 Aug 1998, Ted Keller wrote:
+ 
+ > So now, the problem focuses on why didn't apache properly determine the
+ > content type - and set the headers appropriately.
+ 
+ Do you have your mime.types file on the proxy configured correctly to
+ recognize .gif files?
+ 
+
+From: Ted Keller <keller@bfg.com>
+To: Marc Slemko <marcs@znep.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_proxy/2588: ftp proxy adds extra CRs in binary file transfers
+Date: Thu, 6 Aug 1998 17:12:02 -0400 (EDT)
+
+ Marc,
+ 
+ Did some more testing based on your input.  I initailly had deselected the
+ following modules....
+ 
+ mod_mime,
+ mod_mime_magic,
+     and
+ mod_negotiation.
+ 
+ I reconfigured the proxy server with these modules now defined ... removed
+ my temporary mods... and initial testing seems to indicate that it does
+ now determine the content type correctly.  If I understand your initial
+ response, probably all three of these modules are required.
+ 
+ Let me know if you have any additional pointers....
+ 
+ thanks for the pointers so far...
+ 
+ ted keller - bfg.com
+ 
+ 
+ On Thu, 6 Aug 1998, Marc Slemko wrote:
+ 
+ > On Wed, 5 Aug 1998, Ted Keller wrote:
+ > 
+ > > So now, the problem focuses on why didn't apache properly determine the
+ > > content type - and set the headers appropriately.
+ > 
+ > Do you have your mime.types file on the proxy configured correctly to
+ > recognize .gif files?
+ > 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Ted Keller <keller@bfg.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_proxy/2588: ftp proxy adds extra CRs in binary file
+ transfers
+Date: Thu, 6 Aug 1998 14:14:20 -0700 (PDT)
+
+ On Thu, 6 Aug 1998, Ted Keller wrote:
+ 
+ > Marc,
+ > 
+ > Did some more testing based on your input.  I initailly had deselected the
+ > following modules....
+ > 
+ > mod_mime,
+ 
+ Yes.  It has to determine the MIME type in some way since the ftp server
+ doesn't tell it.  It does that by looking at the MIME types file.  The
+ default type has to be text for anything not listed, otherwise all sorts
+ of readme files wouldn't be easily viewable.
+ 
+ > mod_mime_magic,
+ >     and
+ > mod_negotiation.
+ > 
+ > I reconfigured the proxy server with these modules now defined ... removed
+ > my temporary mods... and initial testing seems to indicate that it does
+ > now determine the content type correctly.  If I understand your initial
+ > response, probably all three of these modules are required.
+ > 
+ > Let me know if you have any additional pointers....
+ > 
+ > thanks for the pointers so far...
+ > 
+ > ted keller - bfg.com
+ > 
+ > 
+ > On Thu, 6 Aug 1998, Marc Slemko wrote:
+ > 
+ > > On Wed, 5 Aug 1998, Ted Keller wrote:
+ > > 
+ > > > So now, the problem focuses on why didn't apache properly determine the
+ > > > content type - and set the headers appropriately.
+ > > 
+ > > Do you have your mime.types file on the proxy configured correctly to
+ > > recognize .gif files?
+ > > 
+ > 
+ > 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Mon Aug 31 15:24:30 PDT 1998
+State-Changed-Why:
+Solution as described.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,134 @@
+Received: (qmail 24048 invoked by uid 2012); 15 Jul 1998 11:53:51 -0000
+Message-Id: <19980715115351.24047.qmail@hyperreal.org>
+Date: 15 Jul 1998 11:53:51 -0000
+From: Ralph Bolton <Ralph.Bolton@Pre-Emptive.net>
+Reply-To: Ralph.Bolton@Pre-Emptive.net
+To: apbugs@hyperreal.org
+Subject: AllowOverride "AuthConfig" gives away too much to users (only want "require")
+X-Send-Pr-Version: 3.2
+
+>Number:         2623
+>Category:       mod_auth-any
+>Synopsis:       AllowOverride "AuthConfig" gives away too much to users (only want "require")
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jul 15 06:10:01 PDT 1998
+>Last-Modified:  Wed Jul 15 11:20:03 PDT 1998
+>Originator:     Ralph.Bolton@Pre-Emptive.net
+>Organization:
+>Release:        1.3.0
+>Environment:
+SunOS tesco 5.5.1 Generic_105181-04 sun4m sparc SUNW,SPARCstation-20
+(inc. March's Sun recommended patches). Compiler: gcc 2.7.2
+>Description:
+I want to deploy Apache on our corporate Intranet after using Cern V3.
+Cern uses .www_acl to specify users and groups who can see a particular
+file. Apache's .htaccess is obviously much more flexible. However, setting
+"AllowOverride AuthConfig" allows .htaccess files (and hence users) to change
+the location of the password and group databases. Since this could end up
+with a million different databases out in user land, I'd like to restrict it.
+Infact, I'd like to give away "require", but not "AuthUserFile" etc etc.
+>How-To-Repeat:
+Put "AllowOverride AuthConfig" in access.conf, and put "AuthUserFile /fred/jim"
+and "require user bert" in .htaccess. Then, try to modify access.conf so that
+only the "require" liness in .htaccess are allowed. Either you don't have any
+Auth. related ability, or you have it all.
+>Fix:
+I have managed to modify (the very well written!) sources. A testament to
+the excellent coding is that the changes required to make this work are really
+minimal:
+
+tesco% diff include/http_core.h.orig include/http_core.h
+148c148
+< typedef unsigned char overrides_t;
+---
+> typedef unsigned int overrides_t;
+
+
+tesco% diff include/http_config.h.orig include/http_config.h
+101c101
+<     int req_override;         /* What overrides need to be allowed to
+---
+>     unsigned int req_override;                /* What overrides need to be allowed to
+134c134,135
+< #define OR_ALL (OR_LIMIT|OR_OPTIONS|OR_FILEINFO|OR_AUTHCFG|OR_INDEXES)
+---
+> #define OR_REQUIRE 256
+> #define OR_ALL (OR_LIMIT|OR_OPTIONS|OR_FILEINFO|OR_AUTHCFG|OR_INDEXES|OR_REQUIRE)
+
+
+tesco% diff main/http_config.c.orig main/http_config.c
+1133c1133
+<     parms.override = (RSRC_CONF | OR_ALL) & ~(OR_AUTHCFG | OR_LIMIT);
+---
+>     parms.override = (RSRC_CONF | OR_ALL) & ~(OR_AUTHCFG | OR_REQUIRE | OR_LIMIT);
+1175c1175
+<     parms.override = (RSRC_CONF | OR_ALL) & ~(OR_AUTHCFG | OR_LIMIT);
+---
+>     parms.override = (RSRC_CONF | OR_ALL) & ~(OR_AUTHCFG | OR_REQUIRE | OR_LIMIT);
+1527c1527
+<        ((pc->req_override & (ACCESS_CONF | OR_AUTHCFG | OR_LIMIT)))))
+---
+>        ((pc->req_override & (ACCESS_CONF | OR_AUTHCFG | OR_REQUIRE | OR_LIMIT)))))
+1552a1553,1557
+>           if (pc->req_override & OR_REQUIRE) {
+>               if (n++)
+>                   printf(" or ");
+>               printf("Require");
+>           }
+
+
+tesco% diff main/http_core.c.orig main/http_core.c
+789a790,791
+>       else if(!strcasecmp(w,"Require"))
+>           d->override |= OR_REQUIRE;
+1928c1930
+< { "Require", require, NULL, OR_AUTHCFG, RAW_ARGS, "Selects which authenticated users or groups may access a protected space" },
+---
+> { "Require", require, NULL, OR_REQUIRE, RAW_ARGS, "Selects which authenticated users or groups may access a protected space" },
+
+
+If the whole source files are required, please drop me a line and I'm sure
+I'll be able to oblige.
+
+With these changes, you can put "AllowOverride Require" in access.conf.
+This then allows users to specify "require" lines in .htaccess, without
+giving then the ability to use their own password or group files or
+authentication realms. "Require" is separate from "AuthConfig", so to
+achieve what you had before, you'd have to have "AuthConfig Require".
+Note: I've just hacked this in, so your mileage may vary. I need an Apache
+Wizard to verify what I've done really.
+
+A quick "nice one!" to everyone who's anything to do with Apache - one
+excellent product!
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Wed Jul 15 11:20:03 PDT 1998
+State-Changed-Why:
+While you are correct that sometimes you want to be
+more restrictive in limiting what commands users can use,
+it really isn't practical to start adding each individual's
+needs to the AllowOverride directive, since you can quickly
+end up wiht a huge number of vastly confusing options.
+
+In 2.0, hopefully there will be a better method of specifying
+such restrictions.
+
+For now, your patch will still be in the bugdb so anyone who
+is interested can use it.
+
+Thanks.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

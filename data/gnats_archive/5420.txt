@@ -1,0 +1,758 @@
+Received: (qmail 12551 invoked by uid 2012); 5 Dec 1999 15:04:11 -0000
+Message-Id: <19991205150410.12549.qmail@hyperreal.org>
+Date: 5 Dec 1999 15:04:10 -0000
+From: Thierry Delaitre <delaitt@cpc.wmin.ac.uk>
+Reply-To: delaitt@cpc.wmin.ac.uk
+To: apbugs@hyperreal.org
+Subject: Segmentation Fault
+X-Send-Pr-Version: 3.2
+
+>Number:         5420
+>Category:       mod_jserv
+>Synopsis:       Segmentation Fault
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    jserv
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Dec  5 07:10:00 PST 1999
+>Closed-Date:
+>Last-Modified:  Tue Feb 15 00:30:00 PST 2000
+>Originator:     delaitt@cpc.wmin.ac.uk
+>Release:        1.3.9 - 1.1b3
+>Organization:
+apache
+>Environment:
+Solaris 7 in 32 bits with gcc2.8.1
+>Description:
+I recompiled apache-1.3.9 with DSO support and I recompiled Jserv as a DSO
+module. The problem is that when I start apache with Jserv, I get a segmentatio
+fault. I tried to not load the APacheJserv module and Apache works fine.
+
+(gdb) run
+Starting program: /rhino_local/apache/bin/httpd 
+
+Program received signal SIGSEGV, Segmentation fault.
+0xef6505e0 in strrchr () from /usr/lib/libc.so.1
+(gdb) bt
+#0  0xef6505e0 in strrchr () from /usr/lib/libc.so.1
+#1  0x4f96c in ap_add_module ()
+#2  0x4fb24 in ap_add_loaded_module ()
+#3  0x471d0 in load_module ()
+#4  0x50314 in invoke_cmd ()
+#5  0x510e4 in ap_handle_command ()
+#6  0x511c4 in ap_srm_command_loop ()
+#7  0x51928 in ap_process_resource_config ()
+#8  0x58a74 in include_config ()
+#9  0x501fc in invoke_cmd ()
+#10 0x510e4 in ap_handle_command ()
+#11 0x511c4 in ap_srm_command_loop ()
+#12 0x51928 in ap_process_resource_config ()
+#13 0x5251c in ap_read_config ()
+#14 0x60b3c in main ()
+(gdb) 
+>How-To-Repeat:
+Every time httpd is started with Apache Jserv support
+>Fix:
+No. Any help would be appreciated.
+
+Regards,
+
+Thierry.
+>Release-Note:
+>Audit-Trail:
+
+From: Ed Korthof <ed@cloudfactory.org>
+To: Thierry Delaitre <delaitt@cpc.wmin.ac.uk>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_jserv/5420: Segmentation Fault
+Date: Mon, 6 Dec 1999 23:12:08 -0800 (PST)
+
+ hi --
+ 
+ the place where the problem is occuring is populated by the __FILE__
+ macro; apache expects certain things there, in the module_structure.  so
+ either the wrong thing is there, or the memory got corrupted already at
+ the point when this was called.  
+ 
+ in the testing environment which i have, DSOs work fine.  i'm guessing
+ that you're seeing one of two things.  either the gcc which you're using
+ is buggy, or you built the mod_jserv.so file on a different machine from
+ the one used to build your httpd (or with different compiler settings).
+ 
+ the version of gcc which you're using isn't in that common of use (i've
+ generally seen 2.7.x, with the explanation that the 2.8.x series is buggy) 
+ -- but if this were a bug in that, i'd expect a work-around in the apache
+ source. 
+ 
+ but it's also possible that the jserv initialization is corrupting the
+ stack; if that's the case, it's not triggered by my environment.  if
+ that's what's going on, it'd be helpful to see your conf file. 
+ 
+ are you certain the .so file was compiled on the same machine (and with
+ the same compiler) as apache?  if so, could you gdb one of the core files
+ and send me the output from 'p jserv_module'?  it should look something
+ like this: 
+ 
+ *****
+ (gdb) p jserv_module
+ $1 = {version = 19990320, minor_version = 6, module_index = 20,
+   name = 0x400e8337 "mod_jserv.c", dynamic_load_handle = 0x80de9b8,
+   next = 0x80c8518, magic = 1095774515, init = 0x400df2b4 <jserv_init>,
+   create_dir_config = 0, merge_dir_config = 0,
+   create_server_config = 0x400dde78 <jserv_server_config_create>,
+   merge_server_config = 0x400ddf4c <jserv_server_config_merge>,
+   cmds = 0x400ed42c, handlers = 0x400ed40c,
+   translate_handler = 0x400df650 <jserv_translate_handler>,
+   ap_check_user_id = 0, auth_checker = 0, access_checker = 0,
+   type_checker = 0x400df718 <jserv_type_match>, fixer_upper = 0, logger = 0,
+   header_parser = 0, child_init = 0x400df37c <jserv_child_init>,
+   child_exit = 0, post_read_request = 0}
+ (gdb)
+ *****
+ 
+ what do you mean when you say the system was solaris 7 w/ 32 bits?
+ 
+ thanks --
+ 
+ ed
+ 
+ On 5 Dec 1999, Thierry Delaitre wrote:
+ 
+ > Date: 5 Dec 1999 15:04:10 -0000
+ > From: Thierry Delaitre <delaitt@cpc.wmin.ac.uk>
+ > To: apbugs@hyperreal.org
+ > Subject: mod_jserv/5420: Segmentation Fault
+ > 
+ > 
+ > >Number:         5420
+ > >Category:       mod_jserv
+ > >Synopsis:       Segmentation Fault
+ > >Confidential:   no
+ > >Severity:       critical
+ > >Priority:       medium
+ > >Responsible:    jserv
+ > >State:          open
+ > >Class:          sw-bug
+ > >Submitter-Id:   apache
+ > >Arrival-Date:   Sun Dec  5 07:10:00 PST 1999
+ > >Last-Modified:
+ > >Originator:     delaitt@cpc.wmin.ac.uk
+ > >Organization:
+ > apache
+ > >Release:        1.3.9 - 1.1b3
+ > >Environment:
+ > Solaris 7 in 32 bits with gcc2.8.1
+ > >Description:
+ > I recompiled apache-1.3.9 with DSO support and I recompiled Jserv as a DSO
+ > module. The problem is that when I start apache with Jserv, I get a segmentatio
+ > fault. I tried to not load the APacheJserv module and Apache works fine.
+ > 
+ > (gdb) run
+ > Starting program: /rhino_local/apache/bin/httpd 
+ > 
+ > Program received signal SIGSEGV, Segmentation fault.
+ > 0xef6505e0 in strrchr () from /usr/lib/libc.so.1
+ > (gdb) bt
+ > #0  0xef6505e0 in strrchr () from /usr/lib/libc.so.1
+ > #1  0x4f96c in ap_add_module ()
+ > #2  0x4fb24 in ap_add_loaded_module ()
+ > #3  0x471d0 in load_module ()
+ > #4  0x50314 in invoke_cmd ()
+ > #5  0x510e4 in ap_handle_command ()
+ > #6  0x511c4 in ap_srm_command_loop ()
+ > #7  0x51928 in ap_process_resource_config ()
+ > #8  0x58a74 in include_config ()
+ > #9  0x501fc in invoke_cmd ()
+ > #10 0x510e4 in ap_handle_command ()
+ > #11 0x511c4 in ap_srm_command_loop ()
+ > #12 0x51928 in ap_process_resource_config ()
+ > #13 0x5251c in ap_read_config ()
+ > #14 0x60b3c in main ()
+ > (gdb) 
+ > >How-To-Repeat:
+ > Every time httpd is started with Apache Jserv support
+ > >Fix:
+ > No. Any help would be appreciated.
+ > 
+ > Regards,
+ 
+
+From: Thierry Delaitre <delaitt@cpc.wmin.ac.uk>
+To: Ed Korthof <ed@cloudfactory.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_jserv/5420: Segmentation Fault
+Date: Wed, 8 Dec 1999 10:29:47 +0000 (GMT)
+
+ Hi,
+ 
+ On Mon, 6 Dec 1999, Ed Korthof wrote:
+ 
+ > hi --
+ > 
+ > the place where the problem is occuring is populated by the __FILE__
+ > macro; apache expects certain things there, in the module_structure.  so
+ > either the wrong thing is there, or the memory got corrupted already at
+ > the point when this was called.  
+ > 
+ > in the testing environment which i have, DSOs work fine.  i'm guessing
+ > that you're seeing one of two things.  either the gcc which you're using
+ > is buggy, or you built the mod_jserv.so file on a different machine from
+ > the one used to build your httpd (or with different compiler settings).
+ 
+ I'm sure I've used the same gcc.
+ 
+ > the version of gcc which you're using isn't in that common of use (i've
+ > generally seen 2.7.x, with the explanation that the 2.8.x series is buggy) 
+ > -- but if this were a bug in that, i'd expect a work-around in the apache
+ > source. 
+ 
+ > but it's also possible that the jserv initialization is corrupting the
+ > stack; if that's the case, it's not triggered by my environment.  if
+ > that's what's going on, it'd be helpful to see your conf file. 
+ > 
+ > are you certain the .so file was compiled on the same machine (and with
+ > the same compiler) as apache?
+ 
+ yes it was compiled on the same machine using same gcc.
+ 
+ >  if so, could you gdb one of the core files
+ > and send me the output from 'p jserv_module'?
+ 
+ Sure. Please find the output below:
+ 
+ Starting program: /rhino_local/apache-internet/bin/httpd 
+ 
+ Program received signal SIGSEGV, Segmentation fault.
+ 0xef6505e0 in strrchr () from /usr/lib/libc.so.1
+ (gdb) bt
+ #0  0xef6505e0 in strrchr () from /usr/lib/libc.so.1
+ #1  0x4f96c in ap_add_module ()
+ #2  0x4fb24 in ap_add_loaded_module ()
+ #3  0x471d0 in load_module ()
+ #4  0x50314 in invoke_cmd ()
+ #5  0x510e4 in ap_handle_command ()
+ #6  0x511c4 in ap_srm_command_loop ()
+ #7  0x51928 in ap_process_resource_config ()
+ #8  0x58a74 in include_config ()
+ #9  0x501fc in invoke_cmd ()
+ #10 0x510e4 in ap_handle_command ()
+ #11 0x511c4 in ap_srm_command_loop ()
+ #12 0x51928 in ap_process_resource_config ()
+ #13 0x5251c in ap_read_config ()
+ #14 0x60b3c in main ()
+ (gdb) p jserv_module
+ $1 = {version = 19990320, minor_version = 6, module_index = 21, 
+   name = 0x5c0e18 <Address 0x5c0e18 out of bounds>, dynamic_load_handle = 0xef770b00, next = 0xd0a7c, 
+   magic = 1095774515, init = 0x5b7360, create_dir_config = 0, merge_dir_config = 0, 
+   create_server_config = 0x5b5c98, merge_server_config = 0x5b5d50, cmds = 0x5d68a8, handlers = 0x5d6888, 
+   translate_handler = 0x5b77a0, ap_check_user_id = 0, auth_checker = 0, access_checker = 0, 
+   type_checker = 0x5b787c, fixer_upper = 0, logger = 0, header_parser = 0, child_init = 0x5b746c, 
+   child_exit = 0, post_read_request = 0}
+ (gdb) 
+ 
+   it should look something
+ > like this: 
+ > 
+ > *****
+ > (gdb) p jserv_module
+ > $1 = {version = 19990320, minor_version = 6, module_index = 20,
+ >   name = 0x400e8337 "mod_jserv.c", dynamic_load_handle = 0x80de9b8,
+ >   next = 0x80c8518, magic = 1095774515, init = 0x400df2b4 <jserv_init>,
+ >   create_dir_config = 0, merge_dir_config = 0,
+ >   create_server_config = 0x400dde78 <jserv_server_config_create>,
+ >   merge_server_config = 0x400ddf4c <jserv_server_config_merge>,
+ >   cmds = 0x400ed42c, handlers = 0x400ed40c,
+ >   translate_handler = 0x400df650 <jserv_translate_handler>,
+ >   ap_check_user_id = 0, auth_checker = 0, access_checker = 0,
+ >   type_checker = 0x400df718 <jserv_type_match>, fixer_upper = 0, logger = 0,
+ >   header_parser = 0, child_init = 0x400df37c <jserv_child_init>,
+ >   child_exit = 0, post_read_request = 0}
+ > (gdb)
+ > *****
+ > 
+ > what do you mean when you say the system was solaris 7 w/ 32 bits?
+ 
+ The Sun/Solaris OS runs in 64 bits on Ultra Sparc processor only. The
+ Sun architecture I have only supports 32 bits. BTW, only the Sun C
+ compiler is able to produce 64 bits binaries.
+ 
+ I'm using the default httpd.conf file. The only addition I did is to add
+ the Include statement at the bottom of the file to load jserv.conf.
+ 
+ I use the following options with configure for Apache 1.3.9
+ 
+ ./configure     --prefix=/rhino_local/apache-internet \
+                 --enable-module=so \
+                 --enable-module=info \
+                 --enable-module=status \
+                 --enable-module=rewrite \
+                 --enable-suexec --suexec-caller=www
+ 
+ I use the following options with configure for ApacheJserv-1.1.b3
+ 
+ ./configure --prefix=/rhino_local/apache-internet/jserv \
+         --with-apxs=/rhino_local/apache-internet/bin/apxs \
+         --with-jdk-home=/usr/java \
+         --with-JSDK=/rhino_local/JSDK2.0/lib/jsdk.jar
+ 
+ Thierry.
+ 
+ 
+
+From: Ed Korthof <ed@cloudfactory.org>
+To: Thierry Delaitre <delaitt@cpc.wmin.ac.uk>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_jserv/5420: Segmentation Fault
+Date: Thu, 9 Dec 1999 14:42:34 -0800 (PST)
+
+ This is interesting.  It does look like the compiler may be doing
+ something wrong ... or an intialization function is corrupting some
+ memory.  Here's two things you can try:
+ 
+ First, compile this program and run it; see what the output is:
+ 
+ ******
+ #include <stdio.h>
+ #include <stdlib.h>
+ 
+ typedef struct test_struct { const char *name; } test_struct;
+ 
+ test_struct test = { __FILE__ };
+ 
+ int main() {
+         fprintf (stderr, "file is: %s\n", test.name);
+ }
+ ******
+ 
+ This would test to see if the __FILE__ macro is working correctly all by
+ itself ... if not, that'd explain the problem.  I'd guess that it'll work. 
+ Another thing to test would involve running your httpd w/ gdb, and setting
+ a break point in the add_named_module command, and taking a look at the
+ jserv_module structure right after it's loaded.  This is easier with extra
+ debugging information -- add '-g' to your CFLAGS (or EXTRA_CFLAGS) and
+ recompile Apache... I've shown a transcript of how this might be done: 
+ 
+ *****
+ stratus:~/projects/t/httpd> gdb bin/httpd
+ GNU gdb 4.17
+ Copyright 1998 Free Software Foundation, Inc.
+ GDB is free software, covered by the GNU General Public License, and you are
+ welcome to change it and/or distribute copies of it under certain conditions.
+ Type "show copying" to see the conditions.
+ There is absolutely no warranty for GDB.  Type "show warranty" for details.
+ This GDB was configured as "i586-slackware-linux"...
+ (gdb) set args -X -f /home/ed/projects/t/httpd/conf/httpd.conf
+ (gdb) b ap_os_dso_load
+ Breakpoint 1 at 0x808f35b: file os.c, line 117.
+ (gdb) run
+ Starting program: /home/ed/projects/t/httpd/bin/httpd -X -f /home/ed/projects/t/httpd/conf/httpd.conf
+ mesg: /dev/ttya1: Operation not permitted
+ 
+ Breakpoint 1, ap_os_dso_load (
+     path=0x80dd684 "/home/ed/projects/t/httpd/libexec/mod_jserv.so")
+     at os.c:117
+ 117         return dlopen(path, RTLD_NOW | RTLD_GLOBAL);
+ (gdb) n
+ 119     }
+ (gdb) p jserv_module
+ $1 = {version = 19990320, minor_version = 6, module_index = -1,
+   name = 0x400e8337 "mod_jserv.c", dynamic_load_handle = 0x0, next = 0x0,
+   magic = 1095774515, init = 0x400df2b4 <jserv_init>, create_dir_config = 0,
+   merge_dir_config = 0,
+   create_server_config = 0x400dde78 <jserv_server_config_create>,
+   merge_server_config = 0x400ddf4c <jserv_server_config_merge>,
+   cmds = 0x400ed42c, handlers = 0x400ed40c,
+   translate_handler = 0x400df650 <jserv_translate_handler>,
+   ap_check_user_id = 0, auth_checker = 0, access_checker = 0,
+   type_checker = 0x400df718 <jserv_type_match>, fixer_upper = 0, logger = 0,
+   header_parser = 0, child_init = 0x400df37c <jserv_child_init>,
+   child_exit = 0, post_read_request = 0}
+ (gdb)
+ *****
+ 
+ Note that if you have other DSO modules, you should continue until you're
+ loading the jserv DSO.
+ 
+ The question is simply what the structure of the jserv_module looks like
+ -- again, i want to see if the name element has a valid value.  If it
+ doesn't, then there's a problem in your version of gcc -- and you should
+ move back to a previous version (2.7.2 works).  If it does have a good
+ value, then there's a bug somewhere in our initialization.
+ 
+ If you could try these tests, I'd appreciate it.
+ 
+ thanks!
+ 
+ Ed
+ 
+ On Wed, 8 Dec 1999, Thierry Delaitre wrote:
+ 
+ > Date: Wed, 8 Dec 1999 10:29:47 +0000 (GMT)
+ > From: Thierry Delaitre <delaitt@cpc.wmin.ac.uk>
+ > To: Ed Korthof <ed@cloudfactory.org>
+ > Cc: apbugs@hyperreal.org
+ > Subject: Re: mod_jserv/5420: Segmentation Fault
+ > 
+ > 
+ > Hi,
+ > 
+ > On Mon, 6 Dec 1999, Ed Korthof wrote:
+ > 
+ > > hi --
+ > > 
+ > > the place where the problem is occuring is populated by the __FILE__
+ > > macro; apache expects certain things there, in the module_structure.  so
+ > > either the wrong thing is there, or the memory got corrupted already at
+ > > the point when this was called.  
+ > > 
+ > > in the testing environment which i have, DSOs work fine.  i'm guessing
+ > > that you're seeing one of two things.  either the gcc which you're using
+ > > is buggy, or you built the mod_jserv.so file on a different machine from
+ > > the one used to build your httpd (or with different compiler settings).
+ > 
+ > I'm sure I've used the same gcc.
+ > 
+ > > the version of gcc which you're using isn't in that common of use (i've
+ > > generally seen 2.7.x, with the explanation that the 2.8.x series is buggy) 
+ > > -- but if this were a bug in that, i'd expect a work-around in the apache
+ > > source. 
+ > 
+ > > but it's also possible that the jserv initialization is corrupting the
+ > > stack; if that's the case, it's not triggered by my environment.  if
+ > > that's what's going on, it'd be helpful to see your conf file. 
+ > > 
+ > > are you certain the .so file was compiled on the same machine (and with
+ > > the same compiler) as apache?
+ > 
+ > yes it was compiled on the same machine using same gcc.
+ > 
+ > >  if so, could you gdb one of the core files
+ > > and send me the output from 'p jserv_module'?
+ > 
+ > Sure. Please find the output below:
+ > 
+ > Starting program: /rhino_local/apache-internet/bin/httpd 
+ > 
+ > Program received signal SIGSEGV, Segmentation fault.
+ > 0xef6505e0 in strrchr () from /usr/lib/libc.so.1
+ > (gdb) bt
+ > #0  0xef6505e0 in strrchr () from /usr/lib/libc.so.1
+ > #1  0x4f96c in ap_add_module ()
+ > #2  0x4fb24 in ap_add_loaded_module ()
+ > #3  0x471d0 in load_module ()
+ > #4  0x50314 in invoke_cmd ()
+ > #5  0x510e4 in ap_handle_command ()
+ > #6  0x511c4 in ap_srm_command_loop ()
+ > #7  0x51928 in ap_process_resource_config ()
+ > #8  0x58a74 in include_config ()
+ > #9  0x501fc in invoke_cmd ()
+ > #10 0x510e4 in ap_handle_command ()
+ > #11 0x511c4 in ap_srm_command_loop ()
+ > #12 0x51928 in ap_process_resource_config ()
+ > #13 0x5251c in ap_read_config ()
+ > #14 0x60b3c in main ()
+ > (gdb) p jserv_module
+ > $1 = {version = 19990320, minor_version = 6, module_index = 21, 
+ >   name = 0x5c0e18 <Address 0x5c0e18 out of bounds>, dynamic_load_handle = 0xef770b00, next = 0xd0a7c, 
+ >   magic = 1095774515, init = 0x5b7360, create_dir_config = 0, merge_dir_config = 0, 
+ >   create_server_config = 0x5b5c98, merge_server_config = 0x5b5d50, cmds = 0x5d68a8, handlers = 0x5d6888, 
+ >   translate_handler = 0x5b77a0, ap_check_user_id = 0, auth_checker = 0, access_checker = 0, 
+ >   type_checker = 0x5b787c, fixer_upper = 0, logger = 0, header_parser = 0, child_init = 0x5b746c, 
+ >   child_exit = 0, post_read_request = 0}
+ > (gdb) 
+ > 
+ >   it should look something
+ > > like this: 
+ > > 
+ > > *****
+ > > (gdb) p jserv_module
+ > > $1 = {version = 19990320, minor_version = 6, module_index = 20,
+ > >   name = 0x400e8337 "mod_jserv.c", dynamic_load_handle = 0x80de9b8,
+ > >   next = 0x80c8518, magic = 1095774515, init = 0x400df2b4 <jserv_init>,
+ > >   create_dir_config = 0, merge_dir_config = 0,
+ > >   create_server_config = 0x400dde78 <jserv_server_config_create>,
+ > >   merge_server_config = 0x400ddf4c <jserv_server_config_merge>,
+ > >   cmds = 0x400ed42c, handlers = 0x400ed40c,
+ > >   translate_handler = 0x400df650 <jserv_translate_handler>,
+ > >   ap_check_user_id = 0, auth_checker = 0, access_checker = 0,
+ > >   type_checker = 0x400df718 <jserv_type_match>, fixer_upper = 0, logger = 0,
+ > >   header_parser = 0, child_init = 0x400df37c <jserv_child_init>,
+ > >   child_exit = 0, post_read_request = 0}
+ > > (gdb)
+ > > *****
+ > > 
+ > > what do you mean when you say the system was solaris 7 w/ 32 bits?
+ > 
+ > The Sun/Solaris OS runs in 64 bits on Ultra Sparc processor only. The
+ > Sun architecture I have only supports 32 bits. BTW, only the Sun C
+ > compiler is able to produce 64 bits binaries.
+ > 
+ > I'm using the default httpd.conf file. The only addition I did is to add
+ > the Include statement at the bottom of the file to load jserv.conf.
+ > 
+ > I use the following options with configure for Apache 1.3.9
+ > 
+ > ./configure     --prefix=/rhino_local/apache-internet \
+ >                 --enable-module=so \
+ >                 --enable-module=info \
+ >                 --enable-module=status \
+ >                 --enable-module=rewrite \
+ >                 --enable-suexec --suexec-caller=www
+ > 
+ > I use the following options with configure for ApacheJserv-1.1.b3
+ > 
+ > ./configure --prefix=/rhino_local/apache-internet/jserv \
+ >         --with-apxs=/rhino_local/apache-internet/bin/apxs \
+ >         --with-jdk-home=/usr/java \
+ >         --with-JSDK=/rhino_local/JSDK2.0/lib/jsdk.jar
+ > 
+ > Thierry.
+ > 
+ > 
+ 
+
+From: Thierry Delaitre <delaitt@cpc.wmin.ac.uk>
+To: Ed Korthof <ed@cloudfactory.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_jserv/5420: Segmentation Fault
+Date: Fri, 10 Dec 1999 18:32:28 +0000 (GMT)
+
+ On Thu, 9 Dec 1999, Ed Korthof wrote:
+ 
+ > This is interesting.  It does look like the compiler may be doing
+ > something wrong ... or an intialization function is corrupting some
+ > memory.  Here's two things you can try:
+ > 
+ > First, compile this program and run it; see what the output is:
+ > 
+ > ******
+ > #include <stdio.h>
+ > #include <stdlib.h>
+ > 
+ > typedef struct test_struct { const char *name; } test_struct;
+ > 
+ > test_struct test = { __FILE__ };
+ > 
+ > int main() {
+ >         fprintf (stderr, "file is: %s\n", test.name);
+ > }
+ > ******
+ > 
+ > This would test to see if the __FILE__ macro is working correctly all by
+ > itself ... if not, that'd explain the problem.  I'd guess that it'll work. 
+ 
+ The little program works ok.
+ 
+ > Another thing to test would involve running your httpd w/ gdb, and setting
+ > a break point in the add_named_module command, and taking a look at the
+ > jserv_module structure right after it's loaded.  This is easier with extra
+ > debugging information -- add '-g' to your CFLAGS (or EXTRA_CFLAGS) and
+ > recompile Apache... I've shown a transcript of how this might be done: 
+ > 
+ > *****
+ > stratus:~/projects/t/httpd> gdb bin/httpd
+ > GNU gdb 4.17
+ > Copyright 1998 Free Software Foundation, Inc.
+ > GDB is free software, covered by the GNU General Public License, and you are
+ > welcome to change it and/or distribute copies of it under certain conditions.
+ > Type "show copying" to see the conditions.
+ > There is absolutely no warranty for GDB.  Type "show warranty" for details.
+ > This GDB was configured as "i586-slackware-linux"...
+ > (gdb) set args -X -f /home/ed/projects/t/httpd/conf/httpd.conf
+ > (gdb) b ap_os_dso_load
+ > Breakpoint 1 at 0x808f35b: file os.c, line 117.
+ > (gdb) run
+ > Starting program: /home/ed/projects/t/httpd/bin/httpd -X -f /home/ed/projects/t/httpd/conf/httpd.conf
+ > mesg: /dev/ttya1: Operation not permitted
+ > 
+ > Breakpoint 1, ap_os_dso_load (
+ >     path=0x80dd684 "/home/ed/projects/t/httpd/libexec/mod_jserv.so")
+ >     at os.c:117
+ > 117         return dlopen(path, RTLD_NOW | RTLD_GLOBAL);
+ > (gdb) n
+ > 119     }
+ > (gdb) p jserv_module
+ > $1 = {version = 19990320, minor_version = 6, module_index = -1,
+ >   name = 0x400e8337 "mod_jserv.c", dynamic_load_handle = 0x0, next = 0x0,
+ >   magic = 1095774515, init = 0x400df2b4 <jserv_init>, create_dir_config = 0,
+ >   merge_dir_config = 0,
+ >   create_server_config = 0x400dde78 <jserv_server_config_create>,
+ >   merge_server_config = 0x400ddf4c <jserv_server_config_merge>,
+ >   cmds = 0x400ed42c, handlers = 0x400ed40c,
+ >   translate_handler = 0x400df650 <jserv_translate_handler>,
+ >   ap_check_user_id = 0, auth_checker = 0, access_checker = 0,
+ >   type_checker = 0x400df718 <jserv_type_match>, fixer_upper = 0, logger = 0,
+ >   header_parser = 0, child_init = 0x400df37c <jserv_child_init>,
+ >   child_exit = 0, post_read_request = 0}
+ > (gdb)
+ > *****
+ 
+ Please find the output below.
+ 
+ *************************
+ Starting program: /rhino_local/apache-internet/bin/httpd -X -f
+ /rhino_local/apache-internet/conf/httpd.conf
+ 
+ Breakpoint 1, ap_os_dso_load (
+     path=0xe9658 "/rhino_local/apache-internet/libexec/mod_jserv.so") at
+ os.c:117
+ 117         return dlopen(path, RTLD_NOW | RTLD_GLOBAL);
+ (gdb) p jserv_module
+ No symbol "jserv_module" in current context.
+ (gdb) n
+ 119     }
+ (gdb) p jserv_module
+ $6 = {version = 19990320, minor_version = 6, module_index = -1, 
+   name = 0x5b93f0 <Address 0x5b93f0 out of bounds>, dynamic_load_handle =0x0, 
+   next = 0x0, magic = 1095774515, init = 0x5a8cbc, create_dir_config = 0, 
+   merge_dir_config = 0, create_server_config = 0x5a6058, 
+   merge_server_config = 0x5a61b0, cmds = 0x5cee90, handlers = 0x5cee70, 
+   translate_handler = 0x5a94bc, ap_check_user_id = 0, auth_checker = 0, 
+   access_checker = 0, type_checker = 0x5a965c, fixer_upper = 0, logger =0, 
+   header_parser = 0, child_init = 0x5a8e30, child_exit = 0,post_read_request = 0}
+ (gdb) 
+ *************************
+  
+ > Note that if you have other DSO modules, you should continue until you're
+ > loading the jserv DSO.
+ > 
+ > The question is simply what the structure of the jserv_module looks like
+ > -- again, i want to see if the name element has a valid value.  If it
+ > doesn't, then there's a problem in your version of gcc -- and you should
+ > move back to a previous version (2.7.2 works).  If it does have a good
+ > value, then there's a bug somewhere in our initialization.
+ > 
+ > If you could try these tests, I'd appreciate it.
+ 
+ Thanks for your time !
+ 
+ Thierry.
+ 
+
+From: Ed Korthof <ed@cloudfactory.org>
+To: Thierry Delaitre <delaitt@cpc.wmin.ac.uk>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_jserv/5420: Segmentation Fault
+Date: Fri, 10 Dec 1999 15:21:45 -0800 (PST)
+
+ ok ... well, we're closer.  there's a problem either before or at the
+ point when the module is loaded as a DSO -- before any JServ code has run. 
+ given that, it seems unlikely that JServ is the source of your problem --
+ unless the problem is our compiler options.  can you compile and use any
+ other DSOs?  can you start the webserver if you compile JServ in
+ statically? 
+ 
+ when you compile or load JServ, do you see any warnings about relocatable
+ code?  you could try adding -fpic or -fPIC to your CFLAGS -- if one or the
+ other isn't not already there, and it solves the problem, it's something
+ we should look into adding (dep on system and/or compiler).  (pic stands
+ for position independant code; from the man pages, the main difference
+ seems to be that -fPIC is more insistent about it.)
+ 
+ thanks --
+ 
+ ed
+ 
+ On Fri, 10 Dec 1999, Thierry Delaitre wrote:
+ [snip]
+ > Please find the output below.
+ > 
+ > *************************
+ > Starting program: /rhino_local/apache-internet/bin/httpd -X -f
+ > /rhino_local/apache-internet/conf/httpd.conf
+ > 
+ > Breakpoint 1, ap_os_dso_load (
+ >     path=0xe9658 "/rhino_local/apache-internet/libexec/mod_jserv.so") at
+ > os.c:117
+ > 117         return dlopen(path, RTLD_NOW | RTLD_GLOBAL);
+ > (gdb) p jserv_module
+ > No symbol "jserv_module" in current context.
+ > (gdb) n
+ > 119     }
+ > (gdb) p jserv_module
+ > $6 = {version = 19990320, minor_version = 6, module_index = -1, 
+ >   name = 0x5b93f0 <Address 0x5b93f0 out of bounds>, dynamic_load_handle =0x0, 
+ >   next = 0x0, magic = 1095774515, init = 0x5a8cbc, create_dir_config = 0, 
+ >   merge_dir_config = 0, create_server_config = 0x5a6058, 
+ >   merge_server_config = 0x5a61b0, cmds = 0x5cee90, handlers = 0x5cee70, 
+ >   translate_handler = 0x5a94bc, ap_check_user_id = 0, auth_checker = 0, 
+ >   access_checker = 0, type_checker = 0x5a965c, fixer_upper = 0, logger =0, 
+ >   header_parser = 0, child_init = 0x5a8e30, child_exit = 0,post_read_request = 0}
+ > (gdb) 
+ > *************************
+ 
+
+From: "Kumi Kitamura" <KUMIOGU@jp.ibm.com>
+To: apbugs@Apache.Org
+Cc: apbugs@Apache.Org
+Subject: mod_jserv/5420
+Date: Tue, 15 Feb 2000 17:03:54 +0900
+
+ I've got problem simiar to Thierry's.
+ 
+ I built Apache1.3.11 with DSO support,
+ and ApacheJserv1.1 as DSO module on AIX4.3.2.
+ Compilation went fine without error.
+ The problem is that when I start httpd with Jserv,
+ I get Segmentation fault(coredump) error.
+ 
+ I use gcc2.95.2 and C for AIX4.4.
+ By using both of them, same symptoms occur.
+ Without jserv module,apache works fine.
+ And,when I compile Jserv as static module,apache works fine.
+ I also built on AIX4.1.5, no problem was happened.
+ 
+ Though I compiled with -fpic and -FPIC, nothing changed.
+ 
+ --------------------------------
+ #./apachectl start
+ ./apachectl[71]: 24534 Segmentation fault(coredump)
+ ./apachectl start: httpd could not be started
+ 
+ #dbx httpd core
+ Segmentation fault in glink.rewind at 0xd115f398
+ 0xd115f398 (rewind+0x30) 800c0000          l   r0,0x0(r12)
+ (dbx) where
+ glink.rewind() at 0xd115f398
+ jserv_server_config_create(0x200213a8, 0x200213d0), line 299 in "mod_jserv.c"
+ ap_single_module_configure(0x200213a8, 0x200213d0, 0x200836b8) at 0x1002fe4c
+ load_module(0x2ff207d8, 0x0, 0x2004dea8, 0x2004deb8) at 0x1005fb54
+ invoke_cmd(0x2000f5f8, 0x2ff207d8, 0x0, 0x2ff1e7be) at 0x1002d2fc
+ ap_handle_command(0x2ff207d8, 0x20021900, 0x2ff1e780) at 0x1002e510
+ ap_srm_command_loop(0x2ff207d8, 0x20021900) at 0x1002ff24
+ ap_process_resource_config(0x200213d0, 0x2004ddd8, 0x200213a8, 0x200253e8) at 0x
+ 1002ef88
+ include_config(0x2ff22af8, 0x20021a08, 0x2004ddd8) at 0x1004bf5c
+ invoke_cmd(0x2000c1d0, 0x2ff22af8, 0x20021a08, 0x2ff20acf) at 0x1002d224
+ ap_handle_command(0x2ff22af8, 0x20021900, 0x2ff20aa0) at 0x1002e510
+ ap_srm_command_loop(0x2ff22af8, 0x20021900) at 0x1002ff24
+ ap_process_resource_config(0x200213d0, 0x20021a88, 0x200213a8, 0x200253e8) at 0x
+ 1002ef88
+ ap_read_config(0x200213a8, 0x200253e8, 0x20005370) at 0x1002fd78
+ main(0x1, 0x2ff22ce8) at 0x10000714
+ (dbx)
+ ------------------------------------------
+ Any help would be appreciated.
+ Thanks.
+ 
+ kumiogu
+ 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

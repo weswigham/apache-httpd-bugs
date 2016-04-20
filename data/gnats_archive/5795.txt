@@ -1,0 +1,323 @@
+Received: (qmail 58716 invoked by uid 65534); 22 Feb 2000 01:12:36 -0000
+Message-Id: <20000222011236.58715.qmail@locus.apache.org>
+Date: 22 Feb 2000 01:12:36 -0000
+From: Glenn Nielsen <glenn@more.net>
+Reply-To: glenn@more.net
+To: submit@bugz.apache.org
+Subject: Added the configuration directive LastModHack to mod_include
+X-Send-Pr-Version: 3.110
+
+>Number:         5795
+>Category:       mod_include
+>Synopsis:       Added the configuration directive LastModHack to mod_include
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Feb 21 17:20:01 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     glenn@more.net
+>Release:        1.3.9
+>Organization:
+apache
+>Environment:
+SunOS voyager.apg.more.net 5.7 Generic_106541-07 sun4m sparc SUNW,SPARCstation-10
+>Description:
++ /* A second config directive LastModHack has been added.
++  * The flags are On or Off.  If it is On, LastModHack will
++  * set the Last-Modified header like how XBitHack does,
++  * but without requiring the group executable bit to be set.
++  *
++  * This change was made so that search engines that check
++  * the http header Last-Modified (like HtDig) can better
++  * determine if the file needs to be reindexed.
++  *
++  * GLN
++  *
++  */
+>How-To-Repeat:
+
+>Fix:
+*** mod_include.c.old   Thu Feb 17 08:22:49 2000
+--- mod_include.c       Mon Feb 21 19:02:04 2000
+***************
+*** 2298,2322 ****
+  #define DEFAULT_XBITHACK xbithack_off
+  #endif
+  
+  static void *create_includes_dir_config(pool *p, char *dummy)
+  {
+!     enum xbithack *result = (enum xbithack *) ap_palloc(p, sizeof(enum xbithack));
+!     *result = DEFAULT_XBITHACK;
+!     return result;
+  }
+  
+
+  static const char *set_xbithack(cmd_parms *cmd, void *xbp, char *arg)
+  {
+!     enum xbithack *state = (enum xbithack *) xbp;
+  
+
+      if (!strcasecmp(arg, "off")) {
+!         *state = xbithack_off;
+      }
+      else if (!strcasecmp(arg, "on")) {
+!         *state = xbithack_on;
+      }
+      else if (!strcasecmp(arg, "full")) {
+!         *state = xbithack_full;
+      }
+      else {
+          return "XBitHack must be set to Off, On, or Full";
+--- 2298,2357 ----
+  #define DEFAULT_XBITHACK xbithack_off
+  #endif
+  
++ /* A second config directive LastModHack has been added.
++  * The flags are On or Off.  If it is On, LastModHack will
++  * set the Last-Modified header like how XBitHack does,
+
++  * but without requiring the group executable bit to be set.
++  *
++  * This change was made so that search engines that check
++  * the http header Last-Modified (like HtDig) can better
++  * determine if the file needs to be reindexed.
++  *
++  * GLN
++  *
++  */
++ 
++ /* Needed a data structure to hold both the XBitHack and
++  * LastModHack settings.  GLN
++  */
++ 
++ /* LastModHack values GLN */
++ enum lastmodhack {
++     lastmodhack_off, lastmodhack_on
++ };
++ 
++ #define DEFAULT_LASTMODHACK lastmodhack_off
++ 
++ struct hack_config {
++   enum xbithack xbithack;
++   enum lastmodhack lastmodhack;
++ };
++ 
++ /* Modified to support LastModHack GLN */
+  static void *create_includes_dir_config(pool *p, char *dummy)
+  {
+!     struct hack_config *hc;
+! 
+!     hc = (struct hack_config *) ap_palloc(p, sizeof(struct hack_config));
+!     if( !hc )return(NULL);
+!     hc->xbithack = DEFAULT_XBITHACK;
+!     hc->lastmodhack = DEFAULT_LASTMODHACK;
+!     return hc;
+  }
+  
++ /* Modified to support LastModHack GLN */
+  static const char *set_xbithack(cmd_parms *cmd, void *xbp, char *arg)
+  {
+!     struct hack_config *hc = (struct hack_config *)xbp;
+  
+      if (!strcasecmp(arg, "off")) {
+!         hc->xbithack = xbithack_off;
+      }
+      else if (!strcasecmp(arg, "on")) {
+!         hc->xbithack = xbithack_on;
+      }
+      else if (!strcasecmp(arg, "full")) {
+!         hc->xbithack = xbithack_full;
+      }
+      else {
+          return "XBitHack must be set to Off, On, or Full";
+***************
+*** 2325,2341 ****
+      return NULL;
+  }
+  
+  static int send_parsed_file(request_rec *r)
+  {
+      FILE *f;
+!     enum xbithack *state =
+!     (enum xbithack *) ap_get_module_config(r->per_dir_config, &includes_module);
+      int errstatus;
+      request_rec *parent;
+  
+      if (!(ap_allow_options(r) & OPT_INCLUDES)) {
+          return DECLINED;
+      }
+      r->allowed |= (1 << M_GET);
+      if (r->method_number != M_GET) {
+          return DECLINED;
+--- 2360,2397 ----
+      return NULL;
+  }
+  
++ /* Added to support LastModHack GLN */
++ static const char *set_lastmodhack(cmd_parms *cmd, void *lmp, char *arg)
++ {
++     struct hack_config *hc = (struct hack_config *)lmp;
++ 
++     if (!strcasecmp(arg, "off")) {
++         hc->lastmodhack = lastmodhack_off;
++     }
++     else if (!strcasecmp(arg, "on")) {
++         hc->lastmodhack = lastmodhack_on;
++     }
++     else {
++         return "LastModHack must be set to Off or On";
++     }
++      
++     return NULL;
++ }
++ 
++ /* Modified to support LastModHack GLN */
+  static int send_parsed_file(request_rec *r)
+  {
+      FILE *f;
+!     struct hack_config *hc;
+!     enum xbithack *state;
+!     enum lastmodhack *last_state;
+      int errstatus;
+      request_rec *parent;
+  
+
+      if (!(ap_allow_options(r) & OPT_INCLUDES)) {
+          return DECLINED;
+      }
++ 
+      r->allowed |= (1 << M_GET);
+      if (r->method_number != M_GET) {
+          return DECLINED;
+***************
+*** 2355,2361 ****
+          return HTTP_FORBIDDEN;
+      }
+  
+!     if ((*state == xbithack_full)
+  #if !defined(OS2) && !defined(WIN32)
+      /*  OS/2 dosen't support Groups. */
+          && (r->finfo.st_mode & S_IXGRP)
+--- 2411,2419 ----
+          return HTTP_FORBIDDEN;
+      }
+  
+!     hc = (struct hack_config *)ap_get_module_config(r->per_dir_config, &includes_module);
+! 
+!     if ((hc->xbithack == xbithack_full)
+  #if !defined(OS2) && !defined(WIN32)
+      /*  OS/2 dosen't support Groups. */
+          && (r->finfo.st_mode & S_IXGRP)
+***************
+*** 2364,2369 ****
+--- 2422,2432 ----
+          ap_update_mtime(r, r->finfo.st_mtime);
+          ap_set_last_modified(r);
+      }
++     if ((hc->lastmodhack == lastmodhack_on)) {
++         ap_update_mtime(r, r->finfo.st_mtime);
++         ap_set_last_modified(r);
++     }
++ 
+      if ((errstatus = ap_meets_conditions(r)) != OK) {
+          return errstatus;
+      }
+***************
+*** 2422,2455 ****
+  static int send_shtml_file(request_rec *r)
+  {
+
+      r->content_type = "text/html";
+      return send_parsed_file(r);
+  }
+  
+  static int xbithack_handler(request_rec *r)
+  {
+  #if defined(OS2) || defined(WIN32)
+      /* OS/2 dosen't currently support the xbithack. This is being worked on. */
+      return DECLINED;
+  #else
+      enum xbithack *state;
+  
+      if (!(r->finfo.st_mode & S_IXUSR)) {
+          return DECLINED;
+      }
+  
+!     state = (enum xbithack *) ap_get_module_config(r->per_dir_config,
+                                                  &includes_module);
+! 
+!     if (*state == xbithack_off) {
+          return DECLINED;
+      }
+      return send_parsed_file(r);
+  #endif
+  }
+  
+  static const command_rec includes_cmds[] =
+  {
+      {"XBitHack", set_xbithack, NULL, OR_OPTIONS, TAKE1, "Off, On, or Full"},
+      {NULL}
+  };
+  
+--- 2485,2522 ----
+  static int send_shtml_file(request_rec *r)
+  {
+      r->content_type = "text/html";
+
++ 
+      return send_parsed_file(r);
+  }
+  
++ /* Modified to support LastModHack GLN */
+  static int xbithack_handler(request_rec *r)
+  {
+  #if defined(OS2) || defined(WIN32)
+      /* OS/2 dosen't currently support the xbithack. This is being worked on. */
+      return DECLINED;
+  #else
++     struct hack_config *hc;
+      enum xbithack *state;
+  
+      if (!(r->finfo.st_mode & S_IXUSR)) {
+          return DECLINED;
+      }
+  
+!     hc = (struct hack_config *) ap_get_module_config(r->per_dir_config,
+                                                &includes_module);
+!     if ( hc->xbithack == xbithack_off) {
+          return DECLINED;
+      }
+      return send_parsed_file(r);
+  #endif
+  }
+  
++ /* Modified to support LastModHack GLN */
+  static const command_rec includes_cmds[] =
+  {
+      {"XBitHack", set_xbithack, NULL, OR_OPTIONS, TAKE1, "Off, On, or Full"},
++     {"LastModHack", set_lastmodhack, NULL, OR_OPTIONS, TAKE1, "Off or On"},
+      {NULL}
+  };
+  
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

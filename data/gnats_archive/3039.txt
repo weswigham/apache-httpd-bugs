@@ -1,0 +1,171 @@
+Received: (qmail 11297 invoked by uid 2012); 21 Sep 1998 22:22:07 -0000
+Message-Id: <19980921222207.11296.qmail@hyperreal.org>
+Date: 21 Sep 1998 22:22:07 -0000
+From: Dan Stevenson <daniels@webatomics.com>
+Reply-To: daniels@webatomics.com
+To: apbugs@hyperreal.org
+Subject: MMapFile doesn't do what it should (file edits are read by server)
+X-Send-Pr-Version: 3.2
+
+>Number:         3039
+>Category:       general
+>Synopsis:       MMapFile doesn't do what it should (file edits are read by server)
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Sep 21 15:30:00 PDT 1998
+>Last-Modified:  Sun Aug 15 01:57:36 PDT 1999
+>Originator:     daniels@webatomics.com
+>Organization:
+>Release:        1.3.1
+>Environment:
+SunOS 5.6 Generic_105181-05 sum4m sparc SUNW, SPARCstation-5
+gcc 2.8.1
+>Description:
+I enabled mod_mmap_static in my Configuration file (everything stayed basically
+the same, although I also added Apache-SSL and mod_perl).
+
+I used a very simple MMapFile directive, i.e.
+MMapFile /var/cyberspace.mit.edu/htdocs/index.html
+
+This should be the correct path... the DocumentRoot is
+/var/cyberspace.mit.edu/htdocs
+and later configuration directives are located within
+<Directory /var/cyberspace.mit.edu/htdocs>...</Directory>
+
+I load the page (using lynx, but browser doesn't seem to make a difference,
+nor should it). Then, I change it with an in-place edit (just vi or emacs)
+... adding "ABCABC" to the last line, for example.
+
+Then, I reload the file. The new changed text "ABCABC" appears.
+
+According to the docs for mmap_static, this shouldn't happen -- the changes
+should appear unless I unlink the file (via mv or rm).
+
+BTW, the reason I'm trying to produce this "dumb" result is to verify that
+mmap_static is working. If, for some reason, mmap_static somehow does a stat
+and checks for an update disk, then I am the "dumb" one.
+>How-To-Repeat:
+It's a little tricky, since I'd have to edit the file. If you want to arrange
+a time to look at the file, and then 5 minutes later load it again, I can set
+that up... I'm logged on 9 a.m. to 7 p.m. EST, and often later.
+>Fix:
+Not really, but then again it's not that serious a problem. In fact, since
+it looks like "mmap_static" is not a "category" choice above, maybe it's not
+even supported. If so, sorry for the inconvenience.
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Dan Stevenson <daniels@webatomics.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/3039: MMapFile doesn't do what it should (file edits are read by server)
+Date: Mon, 21 Sep 1998 15:51:15 -0700 (PDT)
+
+ From www.apache.org/docs/mod/mod_mmap_static: 
+ 
+ ... To reiterate that point: if the files are modified in place without
+ restarting the server you may end up serving requests that are completely
+ bogus.  ... 
+ 
+ Which is exactly the behaviour you're describing. 
+ 
+ Dean
+ 
+
+From: "Daniel C. Stevenson" <daniels@webatomics.com>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/3039: MMapFile doesn't do what it should (file edits
+ are read by server)
+Date: Mon, 21 Sep 1998 21:13:36 -0400
+
+ >>From www.apache.org/docs/mod/mod_mmap_static:
+ >
+ >... To reiterate that point: if the files are modified in place without
+ >restarting the server you may end up serving requests that are completely
+ >bogus.  ...
+ 
+ Does bogus include actually recognizing/displaying the modified files
+ without restarting the server (which is the behavior I saw)?
+ 
+ -- if no --
+ 
+  I gathered from the documentation that any changes would *not* be
+  displayed, and thus I tried to use that to test whether mmap_static was
+  running (changes would not be displayed) or not (changes would be
+  displayed, as normal).
+ 
+  I reloaded the page with about 5 different versions, and did each one about
+  20 times from different hosts (in an attempt to distribute across the
+  server processes) and got completely predictable/normal behavior, as in the
+  changes are duly replicated in my browser, *without* a server restart.
+ 
+ -- end if --
+ 
+ Again, if "bogus" means actually doing the normal thing (showing changes
+ w/o restart), my sincere apologies. Is there a better way to tell if
+ mmap_static is working properly?
+ 
+ Thanks.
+ 
+ Dan Stevenson
+ 
+ P.S. Apache is an increasingly perfect product. I teach a Web design and
+ development class to MIT undergraduates and I take every chance to say good
+ things about Apache (and open development). Recently, I had the need to
+ write a module using the API, and it was wonderful, especially compared to
+ NSAPI.
+ 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: "Daniel C. Stevenson" <daniels@webatomics.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/3039: MMapFile doesn't do what it should (file edits are read by server)
+Date: Tue, 22 Sep 1998 18:32:01 -0700 (PDT)
+
+ On Mon, 21 Sep 1998, Daniel C. Stevenson wrote:
+ 
+ > >>From www.apache.org/docs/mod/mod_mmap_static:
+ > >
+ > >... To reiterate that point: if the files are modified in place without
+ > >restarting the server you may end up serving requests that are completely
+ > >bogus.  ...
+ > 
+ > Does bogus include actually recognizing/displaying the modified files
+ > without restarting the server (which is the behavior I saw)?
+ 
+ bogus means anything, it means anything could happen.  As in, it could
+ play Merry had a Little Lamb for you :)  You happen to have gotten lucky
+ and the changes did something that you think is "right".  It isn't though. 
+ 
+ The documentation explicitly says that you have to restart the server.  It
+ also explicitly says not to modify the files in place.
+ 
+ The whole thing is experimental and regular sites don't need it at all. 
+ 
+ Dean
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: fielding
+State-Changed-When: Sun Aug 15 01:57:36 PDT 1999
+State-Changed-Why:
+
+Dean answered it.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

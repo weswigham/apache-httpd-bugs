@@ -1,0 +1,107 @@
+From nobody@hyperreal.com  Fri Jan 31 06:06:23 1997
+Received: by taz.hyperreal.com (8.8.4/V2.0) id GAA28801; Fri, 31 Jan 1997 06:06:23 -0800 (PST)
+Message-Id: <199701311406.GAA28801@taz.hyperreal.com>
+Date: Fri, 31 Jan 1997 06:06:23 -0800 (PST)
+From: Trevor Foster <trevorf@padd.press.net>
+Reply-To: trevorf@padd.press.net
+To: apbugs@hyperreal.com
+Subject: When using VirtualHost configuration, 'GET /` uses defaults instead of virtual settings
+X-Send-Pr-Version: 3.2
+
+>Number:         143
+>Category:       config
+>Synopsis:       When using VirtualHost configuration, 'GET /` uses defaults instead of virtual settings
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jan 31 06:10:02 1997
+>Last-Modified:  Sat Mar 22 15:15:35 PST 1997
+>Originator:     trevorf@padd.press.net
+>Organization:
+>Release:        1.2B4
+>Environment:
+SunOS:4.1.2  compiler : gcc
+>Description:
+We have two virtual hosts set up using IP numbers, ie 
+<VirtualHost 144.178.164.2> 
+:
+</VirtualHost>
+
+When a simple 'GET /' is sent to one of these, the virtual host settings
+are ignored and the software uses the default settings of the main server.
+
+I have tracked this down to be a conflict betwwen the old type of virtual
+hosts (which we are using), and the new, non-ip intensive variety. 
+It seems that all virtual hosts are set to be the new type, which
+HTTP /0.9 syntax cannot cope with as it gives no hostname information
+via headers.
+
+In the code, the condition statement for checking host type :
+
+Line 1367, http_main.c
+                if (sar->host_addr.s_addr == main_addr[n].s_addr
+                    && s->port == mainport) {
+                       s->is_virtual = 2;
+                }
+
+succeeds even for the old type of virtual host. This causes the search routine,
+find_virtual_servers .... to fail.
+>How-To-Repeat:
+Declare two Virtual hosts using IP numbers, telnet to one of them and type GET /
+>Fix:
+For our site, a fix such as :
+
+Line 1367, http_main.c
+
+                if (sar->host_addr.s_addr == main_addr[n].s_addr) {
+                        if (s->port == mainport) {
+                                if (!strpbrk(s->addrs->virthost,"0123456789.")) {
+                                        s->is_virtual = 2;
+                                }
+                        }
+		}
+
+seems to cure the probelm, as all virtual hosts are declared using IP addresses
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Fri Jan 31 14:20:56 PST 1997
+State-Changed-Why:
+Can you send me a copy of your config files?  There have 
+been several people with similar problems.  It _may_ be
+due to something that you have configured incorrectly 
+(likely partly due to poor documentation...).  I will look
+at your suggested patch and what is happening more when
+I get a chance.
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Mar 22 15:15:34 PST 1997
+State-Changed-Why:
+Fixed in 1.2b8-dev.  Related to the same problem occuring
+with PR#234.
+>Unformatted:
+
+Date: Tue, 4 Feb 1997 15:19:09 +0000 (GMT)
+From: Trevor Foster <trevorf@padd.press.net>
+To: Marc Slemko <marcs@znep.com>
+Subject: Re: Changed information for PR config/143
+
+On Mon, 3 Feb 1997, Marc Slemko wrote:
+
+> Does the same thing happen if you remove the BindAddress line?  It is
+> telling the main server to listen on all interfaces, so when you get to
+> your virtual hosts below I suspect there are no interfaces left for them
+> because of the BindAddress.  The only reason they work sometimes (or most
+> of the time, depending on what browsers you use) is because the browser
+> sends a Host: header, which overrides everything else.
+> 
+No, this does not make any difference. I have, however, tracked the 
+problem down further in that it only seems to occur when a virtual 
+interface ip number matches a hardware ip number (as opposed to ones 
+created using ifconfig).
+
+

@@ -1,0 +1,373 @@
+Received: (qmail 24528 invoked by uid 2012); 30 May 1998 15:58:24 -0000
+Message-Id: <19980530155824.24527.qmail@hyperreal.org>
+Date: 30 May 1998 15:58:24 -0000
+From: Kim Shrier <kim@tinker.com>
+Reply-To: kim@tinker.com
+To: apbugs@hyperreal.org
+Subject: length of filename and description columns
+X-Send-Pr-Version: 3.2
+
+>Number:         2324
+>Category:       mod_autoindex
+>Synopsis:       length of filename and description columns
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sat May 30 09:00:00 PDT 1998
+>Last-Modified:  Wed Dec  1 14:40:10 PST 1999
+>Originator:     kim@tinker.com
+>Organization:
+>Release:        1.3b7
+>Environment:
+FreeBSD 2.2.6 RELEASE, gcc 2.8.1
+>Description:
+It would be nice to have control over the widths of the filename and description
+columns.  I have made patches to mod_autoindex.c to permit both.  The user can
+configure the widths using "FilenameWidth" and "DescriptionWidth" options in
+the IndexOptions directive.  This is similar to the patch in bug #1949 except
+that I don't add a new directive, I add new options to an existing directive.
+Also, this patch allows you to control both the filename width and the
+description width.
+>How-To-Repeat:
+
+>Fix:
+I am including 2 patch files, one to patch the mod_autoindex.c file and one to
+patch the mod_autoindex.html file.  I hope these patches arrive intact.  If
+needed I can email them to you directly.
+
+This patch is for ../src/modules/standard/mod_autoindex.c
+
+*** mod_autoindex.c.orig        Thu May 28 13:46:59 1998
+--- mod_autoindex.c     Thu May 28 14:14:47 1998
+***************
+*** 111,116 ****
+--- 111,127 ----
+  #define DEFAULT_ICON_WIDTH 20
+  #define DEFAULT_ICON_HEIGHT 22
+  
++ /*
++  * These are the column widths of the filename and description fields
++  */
++ #define MIN_FILENAME_WIDTH 16
++ #define DEFAULT_FILENAME_WIDTH 23
++ #define MAX_FILENAME_WIDTH 128
++ 
++ #define MIN_DESCRIPTION_WIDTH 12
++ #define DEFAULT_DESCRIPTION_WIDTH 23
++ #define MAX_DESCRIPTION_WIDTH 128
++ 
+  struct item {
+      char *type;
+      char *apply_to;
+***************
+*** 124,129 ****
+--- 135,143 ----
+      int icon_width;
+      int icon_height;
+  
++     int fname_width;
++     int desc_width;
++ 
+      array_header *icon_list, *alt_list, *desc_list, *ign_list;
+      array_header *hdr_list, *rdme_list, *opts_list;
+  
+***************
+*** 316,321 ****
+--- 330,377 ----
+                d_cfg->icon_height = DEFAULT_ICON_HEIGHT;
+            }
+        }
++       else if (!strncasecmp(w, "FilenameWidth", 13)) {
++           if (strchr(w, '=') != NULL) {
++               const char *x = ap_pstrdup(cmd->pool, w);
++               char *val;
++               val = ap_getword(cmd->pool, &x, '=');
++               val = ap_getword(cmd->pool, &x, '=');
++               d_cfg->fname_width = atoi(val);
++               if (d_cfg->fname_width <= 0) {
++                   d_cfg->fname_width = DEFAULT_FILENAME_WIDTH;
++               }
++               else {
++                   if (d_cfg->fname_width < MIN_FILENAME_WIDTH)
++                       d_cfg->fname_width = MIN_FILENAME_WIDTH;
++                   if (d_cfg->fname_width > MAX_FILENAME_WIDTH)
++                       d_cfg->fname_width = MAX_FILENAME_WIDTH;
++               }
++           }
++           else {
++               d_cfg->fname_width = DEFAULT_FILENAME_WIDTH;
++           }
++       }
++       else if (!strncasecmp(w, "DescriptionWidth", 16)) {
++           if (strchr(w, '=') != NULL) {
++               const char *x = ap_pstrdup(cmd->pool, w);
++               char *val;
++               val = ap_getword(cmd->pool, &x, '=');
++               val = ap_getword(cmd->pool, &x, '=');
++               d_cfg->desc_width = atoi(val);
++               if (d_cfg->desc_width <= 0) {
++                   d_cfg->desc_width = DEFAULT_DESCRIPTION_WIDTH;
++               }
++               else {
++                   if (d_cfg->desc_width < MIN_DESCRIPTION_WIDTH)
++                       d_cfg->desc_width = MIN_DESCRIPTION_WIDTH;
++                   if (d_cfg->desc_width > MAX_DESCRIPTION_WIDTH)
++                       d_cfg->desc_width = MAX_DESCRIPTION_WIDTH;
++               }
++           }
++           else {
++               d_cfg->desc_width = DEFAULT_DESCRIPTION_WIDTH;
++           }
++       }
+        else
+            return "Invalid directory indexing option";
+      }
+***************
+*** 361,366 ****
+--- 417,424 ----
+  
+      new->icon_width = 0;
+      new->icon_height = 0;
++     new->fname_width = 0;
++     new->desc_width = 0;
+      new->icon_list = ap_make_array(p, 4, sizeof(struct item));
+      new->alt_list = ap_make_array(p, 4, sizeof(struct item));
+      new->desc_list = ap_make_array(p, 4, sizeof(struct item));
+***************
+*** 382,387 ****
+--- 440,448 ----
+      new->icon_height = add->icon_height ? add->icon_height : base->icon_height
+;
+      new->icon_width = add->icon_width ? add->icon_width : base->icon_width;
+  
++     new->fname_width = add->fname_width ? add->fname_width : base->fname_width
+;
++     new->desc_width = add->desc_width ? add->desc_width : base->desc_width;
++ 
+      new->alt_list = ap_append_arrays(p, add->alt_list, base->alt_list);
+      new->ign_list = ap_append_arrays(p, add->ign_list, base->ign_list);
+      new->hdr_list = ap_append_arrays(p, add->hdr_list, base->hdr_list);
+***************
+*** 731,739 ****
+  static char *terminate_description(autoindex_config_rec * d, char *desc,
+                                   int autoindex_opts)
+  {
+!     int maxsize = 23;
+      register int x;
+  
+      if (autoindex_opts & SUPPRESS_LAST_MOD)
+        maxsize += 19;
+      if (autoindex_opts & SUPPRESS_SIZE)
+--- 792,806 ----
+  static char *terminate_description(autoindex_config_rec * d, char *desc,
+                                   int autoindex_opts)
+  {
+!     int maxsize;
+      register int x;
+  
++     if (d->desc_width <= 0) {
++       d->desc_width = DEFAULT_DESCRIPTION_WIDTH;
++     }
++ 
++     maxsize = d->desc_width;
++ 
+      if (autoindex_opts & SUPPRESS_LAST_MOD)
+        maxsize += 19;
+      if (autoindex_opts & SUPPRESS_SIZE)
+***************
+*** 798,804 ****
+                               autoindex_config_rec * d, request_rec *r,
+                             int autoindex_opts, char keyid, char direction)
+  {
+!     int x, len;
+      char *name = r->uri;
+      char *tp;
+      int static_columns = (autoindex_opts & SUPPRESS_COLSORT);
+--- 865,871 ----
+                               autoindex_config_rec * d, request_rec *r,
+                             int autoindex_opts, char keyid, char direction)
+  {
+!     int x, len, i;
+      char *name = r->uri;
+      char *tp;
+      int static_columns = (autoindex_opts & SUPPRESS_COLSORT);
+***************
+*** 807,812 ****
+--- 874,883 ----
+      if (name[0] == '\0')
+        name = "/";
+  
++     if (d->fname_width <= 0) {
++         d->fname_width = DEFAULT_FILENAME_WIDTH;
++     }
++ 
+      if (autoindex_opts & FANCY_INDEXING) {
+        ap_rputs("<PRE>", r);
+        if ((tp = find_default_icon(d, "^^BLANKICON^^"))) {
+***************
+*** 824,830 ****
+            ap_rputs("> ", r);
+        }
+          emit_link(r, "Name", K_NAME, keyid, direction, static_columns);
+!       ap_rputs("                   ", r);
+        if (!(autoindex_opts & SUPPRESS_LAST_MOD)) {
+              emit_link(r, "Last modified", K_LAST_MOD, keyid, direction,
+                        static_columns);
+--- 895,903 ----
+            ap_rputs("> ", r);
+        }
+          emit_link(r, "Name", K_NAME, keyid, direction, static_columns);
+!       for (i = 4; i < d->fname_width; i++) {
+!             ap_rputs(" ", r);
+!         }
+        if (!(autoindex_opts & SUPPRESS_LAST_MOD)) {
+              emit_link(r, "Last modified", K_LAST_MOD, keyid, direction,
+                        static_columns);
+***************
+*** 850,855 ****
+--- 923,931 ----
+        ap_clear_pool(scratch);
+  
+        if ((!strcmp(ar[x]->name, "../")) || (!strcmp(ar[x]->name, ".."))) {
++           char buff[MAX_FILENAME_WIDTH + 1];
++           memset(buff, ' ', d->fname_width);
++           buff[d->fname_width - strlen("Parent Directory")] = '\0';
+            t = ap_make_full_path(scratch, name, "../");
+            ap_getparents(t);
+            if (t[0] == '\0')
+***************
+*** 857,879 ****
+            anchor = ap_pstrcat(scratch, "<A HREF=\"",
+                        ap_escape_html(scratch, ap_os_escape_path(scratch, t, 0)
+),
+                             "\">", NULL);
+!           t2 = "Parent Directory</A>       ";
+        }
+        else {
+            t = ar[x]->name;
+            len = strlen(t);
+!           if (len > 23) {
+                t2 = ap_pstrdup(scratch, t);
+!               t2[21] = '.';
+!               t2[22] = '.';
+!               t2[23] = '\0';
+                t2 = ap_escape_html(scratch, t2);
+                t2 = ap_pstrcat(scratch, t2, "</A>", NULL);
+            }
+            else {
+!               char buff[24] = "                       ";
+                t2 = ap_escape_html(scratch, t);
+!               buff[23 - len] = '\0';
+                t2 = ap_pstrcat(scratch, t2, "</A>", buff, NULL);
+            }
+            anchor = ap_pstrcat(scratch, "<A HREF=\"",
+--- 933,957 ----
+            anchor = ap_pstrcat(scratch, "<A HREF=\"",
+                        ap_escape_html(scratch, ap_os_escape_path(scratch, t, 0)
+),
+                             "\">", NULL);
+!           t2 = ap_pstrcat(scratch, "Parent Directory</A>", buff, NULL);
+        }
+        else {
+            t = ar[x]->name;
+            len = strlen(t);
+!           if (len > d->fname_width) {
+                t2 = ap_pstrdup(scratch, t);
+!               t2[d->fname_width - 2] = '.';
+!               t2[d->fname_width - 1] = '.';
+!               t2[d->fname_width] = '\0';
+                t2 = ap_escape_html(scratch, t2);
+                t2 = ap_pstrcat(scratch, t2, "</A>", NULL);
+            }
+            else {
+!               char buff[MAX_FILENAME_WIDTH + 1];
+!               memset(buff, ' ', d->fname_width);
+!               buff[d->fname_width] = '\0';
+                t2 = ap_escape_html(scratch, t);
+!               buff[d->fname_width - len] = '\0';
+                t2 = ap_pstrcat(scratch, t2, "</A>", buff, NULL);
+            }
+            anchor = ap_pstrcat(scratch, "<A HREF=\"",
+
+**************************************************************************
+
+This patch is for ../htdocs/manual/mod/mod_autoindex.html
+
+*** mod_autoindex.html.orig     Thu May 21 19:31:32 1998
+--- mod_autoindex.html  Sat May 30 10:20:23 1998
+***************
+*** 480,485 ****
+--- 480,493 ----
+  The IndexOptions directive specifies the behavior of the directory indexing.
+  <EM>Option</EM> can be one of
+  <DL>
++ <DT>DescriptionWidth[=length] (<EM>Apache 1.3b7 and later</EM>)
++ <DD>
++ <!--%plaintext &lt;?INDEX {\tt DescriptionWidth} index option&gt; -->
++ Presence of this option will cause the server to set the width of the
++ description column to <EM>length</EM> bytes.  The default value of 23
++ will be used if this option is not specified.  The value of <EM>length</EM>
++ is constrained to be between 12 and 128.  If the SuppressDescription
++ option is specified, then this option has no effect.
+  <DT>FancyIndexing
+  <DD><!--%plaintext &lt;?INDEX {\tt FancyIndexing} index option&gt; -->
+  This turns on fancy indexing of directories.
+***************
+*** 489,494 ****
+--- 497,509 ----
+   should use <SAMP>IndexOptions&nbsp;FancyIndexing</SAMP> in preference
+   to the standalone <SAMP>FancyIndexing</SAMP> directive.</STRONG>
+  </BLOCKQUOTE>
++ <DT>FilenameWidth[=length] (<EM>Apache 1.3b7 and later</EM>)
++ <DD>
++ <!--%plaintext &lt;?INDEX {\tt FilenameWidth} index option&gt; -->
++ Presence of this option will cause the server to set the width of the
++ filename column to <EM>length</EM> bytes.  The default value of 23
++ will be used if this option is not specified.  The value of <EM>length</EM>
++ is constrained to be between 16 and 128.
+  <DT>IconHeight[=pixels] (<EM>Apache 1.3 and later</EM>)
+  <DD>
+  <!--%plaintext &lt;?INDEX {\tt IconHeight} index option&gt; -->
+
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: coar
+State-Changed-When: Sat May 30 12:08:45 PDT 1998
+State-Changed-Why:
+This is an often-requested capability, and a more general
+solution is being worked on for the next feature cycle.
+I'm suspending this report so it won't be forgotten.
+Comment-Added-By: coar
+Comment-Added-When: Wed Sep  2 14:15:24 PDT 1998
+Comment-Added:
+
+The sizing of the filename column has been addressed by the
+addition of a NameLength keyword to the IndexOptions
+directive.  A value of '*' means 'the length of the longest
+filename.'  This feature will appear in the next release of
+Apache after 1.3.1.  The sizing of the description field
+will probably be implemented the same way shortly, but it
+isn't there yet -- so I'm not closing this report at this
+time.
+
+State-Changed-From-To: suspended-closed
+State-Changed-By: coar
+State-Changed-When: Wed Dec  1 14:40:08 PST 1999
+State-Changed-Why:
+
+The DescriptionWidth keyword has been added to the
+IndexOptions directive for 1.3.10.  It mirrors the
+NameWidth keyword.  Thanks for using Apache!
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,122 @@
+Received: (qmail 21805 invoked by uid 501); 13 Dec 2000 09:45:01 -0000
+Message-Id: <20001213094501.21804.qmail@locus.apache.org>
+Date: 13 Dec 2000 09:45:01 -0000
+From: Ory Segal <ory.segal@sanctuminc.com>
+Reply-To: ory.segal@sanctuminc.com
+To: submit@bugz.apache.org
+Subject: http_protocol.c isn't compatible with HTTP RFC
+X-Send-Pr-Version: 3.110
+
+>Number:         6973
+>Category:       protocol
+>Synopsis:       http_protocol.c isn't compatible with HTTP RFC
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          support
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Dec 13 01:50:01 PST 2000
+>Closed-Date:    
+>Last-Modified:  Wed Dec 13 15:40:01 PST 2000
+>Originator:     ory.segal@sanctuminc.com
+>Release:        1.3.14
+>Organization:
+apache
+>Environment:
+Winnt 4.0
+>Description:
+RFC 2068 , specifies that the Range header can look like this
+Range: bytes=0-,0-,0- 
+
+But , while looking at it , I saw that Apache 1.3.14 is not compatible with
+that kind of range header.
+>How-To-Repeat:
+GET /index.html HTTP/1.0
+Range: bytes=0-,0-,0-
+>Fix:
+Yes, the next line should be changed:
+return (*start > 0 || *end < clength - 1);
+>Release-Note:
+>Audit-Trail:
+
+From: Tony Finch <dot@dotat.at>
+To: Ory Segal <ory.segal@sanctuminc.com>
+Cc: apbugs@apache.org
+Subject: Re: protocol/6973: http_protocol.c isn't compatible with HTTP RFC
+Date: Wed, 13 Dec 2000 22:14:55 +0000
+
+ Have you tried th patch in PR#6711?
+ 
+ http://bugs.apache.org/index.cgi/full/6711
+ 
+ Tony.
+ -- 
+ f.a.n.finch    fanf@covalent.net    dot@dotat.at
+ "Plan 9 deals with the resurrection of the dead."
+
+From: Tony Finch <dot@dotat.at>
+To: Ory Segal <ory.segal@sanctuminc.com>
+Cc: apbugs@apache.org
+Subject: Re: protocol/6973: http_protocol.c isn't compatible with HTTP RFC
+Date: Wed, 13 Dec 2000 23:37:23 +0000
+
+ Actually, scrub that last email. This is a newly discovered problem.
+ (I could have sworn I checked that line for sanity when dealing with
+ 6711.)
+ 
+ What do you think of this patch?
+ 
+ Index: http_protocol.c
+ ===================================================================
+ RCS file: /home/cvs/apache-1.3/src/main/http_protocol.c,v
+ retrieving revision 1.295
+ diff -u -r1.295 http_protocol.c
+ --- http_protocol.c	2000/11/14 09:57:09	1.295
+ +++ http_protocol.c	2000/12/13 23:35:04
+ @@ -151,6 +151,8 @@
+          /* In the form "-5" */
+          *start = clength - atol(dash + 1);
+          *end = clength - 1;
+ +	if (*start == *end)
+ +	    return 0;
+      }
+      else {
+          *dash = '\0';
+ @@ -170,8 +172,8 @@
+  
+      if (*start > *end)
+  	return 0;
+ -
+ -    return (*start > 0 || *end < clength - 1);
+ +    else
+ +	return 1;
+  }
+  
+  static int internal_byterange(int, long *, request_rec *, const char **, long *,
+ 
+ 
+ Tony.
+ -- 
+ f.a.n.finch    fanf@covalent.net    dot@dotat.at
+ "There are flying saucers. There's no doubt they are
+ in our skies. They've been there for some time."
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

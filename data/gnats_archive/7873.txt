@@ -1,0 +1,79 @@
+Received: (qmail 39706 invoked by uid 501); 16 Jun 2001 11:32:02 -0000
+Message-Id: <20010616113202.39705.qmail@apache.org>
+Date: 16 Jun 2001 11:32:02 -0000
+From: Jaz Brown <jazbrown@mail.com>
+Reply-To: jazbrown@mail.com
+To: submit@bugz.apache.org
+Subject: per-directory rewrite (local rewrite) fails (adds the directory prefix twice) on Windows systems
+X-Send-Pr-Version: 3.110
+
+>Number:         7873
+>Category:       mod_rewrite
+>Synopsis:       per-directory rewrite (local rewrite) fails (adds the directory prefix twice) on Windows systems
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Jun 16 04:40:00 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     jazbrown@mail.com
+>Release:        1.3.20
+>Organization:
+apache
+>Environment:
+Windoes 98 SE, Apache 1.3.20 (installed from precompiled binary)
+>Description:
+RewriteRule sometimes incorrectly adds the directory prefix twice when running on Windows systems.
+
+In the apply_rewrite_rule() function in mod_rewrite.c (Apache version 1.3.20), the directory prefix can be added twice: once on line 1990 of mod_rewite.c, and once on line 2076. On line 2073, the function checks whether the current state of the URI begins with a slash (/). If the directory prefix has already been added on line 1990, then the current state of the URI _will_ begin with a slash on Unix systems, but will _not_ begin with a slash on Windows systems (where a full path will start with "c:/" or similar). Hence this bug only shows its head on Windows systems, not Unix.
+
+The cause of this bug is that after adding the directory prefix to the URI on line 1990, the variable "prefixstrip" is not set back to zero to indicate this. Hence on line 2073 when prefixstrip is checked, prefixstrip evaluates to TRUE when it should evaluate FALSE.
+
+See also Problem Number 5900 (http://bugs.apache.org/index.cgi/full/5900).
+>How-To-Repeat:
+On a Windoes system, make the following .htaccess file and put it into URL /test/.htaccess:
+
+        RewriteEngine On
+        RewriteBase /test
+        RewriteRule ^index2\.html$ index.html
+
+Then attempt to access /test/index2.html
+The server will return error 400.
+If RewriteLogLevel is set to 9, the following entries are generated:
+
+(3) [per-dir c:/apache/htdocs/test/] strip per-dir prefix: c:/apache/htdocs/test/index2.html -> index2.html
+(3) [per-dir c:/apache/htdocs/test/] applying pattern '^index2\.html$' to uri 'index2.html'
+(2) [per-dir c:/apache/htdocs/test/] rewrite index2.html -> index.html
+(3) [per-dir c:/apache/htdocs/test/] add per-dir prefix: index.html -> c:/apache/htdocs/test/index.html
+(3) [per-dir c:/apache/htdocs/test/] add per-dir prefix: c:/apache/htdocs/test/index.html -> c:/apache/htdocs/test/c:/apache/htdocs/test/index.html
+>Fix:
+Add the following line to mod_rewrite.c:
+        prefixstrip = 0;
+after line 1990, such that lines 1990 to 1992 read thus:
+        r->filename = ap_pstrcat(r->pool, perdir, r->filename, NULL);
+        prefixstrip = 0;
+    }
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

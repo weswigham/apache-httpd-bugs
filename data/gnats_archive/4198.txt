@@ -1,0 +1,124 @@
+Received: (qmail 3631 invoked from network); 6 Apr 1999 01:20:27 -0000
+Message-Id: <199904060120.UAA08496@elbonia.rsc.raytheon.com>
+Date: Mon, 05 Apr 1999 20:20:51 -0500
+From: "David D. Kilzer" <ddkilzer@raytheon.com>
+To: Niles Rowland <niles@powersite.net>, David Kilzer <ddkilzer@raytheon.com>
+Cc: apbugs@Apache.Org
+Subject: Auth DBM not working in 1.3.3
+
+>Number:         4198
+>Category:       other
+>Synopsis:       [Ignore, see 3507 instead] Auth DBM not working in 1.3.3
+>Confidential:   yes
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          mistaken
+>Submitter-Id:   unknown
+>Arrival-Date:   Mon Apr  5 18:30:00 PDT 1999
+>Last-Modified:  Wed Apr 28 15:03:52 PDT 1999
+>Originator:     "David D. Kilzer" <ddkilzer@raytheon.com>
+>Organization:
+>Release:        
+>Environment:
+>Description:
+>How-To-Repeat:
+>Fix:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Wed Apr 28 15:03:50 PDT 1999
+State-Changed-Why:
+
+Text attached to correct PR.
+
+Synopsis-Changed-From: Auth DBM not working in 1.3.3
+Synopsis-Changed-To: [Ignore, see 3507 instead] Auth DBM not working in 1.3.3
+Synopsis-Changed-By: coar
+Synopsis-Changed-When: Wed Apr 28 15:03:50 PDT 1999
+Originator-Changed-From-To: -"David D. Kilzer" <ddkilzer@raytheon.com>
+Originator-Changed-By: coar
+Originator-Changed-When: Wed Apr 28 15:03:50 PDT 1999
+Class-Changed-From-To: sw-bug-mistaken
+Class-Changed-By: coar
+Class-Changed-When: Wed Apr 28 15:03:50 PDT 1999
+Severity-Changed-From-To: serious-non-critical
+Severity-Changed-By: coar
+Severity-Changed-When: Wed Apr 28 15:03:50 PDT 1999
+Responsible-Changed-From-To: gnats-admin-apache
+Responsible-Changed-By: coar
+Responsible-Changed-When: Wed Apr 28 15:03:50 PDT 1999
+Responsible-Changed-Why:
+
+Grumble..
+
+Category-Changed-From-To: pending-other
+Category-Changed-By: coar
+Category-Changed-When: Wed Apr 28 15:03:50 PDT 1999
+
+>Unformatted:
+This is in regards to PR number 3507.
+
+  http://bugs.apache.org/index/full/3507
+
+I believe the problem that many people are seeing with respect to 
+mod_auth_dbm not working in Apache, especially under Solaris, is the
+fact that NDBM under Solaris 2.x is *not* "MT-Safe" or "MT-Level Unsafe"
+(according to its man page).  I believe this is what is causing many
+people problems when they try to use NDBM on their native OS.
+
+To test this theory, I modified mod_auth_dbm.c to *create* a DBM file at
+the same time it tries to open another one.  (See included patch below.)
+In theory if DBM is working, a normal, readable DBM file will be
+created.
+
+The result under Solaris 2.5 is two files (/tmp/apache.dir and
+/tmp/apache.pag) that appear to contain complete garbage.  I even got a
+core dump from dbmmanage (hence perl) when trying to read the files!
+
+# ls -la /tmp/apache.*
+-rw-r--r--   2 httpd    httpd      12295 Apr  5 20:12 /tmp/apache.dir
+-rw-r--r--   2 httpd    httpd      12295 Apr  5 20:12 /tmp/apache.pag
+
+This indicates to me that mod_auth_dbm is severely broken, at least on
+Solaris, for current versions of Apache.  (Have you done any regression
+testing lately?)
+
+I'm not sure if Berkeley DB or GDBM are any better at handling this, but
+it seems like quite a severe problem to me.
+
+Dave
+--
+David D. Kilzer              \     Dr. Beverly Crusher, Stardate 44181.2:
+Software Engineer II         /   ``If there's nothing wrong with me, maybe
+Raytheon Systems Company     \   there's something wrong with the universe.''
+ddkilzer@raytheon.com        /       _Star Trek: The Next Generation_
+
+
+--- mod_auth_dbm.c.cln	Thu Aug  6 12:30:55 1998
++++ mod_auth_dbm.c	Mon Apr  5 20:02:34 1999
+@@ -150,10 +150,22 @@
+     q.dsize = strlen(q.dptr);
+ #else
+     q.dsize = strlen(q.dptr) + 1;
+ #endif
+ 
++/* Try creating our own dbm file!! */
++if (!(f = dbm_open("/tmp/apache", O_RDWR|O_CREAT, 0664))) {
++	ap_log_rerror(APLOG_MARK, APLOG_ERR, r,
++		    "could not open dbm auth file: %s", "/tmp/apache");
++}
++else
++{
++  datum key = { "mykey", 6 };
++  datum val = { "myval", 6 };
++  (void) dbm_store(f, key, val, DBM_INSERT);
++  dbm_close(f);
++}
+ 
+     if (!(f = dbm_open(auth_dbmpwfile, O_RDONLY, 0664))) {
+ 	ap_log_rerror(APLOG_MARK, APLOG_ERR, r,
+ 		    "could not open dbm auth file: %s", auth_dbmpwfile);
+ 	return NULL;
+

@@ -1,0 +1,102 @@
+Received: (qmail 18932 invoked by uid 65534); 26 Mar 2000 02:14:52 -0000
+Message-Id: <20000326021452.18931.qmail@locus.apache.org>
+Date: 26 Mar 2000 02:14:52 -0000
+From: Scott Weikart <scott@igc.apc.org>
+Reply-To: scott@igc.apc.org
+To: submit@bugz.apache.org
+Subject: MMAP_LIMIT from PR#4122 is ill-conceived
+X-Send-Pr-Version: 3.110
+
+>Number:         5927
+>Category:       general
+>Synopsis:       MMAP_LIMIT from PR#4122 is ill-conceived
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Mar 25 18:20:01 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     scott@igc.apc.org
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+SunOS 4.1.3 (fully patched) and later.
+Solaris 2.5 (fully patched) and later.
+>Description:
+PR#4122 (mmap without limit considered harmful) describes how Irix will
+allocate swap to cover an mmap allocation, and includes a patch to not use
+mmap for files greater than 4 MB.  This patch is in the source for 1.3.12.
+
+But it makes no sense for an operating system to reserve swap space for a
+read-only map.  I wrote a simple test program, and even (old) SunOS 4.1.3 and
+(old) Solaris 2.5 don't reserve any swap space with a read-only map.
+
+And, mmap is most useful on large files.
+
+At the end of this message is the test program I used.  I ran it as
+
+        pstat -s; tst big_file & sleep 2; pstat -s; kill
+
+on Solaris 2.5, or
+
+        swap -s; tst big_file & sleep 2; swap -s
+
+on SunOS 4.1.3 .
+
+-scott
+=============================================================================
+#include <sys/mman.h>
+main(argc, argv)
+ int argc;
+ char *argv[];
+{
+  int fd, len;
+  struct stat statbuf;
+
+  if ((fd = open(argv[1], O_RDONLY)) < 0)
+        return(1);
+  if (fstat(fd, &statbuf) < 0)
+        return(2);
+
+#ifndef MAP_FAILED
+# define MAP_FAILED  ((void *) -1)
+#endif
+  if (MAP_FAILED == mmap(NULL, statbuf.st_size, PROT_READ, MAP_PRIVATE, fd, 0))
+        return(3);
+
+  printf("mapped %d MB; sleeping for a minute...\n", statbuf.st_size >> 20);
+  sleep(60);
+  return(0);
+}
+>How-To-Repeat:
+
+>Fix:
+I propose either:
+
+        1) define MMAP_LIMIT to be very large in general, and set it to
+           a smaller value on operating systems that are broken.
+
+        2) set MMAP_LIMIT to a very large value for those operating
+           systems that aren't broken.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

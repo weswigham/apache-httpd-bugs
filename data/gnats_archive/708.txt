@@ -1,0 +1,159 @@
+From nobody@hyperreal.com  Mon Jun  9 15:49:31 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id PAA04195;
+	Mon, 9 Jun 1997 15:49:31 -0700 (PDT)
+Message-Id: <199706092249.PAA04195@hyperreal.com>
+Date: Mon, 9 Jun 1997 15:49:31 -0700 (PDT)
+From: Jeff Ellermeyer <jeff@fullerene.com>
+Reply-To: jeff@fullerene.com
+To: apbugs@hyperreal.com
+Subject: DBM autorization not working.
+X-Send-Pr-Version: 3.2
+
+>Number:         708
+>Category:       documentation
+>Synopsis:       DBM autorization not working.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun  9 15:50:01 1997
+>Last-Modified:  Thu Sep 25 00:22:04 PDT 1997
+>Originator:     jeff@fullerene.com
+>Organization:
+>Release:        1.2b10
+>Environment:
+Linux 2.0.30 gcc v 2.7.2
+>Description:
+this is the .htaccess file:
+AuthName Members area
+AuthType Basic
+AuthDBMUserFile /home/httpd/users
+<Limit GET POST>
+require valid-user
+</Limit>
+
+this is the DBM file:
+[jeff@checker httpd]$ ls -l
+total 30430
+drwxrwsr-x   2 root     www          1024 Jun  9 12:15 conf
+drwxrwsr-x   5 paramoun www          1024 Jun  9 12:27 htdocs
+drwxrwsr-x   2 root     www          1024 May 30 13:05 logs
+-rw-rw-r--   1 root     www         12305 Jun  9 15:20 users 
+
+there is an entry in the access file:
+[root@checker httpd]# /usr/sbin/dbmmanage.new /home/httpd/users view
+mike = 19tL4VmM4Wym2
+[root@checker httpd]#
+
+This is the error log:
+[Mon Jun  9 15:21:04 1997] access to /home/httpd/users failed
+for me.foo.com, reason: could not open dbm auth file
+[Mon Jun  9 15:21:04 1997] access to /home/httpd/htdocs//members
+failed for me.foo.com, reason: DBM user mike not found
+
+I have mod_auth_dbm compiled in, with the -lgdbm flag, 
+it does not give me any grief at compile time.
+
+This is the symbols from my httpd binary
+[root@checker httpd]# nm bin/httpd | grep dbm
+0806b670 T create_dbm_auth_dir_config
+0807c424 D dbm_auth_cmds
+0807c4b4 D dbm_auth_module
+0806b820 T dbm_authenticate_basic_user
+0806b950 T dbm_check_auth
+         U dbm_close
+         U dbm_fetch
+         U dbm_open
+0806b7b0 T get_dbm_grp
+0806b6f0 T get_dbm_pw
+0806b6a0 T set_dbm_slot
+
+I have tried 
+AuthDBMUserFile /home/httpd/users.db
+in the .htaccess file.  
+
+I have tried EVERYTHING on this.  Here is the offending code:
+char *get_dbm_pw(request_rec *r, char *user, char *auth_dbmpwfile) {
+    DBM *f;
+    datum d, q;
+    char *pw = NULL;
+ 
+    q.dptr = user;
+    q.dsize = strlen(q.dptr);
+ 
+    if(!(f=dbm_open(auth_dbmpwfile,O_RDONLY,0664))) {
+        log_reason ("could not open dbm auth file", auth_dbmpwfile, r);
+        return NULL;
+    }
+It would be nice if I knew WHY it could not open the dbm auth file :|
+
+>How-To-Repeat:
+I am not sure how to repeat it on another machine.  I have seen quite a few
+related posts, but no real solution.
+>Fix:
+n
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sun Jun 22 22:35:03 PDT 1997
+State-Changed-Why:
+Which db library did you link against?  Did you link against
+-ldbm, -ldb, or -lgdbm?  dbmmanage unfortunately doesn't adapt
+to what you've linked the server with.  You need to add "use DB_File"
+or "use GDBM_File".  At least I think that's the perl magic
+needed.
+
+At any rate, dbm auth definately works... I'm typing this message
+to you on a form on a 1.2 server in a dbm auth space.  The filename
+is specified without the trailing .db.
+
+Dean
+Category-Changed-From-To: mod_auth-any-documentation
+Category-Changed-By: dgaudet
+Category-Changed-When: Mon Jun 23 15:45:30 PDT 1997
+
+Comment-Added-By: coar
+Comment-Added-When: Sun Jun 29 06:53:03 PDT 1997
+Comment-Added:
+[copy of mail message from original author]
+
+I compiled the server originally with mod_auth_dbm.c instead of
+mod_auth_db.c.  When you use mod_auth_dbm.c,  and -lgdbm, you need to to
+add a use "use GDBM_File" in dbmmanage to create the database file, which
+will have no extension, then HARD symbolic link it to databasefile .pag and
+.dir to get it to work.
+
+I solved all problems by recompiling with mod_auth_db.c , -lndbm and
+leaving dbmmanage untouched.
+
+I suggest that this entire process is explained more clearly or rethought.
+I think the docs could be a little more complete in explaining the DBM GDBM
+NDBM dilemna.  Also, what would REALLY help is an a little bit more
+diagnosis in the error files.  The messages you get in ther server logs are
+completely unhelpful.  I had no idea what the problem was.  See below for
+log entry:
+
+[Mon Jun  9 12:55:19 1997] access to /home/httpd/users failed for
+xx.xx.xx.xx, reason: could not open dbm auth file
+
+thank you,
+
+-Jeff Ellermeyer
+Release-Changed-From-To: apache_1.2b10-1.2b10
+Release-Changed-By: coar
+Release-Changed-When: Sun Jun 29 06:53:03 PDT 1997
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Sep 25 00:22:03 PDT 1997
+State-Changed-Why:
+This has been dealt with in 1.3, by replacing dbmmanage with
+a script that can figure out the fileformat dynamically.
+
+Dean
+>Unformatted:
+
+

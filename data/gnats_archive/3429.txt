@@ -1,0 +1,67 @@
+Received: (qmail 27328 invoked by uid 2012); 20 Nov 1998 15:25:16 -0000
+Message-Id: <19981120152516.27327.qmail@hyperreal.org>
+Date: 20 Nov 1998 15:25:16 -0000
+From: Fred Romelfanger <fred@stsci.edu>
+Reply-To: fred@stsci.edu
+To: apbugs@hyperreal.org
+Subject: minor access problem by ip address with apache 1.3.3 compiled LP64 under Solaris 7
+X-Send-Pr-Version: 3.2
+
+>Number:         3429
+>Category:       mod_access
+>Synopsis:       minor access problem by ip address with apache 1.3.3 compiled LP64 under Solaris 7
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Nov 20 07:30:02 PST 1998
+>Last-Modified:
+>Originator:     fred@stsci.edu
+>Organization:
+apache
+>Release:        1.3.3
+>Environment:
+64bit Solaris 7, Developer release of SC5.0, compiled with -xarch=v9
+SunOS hoth 5.7 Generic sun4u sparc SUNW,Ultra-30
+>Description:
+I am using the following .htaccess file:
+<Limit GET POST>
+    order deny,allow
+    deny from all
+    allow from 130.167
+    allow from 127.0.0.1
+</Limit>
+
+The line "allow from 130.167" was not allowing access from that network range.
+I found that I was getting sign extension from int to long when using 64bit
+longs under Solaris 7 (-xarch=v9) on the following line in mod_access.c:
+
+            a->x.ip.net |= octet << shift;
+
+I fixed the problem by replacing this line with:
+            a->x.ip.net |= ((unsigned int)octet) << shift;
+
+Also the problem is not corrected by call to ntohl in LP64 mode in Solaris 7
+since it does not force the return value to be uint32_t (Sun SO #3676781).
+>How-To-Repeat:
+Compile apache under 64bit Solaris 7 with the development version of SC5.0 and
+use the -xarch=v9 flag during compilation/link to generate a 64bit executable.
+>Fix:
+See above.  Also you can get around the problem by including a netmask in the
+.htaccess file.
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

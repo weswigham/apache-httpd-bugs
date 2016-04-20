@@ -1,0 +1,184 @@
+Received: (qmail 19037 invoked by uid 2012); 6 Nov 1998 18:02:59 -0000
+Message-Id: <19981106180259.19036.qmail@hyperreal.org>
+Date: 6 Nov 1998 18:02:59 -0000
+From: Brian Schaffner <bschaffner@accentonline.com>
+Reply-To: bschaffner@accentonline.com
+To: apbugs@hyperreal.org
+Subject: ap_vformatter barfs on %n in log message
+X-Send-Pr-Version: 3.2
+
+>Number:         3355
+>Category:       apache-api
+>Synopsis:       ap_vformatter barfs on %n in log message
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Nov  6 10:10:01 PST 1998
+>Last-Modified:  Thu Apr 29 10:22:09 PDT 1999
+>Originator:     bschaffner@accentonline.com
+>Organization:
+>Release:        1.3.2
+>Environment:
+FreeBSD internal.accentonline.com 3.0-RELEASE FreeBSD 3.0-RELEASE #2: Thu Nov  5 19:26:38 EST 1998     brian@internal.accentonline.com:/usr/src/sys/compile/CUSTOM  i386
+GCC 2.7.2.1
+>Description:
+I didn't actually do this.... call me lazy
+>How-To-Repeat:
+I encountered this using PHP and the log_error function, which eventually calls ap_vsnprintf which calls ap_vformatter(). It doesn't croak too bad on other escape sequences - just segfaults on %n.
+>Fix:
+My guess is a small check in the ap_vformatter() code around line 843 in ap_snprintf.c would fix it:
+
+        case 'n':
+        *(va_arg(ap, int *)) = cc;
+        break;
+
+I haven't spent enough time in this code to determine what the actual fix is, but I imagine it's not too difficult.
+
+This might be related to previous bug: 2941
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Fri Nov  6 10:14:22 PST 1998
+State-Changed-Why:
+Please give an exact example of a function call to log_error
+that uses %n and shows this problem.
+
+I'm not sure how this would be related to PR#2941 that you
+mention.
+
+From: Brian Schaffner <BSchaffner@accentonline.com>
+To: "'marc@apache.org'" <marc@apache.org>, apache-bugdb@apache.org, 
+	Brian Schaffner <BSchaffner@accentonline.com>, "'apbugs@apache.org'"
+	 <apbugs@apache.org>
+Cc:  Subject: RE: apache-api/3355: ap_vformatter barfs on %n in log message
+Date: Fri, 6 Nov 1998 13:28:40 -0500 
+
+ The actual code in the PHP source is (main.c, 224):
+ 
+ aplog_error(NULL, 0, APLOG_ERR | APLOG_NOERRNO, php3_rqst->server,
+ log_message);
+ 
+ passing "%n" as log_message.
+ 
+ In PHP code:
+ <?
+ 	error_log("%n");
+ ?>
+ 
+ I wasn't certain that this was related to the other bug report - just
+ thought it sounded similar.
+ 
+ -brian-
+ 
+ > -----Original Message-----
+ > From: marc@apache.org [mailto:marc@apache.org]
+ > Sent: Friday, November 06, 1998 1:14 PM
+ > To: apache-bugdb@apache.org; bschaffner@accentonline.com;
+ > marc@apache.org
+ > Subject: Re: apache-api/3355: ap_vformatter barfs on %n in log message
+ > 
+ > 
+ > [In order for any reply to be added to the PR database, ]
+ > [you need to include <apbugs@Apache.Org> in the Cc line ]
+ > [and leave the subject line UNCHANGED.  This is not done]
+ > [automatically because of the potential for mail loops. ]
+ > [If you do not include this Cc, your reply may be ig-   ]
+ > [nored unless you are responding to an explicit request ]
+ > [from a developer.                                      ]
+ > [Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+ > 
+ > 
+ > Synopsis: ap_vformatter barfs on %n in log message
+ > 
+ > State-Changed-From-To: open-feedback
+ > State-Changed-By: marc
+ > State-Changed-When: Fri Nov  6 10:14:22 PST 1998
+ > State-Changed-Why:
+ > Please give an exact example of a function call to log_error
+ > that uses %n and shows this problem.
+ > 
+ > I'm not sure how this would be related to PR#2941 that you
+ > mention.
+ > 
+
+From: Marc Slemko <marcs@znep.com>
+To: Brian Schaffner <BSchaffner@accentonline.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: RE: apache-api/3355: ap_vformatter barfs on %n in log message
+Date: Fri, 6 Nov 1998 10:34:47 -0800 (PST)
+
+ On Fri, 6 Nov 1998, Brian Schaffner wrote:
+ 
+ > The actual code in the PHP source is (main.c, 224):
+ > 
+ > aplog_error(NULL, 0, APLOG_ERR | APLOG_NOERRNO, php3_rqst->server,
+ > log_message);
+ > 
+ > passing "%n" as log_message.
+ > 
+ > In PHP code:
+ > <?
+ > 	error_log("%n");
+ > ?>
+ > 
+ 
+ Why do you think this is a bug in Apache?  %n is supposed to do:
+ 
+      n              The  argument  should  be  a  pointer  to  an
+                     integer  into  which is written the number of
+                     characters written to the output standard I/O
+                     stream  so  far  by  this  call  to printf(),
+                     fprintf(), or sprintf().  No argument is con-
+                     verted.
+ 
+ If you call it without the proper number of arguments (ie. without a
+ pointer to an integer as the relevant parameter) then it really isn't
+ Apache's job to try to figure that out and, in fact, it can't always
+ figure that out.
+ 
+
+From: Rodent of Unusual Size <Ken.Coar@Golux.Com>
+To: Apache bug database <apbugs@Apache.Org>
+Cc:  Subject: Re: apache-api/3355: ap_vformatter barfs on %n in log message
+Date: Fri, 06 Nov 1998 13:46:40 -0500
+
+ Brian Schaffner wrote:
+ > 
+ > The actual code in the PHP source is (main.c, 224):
+ > 
+ > aplog_error(NULL, 0, APLOG_ERR | APLOG_NOERRNO, php3_rqst->server,
+ > log_message);
+ 
+ That should probably be changed from 'log_message' to
+ '"%s", log_message'.
+ 
+ #ken	P-)}
+ 
+ Ken Coar                    <http://Web.Golux.Com/coar/>
+ Apache Group member         <http://www.apache.org/>
+ "Apache Server for Dummies" <http://Web.Golux.Com/coar/ASFD/>
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Thu Apr 29 10:22:09 PDT 1999
+State-Changed-Why:
+
+This appears to be due to a bug in the mod_php code.  Since
+it's not related to base Apache, I'm closing this.  Thanks
+for using Apache!
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

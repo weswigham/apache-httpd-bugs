@@ -1,0 +1,485 @@
+Received: (qmail 18021 invoked by uid 2012); 21 Oct 1997 14:48:03 -0000
+Message-Id: <19971021144803.18020.qmail@hyperreal.org>
+Date: 21 Oct 1997 14:48:03 -0000
+From: Dave Shield <D.T.Shield@csc.liv.ac.uk>
+Reply-To: D.T.Shield@csc.liv.ac.uk
+To: apbugs@hyperreal.org
+Subject: CGI problems are reported as "Server problem - contact the webmaster"
+X-Send-Pr-Version: 3.2
+
+>Number:         1291
+>Category:       mod_cgi
+>Synopsis:       CGI problems are reported as "Server problem - contact the webmaster"
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 21 07:50:00 PDT 1997
+>Last-Modified:  Thu Sep  3 15:41:44 PDT 1998
+>Originator:     D.T.Shield@csc.liv.ac.uk
+>Organization:
+>Release:        1.2.4
+>Environment:
+HP-UX 9.05, with HP's C compiler (though this is a generic problem)
+>Description:
+(Don't worry - this isn't the standard "my CGI program doesn't work" whinge!)
+
+Problems with a CGI script (such as incorrect interpreter paths, wrong or
+missing headers, or any of the thousand and one things people get wrong)
+fail with a '500 Internal Server Error' code.
+
+  The person browsing (or even the person writing the script), then reports
+this "server problem" to the webmaster, whereas the problem actually lies with
+the script itself.
+>How-To-Repeat:
+Choose a random CGI script on almost any web server!
+>Fix:
+)Return a distinct C function error code, and hence a distinct HTTP return code.
+The server can then be configured to display a suitable error page, script, etc.
+
+The source files affected are 'http_protocol.c' and 'httpd.h' (defining the
+return codes) and 'mod_cgi.c' and 'util_script.c' (invoking these codes.)
+
+A patch file is available - let me know if you want it.
+
+Dav
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Tue Oct 21 08:03:46 PDT 1997
+State-Changed-Why:
+As far as the external user is concerned, the problem is
+with a service the Web server is providing - so the
+error is appropriate.  Please reply to this message with
+your patch ("diff -c", please) so we can take a look at it.
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: mod_cgi/1291: CGI problems are reported as "Server problem -  contact the webmaster" (fwd)
+Date: Mon, 27 Oct 1997 08:53:35 -0700 (MST)
+
+   This message is in MIME format.  The first part should be readable text,
+   while the remaining parts are likely unreadable without MIME-aware tools.
+   Send mail to mime@docserver.cac.washington.edu for more info.
+ 
+ --===_0_Mon_Oct_27_14:58:42_GMT_1997
+ Content-Type: TEXT/PLAIN; CHARSET=us-ascii
+ Content-ID: <Pine.BSF.3.95.971027085328.8751C@alive.znep.com>
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Mon, 27 Oct 1997 14:59:29 +0000
+ From: Dave Shield <D.T.Shield@csc.liv.ac.uk>
+ To: coar@hyperreal.org
+ Cc: apache-bugdb@apache.org, coar@apache.org
+ Subject: Re: mod_cgi/1291: CGI problems are reported as "Server problem -  contact the webmaster"
+ 
+     [I'll resend this, as the original seems to have got lost]
+ 
+ > Synopsis: CGI problems are reported as "Server problem - contact the webmaster"
+ > 
+ > State-Changed-From-To: open-feedback
+ > State-Changed-By: coar
+ > State-Changed-When: Tue Oct 21 08:03:46 PDT 1997
+ > State-Changed-Why:
+ > As far as the external user is concerned, the problem is
+ > with a service the Web server is providing - so the
+ > error is appropriate.
+ 
+ This is an assumption that may not necessarily be correct in a particular
+ situation.
+   As far as the external user is concerned, something went wrong and they
+ need to be able to report it to the appropriate person - they don't really
+ care who.  Ideally, this should be the person who actully maintains the CGI
+ script, who need not be the overall webmaster  (otherwise the webmaster has
+ to determine who's responsible, and pass on the comment - all extra work).
+ 
+   With the apache server as distributed, it isn't possible to make this
+ distinction.   The patch I offer (appended) allows this to be configured,
+ thus allowing this possibility if a particular site so chooses.
+ 
+   The other time this is useful is when a server is being used to teach
+ CGI programming.  In this situation, the "external user" is likely to be
+ the person writing the script - in which case they do need to know that
+ the CGI went wrong, rather than a "real" server error.
+   This is the scenario that led to the development of this patch here.
+ The webmasters were getting a steady stream of "server problem" reports,
+ which all stemmed from minor CGI errors.  By distinguishing these two cases,
+ we are able to provide a "CGI error" web page, which includes advice on
+ identifying and solving the problem.
+ 
+ 
+ >                       Please reply to this message with
+ > your patch ("diff -c", please) so we can take a look at it.
+ 
+   OK - appended below.
+ 
+   I believe that this (very simple) patch offers a useful additional
+ capability, without impacting in any significant way on those who do
+ not wish to use it.
+ 
+ Dave
+ 
+ 
+ --===_0_Mon_Oct_27_14:58:42_GMT_1997
+ Content-Type: TEXT/PLAIN; CHARSET=us-ascii
+ Content-ID: <Pine.BSF.3.95.971027085328.8751D@alive.znep.com>
+ Content-Description: apache124.diff
+ 
+ *** http_protocol.c.cln	Fri Aug 15 18:08:51 1997
+ --- http_protocol.c	Tue Oct 21 15:24:50 1997
+ ***************
+ *** 991,997 ****
+      "503 Service Temporarily Unavailable",
+      "504 Gateway Time-out",
+      "505 HTTP Version Not Supported",
+ !    "506 Variant Also Varies"
+   }; 
+   
+   /* The index is found by its offset from the x00 code of each level.
+ --- 991,998 ----
+      "503 Service Temporarily Unavailable",
+      "504 Gateway Time-out",
+      "505 HTTP Version Not Supported",
+ !    "506 Variant Also Varies",
+ !    "507 Internal CGI Error"
+   }; 
+   
+   /* The index is found by its offset from the x00 code of each level.
+ *** httpd.h.cln	Fri Aug 22 08:11:53 1997
+ --- httpd.h	Tue Oct 21 15:25:57 1997
+ ***************
+ *** 277,283 ****
+   
+   /* ----------------------- HTTP Status Codes  ------------------------- */
+   
+ ! #define RESPONSE_CODES 38
+   
+   #define HTTP_CONTINUE                      100
+   #define HTTP_SWITCHING_PROTOCOLS           101
+ --- 277,283 ----
+   
+   /* ----------------------- HTTP Status Codes  ------------------------- */
+   
+ ! #define RESPONSE_CODES 39
+   
+   #define HTTP_CONTINUE                      100
+   #define HTTP_SWITCHING_PROTOCOLS           101
+ ***************
+ *** 317,322 ****
+ --- 317,323 ----
+   #define HTTP_GATEWAY_TIME_OUT              504
+   #define HTTP_VERSION_NOT_SUPPORTED         505
+   #define HTTP_VARIANT_ALSO_VARIES           506
+ + #define HTTP_INTERNAL_CGI_ERROR            507
+   
+   #define DOCUMENT_FOLLOWS    HTTP_OK
+   #define PARTIAL_CONTENT     HTTP_PARTIAL_CONTENT
+ ***************
+ *** 336,341 ****
+ --- 337,343 ----
+   #define NOT_IMPLEMENTED     HTTP_NOT_IMPLEMENTED
+   #define BAD_GATEWAY         HTTP_BAD_GATEWAY
+   #define VARIANT_ALSO_VARIES HTTP_VARIANT_ALSO_VARIES
+ + #define CGI_ERROR           HTTP_INTERNAL_CGI_ERROR
+   
+   #define is_HTTP_INFO(x)         (((x) >= 100)&&((x) < 200))
+   #define is_HTTP_SUCCESS(x)      (((x) >= 200)&&((x) < 300))
+ ***************
+ *** 350,355 ****
+ --- 352,358 ----
+                                       ((x) == HTTP_REQUEST_ENTITY_TOO_LARGE) 
+ || \
+                                       ((x) == HTTP_REQUEST_URI_TOO_LARGE) || \
+                                       ((x) == HTTP_INTERNAL_SERVER_ERROR) || \
+ +                                     ((x) == HTTP_INTERNAL_CGI_ERROR)    || \
+                                       ((x) == HTTP_SERVICE_UNAVAILABLE))
+   
+   
+ *** mod_cgi.c.cln	Fri Jun 27 03:28:54 1997
+ --- mod_cgi.c	Tue Oct 21 15:26:12 1997
+ ***************
+ *** 422,428 ****
+   	    		   &script_err))) {
+   #endif
+           log_reason ("couldn't spawn child process", r->filename, r);
+ !         return SERVER_ERROR;
+       }
+   
+       /* Transfer any put/post args, CERN style...
+ --- 422,428 ----
+   	    		   &script_err))) {
+   #endif
+           log_reason ("couldn't spawn child process", r->filename, r);
+ !         return CGI_ERROR;
+       }
+   
+       /* Transfer any put/post args, CERN style...
+ *** util_script.c..cln	Fri Jun 27 03:28:56 1997
+ --- util_script.c	Tue Oct 21 15:26:24 1997
+ ***************
+ *** 329,335 ****
+   	if (fgets(w, MAX_STRING_LEN-1, f) == NULL) {
+   	    kill_timeout (r);
+   	    log_reason ("Premature end of script headers", r->filename, r);
+ ! 	    return SERVER_ERROR;
+           }
+   
+   	/* Delete terminal (CR?)LF */
+ --- 329,335 ----
+   	if (fgets(w, MAX_STRING_LEN-1, f) == NULL) {
+   	    kill_timeout (r);
+   	    log_reason ("Premature end of script headers", r->filename, r);
+ ! 	    return CGI_ERROR;
+           }
+   
+   	/* Delete terminal (CR?)LF */
+ ***************
+ *** 360,366 ****
+   	    
+   	    kill_timeout (r);
+   	    log_reason (malformed, r->filename, r);
+ ! 	    return SERVER_ERROR;
+           }
+   
+           *l++ = '\0';
+ --- 360,366 ----
+   	    
+   	    kill_timeout (r);
+   	    log_reason (malformed, r->filename, r);
+ ! 	    return CGI_ERROR;
+           }
+   
+           *l++ = '\0';
+ 
+ --===_0_Mon_Oct_27_14:58:42_GMT_1997--
+
+From: Marc Slemko <marcs@znep.com>
+To: Dave Shield <D.T.Shield@csc.liv.ac.uk>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: mod_cgi/1291: CGI problems are reported as "Server problem -  contact the webmaster"
+Date: Mon, 27 Oct 1997 09:05:25 -0700 (MST)
+
+ On Mon, 27 Oct 1997, Dave Shield wrote:
+ 
+ >     [I'll resend this, as the original seems to have got lost]
+ > 
+ > > Synopsis: CGI problems are reported as "Server problem - contact the webmaster"
+ > > 
+ > > State-Changed-From-To: open-feedback
+ > > State-Changed-By: coar
+ > > State-Changed-When: Tue Oct 21 08:03:46 PDT 1997
+ > > State-Changed-Why:
+ > > As far as the external user is concerned, the problem is
+ > > with a service the Web server is providing - so the
+ > > error is appropriate.
+ > 
+ > This is an assumption that may not necessarily be correct in a particular
+ > situation.
+ >   As far as the external user is concerned, something went wrong and they
+ > need to be able to report it to the appropriate person - they don't really
+ > care who.  Ideally, this should be the person who actully maintains the CGI
+ > script, who need not be the overall webmaster  (otherwise the webmaster has
+ > to determine who's responsible, and pass on the comment - all extra work).
+ 
+ I'm not sure how your suggested change improves on this.  All it does is
+ give a different error message to the client which isn't much more
+ informative from their point of view; they don't care if it is a CGI or
+ some other error.
+ 
+ > 
+ >   With the apache server as distributed, it isn't possible to make this
+ > distinction.   The patch I offer (appended) allows this to be configured,
+ > thus allowing this possibility if a particular site so chooses.
+ > 
+ >   The other time this is useful is when a server is being used to teach
+ > CGI programming.  In this situation, the "external user" is likely to be
+ > the person writing the script - in which case they do need to know that
+ > the CGI went wrong, rather than a "real" server error.
+ >   This is the scenario that led to the development of this patch here.
+ > The webmasters were getting a steady stream of "server problem" reports,
+ > which all stemmed from minor CGI errors.  By distinguishing these two cases,
+ > we are able to provide a "CGI error" web page, which includes advice on
+ > identifying and solving the problem.
+ 
+ If someone is developing CGIs, then they should be smart enough to be able
+ to look at the error log and see what it says.  
+ 
+ Your patch is useful in some cases, but it has the disadvantage of using
+ up another status code which, at some point in the future, may cause
+ conflicts and of being quite limited; there are many many different errors
+ that can cause a 500, and if you start having a seperate error code for
+ each it just gets unworkable.
+ 
+ What could be an option, however, is a config option that lets you have an
+ error message similar to that which goes in the error log included in the
+ internal error page.  This would provide, in combination with an
+ ErrorDocument and passing it in an environment variable, essentially the
+ same net result without introducing something that is so specialized.
+ This has been considered but no finished implementation has been submitted
+ yet.
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Dave Shield <D.T.Shield@csc.liv.ac.uk>
+Cc: apbugs@apache.org
+Subject: Re: mod_cgi/1291: CGI problems are reported as "Server problem -  contact the webmaster"
+Date: Mon, 27 Oct 1997 10:34:58 -0800 (PST)
+
+   This message is in MIME format.  The first part should be readable text,
+   while the remaining parts are likely unreadable without MIME-aware tools.
+   Send mail to mime@docserver.cac.washington.edu for more info.
+ 
+ --===_0_Mon_Oct_27_14:58:42_GMT_1997
+ Content-Type: TEXT/PLAIN; CHARSET=us-ascii
+ Content-ID: <Pine.LNX.3.95dg3.971027103058.18860C@twinlark.arctic.org>
+ 
+ You could also use an ErrorDocument which points at a CGI, the CGI should
+ have the original URI available in one of the environment variables (I
+ forget which, you'll have to experiment).  Then your CGI can make a
+ decision as to who to contact ... such as grabbing a ~username.
+ 
+ yeah, use something like:
+ 
+ ErrorDocument 500 /cgi-bin/500response
+ 
+ And 500response should be a script which plays with REDIRECT_REQUEST_URI. 
+ 
+ Dean
+ 
+ 
+ --===_0_Mon_Oct_27_14:58:42_GMT_1997--
+
+From: Dave Shield <D.T.Shield@csc.liv.ac.uk>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: Dave Shield <D.T.Shield@csc.liv.ac.uk>, apbugs@apache.org
+Subject: Re: mod_cgi/1291: CGI problems are reported as "Server problem - 
+ contact the webmaster"
+Date: Tue, 28 Oct 1997 09:40:14 +0000
+
+ > You could also use an ErrorDocument which points at a CGI, the CGI should
+ > have the original URI available in one of the environment variables (I
+ > forget which, you'll have to experiment).  Then your CGI can make a
+ > decision as to who to contact ... such as grabbing a ~username.
+ 
+ Yes, but that assumes that all "internal" errors that refer to ~username
+ are necessarily what I tagged CGI errors.  It would hide the (hopefully
+ rare) case when there was a *real* internal error, that the webmaster needed
+ to look at, but that was triggered by a personal cgi URL.
+ 
+   Not to mention the additional complication in having to parse the
+ request to determine the username, et al.   Having a distinct, and simple
+ return code would be much simpler - either the main return code as I
+ originally proposed, or an internal additional one as suggested yesterday.
+ 
+ Dave
+ 
+
+From: Dave Shield <D.T.Shield@csc.liv.ac.uk>
+To: Marc Slemko <marcs@znep.com>
+Cc: Dave Shield <D.T.Shield@csc.liv.ac.uk>,
+        Apache bugs database <apbugs@apache.org>
+Subject: Re: mod_cgi/1291: CGI problems are reported as "Server problem - 
+ contact the webmaster"
+Date: Mon, 27 Oct 1997 16:58:56 +0000
+
+ > I'm not sure how your suggested change improves on this.  All it does is
+ > give a different error message to the client which isn't much more
+ > informative from their point of view;
+ 
+ The default message is very similar, certainly.
+ 
+ But because it uses a different error code, the webmaster for the site
+ can configure the server to return a different error page, using the
+ ErrorDocument configuration option.
+ 
+ 
+ 	[local scenario re: developing CGI scripts]
+ 
+ > If someone is developing CGIs, then they should be smart enough to be able
+ > to look at the error log and see what it says.  
+ 
+ That's fine for experienced CGI programmers, who can interpret the log
+ entries correctly.  But we are teaching novice CGI programmers, who are
+ only just starting to learn the trade.  I want to be able to point them
+ towards some useful hints (like running the debugging version of cgiwrap).
+ 
+   Maybe I'm just cynical after several years in University technical support,
+ but I suspect you have a higher opinion of students' abilities than I have.
+ (Don't be bitchy, Dave!)
+ 
+ 
+ 
+ > Your patch is useful in some cases, but it has the disadvantage of using
+ > up another status code which, at some point in the future, may cause
+ > conflicts
+ 
+ Fair comment.
+ I wouldn't have suggested it if you hadn't already used 506, which doesn't
+ appear in any HTTP standard I could see.  I assumed it was an apache special.
+  
+ >         and of being quite limited; there are many many different errors
+ > that can cause a 500,
+ 
+ Yes, but very few (IMHO) that are likely to be the responsibility of anyone
+ other than the Web administrator.   Which was the main impetus behind
+ distinguishing this one specially.
+ 
+ 
+ > What could be an option, however, is a config option that lets you have an
+ > error message similar to that which goes in the error log included in the
+ > internal error page.  This would provide, in combination with an
+ > ErrorDocument and passing it in an environment variable, essentially the
+ > same net result without introducing something that is so specialized.
+ 
+ That would perhaps be useable, though it could be a bit messy to interpret
+ a general error string of that sort.
+ 
+ An alternative approach (perhaps in conjunction with the above) might be to
+ return "500 Internal error" throughout, but have an environmental variable
+ containing a simple (numeric?) "sub-error" code, to distinguish the various
+ causes of internal errors.
+   This could then be used by an ErrorDocument script to tailor the output
+ error page appropriately.
+   Being totally private to the implementation, it wouldn't be affected by
+ future extensions to the HTTP protocol.
+ 
+   Does this strike you as a plausible option?
+ 
+ Dave
+ 
+State-Changed-From-To: feedback-suspended
+State-Changed-By: brian
+State-Changed-When: Wed May 20 18:58:45 PDT 1998
+State-Changed-Why:
+(move to suspended - where "wouldn't it be nice" type
+messages are kept)
+
+Comment-Added-By: coar
+Comment-Added-When: Thu Jun  4 03:42:01 PDT 1998
+Comment-Added:
+Re Apache's use of 506: I'm not sure of the etymology of
+this, but I suspect it was added based on some advance
+notice from Roy Fielding.
+Re other: In the meantime, until we decide whether/how to
+add this sort of functionality, please remember that you
+can set up ErrorDocument clauses in .htaccess files and
+<Directory> containers, not just server-wide.
+State-Changed-From-To: suspended-closed
+State-Changed-By: coar
+State-Changed-When: Thu Sep  3 15:41:44 PDT 1998
+State-Changed-Why:
+
+This has been addressed for the next release after 1.3.1
+by putting text describing the cause of the problem into
+the *ERROR_NOTES envariable.  An "ErrorDocument 500" script
+can use this information, along with the other envariables
+it is given, to be more specific about what went wrong.
+Thank you for the report, and for using Apache!
+
+>Unformatted:
+

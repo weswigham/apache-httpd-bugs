@@ -1,0 +1,88 @@
+Received: (qmail 81038 invoked by uid 65534); 18 Jan 2000 20:11:23 -0000
+Message-Id: <20000118201123.81037.qmail@locus.apache.org>
+Date: 18 Jan 2000 20:11:23 -0000
+From: Alan Burlison <Alan.Burlison@uk.sun.com>
+Reply-To: Alan.Burlison@uk.sun.com
+To: submit@bugz.apache.org
+Subject: httpd dumps core on startup when mod_perl is built with APXS
+X-Send-Pr-Version: 3.110
+
+>Number:         5601
+>Category:       apache-api
+>Synopsis:       httpd dumps core on startup when mod_perl is built with APXS
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jan 18 12:20:00 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     Alan.Burlison@uk.sun.com
+>Release:        1.3.9
+>Organization:
+apache
+>Environment:
+Solaris 2.7 sparc, all current patches as of 18/01/00, SC 5.2
+>Description:
+Irrelevant
+>How-To-Repeat:
+Build Apache, Build Perl, build mod_perl with APXS
+>Fix:
+Problem description:
+
+> Sorry, I missed that thread. I have posted this problem more then once here,
+> because it have beaten me and other often when using Embperl. The problem
+> there is often more hidden, because it doesn't SIGSEGV, it still works, but
+> some functionality (where Perl variables are tied to C variables) doesn't
+> work, so it's often not easy to detect.
+> 
+> Unfortunably I never had the time to track this down enought to create a
+> real usefull patch (just a workaround, (PERL_STARTUP_DONE_CHECK), which will
+> cause the XS libraries only loaded after the second load of libperl.so; this
+> works for the startup, but not after a restart).
+
+During startup Apache dlopens then dlclose's the mod_perl.so, which then results
+in the perl libperl.so being unloaded as well (there's a linker dependency
+from mod_perl -> perl libperl.so).  Unfortunately the perl XS modules
+loaded in during startup via dlopen are *not* unloaded, nor do they
+succeed in locking the perl libperl.so into memory (you could construe
+this as a linker bug).  Then Apache reloads the mod_perl libperl.so,
+which also results in the perl libperl.so being pulled back in, BUT AT A
+DIFFERENT ADDRESS!  Result:  The perl XS modules are linked to a 'ghost'
+of the originally loaded perl libperl.so.  Consequences: all sorts of
+strangeness - coredumps, variables not being updated etc etc etc.
+
+The current fix is to forcibly unload the perl XS modules during the
+unload.  However, on reflection I'm not at all sure this is the correct
+thing to do.  Although you can unload the .so component of a perl
+module, you can't unload the .pm component, so just removing the .so
+part as in the current workaround is suspect at least.
+
+I think the correct fix is for the Apache core to avoid dlclosing
+anything it has dlopened in the first place.  If new modules have been
+added to the config files, they should be dlopened, but any old ones
+should *not* be dlclosed, EVEN IF THEY ARE NO LONGER IN THE CONFIG
+FILE!!!
+
+I firmly believe this needs fixing in the Apache core, not by hacking
+around it in mod_perl.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

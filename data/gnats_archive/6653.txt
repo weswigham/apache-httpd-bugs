@@ -1,0 +1,80 @@
+Received: (qmail 8358 invoked by uid 501); 10 Oct 2000 22:23:02 -0000
+Message-Id: <20001010222302.8357.qmail@locus.apache.org>
+Date: 10 Oct 2000 22:23:02 -0000
+From: Tomas "Ögren" <stric@ing.umu.se>
+Reply-To: stric@ing.umu.se
+To: submit@bugz.apache.org
+Subject: mod_log_config.c sends %lld to apr_psprintf() which is unsupported
+X-Send-Pr-Version: 3.110
+
+>Number:         6653
+>Category:       mod_log-any
+>Synopsis:       mod_log_config.c sends %lld to apr_psprintf() which is unsupported
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 10 15:30:00 PDT 2000
+>Closed-Date:    Wed Oct 18 11:11:35 PDT 2000
+>Last-Modified:  Wed Oct 18 11:11:35 PDT 2000
+>Originator:     stric@ing.umu.se
+>Release:        2.0a7
+>Organization:
+>Environment:
+Solaris 2.6, gcc 2.95.2
+SunOS churchill.acc.umu.se 5.6 Generic_105181-21 sun4m sparc
+>Description:
+%T in LogFormat is the time it took to transfer the file, but in mod_log_config.c it sends %lld to apr_psprintf() which it doesn't understand and puts %lld in the log file. %Ld doesn't work either..
+
+I don't think it's very necessary to have a 64 bit integer as seconds to transfer.. 300 billion years is a bit much 8)
+
+I propose the patch below.
+>How-To-Repeat:
+httpd.conf:LogFormat "%{%c}t %T %h %b %f b - o a http@ http 0 * c" xferlog
+
+xferlog:Tue Oct 10 23:49:07 2000 %ld ersboda.cs.umu.se 0 /lap/apache/icons/folder.gif b - o a http@ http 0 * c
+>Fix:
+--- mod_log_config.c.orig       Tue Oct 10 23:56:56 2000
++++ mod_log_config.c    Wed Oct 11 00:04:13 2000
+@@ -433,8 +433,8 @@
+
+ static const char *log_request_duration(request_rec *r, char *a)
+ {
+-    return apr_psprintf(r->pool, "%lld", (apr_now() - r->request_time)
+-                                             / APR_USEC_PER_SEC);
++    return apr_psprintf(r->pool, "%ld", (long)((apr_now() - r->request_time)
++                                             / APR_USEC_PER_SEC));
+ }
+
+ /* These next two routines use the canonical name:port so that log
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rbb
+State-Changed-When: Wed Oct 18 11:11:33 PDT 2000
+State-Changed-Why:
+This patch has been committed, and it will be available
+in the next alpha of Apache.
+
+Thank you for using Apache.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

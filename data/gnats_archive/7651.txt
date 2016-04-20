@@ -1,0 +1,118 @@
+Received: (qmail 91392 invoked by uid 501); 29 Apr 2001 20:58:37 -0000
+Message-Id: <20010429205837.91391.qmail@apache.org>
+Date: 29 Apr 2001 20:58:37 -0000
+From: Frank Langelage <frank@lafr.de>
+Reply-To: frank@lafr.de
+To: submit@bugz.apache.org
+Subject: compilation of srclib/apr/network_io/unix/sa_common.c fails
+X-Send-Pr-Version: 3.110
+
+>Number:         7651
+>Category:       os-unixware
+>Synopsis:       compilation of srclib/apr/network_io/unix/sa_common.c fails
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Apr 29 14:00:01 PDT 2001
+>Closed-Date:    Tue May 01 19:55:58 PDT 2001
+>Last-Modified:  Tue May 01 19:55:58 PDT 2001
+>Originator:     frank@lafr.de
+>Release:        2.0.16 beta
+>Organization:
+>Environment:
+Unixware 7.1.1, all patches, udk 7.1.1b
+>Description:
+The compilation of srclib/apr/network_io/unix/sa_common.c fails on unixware 7.1.1, 
+because of an error in line 440: h_errno = 0;
+h_errno is no modifyable value.
+>How-To-Repeat:
+
+>Fix:
+you must use the function set_h_errno( int ) to set the value of h_errno.
+If source is compiled threaded (REENTRENT is set) h_errno is defined as function
+"extern const int _h_errno()" and not as "extern int" lvalue.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: trawick
+State-Changed-When: Mon Apr 30 05:33:16 PDT 2001
+State-Changed-Why:
+Thanks for your report!
+
+I don't have access to a system where set_h_errno() is needed, 
+but I have coded the following change to APR which should handle
+such a system.  Please let me know if it resolves the problem.
+(If I haven't heard back in a couple of days I'll commit the change
+and close the PR and you can open another one if it is still not
+fixed.)
+
+Index: configure.in
+===================================================================
+RCS file: /home/cvspublic/apr/configure.in,v
+retrieving revision 1.295
+diff -u -r1.295 configure.in
+--- configure.in	2001/04/29 05:22:15	1.295
++++ configure.in	2001/04/30 12:27:38
+@@ -1061,6 +1061,8 @@
+ AC_SUBST(have_corkable_tcp)
+ AC_SUBST(accept_filter)
+ 
++AC_CHECK_FUNCS(set_h_errno)
++
+ echo $ac_n "${nl}Checking for IPv6 Networking support...${nl}"
+ dnl # Start of checking for IPv6 support...
+ AC_SEARCH_LIBS(getaddrinfo, inet6)
+Index: network_io/unix/sa_common.c
+===================================================================
+RCS file: /home/cvspublic/apr/network_io/unix/sa_common.c,v
+retrieving revision 1.32
+diff -u -r1.32 sa_common.c
+--- network_io/unix/sa_common.c	2001/03/15 21:54:59	1.32
++++ network_io/unix/sa_common.c	2001/04/30 12:27:39
+@@ -437,7 +437,13 @@
+     char tmphostname[256];
+ #endif
+ 
+-    h_errno = 0; /* don't know if it is portable for getnameinfo() to set h_errno */
++    /* don't know if it is portable for getnameinfo() to set h_errno;
++     * clear it then see if it was set */
++#ifdef HAVE_SET_H_ERRNO
++    set_h_errno(0);
++#else
++    h_errno = 0;
++#endif
+     /* default flags are NI_NAMREQD; otherwise, getnameinfo() will return
+      * a numeric address string if it fails to resolve the host name;
+      * that is *not* what we want here
+
+State-Changed-From-To: feedback-closed
+State-Changed-By: trawick
+State-Changed-When: Tue May  1 19:55:58 PDT 2001
+State-Changed-Why:
+A fix similar to what you have tested already has been committed 
+to CVS.
+
+Thanks for your report, and thanks for using Apache!
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

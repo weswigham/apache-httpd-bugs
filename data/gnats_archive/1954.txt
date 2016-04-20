@@ -1,0 +1,103 @@
+Received: (qmail 15535 invoked by uid 2012); 16 Mar 1998 19:58:17 -0000
+Message-Id: <19980316195817.15534.qmail@hyperreal.org>
+Date: 16 Mar 1998 19:58:17 -0000
+From: Tom Lear <toml@accesscom.com>
+Reply-To: toml@accesscom.com
+To: apbugs@hyperreal.org
+Subject: suexec directory checks - needed user cgi's under root owned dir
+X-Send-Pr-Version: 3.2
+
+>Number:         1954
+>Category:       suexec
+>Synopsis:       suexec directory checks - needed user cgi's under root owned dir
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Mar 16 12:00:01 PST 1998
+>Last-Modified:  Tue May 19 21:02:02 PDT 1998
+>Originator:     toml@accesscom.com
+>Organization:
+>Release:        1.2+
+>Environment:
+Linux paranoid 2.0.29 #2 Sat Oct 18 10:08:38 PDT 1997 i586 unknown
+gcc 2.7.2.1
+>Description:
+We needed to run users cgi's from a directory owned by root, so I added a
+compile time option to suexec to allow the dir owner and the cgi owner to
+mismatch if the dir owner is root.
+>How-To-Repeat:
+
+>Fix:
+Here's the patch:
+diff -C 3 orig/suexec.c ./suexec.c
+*** orig/suexec.c       Wed Jan  7 12:34:43 1998
+--- ./suexec.c  Wed Jan  7 12:23:33 1998
+***************
+*** 464,470 ****
+       * Error out if the target name/group is different from
+       * the name/group of the cwd or the program.
+       */
+!     if ((uid != dir_info.st_uid) ||
+        (gid != dir_info.st_gid) ||
+        (uid != prg_info.st_uid) ||
+        (gid != prg_info.st_gid)) {
+--- 464,474 ----
+       * Error out if the target name/group is different from
+       * the name/group of the cwd or the program.
+       */
+!     if (((uid != dir_info.st_uid
+! #ifdef ROOT_OWNS_DIR
+!         && dir_info.st_uid!=0
+! #endif
+!         )) ||
+        (gid != dir_info.st_gid) ||
+        (uid != prg_info.st_uid) ||
+        (gid != prg_info.st_gid)) {
+diff -C 3 orig/suexec.h ./suexec.h
+*** orig/suexec.h       Wed Jan  7 12:34:54 1998
+--- ./suexec.h  Wed Jan  7 12:55:52 1998
+***************
+*** 135,138 ****
+--- 135,150 ----
+  #define SAFE_PATH "/usr/local/bin:/usr/bin:/bin"
+  #endif
+  
++ /*
++  * ROOT_OWNS_DIR -- Allow uid of direcory to be different from uid of
++  *                  executable, if directory is owned by root.
++  *                In some situations this makes more sense than to
++  *                require that the owner of the cgi own the directory
++  *                the cgi exists in.
++  *
++  */
++ #ifndef ROOT_OWNS_DIR
++ //#define ROOT_OWNS_DIR ""
++ #endif
++ 
+  #endif /* _SUEXEC_H */
+
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: brian
+State-Changed-When: Tue May 19 21:02:02 PDT 1998
+State-Changed-Why:
+Thanks for the patch; this seems like a non-general solution
+to the problem though.  What is needed is some way to allow
+group editing and responsibility, we will admit; the current
+model presumes one user, one security "domain".  Then again,
+it's certainly conceivable to create a role account for all
+those who need to modify the directory and script.  
+This is how I currently handle it on a hobby machine.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

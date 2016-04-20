@@ -1,0 +1,269 @@
+Received: (qmail 21106 invoked by uid 2012); 10 Nov 1999 20:29:44 -0000
+Message-Id: <19991110202944.21105.qmail@hyperreal.org>
+Date: 10 Nov 1999 20:29:44 -0000
+From: Jon Smirl <jonsmirl@mediaone.net>
+Reply-To: jonsmirl@mediaone.net
+To: apbugs@hyperreal.org
+Subject: no EOF from getInputStream when content-length passed
+X-Send-Pr-Version: 3.2
+
+>Number:         5285
+>Category:       mod_jserv
+>Synopsis:       no EOF from getInputStream when content-length passed
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    jserv
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Nov 10 12:30:02 PST 1999
+>Last-Modified:  Wed Nov 10 15:30:15 PST 1999
+>Originator:     jonsmirl@mediaone.net
+>Organization:
+apache
+>Release:        1.1b3
+>Environment:
+Win95/MS JVM
+>Description:
+I'm using this code to process a post in XML encoding with 1.1b3:
+
+    if ("POST".equals(request.getMethod())) {
+      if ("text/xml".equals(request.getContentType())) {
+         Parser p = new com.sun.xml.parser.Parser();
+         p.setDocumentHandler(page);
+         InputSource source = new InputSource(request.getInputStream());
+         p.parse(source);
+      }
+    }
+
+The problem is with sun's xml parser. The parser reads until EOF and does not have anyway to specify a content-length.
+
+Jserv's implementation does not detect a read past the length specified in content-length and indicate EOF. Instead the read routine in JServInputStream will hang trying to read more data from the browser that isn't coming until it times out.
+
+I made a simple patch for this problem by changing read to:
+
+public int read(byte b[], int off, int len) throws IOException {
+    if (in.available() == 0)
+        return 0;
+    return in.read(b,off,len);
+}
+
+This patch is not correct but it fixes the issue in my case.  This patch will incorrectly terminate a large RFC1867 post. The correct patch needs to track how many bytes have been read.  It also needs to compute the return value from read() and available() based on bytes read vs content-length if content-length has been specified.
+
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+
+From: "Jon Smirl" <jonsmirl@mediaone.net>
+To: <apbugs@hyperreal.org>, <jserv-bugdb@apache.org>
+Cc: <apbugs@apache.org>
+Subject: Re: mod_jserv/5285: no EOF from getInputStream when content-length passed
+Date: Wed, 10 Nov 1999 18:27:37 -0500
+
+ Here's a fix for JServInputStream. I've given it limited testing and it
+ appears to correct the problem.
+ 
+ The idea is pass the content-length in on the constructor or
+ JServInputStream and then track the data as it is consumed. Whem it's all
+ gone, start returning 0's. The unknown content-length of -1 also needs to be
+ supported since most requests are in that mode.
+ 
+ // Set up the servlet's I/O streams
+ servlet_in = new JServInputStream(getContentLength(), in);
+ 
+ 
+ /**
+  * ServletInputStream implementation as inner class
+  */
+  protected class JServInputStream extends ServletInputStream {
+ 
+     protected InputStream in;
+     protected int length;
+ 
+     public JServInputStream(int length, InputStream in) {
+         this.length = length;
+         this.in = in;
+     }
+ 
+     public int read() throws IOException
+ 
+         if ((length-- > 0) || (length == -1))
+             return in.read();
+         return -1;
+     }
+ 
+     public int read(byte b[]) throws IOException {
+         if (length == -1)
+             return in.read(b, 0, b.length);
+ 
+         int len = b.length;
+         if (len > length)
+             len = length;
+         length -= len;
+         if (len > 0)
+             return in.read(b, 0, len);
+         return 0;
+     }
+ 
+     public int read(byte b[], int off, int len) throws IOException {
+         if (length == -1)
+             return in.read(b, off, len);
+ 
+         if (len > length)
+             len = length;
+         length -= len;
+         if (len > 0)
+             return in.read(b,off,len);
+         return 0;
+     }
+ 
+     public long skip(long n) throws IOException {
+         if (length == -1)
+             return in.skip(n);
+ 
+         if (n > length)
+             n = length;
+         length -= n;
+         if (n > 0)
+             return in.skip(n);
+         return 0;
+     }
+ 
+     public void close() throws IOException {
+         // Ignore closing of the input stream since it also
+         // close the output stream.
+         // conn.in.close();
+     }
+ 
+     /**
+         We must implement this method because java.io.InputStream
+         javadocs says that this will return 0. Since we use a long
+         internally, it must be cast to an int. ugly. -JSS
+     */
+     public int available() throws IOException {
+         if (length == -1)
+             return in.available();
+         return length;
+     }
+ }
+ 
+ Jon Smirl
+ jonsmirl@mediaone.net
+ 
+ 
+
+From: "Jon Smirl" <jonsmirl@mediaone.net>
+To: <apbugs@hyperreal.org>, <jserv-bugdb@apache.org>
+Cc: <apbugs@apache.org>
+Subject: Re: mod_jserv/5285: no EOF from getInputStream when content-length passed
+Date: Wed, 10 Nov 1999 18:27:37 -0500
+
+ Here's a fix for JServInputStream. I've given it limited testing and it
+ appears to correct the problem.
+ 
+ The idea is pass the content-length in on the constructor or
+ JServInputStream and then track the data as it is consumed. Whem it's all
+ gone, start returning 0's. The unknown content-length of -1 also needs to be
+ supported since most requests are in that mode.
+ 
+ // Set up the servlet's I/O streams
+ servlet_in = new JServInputStream(getContentLength(), in);
+ 
+ 
+ /**
+  * ServletInputStream implementation as inner class
+  */
+  protected class JServInputStream extends ServletInputStream {
+ 
+     protected InputStream in;
+     protected int length;
+ 
+     public JServInputStream(int length, InputStream in) {
+         this.length = length;
+         this.in = in;
+     }
+ 
+     public int read() throws IOException
+ 
+         if ((length-- > 0) || (length == -1))
+             return in.read();
+         return -1;
+     }
+ 
+     public int read(byte b[]) throws IOException {
+         if (length == -1)
+             return in.read(b, 0, b.length);
+ 
+         int len = b.length;
+         if (len > length)
+             len = length;
+         length -= len;
+         if (len > 0)
+             return in.read(b, 0, len);
+         return 0;
+     }
+ 
+     public int read(byte b[], int off, int len) throws IOException {
+         if (length == -1)
+             return in.read(b, off, len);
+ 
+         if (len > length)
+             len = length;
+         length -= len;
+         if (len > 0)
+             return in.read(b,off,len);
+         return 0;
+     }
+ 
+     public long skip(long n) throws IOException {
+         if (length == -1)
+             return in.skip(n);
+ 
+         if (n > length)
+             n = length;
+         length -= n;
+         if (n > 0)
+             return in.skip(n);
+         return 0;
+     }
+ 
+     public void close() throws IOException {
+         // Ignore closing of the input stream since it also
+         // close the output stream.
+         // conn.in.close();
+     }
+ 
+     /**
+         We must implement this method because java.io.InputStream
+         javadocs says that this will return 0. Since we use a long
+         internally, it must be cast to an int. ugly. -JSS
+     */
+     public int available() throws IOException {
+         if (length == -1)
+             return in.available();
+         return length;
+     }
+ }
+ 
+ Jon Smirl
+ jonsmirl@mediaone.net
+ 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

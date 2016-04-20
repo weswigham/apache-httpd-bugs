@@ -1,0 +1,136 @@
+From nobody@hyperreal.com  Wed Jun 25 15:18:02 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id PAA11334;
+	Wed, 25 Jun 1997 15:18:02 -0700 (PDT)
+Message-Id: <199706252218.PAA11334@hyperreal.com>
+Date: Wed, 25 Jun 1997 15:18:02 -0700 (PDT)
+From: Niels Bakker <niels@holding.pi.net>
+Reply-To: niels@holding.pi.net
+To: apbugs@hyperreal.com
+Subject: (1) mod_dld doensn't compile. (2) Virtual hosting is broken in certain circumstances
+X-Send-Pr-Version: 3.2
+
+>Number:         788
+>Category:       os-linux
+>Synopsis:       (1) mod_dld doensn't compile. (2) Virtual hosting is broken in certain circumstances
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jun 25 15:20:05 1997
+>Originator:     niels@holding.pi.net
+>Organization:
+>Release:        1.2.0
+>Environment:
+Linux 2.0.31-pre-2, gcc 2.7.2.2, libc5-5.4.23, binutils-2.8.1.
+Distribution: Debian 1.2, upgraded to 1.3 (via the packaging system).
+>Description:
+(1) mod_dld doesn't work - I have dlfcn.h but no dld.h
+
+(2) Virtual hosting is broken if a Host: header is passed containing the
+    short form of the hostname (i.e., 'web' as opposed to 'web.dom.ain').
+    Also, with HTTP/1.0 it seems broken - with no Host: I get the wrong
+    one, even if I connected to an interface (from another machine) that
+    has a <VirtualHost> entry in httpd.conf.
+
+I probably did something terribly wrong so feel free to ignore. :)
+However, the first problem would qualify as not-so-good so I'll leave
+the severity to "serious"
+>How-To-Repeat:
+telnet webserver 80
+GET / HTTP/1.0
+Host: web
+
+GET / HTTP/1.1
+Host: web
+
+GET / HTTP/1.0
+Host: web.virtual.domain
+
+GET / HTTP/1.0
+[empty line]
+
+The first two and the latter give the wrong ServerRoot index.html
+>Fix:
+I'd check it out better if I had more time... if you need any specifics,
+feel free to mail.
+
+With regards,
+
+
+	-- Niels
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Jul 19 02:51:37 PDT 1997
+State-Changed-Why:
+mod_dld isn't supported everywhere ... and probably doesn't
+really even work in 1.2.0 anyhow.
+
+There's nothing the server can do if the client passes it a
+hostname of just "web" rather than a fully-qualified hostname.
+It can't guess the information ... if you want to support unqualified
+names then you could use ServerAlias.
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Niels <niels@holding.pi.net>
+Subject: Re: os-linux/788: (1) mod_dld doensn't compile. (2) Virtual hosting is broken in certain circumstances
+Date: Sat, 19 Jul 1997 16:39:39 -0700 (PDT)
+
+ 
+ You can't get the old behaviour back.  It was hopelessly broken pre-1.1 by
+ the addition of the name-based virtual hosts.  There's a bunch of
+ documentation that describes workarounds.  I know it's hopelessly broken
+ because I've spent far too much time trying to make it work, and plan on
+ rewriting vhost support entirely. 
+ 
+ If you've got a <VirtualHost> that matches the ip of the machine that your
+ server is on then it will have this undesirable new behaviour.  To work
+ around it you can use:
+ 
+ <VirtualHost _default_:*>
+ ServerName whatever
+ </VirtualHost>
+ 
+ in place of your previous <VirtualHost>.
+ 
+ Or you could place "ServerName localhost" outside of all <VirtualHost>
+ sections, which fools apache into thinking that 127.0.0.1 is the address
+ that it's supposed to do name-based vhost matching. 
+ 
+ Dean
+ 
+ On Sun, 20 Jul 1997, Niels wrote:
+ 
+ > On Sat, 19 Jul 1997 dgaudet@hyperreal.org wrote:
+ > 
+ > > There's nothing the server can do if the client passes it a
+ > > hostname of just "web" rather than a fully-qualified hostname.
+ > > It can't guess the information ... if you want to support unqualified
+ > > names then you could use ServerAlias.
+ > 
+ > If the client doesn't pass any Host: header it gets the wrong index.html -
+ > that's the problem.
+ > 
+ > (telnet to port 80, GET / HTTP/1.0 Enter twice)
+ > 
+ > I don't want support for unqualified hostnames; I would like the old
+ > Apache behaviour back where it would look at the interface address, as I
+ > thought it was meant to be.
+ > 
+ > Again, it may have been a broken setup at my end but I do not believe so..
+ > server-status shows that Apache attaches the real virtual_host to it but
+ > fails to get the real index.html somehow.
+ > 
+ > 
+ 
+>Unformatted:
+
+>Last-Modified:  Sat Jul 19 02:51:37 PDT 1997
+
+

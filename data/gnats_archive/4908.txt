@@ -1,0 +1,203 @@
+Received: (qmail 12872 invoked by uid 2012); 26 Aug 1999 04:50:29 -0000
+Message-Id: <19990826045029.12871.qmail@hyperreal.org>
+Date: 26 Aug 1999 04:50:29 -0000
+From: Doug Herbert <DougH@tsbbank.co.nz>
+Reply-To: DougH@tsbbank.co.nz
+To: apbugs@hyperreal.org
+Subject: Apache is adding bytes to large servlet responses, ( > 500 bytes )
+X-Send-Pr-Version: 3.2
+
+>Number:         4908
+>Category:       mod_jserv
+>Synopsis:       Apache is adding bytes to large servlet responses, ( > 500 bytes )
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    jserv
+>State:          open
+>Class:          support
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Aug 25 23:10:00 PDT 1999
+>Last-Modified:  Thu Aug 26 19:40:02 PDT 1999
+>Originator:     DougH@tsbbank.co.nz
+>Organization:
+apache
+>Release:        Apache 1.3.9  JServ 1.0Final
+>Environment:
+Linux Slackware kernel 2.2.10 Pentium III
+Java v 117a
+JSDK2.0
+mod_ssl 2.4.0
+>Description:
+After spending 3 full days on this problem, and looking through a lot of a documentation, I am hoping that you may be able to help. I cannot find the answer in the FAQ's, jserv documentation, deja news, .......
+
+I have a servlet which acts as a proxy between a mainframe and a remote clients web browser. This servlet has been working fine on our current production system, which runs Apache.1.3.3, apache_ssl and jserv 0.9.11. I am trying to upgrade to the latest JServ  release.
+
+The clients passes data to the servlet, which is processed by the mainframe and the response is then passed back to the client.
+
+The response stream can be up to 2K in size but is normally around 1024 bytes.
+
+Apache receives the correct data from JServ, and then attempts to return this data to the client. If the response data is broken over more than 1 TCP frame, then Apache seems to add the number of bytes at the start of each TCP frame
+
+ie. the following are response frames to the remote client
+
+1st Frame ( from Apache to client )
+HTTP/1.1 200 OK
+Date ...etc...
+
+2nd Frame
+19\n\rabcdefghijklmnopqrs\n\r
+
+3rd Frame
+7\n\rtuvwxyz\n\r
+
+where the real data are the characters, but Apache is adding the value 19, following by hex 0d , hex 0a, ie. 19 is the number of bytes of data in this frame
+
+same for the next frame of 7 bytes
+
+where the correct response should be as follows
+
+1st Frame ( from Apache to client )
+HTTP/1.1 200 OK
+Date ...etc...
+
+2nd Frame
+abcdefghijklmnopqrs
+
+3rd Frame
+tuvwxyz
+
+I normally have jserv and Apache running on the same machine, but to debug this problem, I have them running on separate machines. I have traced the message from JServ to Apache and it definetly contains the correct data (ie. abcdefg..) with no additional carriage return/newlines inserted.
+
+I am not concerned with the data being broken over several frames, but am trying to locate why Apache decides to add data length values at the start of each frame. ( It hasn't done this in the past ?? )It is screwing up the client side, which examines all the bytes as a stream of data.
+>How-To-Repeat:
+I can probably set a demo up for you, if need be. Just need a little time, to give access to a development machine.
+
+I can send you text files of my logs & trace files if that helps.
+>Fix:
+I guess I could get the clients browser to ignore a certain number of bytes, but the trouble is where should it start and finish?? ( as all bytes are allowed in the normal stream of data )
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Doug Herbert <DougH@tsbbank.co.nz>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_jserv/4908: Apache is adding bytes to large servlet responses,
+ ( > 500 bytes )
+Date: Wed, 25 Aug 1999 23:19:45 -0700 (PDT)
+
+ On 26 Aug 1999, Doug Herbert wrote:
+ 
+ > ie. the following are response frames to the remote client
+ > 
+ > 1st Frame ( from Apache to client )
+ > HTTP/1.1 200 OK
+ > Date ...etc...
+ > 
+ > 2nd Frame
+ > 19\n\rabcdefghijklmnopqrs\n\r
+ > 
+ > 3rd Frame
+ > 7\n\rtuvwxyz\n\r
+ 
+ Is the client making a HTTP/1.1 request?
+ 
+ If so, then this looks a whole lot like a chunked response.  Check the 
+ response headers to see if there is a chunked encoding header.  
+ 
+ If the client makes a 1.1 request, then it must be able to understand 
+ chunked encodings, otherwise it shouldn't make a 1.1. request.
+ 
+
+From: "Doug Herbert" <DougH@tsb.co.nz>
+To: "Marc Slemko" <marcs@znep.com>
+Cc: <apbugs@hyperreal.org>
+Subject: Re: mod_jserv/4908: Apache is adding bytes to large servlet responses,( > 500 bytes )
+Date: Fri, 27 Aug 1999 14:31:45 +1200
+
+ Thanks for your quick response.
+ 
+ Yes, you were right on the mark with your comment and it has helped me
+  heaps ! )  to make some long overdue progress on this problem.
+ 
+ The client is actually a Java applet, which opens an URL connection to a
+ servlet. ( I actually use a https:// connection, which gives me an encrypted
+ path )
+ 
+ After reading up on the transfer-coding value "chunked" and trying
+  unsuccessfully ) to get the remote client to ask for a 1.0 request ( as per
+ your suggestion )  - I still couldn't get rid of this chunked encoding.
+ There seems to be very little documentation on handling this encoding scheme
+ through java applets ( perhaps I could spend some time on this ?? )
+ 
+ Anyway, I then proceeded to include a 'Content-Length' header field, in my
+ servlet response. This removed the 'Transfer-Encoding' field from Apache's
+ response back to the client , though I am not totally confident why this
+ happened.
+ 
+ The main thing though, things are back working again !!  I think from
+ reading the rfc's , you can have either a content-length or
+ transfer-encoding field, but not both. This must have something to do with
+ generating  dynamic HTML.
+ 
+ This 'bug' has been in my servlet code all this time, and I do not know why
+ upgrading to the latter versions of Apache ( 1.3.9 from 1.3.4 ) and JServ
+  1.0 from 0.9.11 ) has caused this to surface. The only thing I can put my
+ finger on , is the frame sizes seem to be smaller, ie around 512 bytes of
+ data per frame.
+ 
+ Where the trace from my old configuration, saw frames of around 1500 bytes
+ being returned to the remote client, as opposed to 3 frames with the newer
+ versions ???
+ 
+ Thanks again
+ 
+ Doug.
+ 
+ 
+ -----Original Message-----
+ From: Marc Slemko <marcs@znep.com>
+ To: Doug Herbert <DougH@tsbbank.co.nz>
+ Cc: apbugs@hyperreal.org <apbugs@hyperreal.org>
+ Date: Thursday, August 26, 1999 6:23 PM
+ Subject: Re: mod_jserv/4908: Apache is adding bytes to large servlet
+ responses,( > 500 bytes )
+ 
+ 
+ >On 26 Aug 1999, Doug Herbert wrote:
+ >
+ >> ie. the following are response frames to the remote client
+ >>
+ >> 1st Frame ( from Apache to client )
+ >> HTTP/1.1 200 OK
+ >> Date ...etc...
+ >>
+ >> 2nd Frame
+ >> 19\n\rabcdefghijklmnopqrs\n\r
+ >>
+ >> 3rd Frame
+ >> 7\n\rtuvwxyz\n\r
+ >
+ >Is the client making a HTTP/1.1 request?
+ >
+ >If so, then this looks a whole lot like a chunked response.  Check the
+ >response headers to see if there is a chunked encoding header.
+ >
+ >If the client makes a 1.1 request, then it must be able to understand
+ >chunked encodings, otherwise it shouldn't make a 1.1. request.
+ >
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

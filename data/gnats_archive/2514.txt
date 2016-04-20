@@ -1,0 +1,113 @@
+Received: (qmail 1945 invoked by uid 2012); 26 Jun 1998 16:17:33 -0000
+Message-Id: <19980626161733.1944.qmail@hyperreal.org>
+Date: 26 Jun 1998 16:17:33 -0000
+From: Phil Radden <pjcr100@cam.ac.uk>
+Reply-To: pjcr100@cam.ac.uk
+To: apbugs@hyperreal.org
+Subject: Internal RewriteMaps (eg. tolower) loop when given null input
+X-Send-Pr-Version: 3.2
+
+>Number:         2514
+>Category:       mod_rewrite
+>Synopsis:       Internal RewriteMaps (eg. tolower) loop when given null input
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jun 26 09:20:01 PDT 1998
+>Last-Modified:  Sat Jul 25 06:12:03 PDT 1998
+>Originator:     pjcr100@cam.ac.uk
+>Organization:
+>Release:        1.3.0
+>Environment:
+(RedHat 5.0) Linux 2.0.35pre1 i686 (GCC 2.7.2.3-8 rpm)
+>Description:
+Using the rewrite rules given in 'How can we repeat this problem?', although a
+request of '/artichoke/hello' redirects to '/artichoke/HELLO', a request of
+'/artichoke' or '/artichoke/' hangs.
+This occurs with tolower and toupper, but not (AFAICS) with prg: maps.
+>How-To-Repeat:
+RewriteMap      uc                              int:toupper
+RewriteRule     ^/artichoke(/(.*)$|$)           /artichoke/${uc:$2}     [R=permanent]
+>Fix:
+
+>Audit-Trail:
+
+From: "Ralf S. Engelschall" <rse@engelschall.com>
+To: pjcr100@cam.ac.uk
+Cc: apbugs@apache.org
+Subject: Re: mod_rewrite/2514: Internal RewriteMaps (eg. tolower) loop when given null input
+Date: Mon, 29 Jun 1998 14:42:18 +0200
+
+ In article <19980626161733.1944.qmail@hyperreal.org> you wrote:
+ 
+ > Using the rewrite rules given in 'How can we repeat this problem?', although a
+ > request of '/artichoke/hello' redirects to '/artichoke/HELLO', a request of
+ > '/artichoke' or '/artichoke/' hangs.
+ > This occurs with tolower and toupper, but not (AFAICS) with prg: maps.
+ >>How-To-Repeat:
+ > RewriteMap      uc                              int:toupper
+ > RewriteRule     ^/artichoke(/(.*)$|$)           /artichoke/${uc:$2}     [R=permanent]
+ 
+ Seems not like a problem related to RewriteMaps. Instead your rules are
+ problematic. Your rules force a loop!
+ 
+ You should either remove the redirect (i.e. translate to upper case only
+ internally) or use a better URL pattern for the RewriteRule which avoids the
+ redirect when the URL already is upper-case. For instance:
+ 
+   RewriteMap      uc            int:toupper
+   RewriteRule     ^/artichoke   /artichoke/   [R]
+   RewriteRule     ^/artichoke/(.*[a-z].*)$    /artichoke/${uc:$1}  [R=permanent]
+ 
+ Greetings,
+                                        Ralf S. Engelschall
+                                        rse@engelschall.com
+                                        www.engelschall.com
+
+From: Phil Radden <pjcr100@cam.ac.uk>
+To: "Ralf S. Engelschall" <rse@engelschall.com>
+Cc: apbugs@apache.org
+Subject: Re: mod_rewrite/2514: Internal RewriteMaps (eg. tolower) loop when given null input
+Date: Mon, 29 Jun 1998 14:52:31 +0100 (BST)
+
+ On Mon, 29 Jun 1998, Ralf S. Engelschall wrote:
+ > Seems not like a problem related to RewriteMaps. Instead your rules are
+ > problematic. Your rules force a loop!
+ > 
+ > You should either remove the redirect (i.e. translate to upper case only
+ > internally) or use a better URL pattern for the RewriteRule which avoids the
+ > redirect when the URL already is upper-case.
+ 
+ Please forgive me if I'm misunderstanding this, but there is still an
+ _internal_ loop with the null request.  Consider the two requests
+ '/artichoke/HELLO' and '/artichoke/' - both of which would be loops as far
+ as the browser is concerned.  The first results in a redirect to the same
+ address.  However, the second results in a hanging request, no response sent
+ to the browser, and a child process which sits in a tight loop consuming CPU
+ until the parent httpd is TERMed.
+ 
+ [OK, the rules don't make a great deal of sense on their own, but I actually
+ hit this using similar rules in the midst of a big pile, moving a hierarchy
+ from one location to another and rewriting every file and directory name en
+ route.  Don't ask...!]
+ 
+ Cheers
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: rse
+State-Changed-When: Sat Jul 25 06:12:02 PDT 1998
+State-Changed-Why:
+Seems definetely like a loop in his rewrite rules.
+I cannot  reproduce any loops myself.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

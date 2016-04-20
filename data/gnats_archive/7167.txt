@@ -1,0 +1,125 @@
+Received: (qmail 7894 invoked by uid 501); 31 Jan 2001 16:41:17 -0000
+Message-Id: <20010131164117.7893.qmail@apache.org>
+Date: 31 Jan 2001 16:41:17 -0000
+From: Mark A.Horstman <mark.horstman@sbc.com>
+Reply-To: mark.horstman@sbc.com
+To: submit@bugz.apache.org
+Subject: extra path information and the end of a URL is causing relative paths within the document to be wrong
+X-Send-Pr-Version: 3.110
+
+>Number:         7167
+>Category:       general
+>Synopsis:       extra path information and the end of a URL is causing relative paths within the document to be wrong
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan 31 08:50:01 PST 2001
+>Closed-Date:    Thu Feb 01 01:34:21 PST 2001
+>Last-Modified:  Thu Feb  1 07:30:03 PST 2001
+>Originator:     mark.horstman@sbc.com
+>Release:        1.3.17
+>Organization:
+>Environment:
+SunOS sarek 5.6 Generic_105181-21 sun4u sparc SUNW,Ultra-2
+cc: WorkShop Compilers 5.0 98/12/15 C 5.0
+Apache/1.3.17 (Unix) mod_perl/1.25
+>Description:
+directory structure:
+	/images/test.gif
+	/foo/bar.html
+
+bar.html source:
+	<HTML>
+		<HEAD><TITLE>foobar</TITLD></HEAD>
+		<BODY><IMG SRC="../images/test.gif></BODY>
+	</HTML>
+
+
+http://server/foo/bar.html
+	bar.html is displayed, image is displayed
+
+access.log entry:
+	[31/Jan/2001:10:24:14 -0600] "GET /foo/bar.html HTTP/1.1" 200 121
+	[31/Jan/2001:10:24:14 -0600] "GET /images/test.gif HTTP/1.1" 304 -
+
+http://server/foo/bar.html/glitch
+	bar.html is displayed, image is not displayed
+
+access.log entry:
+	[31/Jan/2001:10:24:19 -0600] "GET /foo/bar.html/glitch HTTP/1.1" 200 121
+	[31/Jan/2001:10:24:19 -0600] "GET /foo/images/test.gif HTTP/1.1" 404 308
+
+If the server can figure out where/what the real document is (/foo/bar.html), shouldn't it be be able to resolve relative paths correctly?
+>How-To-Repeat:
+see full description.
+
+Sbehaviour was observed on Apache/1.3.14 (Unix) mod_perl/1.24.
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: fanf
+State-Changed-When: Thu Feb  1 01:34:20 PST 2001
+State-Changed-Why:
+The problem is that although the first (incorrect) URL works
+because of coincidental details of your configuration,
+when the browser works out the image URL it produces a URL
+that does not. The only solution is to avoid incorrect URLs.
+Thanks for using Apache!
+
+From: Tony Finch <fanf@apache.org>
+To: "HORSTMAN, MARK A (SBCSI)" <mh2620@sbc.com>
+Cc: apbugs@Apache.Org
+Subject: Re: general/7167: extra path information and the end of a URL is caus ing relative paths within the document to be wrong
+Date: Thu, 1 Feb 2001 15:24:04 +0000
+
+ "HORSTMAN, MARK A (SBCSI)" <mh2620@sbc.com> wrote:
+ >
+ >http://127.0.0.1/foo/bar.html/glitch
+ >	Displays bar.html without the image, just a place-holder.
+ >access.log:
+ >	[01/Feb/2001:08:45:33 -0600] "GET /foo/bar.html/glitch HTTP/1.1" 200 108
+ 
+ that is slightly wrong
+ 
+ >	[01/Feb/2001:08:45:33 -0600] "GET /foo/images/test.gif HTTP/1.1" 404 300
+ 
+ that is totally wrong
+ 
+ >If the server knows which part of the URL is the actual document path 
+ >(it does display the document) and which part is extra path information, 
+ >shouldn't it be able to determine relative paths? 
+ 
+ no, the browser resolves the relative path by taking
+ /foo/bar.html/glitch and replacing glitch with ../images/test.gif to
+ get /foo/bar.html/../images/test.gif then resolving the .. to get
+ /foo/images/test.gif with which the server doesn't know what to do.
+ 
+ Tony.
+ -- 
+ f.a.n.finch    fanf@covalent.net    dot@dotat.at
+ " ``Well, let's go down and find out who's grave it is.''
+ ``How?''  ``By going down and finding out!'' "
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

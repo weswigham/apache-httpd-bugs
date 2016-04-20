@@ -1,0 +1,234 @@
+Received: (qmail 45696 invoked by uid 501); 21 Nov 2001 16:30:38 -0000
+Message-Id: <20011121163038.45695.qmail@apache.org>
+Date: 21 Nov 2001 16:30:38 -0000
+From: William L.Sebok <wls@astro.umd.edu>
+Reply-To: wls@astro.umd.edu
+To: submit@bugz.apache.org
+Subject: Threaded mpm creates large number of processes.
+X-Send-Pr-Version: 3.110
+
+>Number:         8826
+>Category:       general
+>Synopsis:       Threaded mpm creates large number of processes.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Nov 21 08:40:00 PST 2001
+>Closed-Date:    
+>Last-Modified:  Wed Nov 21 09:50:00 PST 2001
+>Originator:     wls@astro.umd.edu
+>Release:        2.0.28
+>Organization:
+>Environment:
+Mandrake 8.0.  gcc-2.96
+% uname -a
+Linux gaia.astro.umd.edu 2.4.13-p3 #1 Wed Oct 24 11:25:57 EDT 2001 i686 unknown
+Configured with:
+CFLAGS="-O3 -march=i686" \
+ ./configure \
+ --prefix=/local/etc/www \
+ --with-perl=/usr/bin/perl \
+ --enable-mods-shared=all \
+ --with-mpm=perchild
+>Description:
+I started with the standard httpd-std.conf copied to httpd.conf.  The relevant
+parameters were:
+<IfModule threaded.c>
+StartServers         3
+MaxClients         150
+MinSpareThreads     25
+MaxSpareThreads     75
+ThreadsPerChild     25
+MaxRequestsPerChild  0
+</IfModule>
+83 processes are created.
+When (keeping other parameters the same) I reduce START_SERVERS to 1, 29
+processes are created.
+
+I was under the impression that the Threaded mpm would create a small number
+of processes and field requests with threads inside those processes.  Instead
+it creates a very large number of processes more than prefork mpm.  This makes
+threaded mode essentially useless for a small server where I would like to keep
+the number of processes as small as possible.
+
+I noticed similar behavior in worker mpm.  perchild mpm would not compile.  Is
+why preforked mpm is currently default for linux?
+>How-To-Repeat:
+See above.
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Wed Nov 21 08:48:38 PST 2001
+State-Changed-Why:
+Threads show up in ps on Linux in a very similar way to processes.  That's just the way Linux is, nothing to do with Apache...
+Comment-Added-By: trawick
+Comment-Added-When: Wed Nov 21 09:29:35 PST 2001
+Comment-Added:
+Here is some more info about Linux ps and how to distinguish between processes and threads...
+
+Try 
+ps ax -O ppid,flags,wchan | grep httpd
+
+A "process" with "rt_sig" in the 4th column is actually a
+thread and not a process in its own right.
+
+Also, threads will list their owning process in the ppid
+column (2, in this example).
+
+
+From: wls@astro.umd.edu
+To: apache-bugdb@apache.org, marc@apache.org
+Cc: apbugs@apache.org
+Subject: Re: general/8826: Threaded mpm creates large number of processes.
+Date: Wed, 21 Nov 2001 12:28:53 -0500 (EST)
+
+ > Threads show up in ps on Linux in a very similar way to processes.  That's just the way Linux is, nothing to do with Apache...
+ 
+ In this case the PID's are all different. That looks like different processes
+ to me, rather than multiple threads inside a process. This is the output of
+ "ps wwalx" with
+ 	StartServers 	     1
+ 	MaxClients         150
+ 	MinSpareThreads     25
+ 	MaxSpareThreads     75 
+ 	ThreadsPerChild     25
+ 	MaxRequestsPerChild  0
+ edited to just show httpd processes:
+ 
+ gaia.astro.umd.edu# ps wwalx
+   F   UID   PID  PPID PRI  NI   VSZ  RSS WCHAN  STAT TTY        TIME COMMAND
+ 140     0 17116     1   9   0  4060 2304 do_sel S    pts/2      0:00 /local/etc/www/bin/httpd
+ 140    99 17117 17116   9   0  3956 2196 wait_f S    pts/2      0:00 /local/etc/www/bin/httpd
+ 140    99 17118 17116   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17119 17118   8   0 57788 2680 do_pol S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17121 17119   9   0 57788 2680 do_pol S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17122 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17123 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17124 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17125 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17126 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17127 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17128 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17129 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17130 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17131 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17132 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17133 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17134 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17135 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17136 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17137 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17138 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17139 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17140 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17141 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17142 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17143 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17144 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 040    99 17145 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ 
+ Bill Sebok      Computer Software Manager, Univ. of Maryland, Astronomy
+ 	Internet: wls@astro.umd.edu	URL: http://www.astro.umd.edu/~wls/
+Comment-Added-By: trawick
+Comment-Added-When: Wed Nov 21 09:36:56 PST 2001
+Comment-Added:
+I realize it seems strange for threads to be listed with separate pids, but that's just the way it is with Linux.
+Hacks are even required in the source code to deal with this.
+
+This is an intentional design on the part of the Linux kernel folks, so it is unlikely to change.  Certainly
+it is not an Apache issue.  We can only do what is required
+internally to ensure that it doesn't confuse the code.
+
+
+From: Marc Slemko <marcs@znep.com>
+To: wls@astro.umd.edu
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: general/8826: Threaded mpm creates large number of processes.
+Date: Wed, 21 Nov 2001 09:44:03 -0800 (PST)
+
+ On Wed, 21 Nov 2001 wls@astro.umd.edu wrote:
+ 
+ > > Threads show up in ps on Linux in a very similar way to processes.  That's just the way Linux is, nothing to do with Apache...
+ > 
+ > In this case the PID's are all different. That looks like different processes
+ 
+ Threads show up in ps on Linux in a very similar way to processes.
+ 
+ What more can I say!?!?
+ 
+ If you don't like how Linux does this, then don't use it... or do a quick
+ web search on the issue, and I'm sure you can find thousands of
+ discussions of what Linux does and why they think it is the right thing to
+ do, and why many many other people disagree.
+ 
+ > to me, rather than multiple threads inside a process. This is the output of
+ > "ps wwalx" with
+ > 	StartServers 	     1
+ > 	MaxClients         150
+ > 	MinSpareThreads     25
+ > 	MaxSpareThreads     75 
+ > 	ThreadsPerChild     25
+ > 	MaxRequestsPerChild  0
+ > edited to just show httpd processes:
+ > 
+ > gaia.astro.umd.edu# ps wwalx
+ >   F   UID   PID  PPID PRI  NI   VSZ  RSS WCHAN  STAT TTY        TIME COMMAND
+ > 140     0 17116     1   9   0  4060 2304 do_sel S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 140    99 17117 17116   9   0  3956 2196 wait_f S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 140    99 17118 17116   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17119 17118   8   0 57788 2680 do_pol S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17121 17119   9   0 57788 2680 do_pol S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17122 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17123 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17124 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17125 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17126 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17127 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17128 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17129 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17130 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17131 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17132 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17133 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17134 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17135 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17136 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17137 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17138 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17139 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17140 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17141 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17142 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17143 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17144 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 040    99 17145 17119   9   0 57788 2680 rt_sig S    pts/2      0:00 /local/etc/www/bin/httpd
+ > 
+ > Bill Sebok      Computer Software Manager, Univ. of Maryland, Astronomy
+ > 	Internet: wls@astro.umd.edu	URL: http://www.astro.umd.edu/~wls/
+ > 
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

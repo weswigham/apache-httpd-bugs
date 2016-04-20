@@ -1,0 +1,144 @@
+From nobody@hyperreal.com  Wed Jun 11 11:12:26 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id LAA17916;
+	Wed, 11 Jun 1997 11:12:26 -0700 (PDT)
+Message-Id: <199706111812.LAA17916@hyperreal.com>
+Date: Wed, 11 Jun 1997 11:12:26 -0700 (PDT)
+From: Mark Everett <sasmte@unx.sas.com>
+Reply-To: sasmte@unx.sas.com
+To: apbugs@hyperreal.com
+Subject: Fatal make errors for Apache v1.2.0 under Solaris v2.6
+X-Send-Pr-Version: 3.2
+
+>Number:         720
+>Category:       config
+>Synopsis:       Fatal make errors for Apache v1.2.0 under Solaris v2.6
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jun 11 11:20:00 1997
+>Last-Modified:  Sat Jun 28 16:13:12 PDT 1997
+>Originator:     sasmte@unx.sas.com
+>Organization:
+>Release:        1.2.0
+>Environment:
+booker[480]$ uname -a
+SunOS booker 5.6 Beta_Update sun4u sparc SUNW,Ultra-Enterprise
+booker[481]$ showrev | grep version  
+Kernel version: SunOS 5.6 Beta Update August 1997
+
+cc and gcc
+>Description:
+make error under cc:
+====================
+
+All modifications to Configuration file (1):
+CC=cc
+Module status_module       mod_status.o
+Module info_module         mod_info.o
+
+
+booker[394]$ Configure
+Using config file: Configuration
+Using Makefile template file: Makefile.tmpl
+ + configured for Solaris 2 platform
+ + setting C compiler optimization-level to -O2
+
+booker[395]$ make
+cc -c -Iregex  -O2 -DSOLARIS2 -DSTATUS   alloc.c
+"alloc.c", line 408: va_start: argument mismatch
+"alloc.c", line 422: va_start: argument mismatch
+"alloc.c", line 685: va_start: argument mismatch
+cc -c -Iregex  -O2 -DSOLARIS2 -DSTATUS   http_main.c
+cc -c -Iregex  -O2 -DSOLARIS2 -DSTATUS   http_core.c
+"http_core.c", line 1027: undefined symbol: rlim_t
+"http_core.c", line 1027: syntax error before or at: cur
+"http_core.c", line 1041: undefined symbol: cur
+"http_core.c", line 1050: undefined symbol: max
+*** Error code 2
+make: Fatal error: Command failed for target `http_core.o'
+
+
+make error under gcc:
+=====================
+
+All modifications to Configuration file:
+EXTRA_CFLAGS=-Wall
+CC=gcc
+Module status_module       mod_status.o
+Module info_module         mod_info.o
+
+
+booker[403]$ Configure
+Using config file: Configuration
+Using Makefile template file: Makefile.tmpl
+ + configured for Solaris 2 platform
+ + setting C compiler optimization-level to -O2
+
+booker[404]$ make
+gcc -c -Iregex  -O2 -DSOLARIS2 -DSTATUS -Wall  alloc.c
+In file included from conf.h:59,
+                 from alloc.c:61:
+/usr/local/lib/gcc-lib/sparc-sun-solaris2.5.1/2.7.2.2/include/sys/param.h:187: w
+arning: `NBBY' redefined
+/usr/include/sys/select.h:45: warning: this is the location of the previous defi
+nition
+In file included from /usr/include/sys/stream.h:26,
+                 from /usr/include/netinet/in.h:38,
+                 from conf.h:568,
+                 from alloc.c:61:
+/usr/include/sys/model.h:32: #error "No DATAMODEL_NATIVE specified"
+*** Error code 1
+make: Fatal error: Command failed for target `alloc.o'
+>How-To-Repeat:
+Using the listed Configuration attributes under Solaris v2.6
+>Fix:
+Removing the second variable from va_start in alloc.c eliminates the 
+va_start argument mismatch errors.  
+
+For example:
+booker[501]$ diff alloc.c alloc.c.ORIG
+408c408
+<   va_start (adummy);
+---
+>   va_start (adummy, a);
+422c422
+<   va_start (adummy);
+---
+>   va_start (adummy, a);
+685c685
+<     va_start(vp);
+---
+>     va_start(vp, t);
+
+
+Lines 65-73 in /usr/include/varargs:
+====================================
+/*
+ * PowerPC uses an actual support routine (__va_arg) in libsys.  See
+ * the PowerPC Processor Specific ABI for details.  __va_arg is a private
+ * system interface to only be accessed through the va_arg macro.
+ */
+extern void __builtin_va_info(va_list);
+extern void *__va_arg(va_list, ...);
+#define va_start(list)          __builtin_va_info(list)
+#define va_arg(list, mode)      ((mode *)__va_arg(list, (mode *) 0))[0]
+
+#else   /* defined(__ppc) */
+
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Jun 28 16:13:12 PDT 1997
+State-Changed-Why:
+Dup of 719.
+
+Dean
+>Unformatted:
+
+

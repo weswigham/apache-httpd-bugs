@@ -1,0 +1,113 @@
+Received: (qmail 26948 invoked by uid 2012); 6 Nov 1997 22:44:08 -0000
+Message-Id: <19971106224408.26947.qmail@hyperreal.org>
+Date: 6 Nov 1997 22:44:08 -0000
+From: Scott J.Ellentuch <ttsg@ttsg.com>
+Reply-To: ttsg@ttsg.com
+To: apbugs@hyperreal.org
+Subject: Server stops servicing requests when log disk is full
+X-Send-Pr-Version: 3.2
+
+>Number:         1376
+>Category:       general
+>Synopsis:       Server stops servicing requests when log disk is full
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Nov  6 14:50:00 PST 1997
+>Last-Modified:  Sun Nov  9 07:10:00 PST 1997
+>Originator:     ttsg@ttsg.com
+>Organization:
+>Release:        1.2.4
+>Environment:
+OS: BSDI 3.0
+Patches: Up to M300-034
+Compiler: Standard BSDI
+>Description:
+After the disk that the logs go to fills up, Apache stops serving pages correctly.
+>How-To-Repeat:
+1) Fill log disk
+2) Request page, most likely it will just close the connection
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Sat Nov  8 14:24:14 PST 1997
+State-Changed-Why:
+I can't reproduce this with a 1.3 server, and I doubt there
+were any related changes between 1.2 and 1.3.  You'll have to
+do a bit more digging for us.  My suspicion is that you've got
+a CGI which doesn't like having the disk full, and the CGI
+is causing problems.  If you can get back to a disk full
+situation and get the server into this problem then what
+would be nice is:
+
+- ps -auxww | grep httpd
+- run ktrace against a few of the httpd children to see what
+  they're doing
+- see if you've got any CGIs hanging around
+
+Thanks
+Dean
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sun Nov  9 01:14:32 PST 1997
+State-Changed-Why:
+Error caused by external program blocking and not reading
+its input.  Note even the new 1.3 code for reliable piped
+logging can't work around this -- the logger has to read
+its input religiously.
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: TTSG <ttsg@ttsg.com>
+Cc: andrew@icarus.demon.co.uk, apbugs@apache.org
+Subject: Re: general/1376: Server stops servicing requests when log disk is full
+Date: Sun, 9 Nov 1997 01:13:23 -0800 (PST)
+
+ On Sat, 8 Nov 1997, TTSG wrote:
+ 
+ > TransferLog "|/usr/local/bin/cronolog /usr/local/etc/httpd/logs/%Y%m%d/access.log"
+ 
+ Ah, that pretty much explains it.  There is a 4k pipe buffer, when it's
+ full all tasks writing the pipe are blocked.  My guess is that cronolog is
+ not reading its input when the disk is full.  You'll have to get cronolog
+ fixed -- it has to continue reading its input even when the disk is full. 
+ 
+ Dean
+ 
+ 
+
+From: TTSG <ttsg@ttsg.com>
+To: dgaudet@arctic.org (Dean Gaudet)
+Cc: andrew@icarus.demon.co.uk, apbugs@apache.org
+Subject: Re: general/1376: Server stops servicing requests when log disk is full
+Date: Sun, 9 Nov 1997 09:53:51 -0500 (EST)
+
+ > 
+ > On Sat, 8 Nov 1997, TTSG wrote:
+ > 
+ > > TransferLog "|/usr/local/bin/cronolog /usr/local/etc/httpd/logs/%Y%m%d/access.log"
+ > 
+ > Ah, that pretty much explains it.  There is a 4k pipe buffer, when it's
+ > full all tasks writing the pipe are blocked.  My guess is that cronolog is
+ > not reading its input when the disk is full.  You'll have to get cronolog
+ > fixed -- it has to continue reading its input even when the disk is full. 
+ > 
+ 	Ok Dean, thanks. I didn't see this before I wrote the other one.
+ This explains it completely.  Thanks.
+ 
+ 	Andrew, is there something you can do if the disk is full to just
+ /dev/null the output until its time to rotate the logs.  Then if there is
+ room free at that time continue, else /dev/null it again?  
+ 
+ 	Thanks Dean and Andrew.
+ 
+ 			Tuc/TTSG
+>Unformatted:
+

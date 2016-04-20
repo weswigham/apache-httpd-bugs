@@ -1,0 +1,98 @@
+Received: (qmail 1554 invoked by uid 2012); 26 Feb 1999 11:46:57 -0000
+Message-Id: <19990226114657.1553.qmail@hyperreal.org>
+Date: 26 Feb 1999 11:46:57 -0000
+From: Arjan Peddemors <arjan@wins.uva.nl>
+Reply-To: arjan@wins.uva.nl
+To: apbugs@hyperreal.org
+Subject: Apache API: mime type not determined for non-existing file
+X-Send-Pr-Version: 3.2
+
+>Number:         3974
+>Category:       apache-api
+>Synopsis:       Apache API: mime type not determined for non-existing file
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Feb 26 03:50:01 PST 1999
+>Last-Modified:  Tue Apr 20 15:58:00 PDT 1999
+>Originator:     arjan@wins.uva.nl
+>Organization:
+>Release:        1.3.4
+>Environment:
+SunOS arches16 5.6 Generic_105182-10 i86pc i386 i86pc
+cc: WorkShop Compilers 4.2 30 Oct 1996 C 4.2
+Using DSO
+>Description:
+If a client request with a certain URI, say http://myhost/test/test.html,
+translates into a file that does not exist under the doucment root, the
+mime type of this non-existing file is not determined. Normally, this is
+not a problem, because if a file does not exist you cannot return it, so
+it's not necessary to indicate a mime type. My module, however, is fetching
+the data from somewhere else, not from the local filesystem. At the same
+time, the module would like the server core to determine the mime type.
+The handler in the module receives a request_req (r) in which r->content_type
+is set to NULL and the r->filename is set to something like <doc_root>/test
+i.s.o. <doc_root>/test/test.html as I would expect.
+>How-To-Repeat:
+Write a small test module that defines a handler for all mime types
+("*/*"). Check the request_rec argument of the handler when trying to
+fetch a non-existing object.
+>Fix:
+In http_request.c, you already indicate that you would like to determine
+the mime type, even if the file does not exist:
+>    /*
+>     * Are we dealing with a file? If not, we can (hopefuly) safely assume we
+>     * have a handler that doesn't require one, but for safety's sake, and so
+>     * we have something find_types() can get something out of, fake one. But
+>     * don't run through the directory entries.
+>     */
+>
+>    if (r->filename == NULL) {
+>        r->filename = ap_pstrdup(r->pool, r->uri);
+>        r->finfo.st_mode = 0;   /* Not really a file... */
+>        r->per_dir_config = per_dir_defaults;
+>
+>        return OK;
+>    }
+
+This does not seem to work for this specific situation (r->filename
+is not NULL).
+
+A workaround for the handler in my module, without having to change the
+server core, looks like this:
+>  tmp = r->filename;
+>  r->filename = r->uri;
+>  mime_module->type_checker(r);
+>  r->filename = tmp;
+
+During initialization, a pointer to the mime module is obtained by doing:
+>  mime_module = ap_find_linked_module("mod_mime.c");
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 15:57:59 PDT 1999
+State-Changed-Why:
+The proper way for such a module to work is that it has to
+set up r->filename, and it has to set up r->finfo.  Use
+whatever makes sense.  You can dig around and see how some
+of the standard modules do it -- modules/experimental/mod_mmap_static
+is an example module which gets all its files from "somewhere
+else" (in its case it gets them from memory).
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

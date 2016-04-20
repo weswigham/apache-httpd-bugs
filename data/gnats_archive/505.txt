@@ -1,0 +1,129 @@
+From nobody@hyperreal.com  Tue Apr 29 08:20:31 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id IAA02293;
+	Tue, 29 Apr 1997 08:20:31 -0700 (PDT)
+Message-Id: <199704291520.IAA02293@hyperreal.com>
+Date: Tue, 29 Apr 1997 08:20:31 -0700 (PDT)
+From: Rick Ohnemus <rick@ecompcon.com>
+Reply-To: rick@ecompcon.com
+To: apbugs@hyperreal.com
+Subject: proxy ftp does not work with anonftpd server by D. J. Bernstein
+X-Send-Pr-Version: 3.2
+
+>Number:         505
+>Category:       mod_proxy
+>Synopsis:       proxy ftp does not work with anonftpd server by D. J. Bernstein
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Apr 29 08:30:01 1997
+>Last-Modified:  Wed May 20 20:38:59 PDT 1998
+>Originator:     rick@ecompcon.com
+>Organization:
+>Release:        1.2b10
+>Environment:
+any
+>Description:
+proxy ftp hangs while attempting to connect to a system running the anonftpd
+server written by D. J. Bernstein. The problem is that proxy_ftp.c is not RFC
+1123 compliant. anonftpd responds to the PASV command with
+'227 =128,248,178,247,142,64'. proxy_ftp.c is expecting a response containing
+parentheses (e.g. '227 Entering Passive Mode (h1,h2,h3,h4,p1,p2).' This causes
+the server to be in passive mode but the ftp proxy assumes the PASV command
+failed because the parentheses are not found.
+
+From RFC 1123, section 4.1.2.6 (page 31):
+
+                 The format of the 227 reply to a PASV command is not
+                 well standardized.  In particular, an FTP client cannot
+                 assume that the parentheses shown on page 40 of RFC-959
+                 will be present (and in fact, Figure 3 on page 43 omits
+                 them).  Therefore, a User-FTP program that interprets
+                 the PASV reply must scan the reply for the first digit
+                 of the host and port numbers.
+>How-To-Repeat:
+Connect to ftp://koobera.math.uic.edu/www/qmail.html through the apache ftp
+proxy
+>Fix:
+The patch below fixes the problem with anonftpd servers. It is not a general
+fix. The correct fix is to scan for the six comma separated numbers in the 227
+response.
+
+--- proxy_ftp.c.DIST    Tue Apr 29 10:07:26 1997
++++ proxy_ftp.c Tue Apr 29 09:46:18 1997
+@@ -694,9 +694,14 @@
+        if (pstr != NULL)
+        {
+            presult = atoi(pstr);
+-           pstr = strtok(NULL, "(");   /* separate address & port params */
+-           if (pstr != NULL)
+-               pstr = strtok(NULL, ")");
++           if (*(pstr + strlen(pstr) + 1) == '=')
++               pstr += strlen(pstr) + 2;
++           else
++           {
++               pstr = strtok(NULL, "(");  /* separate address & port params */
++               if (pstr != NULL)
++                   pstr = strtok(NULL, ")");
++           }
+        }
+        else
+            presult = atoi(pasv);%0
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: chuck
+State-Changed-When: Wed May 14 20:20:12 PDT 1997
+State-Changed-Why:
+Thanks for the report. We'll try to cover this ambiguity
+in RFC 959 in time for 1.2 release; if not, we'll have to
+get this in 1.2.1
+Release-Changed-From-To: apache_1.2b10-1.2b10
+Release-Changed-By: coar
+Release-Changed-When: Thu Jan 22 08:41:13 PST 1998
+State-Changed-From-To: suspended-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Feb 23 03:36:50 PST 1998
+State-Changed-Why:
+If this bug is still around it should be fixed.
+
+From: Rick Ohnemus <rick@pigasus.ecompcon.com>
+To: dgaudet@hyperreal.org
+Cc: apbugs@Apache.Org
+Subject: Re: mod_proxy/505: proxy ftp does not work with anonftpd server by D. J. Bernstein
+Date: Tue, 24 Feb 1998 06:34:03 -0600
+
+ This bug is still there. The patch is the same, it is just offset by
+ a few lines.
+ 
+ On Mon, Feb 23, 1998 at 11:36:50AM -0000, dgaudet@hyperreal.org wrote:
+ > [In order for any reply to be added to the PR database, ]
+ > [you need to include <apbugs@Apache.Org> in the Cc line ]
+ > [and leave the subject line UNCHANGED.  This is not done]
+ > [automatically because of the potential for mail loops. ]
+ > 
+ > 
+ > Synopsis: proxy ftp does not work with anonftpd server by D. J. Bernstein
+ > 
+ > State-Changed-From-To: suspended-analyzed
+ > State-Changed-By: dgaudet
+ > State-Changed-When: Mon Feb 23 03:36:50 PST 1998
+ > State-Changed-Why:
+ > If this bug is still around it should be fixed.
+ > 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: brian
+State-Changed-When: Wed May 20 20:38:59 PDT 1998
+State-Changed-Why:
+Thank you - your patch has been applied to the 1.3 code base,
+and you've been given credit in our CHANGES file.  If we roll
+another 1.2.x release we may put this in as well, but we're
+targeting our next 1.3 release as a release candidate for our
+new stable platform.  Thanks again, and sorry for the delay.
+
+>Unformatted:
+
+

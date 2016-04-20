@@ -1,0 +1,91 @@
+Received: (qmail 21142 invoked by uid 2012); 23 Oct 1998 21:02:45 -0000
+Message-Id: <19981023210245.21141.qmail@hyperreal.org>
+Date: 23 Oct 1998 21:02:45 -0000
+From: Phillip Vandry <vandry@Mlink.NET>
+Reply-To: vandry@Mlink.NET
+To: apbugs@hyperreal.org
+Subject: ap_bwrite bug with large writes?
+X-Send-Pr-Version: 3.2
+
+>Number:         3282
+>Category:       protocol
+>Synopsis:       ap_bwrite bug with large writes?
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Oct 23 14:10:00 PDT 1998
+>Last-Modified:  Tue Apr 20 09:48:36 PDT 1999
+>Originator:     vandry@Mlink.NET
+>Organization:
+>Release:        1.3.3
+>Environment:
+Solaris 2.6 gcc 2.8.1
+>Description:
+#0  0x43764 in ap_reset_timeout (r=0x128410) at http_main.c:1101
+#1  0x495d4 in ap_send_mmap (mm=0xef470000, r=0x128410, offset=0, length=29055) at http_protocol.c:1825
+#2  0x42494 in default_handler (r=0x128410) at http_core.c:2229
+#3  0x3ce48 in ap_invoke_handler (r=0x128410) at http_config.c:515
+#4  0x4bae4 in process_request_internal (r=0x128410) at http_request.c:1174
+#5  0x4bb28 in ap_process_request (r=0x128410) at http_request.c:1191
+#6  0x457d4 in child_main (child_num_arg=899720) at http_main.c:3623
+#7  0x459fc in make_child (s=0xc3e60, slot=3, now=909176190) at http_main.c:3743
+#8  0x45d04 in perform_idle_server_maintenance () at http_main.c:3898
+#9  0x46190 in standalone_main (argc=772096, argv=0x99f40) at http_main.c:4126
+#10 0x46700 in main (argc=3, argv=0xeffff8bc) at http_main.c:4305
+>How-To-Repeat:
+Any large file (it will get written in a single big chunk if mmap() is being used)
+>Fix:
+In 1.3.3's buff.c in ap_bwrite() around line 1251, there is a loop that looks
+like this:
+
+while (there is data in the outgoing buffer) {
+    fill it up if it's not already full
+    write it out
+    empty the buffer
+}
+
+The problem is that, if the write is not partial (the usual case), the buffer
+will always be empty at the end of the loop and the loop will only execute
+once.
+
+Later, at line 1329, any remaining data to be written will be copied to the
+buffer. If there is more than one buffer size's worth of data still to be
+read, the memcpy() will overrun the buffer and corrupt memory!!!
+
+Solution: The loop should execute as many times as necesary to bring the
+value of "nbyte" down below fb->bufsiz by changing the loop condition from:
+
+while (fb->outcnt > 0)
+
+to
+
+while ((fb->outcnt > 0) || (nbyte))
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 09:48:35 PDT 1999
+State-Changed-Why:
+Nope, if you look at the loop right below the one you mentioned
+it writes directly from the user supplied buffer rather than
+copying the bytes around.  Your change would cause all the
+bytes to be copied.
+
+But thanks for looking :)
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

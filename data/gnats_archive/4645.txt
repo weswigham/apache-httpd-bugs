@@ -1,0 +1,219 @@
+Received: (qmail 26430 invoked by uid 2012); 24 Jun 1999 20:15:49 -0000
+Message-Id: <19990624201549.26429.qmail@hyperreal.org>
+Date: 24 Jun 1999 20:15:49 -0000
+From: Philip Brown <phil@bolthole.com>
+Reply-To: phil@bolthole.com
+To: apbugs@hyperreal.org
+Subject: DSO basically just doesn't work.
+X-Send-Pr-Version: 3.2
+
+>Number:         4645
+>Category:       os-solaris
+>Synopsis:       DSO basically just doesn't work.
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          mistaken
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jun 24 13:20:01 PDT 1999
+>Last-Modified:  Mon Jun 28 08:26:49 PDT 1999
+>Originator:     phil@bolthole.com
+>Organization:
+>Release:        1.3.6
+>Environment:
+This is on solaris 7, using gcc 2.8.1
+However, sounds like it might apply to any version of solaris
+>Description:
+[This is slightly modified, so linenumbers in load_module are off. But
+ it is the same error as an untouched source]
+
+Program received signal SIGSEGV, Segmentation fault.
+0xef650408 in strrchr ()
+(gdb) bt
+#0  0xef650408 in strrchr ()
+#1  0x1fa24 in ap_add_module (m=0x764a0) at http_config.c:573
+#2  0x1fbc4 in ap_add_loaded_module (mod=0x764a0) at http_config.c:637
+#3  0x17e50 in load_module (cmd=0xeffffc28, dummy=0x0, 
+    modname=0x6ebb0 "env_module", filename=0x6ebc0 "libexec/mod_env.so")
+    at mod_so.c:288
+#4  0x203b0 in invoke_cmd (cmd=0x4e6e8, parms=0xeffffc28, mconfig=0x0, 
+    args=0xefffdb60 "") at http_config.c:817
+#5  0x21120 in ap_handle_command (parms=0xeffffc28, config=0x6e898, 
+    l=0xefffdb30 "LoadModule env_module         libexec/mod_env.so")
+    at http_config.c:1000
+#6  0x211f4 in ap_srm_command_loop (parms=0xeffffc28, config=0x6e898)
+    at http_config.c:1013
+#7  0x21930 in ap_process_resource_config (s=0x6e368, 
+    fname=0x6ea20 "/usr/local/apache/conf/httpd.conf", p=0x6e340, 
+    ptemp=0x70358) at http_config.c:1193
+#8  0x22510 in ap_read_config (p=0x6e340, ptemp=0x70358, 
+    confname=0x681ac "conf/httpd.conf") at http_config.c:1472
+#9  0x3089c in main (argc=1, argv=0xeffffdfc) at http_main.c:4574
+
+
+This is basically more details on bug ids 3189 and 4442. Note that both of
+those are also under solaris.
+>How-To-Repeat:
+Try using DSO on solaris. And see sample source ftp:// in next section.
+
+PS for 4442; for some reason, you sometimes get ap_palloc errors after using 
+apxs to copy the .so, but if you try using dlopen on the raw .so file,
+it works better.
+>Fix:
+There seems to be a problem with the way gcc [and possibly other compilers,
+given bugID 3189]
+handle strings, embedded in structs, in shared libraries.
+Basically, they DON'T.
+
+In other words, you apparently CANNOT USE
+
+struct blah {
+    int i=1;
+    char label="xxx";
+}
+
+by itself in a dynamic library, and assume the char string gets set properly.
+It just doesn't work.
+[possibly a bug in sun 'as' ?]
+
+I've written some sample source, at
+ftp://ftp.bolthole.com/pub/apachetest.c
+
+It demonstrates that you cannot use the current DSO methods with solaris.
+[without finding some magic compile switch, anyhow]
+
+It also shows that accessing simple 'char string[]="abcde"' DOES work
+with solaris shared objects, still.
+
+Basically, I think your whole proceedure of DSO loading/naming is horrible
+anyway, and should be changed. I think it would work better if the server<->lib
+interface was for the server to call some function   lib::setupstruct()
+and pass in a server-allocated structure to setupstruct()
+This should fix the issue with solaris shared libs.
+
+Furthermore, under solaris at least, you can always have the init function be
+the SAME NAME. So instead of that disgusting double-init stuff in httpd.conf,
+you could just have
+
+LoadModule  /path/to/module/here
+
+and everything else would be automatic.
+
+again, I have sample source to prove this works [at least under solaris]
+ftp://ftp.bolthole.com/pub/apacheinit.c
+
+
+Yes, this would mean major changes. But I think it is the Right Thing To Do.
+All this just goes to show once again that Globals Are Evil, particularly
+for libraries, and if you didn't use them to start with, this problem wouldn't 
+be here.
+>Audit-Trail:
+
+From: phil@bolthole.com (Philip Brown)
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: mod_so/4645: DSO basically just doesn't work.
+Date: Thu, 24 Jun 1999 18:47:12 -0700 (PDT)
+
+ Hmm. interstingly enough, DSO *DOES* seem to work okay on a solaris 2.6 box I
+ have.
+ 
+ 
+ apache compile flags:
+ 
+ ./configure --enable-rule=SHARED_CORE --enable-module=so
+ --prefix=/export/scratch/apache --enable-shared=max
+ 
+ 
+ (and for the record, jserv compile flags:
+  ./configure --with-jsdk=/export/home/JSDK2.0
+  --with-apache-install=/export/scratch/apache --prefix=/export/scratch/jserv
+ 
+
+From: phil@bolthole.com (Philip Brown)
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: mod_so/4645: DSO basically just doesn't work.
+Date: Thu, 24 Jun 1999 19:28:02 -0700 (PDT)
+
+ After my clean build+install on the solaris 2.6 box, I went back to the 2.7
+ box.
+ 
+ I did a fresh untar of 1.3.6.
+ I used the EXACT SAME FLAGS that worked on the s2.6 box:
+ 
+ 
+ ./configure --enable-rule=SHARED_CORE --enable-module=so
+ --prefix=/export/scratch/apache --enable-shared=max
+ 
+ [except I used --prefix=/export/home/apache]
+ 
+ and yes, httpd dumps core when you try to run it.
+ 
+ SO this seems to be an issue specifically with solaris 2.7, aka 7.
+ 
+ 
+ The only bugid I can find regaurding the linker under solaris 7,
+ is sun bugid 106950, but that doesn't seem to be relevant.
+ That is reguarding not being able to dlopen() the library.
+ But the apache problem gets past dlopen.
+ 
+
+From: phil@bolthole.com (Philip Brown)
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: mod_so/4645: DSO basically just doesn't work.
+Date: Fri, 25 Jun 1999 11:27:14 -0700 (PDT)
+
+ More details: This is looking specifically like a solaris 'as' problem.
+ When I copy over a DSO install from a solaris 2.6 box, to the s7 box,
+ IT WORKS!
+ 
+ I've filed a bug report with sun.
+ 
+ But I still don't like the way the module interface is structured :-)
+
+From: phil@bolthole.com (Philip Brown)
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: mod_so/4645: DSO basically just doesn't work.
+Date: Fri, 25 Jun 1999 17:57:24 -0700 (PDT)
+
+ FIXED!!
+ 
+ 
+ I just installed "Maintaince Update 2" on the solaris 7 box.
+ That installed about 80 patches. But I'm betting it was patch
+  106950-03
+ 
+ that fixed the problem.
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Mon Jun 28 08:26:47 PDT 1999
+State-Changed-Why:
+
+Closing since this turned out to be an OS bug.  Thanks
+for your diligence and for using Apache!
+
+Class-Changed-From-To: sw-bug-mistaken
+Class-Changed-By: coar
+Class-Changed-When: Mon Jun 28 08:26:47 PDT 1999
+Category-Changed-From-To: mod_so-os-solaris
+Category-Changed-By: coar
+Category-Changed-When: Mon Jun 28 08:26:47 PDT 1999
+
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

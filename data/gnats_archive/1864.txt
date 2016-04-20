@@ -1,0 +1,373 @@
+Received: (qmail 2045 invoked by uid 2012); 24 Feb 1998 00:28:08 -0000
+Message-Id: <19980224002808.2044.qmail@hyperreal.org>
+Date: 24 Feb 1998 00:28:08 -0000
+From: Jay Soffian <jay@cimedia.com>
+Reply-To: jay@cimedia.com
+To: apbugs@hyperreal.org
+Subject: patches for mod_unique_id to get it to compile with 1.2
+X-Send-Pr-Version: 3.2
+
+>Number:         1864
+>Category:       other
+>Synopsis:       patches for mod_unique_id to get it to compile with 1.2
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    contrib@apache.org
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Feb 23 16:30:00 PST 1998
+>Last-Modified:  Mon Feb 23 23:25:47 PST 1998
+>Originator:     jay@cimedia.com
+>Organization:
+>Release:        1.2 and 1.3
+>Environment:
+Linux redshift.cimedia.com 2.0.32 #19 Fri Jan 9 21:46:10 EST 1998 i686 unknown
+and
+SunOS web22 5.5.1 Generic_103640-08 sun4u sparc SUNW,Ultra-2
+>Description:
+We needed mod_unique_id to work with 1.2. Here's a set of patches against
+mod_unique_id.c from 1.3_b5:
+
+*** mod_unique_id.c.orig        Mon Feb 23 18:48:20 1998
+--- mod_unique_id.c     Mon Feb 23 18:47:19 1998
+***************
+*** 59,72 ****
+  
+  #include "httpd.h"
+  #include "http_config.h"
+- #include "http_log.h"
+- #include "multithread.h"
+  #include <unistd.h>
+  
+- #ifdef MULTITHREAD
+- #error sorry this module does not support multithreaded servers yet
+- #endif
+- 
+  typedef struct {
+      time_t stamp;
+      unsigned int in_addr;
+--- 59,66 ----
+***************
+*** 124,131 ****
+   */
+  
+  static unsigned global_in_addr;
+  
+! static APACHE_TLS unique_id_rec cur_unique_id;
+  
+  static void unique_id_global_init(server_rec *s, pool *p)
+  {
+--- 118,126 ----
+   */
+  
+  static unsigned global_in_addr;
++ static pid_t global_pid;
+  
+! static unique_id_rec cur_unique_id;
+  
+  static void unique_id_global_init(server_rec *s, pool *p)
+  {
+***************
+*** 137,142 ****
+--- 132,138 ----
+  #ifndef NO_GETTIMEOFDAY
+      struct timeval tv;
+  #endif
++     pid_t pid;
+  
+      /*
+       * First of all, verify some assumptions that have been made about the
+***************
+*** 145,154 ****
+       */
+      if (XtOffsetOf(unique_id_rec, counter) + sizeof(cur_unique_id.counter)
+          != 14) {
+!         aplog_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ALERT, s,
+!                     "mod_unique_id: sorry the size assumptions are wrong "
+!                     "in mod_unique_id.c, please remove it from your server "
+!                     "or fix the code!");
+          exit(1);
+      }
+  
+--- 141,149 ----
+       */
+      if (XtOffsetOf(unique_id_rec, counter) + sizeof(cur_unique_id.counter)
+          != 14) {
+!       fprintf(stderr, "mod_unique_id: sorry the size assumptions are wrong "
+!                       "in mod_unique_id.c, please remove it from your server "
+!                       "or fix the code!");
+          exit(1);
+      }
+  
+***************
+*** 158,181 ****
+       * be unique as the physical address of the machine
+       */
+      if (gethostname(str, sizeof(str) - 1) != 0) {
+!         aplog_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ALERT, s,
+            "gethostname: mod_unique_id requires the hostname of the server");
+          exit(1);
+      }
+      str[sizeof(str) - 1] = '\0';
+  
+      if ((hent = gethostbyname(str)) == NULL) {
+!         aplog_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ALERT, s,
+                      "mod_unique_id: unable to gethostbyname(\"%s\")", str);
+          exit(1);
+      }
+  
+      global_in_addr = ((struct in_addr *) hent->h_addr_list[0])->s_addr;
+  
+-     aplog_error(APLOG_MARK, APLOG_NOERRNO|APLOG_INFO, s,
+-                 "mod_unique_id: using ip addr %s",
+-                 inet_ntoa(*(struct in_addr *) hent->h_addr_list[0]));
+- 
+      /*
+       * If the server is pummelled with restart requests we could possibly end
+       * up in a situation where we're starting again during the same second
+--- 153,172 ----
+       * be unique as the physical address of the machine
+       */
+      if (gethostname(str, sizeof(str) - 1) != 0) {
+!         fprintf(stderr,
+            "gethostname: mod_unique_id requires the hostname of the server");
+          exit(1);
+      }
+      str[sizeof(str) - 1] = '\0';
+  
+      if ((hent = gethostbyname(str)) == NULL) {
+!         fprintf(stderr,
+                      "mod_unique_id: unable to gethostbyname(\"%s\")", str);
+          exit(1);
+      }
+  
+      global_in_addr = ((struct in_addr *) hent->h_addr_list[0])->s_addr;
+  
+      /*
+       * If the server is pummelled with restart requests we could possibly end
+       * up in a situation where we're starting again during the same second
+***************
+*** 205,211 ****
+  
+  static void unique_id_child_init(server_rec *s, pool *p)
+  {
+-     pid_t pid;
+  #ifndef NO_GETTIMEOFDAY
+      struct timeval tv;
+  #endif
+--- 196,201 ----
+***************
+*** 219,226 ****
+       * XXX: for multithread this needs to use a pid/tid combo and probably
+       * needs to be expanded to 32 bits
+       */
+!     pid = getpid();
+!     cur_unique_id.pid = pid;
+  
+      /*
+       * Test our assumption that the pid is 32-bits.  It's possible that
+--- 209,216 ----
+       * XXX: for multithread this needs to use a pid/tid combo and probably
+       * needs to be expanded to 32 bits
+       */
+! 
+!     cur_unique_id.pid = global_pid;
+  
+      /*
+       * Test our assumption that the pid is 32-bits.  It's possible that
+***************
+*** 228,236 ****
+       * of them.  It would have been really nice to test this during
+       * global_init ... but oh well.
+       */
+!     if (cur_unique_id.pid != pid) {
+!         aplog_error(APLOG_MARK, APLOG_NOERRNO|APLOG_CRIT, s,
+!                     "oh no! pids are greater than 32-bits!  I'm broken!");
+      }
+  
+      cur_unique_id.in_addr = global_in_addr;
+--- 218,227 ----
+       * of them.  It would have been really nice to test this during
+       * global_init ... but oh well.
+       */
+!     
+!     if (cur_unique_id.pid != global_pid) {
+!       log_error("mod_unique_id: pids are greater than 32-bits! I'm broken!",
+!               s);
+      }
+  
+      cur_unique_id.in_addr = global_in_addr;
+***************
+*** 284,294 ****
+      unsigned short counter;
+      char *e;
+  
+      /* copy the unique_id if this is an internal redirect (we're never
+       * actually called for sub requests, so we don't need to test for
+       * them) */
+      if (r->prev && (e = table_get(r->subprocess_env, "REDIRECT_UNIQUE_ID"))) {
+!       table_setn(r->subprocess_env, "UNIQUE_ID", e);
+        return DECLINED;
+      }
+  
+--- 275,293 ----
+      unsigned short counter;
+      char *e;
+  
++     /* quick hack to make us work with 1.2 */
++     pid_t pid;
++     pid = getpid();
++     if (pid != global_pid) { /* we are a new child */
++       global_pid = pid;
++       unique_id_child_init(r->server,r->pool);
++     }
++ 
+      /* copy the unique_id if this is an internal redirect (we're never
+       * actually called for sub requests, so we don't need to test for
+       * them) */
+      if (r->prev && (e = table_get(r->subprocess_env, "REDIRECT_UNIQUE_ID"))) {
+!       table_set(r->subprocess_env, "UNIQUE_ID", e);
+        return DECLINED;
+      }
+  
+***************
+*** 321,327 ****
+      str[18] = uuencoder[((x[1] & 0x0f) << 2) | ((0 & 0xc0) >> 6)];
+      str[19] = '\0';
+  
+!     table_setn(r->subprocess_env, "UNIQUE_ID", pstrdup(r->pool, str));
+  
+      /* and increment the identifier for the next call */
+      counter = ntohs(cur_unique_id.counter) + 1;
+--- 320,326 ----
+      str[18] = uuencoder[((x[1] & 0x0f) << 2) | ((0 & 0xc0) >> 6)];
+      str[19] = '\0';
+  
+!     table_set(r->subprocess_env, "UNIQUE_ID", pstrdup(r->pool, str));
+  
+      /* and increment the identifier for the next call */
+      counter = ntohs(cur_unique_id.counter) + 1;
+***************
+*** 331,337 ****
+  }
+  
+  
+! module MODULE_VAR_EXPORT unique_id_module = {
+      STANDARD_MODULE_STUFF,
+      unique_id_global_init,      /* initializer */
+      NULL,                       /* dir config creater */
+--- 330,336 ----
+  }
+  
+  
+! module unique_id_module = {
+      STANDARD_MODULE_STUFF,
+      unique_id_global_init,      /* initializer */
+      NULL,                       /* dir config creater */
+***************
+*** 345,354 ****
+      NULL,                       /* check auth */
+      NULL,                       /* check access */
+      NULL,                       /* type_checker */
+!     NULL,                       /* fixups */
+      NULL,                       /* logger */
+      NULL,                       /* header parser */
+-     unique_id_child_init,       /* child_init */
+-     NULL,                       /* child_exit */
+-     gen_unique_id               /* post_read_request */
+  };
+--- 344,350 ----
+      NULL,                       /* check auth */
+      NULL,                       /* check access */
+      NULL,                       /* type_checker */
+!     gen_unique_id,              /* fixups */
+      NULL,                       /* logger */
+      NULL,                       /* header parser */
+  };
+
+
+BTW - mod_unique_id is not in the list of problem categories yet.
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Mon Feb 23 17:09:13 PST 1998
+State-Changed-Why:
+Thanks for the patches.  They will be in the bugdb if
+anyone else needs them.
+
+We won't be adding mod_unique_id into 1.2, though, since it
+is a feature and features go in 1.3.
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: other/1864: patches for mod_unique_id to get it to compile with 1.2  (fwd)
+Date: Mon, 23 Feb 1998 23:32:47 -0700 (MST)
+
+ ---------- Forwarded message ----------
+ Date: Mon, 23 Feb 1998 20:34:14 -0500
+ From: Jay Soffian <jay@cimedia.com>
+ To: marc@hyperreal.org
+ Subject: Re: other/1864: patches for mod_unique_id to get it to compile with 1.2 
+ 
+ 
+ +--marc@hyperreal.org once said:
+ |
+ |Synopsis: patches for mod_unique_id to get it to compile with 1.2
+ |
+ |State-Changed-From-To: open-closed
+ |State-Changed-By: marc
+ |State-Changed-When: Mon Feb 23 17:09:13 PST 1998
+ |State-Changed-Why:
+ |Thanks for the patches.  They will be in the bugdb if
+ |anyone else needs them.
+ |
+ |We won't be adding mod_unique_id into 1.2, though, since it
+ |is a feature and features go in 1.3.
+ 
+ Excellent. I've submitted a few other change requests for both 1.2 and
+ 1.3 in January that I still haven't heard anything on.
+ 
+ PR1628 and PR1631, a set of patches to mod_rewrite to allow it to
+ support case conversion. 1628 is for 1.2.4+, 1631 is for 1.3_b3+.
+  (I've cleaned up both these patches - I was waiting to hear from
+ someone before I submit the newer patches.)
+ 
+ PR1803, patch to mod_include fo 1.3_b3+ which adds some file test
+ operators.
+ 
+ I know the apache group ise busy, but I was hoping these would have
+ been looked at by now. All three patches are feature requests, so I
+ imagine only 1631 and 1803 have any hope of making it into apache.
+ 
+ Thanks.
+ 
+ j.
+ --
+ Jay Soffian <jay@cimedia.com>                       UNIX Systems Administrator
+ 404.572.1941                                             Cox Interactive Media
+ 
+Responsible-Changed-From-To: apache-contrib@apache.org
+Responsible-Changed-By: dgaudet
+Responsible-Changed-When: Mon Feb 23 23:24:53 PST 1998
+Responsible-Changed-Why:
+Mark it for contrib.%0
+Comment-Added-By: dgaudet
+Comment-Added-When: Mon Feb 23 23:25:47 PST 1998
+Comment-Added:
+BTW, running gen_uniqid in fixups may not be as robust as
+the 1.3 solution in post_read_request.  It certainly won't
+be available for use by the earlier phases...
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

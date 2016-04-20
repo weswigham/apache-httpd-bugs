@@ -1,0 +1,220 @@
+Received: (qmail 81852 invoked by uid 501); 11 Dec 2001 10:08:40 -0000
+Message-Id: <20011211100840.81851.qmail@apache.org>
+Date: 11 Dec 2001 10:08:40 -0000
+From: gerard moisset <gerar.moisset@francetelecom.com>
+Reply-To: gerar.moisset@francetelecom.com
+To: submit@bugz.apache.org
+Subject: "apache restart  or stop" hangs the server if cronolog or rotatelog utils are used: Pid never die, only children are killed, and ipcs is not cleared
+X-Send-Pr-Version: 3.110
+
+>Number:         9036
+>Category:       os-sunos
+>Synopsis:       "apache restart  or stop" hangs the server if cronolog or rotatelog utils are used: Pid never die, only children are killed, and ipcs is not cleared
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          support
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Dec 11 02:10:00 PST 2001
+>Closed-Date:    
+>Last-Modified:  Wed Dec 12 05:10:00 PST 2001
+>Originator:     gerar.moisset@francetelecom.com
+>Release:        1.3.19(+modssl2.8.3)
+>Organization:
+apache
+>Environment:
+OS:
+SunOS udgiy239 5.8 Generic_108528-10 sun4u sparc SUNW,UltraAX-e2
+
+APACHE:
+- Apache: Apache/1.3.19 (Unix) mod_ssl/2.8.3 OpenSSL/0.9.6b (engine),
+- Perl5.6.0 full version (SHA), PRNG = "Entropy Gatherin Daemon EGD 0.80"
+- Machine: Netra T1
+- OS: SunOS udgiy239 5.8 Generic_108528-07 sun4u sparc SUNW,UltraAX-e2
+(patch cluster from sunsolve)
+- SSL board: CryptoSwift 200 from Rainbow Tech.
+
+GCC:
+Reading specs from /usr/local/lib/gcc-lib/sparc-sun-solaris2.8/2.95.3/specs
+gcc version 2.95.3 20010315 (release)
+
+compiled with:
+
+export CC=gcc
+#Ajout du 2/10/01 pour  MANPATH
+export MANPATH=/usr/local/man:/usr/share/man:$MANPATH
+#fin  MANPATH
+export PATH=/exec/commun/prog/per560/bin:/usr/local/bin:/usr/bin:/usr/ccs/bin:$PATH
+export
+LD_LIBRARY_PATH=/usr/lib/:/lib:/usr/lib/x11:/usr/local/lib:$LD_LIBRARY_PATH
+export EXTRA_CFLAGS="-DUSE_SYSVSEM_SERIALIZED_ACCEPT"
+export CFLAGS="-DUSE_SYSVSEM_SERIALIZED_ACCEPT"
+export SSL_BASE=/exec/commun/prog/install/openssl-engine-0.9.6b
+export EXTRA_LIBS=-ldl
+
+openssl-engine-o096b :
+
+./config no-threads --prefix=/exec/commun/prog/rpa1319/sslen096b \
+--openssldir=/exec/commun/prog/rpa1319/sslen096b/openssl
+
+mm-1.1.3 :
+
+ ./configure \
+         --prefix=/exec/commun/prog/rpa1319/rpa/mm \
+         --disable-shared
+
+modssl-2.8.3-1.3.19 :
+
+./configure \
+--with-apache=../apache_1.3.19 \
+--with-ssl=../openssl-engine-0.9.6b \
+--with-mm=../mm-1.1.3 \
+--prefix=/exec/commun/prog/rpa1319/rpa \
+--enable-rule=SSL_EXPERIMENTAL \
+--target=httpd \
+--enable-rule=SHARED_CORE  \
+--enable-module=so \
+--enable-module=proxy \
+--enable-module=ssl \
+--enable-module=rewrite \
+--enable-module=headers \
+--enable-module=usertrack
+
+modified src with sm patch :
+
+cd /exec/commun/prog/install/apache_1.3.19/src/modules/proxy
+
+diff proxy_http.c proxy_http.c.orig
+
+486,487d485
+/* Now add out bound headers set by other modules */
+resp_hdrs = ap_overlay_tables(r->pool, r->err_headers_out,resp_hdrs);
+
+binary httpd :
+
+# ./httpd -V
+Server version: Apache/1.3.19 (Unix)
+Server built:   Oct  8 2001 16:25:57
+Server's Module Magic Number: 19990320:10
+Server compiled with....
+ -D EAPI
+ -D EAPI_MM
+ -D EAPI_MM_CORE_PATH="logs/httpd.mm"
+ -D HAVE_MMAP
+ -D USE_MMAP_SCOREBOARD
+ -D USE_MMAP_FILES
+ -D USE_SYSVSEM_SERIALIZED_ACCEPT
+ -D SHARED_CORE
+ -D HTTPD_ROOT="/exec/commun/prog/rpa1319/rpa"
+ -D SUEXEC_BIN="/exec/commun/prog/rpa1319/rpa/bin/suexec"
+ -D SHARED_CORE_DIR="/exec/commun/prog/rpa1319/rpa/libexec"
+ -D DEFAULT_PIDLOG="logs/httpd.pid"
+ -D DEFAULT_SCOREBOARD="logs/httpd.scoreboard"
+ -D DEFAULT_LOCKFILE="logs/httpd.lock"
+ -D DEFAULT_XFERLOG="logs/access_log"
+ -D DEFAULT_ERRORLOG="logs/error_log"
+ -D TYPES_CONFIG_FILE="conf/mime.types"
+ -D SERVER_CONFIG_FILE="conf/httpd.conf"
+ -D ACCESS_CONFIG_FILE="conf/access.conf"
+ -D RESOURCE_CONFIG_FILE="conf/srm.conf"
+#ldd httpd
+        libdl.so.1 =>    /usr/lib//libdl.so.1
+        libsocket.so.1 =>        /usr/lib//libsocket.so.1
+        libnsl.so.1 =>   /usr/lib//libnsl.so.1
+        libc.so.1 =>     /usr/lib//libc.so.1
+        libmp.so.2 =>    /usr/lib//libmp.so.2
+        /usr/platform/SUNW,UltraAX-e2/lib/libc_psr.so.1
+
+>Description:
+when stop or restart apache only children are killed but never the PID which is still on,
+
+and ipcs is not cleared semaphore from Uid Apache still on
+>How-To-Repeat:
+very easy:
+with this flags from "compiled with", turn on the TransferLog with rotatelogs or cronolog, like
+TransferLog "|/path to cronolog --symlink=/path to file/ /path to file%d%m%Y/"
+TransferLog "|/path to rotatelogs /path to file/ 28800"
+>Fix:
+i have no way to avoid to it
+
+very urgent please..
+>Release-Note:
+>Audit-Trail:
+
+From: "MOISSET =?iso-8859-1?Q?G=E9rard?= OCISI" <gerar.moisset@francetelecom.com>
+To: <submit@bugz.apache.org>,
+    <apache-bugdb@apache.org>
+Cc: TRINH Thai-Hoa OCISI <thaihoa.trinh@francetelecom.com>
+Subject: RE: os-sunos/9036: "apache restart  or stop" hangs the server if cronolog or rotatelog utils are used: Pid never die, only children are killed, and ipcs is not cleared
+Date: Wed, 12 Dec 2001 14:02:26 +0100
+
+ it seems that the problem comes only when:
+ 
+ - you are using TransferLog instead of CustomLog, and SSLLog instead of
+ ErrorLog,
+  with for example,
+ 
+ TransferLog "| [exec] /path to../cronolog ou rotatelogs/ [--symlink=/path to
+ log/fic_log_vhost_crlog] /path to log/access_vhost_tflog <frequence
+ rotation>"
+ 
+ - if you are using,
+ 
+ CustomLog "| [exec] /path to../cronolog ou rotatelogs/ [--symlink=/path to
+ log/fic_log_vhost_crlog] /path to log/access_vhost_crlog%d%m%Y" nickname
+ 
+ it becomes OK with "removed Pid File.." and no problem when stopping or
+ restarting Apache,
+ 
+ instead of "no removed Pid File" and "Terminated" on error_log_file, Apache
+ Pid still on (only children died) , and no ipcs cleared (ipcs |grep UserId
+ from Apache User, Semaphore still on)
+ 
+ 
+ would you pls confirm, and if ok explain better than me and cl
+ 
+ 
+ 
+ 
+ 
+ -----Message d'origine-----
+ De : submit@bugz.apache.org [mailto:submit@bugz.apache.org]
+ Envoyé : mardi 11 décembre 2001 11:10
+ À : MOISSET Gérard OCISI
+ Objet : Re: os-sunos/9036: "apache restart or stop" hangs the server if
+ cronolog or rotatelog utils are used: Pid never die, only children are
+ killed, and ipcs is not cleared
+ 
+ 
+ Thank you very much for your problem report.
+ It has the internal identification `os-sunos/9036'.
+ The individual assigned to look at your
+ report is: apache.
+ 
+ >Category:       os-sunos
+ >Responsible:    apache
+ >Synopsis:       "apache restart  or stop" hangs the server if cronolog or
+ rotatelog utils are used: Pid never die, only children are killed, and ipcs
+ is not cleared
+ >Arrival-Date:   Tue Dec 11 02:10:00 PST 2001
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

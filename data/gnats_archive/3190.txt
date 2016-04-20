@@ -1,0 +1,961 @@
+Received: (qmail 4520 invoked by uid 2012); 12 Oct 1998 14:55:43 -0000
+Message-Id: <19981012145543.4519.qmail@hyperreal.org>
+Date: 12 Oct 1998 14:55:43 -0000
+From: Kevin Martin <sigma@pair.com>
+Reply-To: sigma@pair.com
+To: apbugs@hyperreal.org
+Subject: httpd processes hang and never free up their slot, until MaxClients reached
+X-Send-Pr-Version: 3.2
+
+>Number:         3190
+>Category:       general
+>Synopsis:       httpd processes hang and never free up their slot, until MaxClients reached
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Oct 12 08:00:01 PDT 1998
+>Last-Modified:  Wed Oct 14 23:56:53 PDT 1998
+>Originator:     sigma@pair.com
+>Organization:
+>Release:        1.2.6
+>Environment:
+FreeBSD noldo.pair.com 2.1.7.1-RELEASE FreeBSD 2.1.7.1-RELEASE #1: Wed Nov 12 09:53:51 EST 1997     sigma@idad.pair.com:/usr/src/sys/compile/PAIRd  i386
+gcc version 2.6.3
+(also observed under FreeBSD 2.2.7-STABLE)
+>Description:
+We have only observed this recently on two or three of our 150+ Web servers.
+What is happening is that on an otherwise normal and relatively quiet server,
+the httpd processes will stick around in the "R" state, with no activity,
+until eventually all slots are full.  The most obvious datum is that on the
+mod_status report, the field Acc is always of the form X/Y/Y, where the last
+two numbers are the same.  This is *not* true on any of our servers except
+for a couple.
+
+We have checked for SYN floods, unusual network activity, tried disabling
+busier sites on the server one at a time, cleaned up all .htaccess files,
+etc.  We are not using serialized accept.  We have tried with and without
+KeepAlive, at different levels.  Our Timeout is set to 2400.  I have verified
+that the configuration is identical to all other servers, except for the
+virtual hosts listed.
+
+ktrace on the parent shows only a series of sleeps and signals.  ktrace on 
+any child shows no system calls whatsoever.
+
+Attached below is the leftmost columns of our mod_status output after the
+server runs for a few minutes.
+
+<HTML><HEAD>
+<TITLE>Apache Status</TITLE>
+</HEAD><BODY>
+<H1>Apache Server Status for *.pair.com</H1>
+
+Current Time: Mon Oct 12 10:36:08 1998
+<br>
+Restart Time: Mon Oct 12 10:26:32 1998
+<br>
+Server uptime:  9 minutes 36 seconds<br>
+Total accesses: 3132 - Total Traffic: 12.0 MB<br>
+CPU Usage: u3.79688 s5.71875 cu14.6406 cs7.21094 - 5.45% CPU load<br>
+5.44 requests/sec - 21.4 kB/second - 4032 B/request<br>
+
+172 requests currently being processed, 17 idle servers
+<PRE>RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+RRRRRRRRRRRRRKRRRRRRR_RRR_RRRRRRR___R____RR__RRR__RRR_WW__W_W...
+................................................................
+</PRE>
+Scoreboard Key: <br>
+"<B><code>_</code></B>" Waiting for Connection, 
+"<B><code>S</code></B>" Starting up, 
+"<B><code>R</code></B>" Reading Request,<BR>
+"<B><code>W</code></B>" Sending Reply, 
+"<B><code>K</code></B>" Keepalive (read), 
+"<B><code>D</code></B>" DNS Lookup,<BR>
+"<B><code>L</code></B>" Logging, 
+"<B><code>G</code></B>" Gracefully finishing, 
+"<B><code>.</code></B>" Open slot with no current process<P>
+<p>
+
+<table border=0><tr><th>Srv<th>PID<th>Acc<th>M<th>CPU
+<th>SS<th>Conn<th>Child<th>Slot<th>Host<th>VHost<th>Request</tr>
+
+<tr><td><b>0</b><td>10628<td>0/20/20<td><b>R</b>
+<td>0.42<td>458<td>0.0<td>0.14<td>0.14
+<td>199.227.99.68</tr>
+
+<tr><td><b>1</b><td>10627<td>0/23/23<td><b>R</b>
+<td>0.12<td>480<td>0.0<td>0.16<td>0.16
+<td>206.181.40.100</tr>
+
+<tr><td><b>2</b><td>10626<td>0/0/0<td><b>R</b>
+<td>0.00<td>572<td>0.0<td>0.00<td>0.00
+<td></tr>
+
+<tr><td><b>3</b><td>10625<td>0/19/19<td><b>R</b>
+<td>0.19<td>499<td>0.0<td>0.12<td>0.12
+<td>198.8.253.11</tr>
+
+<tr><td><b>4</b><td>10624<td>0/5/5<td><b>R</b>
+<td>0.02<td>556<td>0.0<td>0.02<td>0.02
+<td>193.14.10.129</tr>
+
+<tr><td><b>5</b><td>10623<td>0/5/5<td><b>R</b>
+<td>0.06<td>554<td>0.0<td>0.00<td>0.00
+<td>209.143.18.64</tr>
+
+<tr><td><b>6</b><td>10622<td>0/0/0<td><b>R</b>
+<td>0.00<td>572<td>0.0<td>0.00<td>0.00
+<td></tr>
+
+<tr><td><b>7</b><td>10621<td>0/39/39<td><b>R</b>
+<td>0.20<td>422<td>0.0<td>0.15<td>0.15
+<td>12.75.167.161</tr>
+
+<tr><td><b>8</b><td>10620<td>0/21/21<td><b>R</b>
+<td>0.05<td>518<td>0.0<td>0.07<td>0.07
+<td>147.155.3.52</tr>
+
+<tr><td><b>9</b><td>10619<td>0/4/4<td><b>R</b>
+<td>0.14<td>516<td>0.0<td>0.04<td>0.04
+<td>209.43.151.208</tr>
+
+<tr><td><b>10</b><td>10618<td>0/15/15<td><b>R</b>
+<td>0.34<td>498<td>0.0<td>0.06<td>0.06
+<td>207.226.104.4</tr>
+
+<tr><td><b>11</b><td>10617<td>0/1/1<td><b>R</b>
+<td>0.00<td>570<td>0.0<td>0.00<td>0.00
+<td>38.231.95.149</tr>
+
+<tr><td><b>12</b><td>10616<td>0/42/42<td><b>R</b>
+<td>0.35<td>402<td>0.0<td>0.13<td>0.13
+<td>152.163.217.99</tr>
+
+<tr><td><b>13</b><td>10615<td>0/10/10<td><b>R</b>
+<td>0.02<td>518<td>0.0<td>0.07<td>0.07
+<td>207.203.199.130</tr>
+
+<tr><td><b>14</b><td>10614<td>0/8/8<td><b>R</b>
+<td>0.08<td>537<td>0.0<td>0.05<td>0.05
+<td>167.240.254.1</tr>
+
+<tr><td><b>15</b><td>10613<td>0/1/1<td><b>R</b>
+<td>0.00<td>568<td>0.0<td>0.00<td>0.00
+<td>199.227.99.68</tr>
+
+<tr><td><b>16</b><td>10612<td>0/6/6<td><b>R</b>
+<td>0.02<td>553<td>0.0<td>0.03<td>0.03
+<td>143.183.152.10</tr>
+
+<tr><td><b>17</b><td>10611<td>0/11/11<td><b>R</b>
+<td>0.06<td>537<td>0.0<td>0.04<td>0.04
+<td>167.240.254.1</tr>
+
+<tr><td><b>18</b><td>10610<td>0/0/0<td><b>R</b>
+<td>0.00<td>571<td>0.0<td>0.00<td>0.00
+<td></tr>
+
+<tr><td><b>19</b><td>10609<td>0/30/30<td><b>R</b>
+<td>0.07<td>461<td>0.0<td>0.05<td>0.05
+<td>150.176.210.3</tr>
+
+<tr><td><b>20</b><td>10608<td>0/26/26<td><b>R</b>
+<td>0.27<td>480<td>0.0<td>0.14<td>0.14
+<td>206.181.40.100</tr>
+
+<tr><td><b>21</b><td>10607<td>0/5/5<td><b>R</b>
+<td>0.19<td>556<td>0.0<td>0.05<td>0.05
+<td>130.126.241.232</tr>
+
+<tr><td><b>22</b><td>10606<td>0/20/20<td><b>R</b>
+<td>0.08<td>479<td>0.0<td>0.11<td>0.11
+<td>209.48.216.1</tr>
+
+<tr><td><b>23</b><td>10605<td>0/11/11<td><b>R</b>
+<td>0.05<td>536<td>0.0<td>0.01<td>0.01
+<td>166.84.249.234</tr>
+
+<tr><td><b>24</b><td>10637<td>0/16/16<td><b>R</b>
+<td>0.17<td>517<td>0.0<td>0.04<td>0.04
+<td>167.240.254.1</tr>
+
+<tr><td><b>25</b><td>10641<td>0/10/10<td><b>R</b>
+<td>0.04<td>537<td>0.0<td>0.04<td>0.04
+<td>12.79.33.118</tr>
+
+<tr><td><b>26</b><td>10643<td>0/6/6<td><b>R</b>
+<td>0.02<td>553<td>0.0<td>0.02<td>0.02
+<td>143.183.152.10</tr>
+
+<tr><td><b>27</b><td>10644<td>0/4/4<td><b>R</b>
+<td>0.03<td>557<td>0.0<td>0.01<td>0.01
+<td>208.251.185.200</tr>
+
+<tr><td><b>28</b><td>10650<td>0/97/97<td><b>R</b>
+<td>1.05<td>79<td>0.0<td>0.62<td>0.62
+<td>199.100.49.105</tr>
+
+<tr><td><b>29</b><td>10654<td>0/14/14<td><b>R</b>
+<td>0.33<td>498<td>0.0<td>0.15<td>0.15
+<td>198.8.253.11</tr>
+
+<tr><td><b>30</b><td>10665<td>0/25/25<td><b>R</b>
+<td>0.25<td>458<td>0.0<td>0.05<td>0.05
+<td>198.8.253.11</tr>
+
+<tr><td><b>31</b><td>10668<td>0/31/31<td><b>R</b>
+<td>0.25<td>496<td>0.0<td>0.07<td>0.07
+<td>205.197.145.49</tr>
+
+<tr><td><b>32</b><td>10671<td>0/69/69<td><b>R</b>
+<td>0.88<td>288<td>0.0<td>0.26<td>0.26
+<td>209.99.57.63</tr>
+
+<tr><td><b>33</b><td>10676<td>0/6/6<td><b>R</b>
+<td>0.10<td>533<td>0.0<td>0.01<td>0.01
+<td>24.222.8.13</tr>
+
+<tr><td><b>34</b><td>10680<td>0/28/28<td><b>R</b>
+<td>0.20<td>324<td>0.0<td>0.02<td>0.02
+<td>206.186.80.120</tr>
+
+<tr><td><b>35</b><td>10684<td>0/46/46<td><b>R</b>
+<td>0.66<td>362<td>0.0<td>0.20<td>0.20
+<td>209.156.154.196</tr>
+
+<tr><td><b>36</b><td>10685<td>0/11/11<td><b>R</b>
+<td>0.03<td>460<td>0.0<td>0.11<td>0.11
+<td>195.180.246.99</tr>
+
+<tr><td><b>37</b><td>10689<td>0/4/4<td><b>R</b>
+<td>0.02<td>536<td>0.0<td>0.01<td>0.01
+<td>193.159.7.87</tr>
+
+<tr><td><b>38</b><td>10717<td>0/28/28<td><b>R</b>
+<td>0.35<td>440<td>0.0<td>0.09<td>0.09
+<td>205.197.145.49</tr>
+
+<tr><td><b>39</b><td>10730<td>0/37/37<td><b>R</b>
+<td>0.49<td>384<td>0.0<td>0.10<td>0.10
+<td>152.205.207.6</tr>
+
+<tr><td><b>40</b><td>10734<td>0/0/0<td><b>R</b>
+<td>0.00<td>530<td>0.0<td>0.00<td>0.00
+<td></tr>
+
+<tr><td><b>41</b><td>10736<td>0/5/5<td><b>R</b>
+<td>0.01<td>518<td>0.0<td>0.01<td>0.01
+<td>195.132.17.131</tr>
+
+<tr><td><b>42</b><td>10739<td>0/16/16<td><b>R</b>
+<td>0.23<td>459<td>0.0<td>0.07<td>0.07
+<td>210.225.125.39</tr>
+
+<tr><td><b>43</b><td>10740<td>0/24/24<td><b>R</b>
+<td>0.15<td>439<td>0.0<td>0.05<td>0.05
+<td>198.41.2.213</tr>
+
+<tr><td><b>44</b><td>10745<td>0/2/2<td><b>R</b>
+<td>0.18<td>515<td>0.0<td>0.00<td>0.00
+<td>207.24.17.3</tr>
+
+<tr><td><b>45</b><td>10748<td>0/3/3<td><b>R</b>
+<td>0.01<td>499<td>0.0<td>0.04<td>0.04
+<td>208.251.185.48</tr>
+
+<tr><td><b>46</b><td>10752<td>0/13/13<td><b>R</b>
+<td>0.24<td>440<td>0.0<td>0.07<td>0.07
+<td>198.41.2.213</tr>
+
+<tr><td><b>47</b><td>10754<td>0/5/5<td><b>R</b>
+<td>0.07<td>499<td>0.0<td>0.00<td>0.00
+<td>209.43.151.208</tr>
+
+<tr><td><b>48</b><td>10760<td>0/8/8<td><b>R</b>
+<td>0.09<td>480<td>0.0<td>0.02<td>0.02
+<td>206.181.40.100</tr>
+
+<tr><td><b>49</b><td>10768<td>0/8/8<td><b>R</b>
+<td>0.23<td>477<td>0.0<td>0.02<td>0.02
+<td>209.48.216.1</tr>
+
+<tr><td><b>50</b><td>10804<td>0/3/3<td><b>R</b>
+<td>0.15<td>461<td>0.0<td>0.04<td>0.04
+<td>157.193.124.79</tr>
+
+<tr><td><b>51</b><td>10806<td>0/5/5<td><b>R</b>
+<td>0.01<td>479<td>0.0<td>0.00<td>0.00
+<td>206.156.188.195</tr>
+
+<tr><td><b>52</b><td>10810<td>0/40/40<td><b>R</b>
+<td>0.27<td>342<td>0.0<td>0.13<td>0.13
+<td>12.2.40.50</tr>
+
+<tr><td><b>53</b><td>10835<td>0/11/11<td><b>R</b>
+<td>0.25<td>423<td>0.0<td>0.03<td>0.03
+<td>130.244.106.149</tr>
+
+<tr><td><b>54</b><td>10842<td>0/4/4<td><b>R</b>
+<td>0.02<td>440<td>0.0<td>0.01<td>0.01
+<td>198.41.2.213</tr>
+
+<tr><td><b>55</b><td>10844<td>0/72/72<td><b>R</b>
+<td>0.47<td>269<td>0.0<td>0.15<td>0.15
+<td>206.230.56.98</tr>
+
+<tr><td><b>56</b><td>10845<td>0/7/7<td><b>R</b>
+<td>0.17<td>422<td>0.0<td>0.06<td>0.06
+<td>12.75.167.161</tr>
+
+<tr><td><b>57</b><td>10847<td>0/25/25<td><b>R</b>
+<td>0.27<td>364<td>0.0<td>0.24<td>0.24
+<td>192.128.133.43</tr>
+
+<tr><td><b>58</b><td>10850<td>0/15/15<td><b>R</b>
+<td>0.04<td>403<td>0.0<td>0.01<td>0.01
+<td>205.188.154.131</tr>
+
+<tr><td><b>59</b><td>10854<td>0/4/4<td><b>R</b>
+<td>0.15<td>439<td>0.0<td>0.03<td>0.03
+<td>206.156.170.138</tr>
+
+<tr><td><b>60</b><td>10856<td>0/32/32<td><b>R</b>
+<td>0.36<td>289<td>0.0<td>0.07<td>0.07
+<td>206.156.170.138</tr>
+
+<tr><td><b>61</b><td>10868<td>0/6/6<td><b>R</b>
+<td>0.08<td>420<td>0.0<td>0.00<td>0.00
+<td>195.7.226.214</tr>
+
+<tr><td><b>62</b><td>10894<td>0/34/34<td><b>R</b>
+<td>0.13<td>345<td>0.0<td>0.09<td>0.09
+<td>12.2.40.50</tr>
+
+<tr><td><b>63</b><td>10896<td>0/8/8<td><b>R</b>
+<td>0.17<td>401<td>0.0<td>0.06<td>0.06
+<td>193.237.223.56</tr>
+
+<tr><td><b>64</b><td>10898<td>0/3/3<td><b>R</b>
+<td>0.01<td>421<td>0.0<td>0.00<td>0.00
+<td>198.51.197.28</tr>
+
+<tr><td><b>65</b><td>10900<td>0/1/1<td><b>R</b>
+<td>0.01<td>426<td>0.0<td>0.00<td>0.00
+<td>203.18.138.18</tr>
+
+<tr><td><b>66</b><td>10909<td>0/13/13<td><b>R</b>
+<td>0.20<td>383<td>0.0<td>0.06<td>0.06
+<td>152.175.235.63</tr>
+
+<tr><td><b>67</b><td>10911<td>0/0/0<td><b>R</b>
+<td>0.00<td>423<td>0.0<td>0.00<td>0.00
+<td></tr>
+
+<tr><td><b>68</b><td>10916<td>0/2/2<td><b>R</b>
+<td>0.00<td>402<td>0.0<td>0.04<td>0.04
+<td>152.205.207.6</tr>
+
+<tr><td><b>69</b><td>10918<td>0/67/67<td><b>R</b>
+<td>0.38<td>288<td>0.0<td>0.14<td>0.14
+<td>193.237.223.56</tr>
+
+<tr><td><b>70</b><td>10919<td>0/3/3<td><b>R</b>
+<td>0.01<td>403<td>0.0<td>0.00<td>0.00
+<td>205.188.154.132</tr>
+
+<tr><td><b>71</b><td>10921<td>0/2/2<td><b>R</b>
+<td>0.01<td>404<td>0.0<td>0.00<td>0.00
+<td>169.204.27.50</tr>
+
+<tr><td><b>72</b><td>10932<td>0/21/21<td><b>R</b>
+<td>0.23<td>345<td>0.0<td>0.03<td>0.03
+<td>208.255.231.175</tr>
+
+<tr><td><b>73</b><td>10934<td>0/14/14<td><b>R</b>
+<td>0.05<td>364<td>0.0<td>0.03<td>0.03
+<td>128.173.212.60</tr>
+
+<tr><td><b>74</b><td>10939<td>0/7/7<td><b>R</b>
+<td>0.01<td>382<td>0.0<td>0.03<td>0.03
+<td>129.206.42.13</tr>
+
+<tr><td><b>75</b><td>10940<td>0/25/25<td><b>R</b>
+<td>0.08<td>308<td>0.0<td>0.06<td>0.06
+<td>156.46.120.186</tr>
+
+<tr><td><b>76</b><td>10942<td>0/26/26<td><b>R</b>
+<td>0.20<td>307<td>0.0<td>0.02<td>0.02
+<td>198.66.160.106</tr>
+
+<tr><td><b>77</b><td>10944<td>0/38/38<td><b>R</b>
+<td>0.15<td>248<td>0.0<td>0.09<td>0.09
+<td>128.253.67.102</tr>
+
+<tr><td><b>78</b><td>10946<td>0/3/3<td><b>R</b>
+<td>0.04<td>385<td>0.0<td>0.01<td>0.01
+<td>141.52.28.13</tr>
+
+<tr><td><b>79</b><td>10950<td>0/10/10<td><b>R</b>
+<td>0.05<td>364<td>0.0<td>0.03<td>0.03
+<td>132.192.4.148</tr>
+
+<tr><td><b>80</b><td>10951<td>0/15/15<td><b>R</b>
+<td>0.29<td>346<td>0.0<td>0.03<td>0.03
+<td>208.255.231.175</tr>
+
+<tr><td><b>81</b><td>10961<td>0/22/22<td><b>R</b>
+<td>0.19<td>327<td>0.0<td>0.07<td>0.07
+<td>153.37.128.92</tr>
+
+<tr><td><b>82</b><td>10970<td>0/0/0<td><b>R</b>
+<td>0.00<td>383<td>0.0<td>0.00<td>0.00
+<td></tr>
+
+<tr><td><b>83</b><td>10973<td>0/33/33<td><b>R</b>
+<td>0.22<td>269<td>0.0<td>0.09<td>0.09
+<td>208.6.199.41</tr>
+
+<tr><td><b>84</b><td>10974<td>0/0/0<td><b>R</b>
+<td>0.00<td>381<td>0.0<td>0.00<td>0.00
+<td></tr>
+
+<tr><td><b>85</b><td>10975<td>0/65/65<td><b>R</b>
+<td>0.52<td>152<td>0.0<td>0.26<td>0.26
+<td>129.2.103.26</tr>
+
+<tr><td><b>86</b><td>10977<td>0/45/45<td><b>R</b>
+<td>0.48<td>177<td>0.0<td>0.16<td>0.16
+<td>193.213.53.1</tr>
+
+<tr><td><b>87</b><td>10979<td>0/6/6<td><b>R</b>
+<td>0.15<td>327<td>0.0<td>0.07<td>0.07
+<td>195.10.0.198</tr>
+
+<tr><td><b>88</b><td>10987<td>0/3/3<td><b>R</b>
+<td>0.03<td>364<td>0.0<td>0.00<td>0.00
+<td>194.78.125.242</tr>
+
+<tr><td><b>89</b><td>10989<td>0/3/3<td><b>R</b>
+<td>0.00<td>365<td>0.0<td>0.00<td>0.00
+<td>195.7.226.214</tr>
+
+<tr><td><b>90</b><td>10994<td>0/20/20<td><b>R</b>
+<td>0.24<td>270<td>0.0<td>0.05<td>0.05
+<td>209.54.108.139</tr>
+
+<tr><td><b>91</b><td>10997<td>0/18/18<td><b>R</b>
+<td>0.84<td>289<td>0.0<td>0.05<td>0.05
+<td>206.156.170.138</tr>
+
+<tr><td><b>92</b><td>10999<td>0/13/13<td><b>R</b>
+<td>0.02<td>308<td>0.0<td>0.03<td>0.03
+<td>198.66.160.106</tr>
+
+<tr><td><b>93</b><td>11003<td>0/56/56<td><b>R</b>
+<td>0.39<td>173<td>0.0<td>0.22<td>0.22
+<td>132.235.47.11</tr>
+
+<tr><td><b>94</b><td>11005<td>0/10/10<td><b>R</b>
+<td>0.16<td>326<td>0.0<td>0.08<td>0.08
+<td>198.247.68.197</tr>
+
+<tr><td><b>95</b><td>11014<td>0/11/11<td><b>R</b>
+<td>0.11<td>307<td>0.0<td>0.05<td>0.05
+<td>194.240.179.25</tr>
+
+<tr><td><b>96</b><td>11017<td>0/4/4<td><b>R</b>
+<td>0.01<td>346<td>0.0<td>0.00<td>0.00
+<td>206.186.80.120</tr>
+
+<tr><td><b>97</b><td>11020<td>0/3/3<td><b>R</b>
+<td>0.00<td>344<td>0.0<td>0.00<td>0.00
+<td>210.111.158.83</tr>
+
+<tr><td><b>98</b><td>11031<td>0/53/53<td><b>R</b>
+<td>0.32<td>133<td>0.0<td>0.11<td>0.11
+<td>194.109.6.90</tr>
+
+<tr><td><b>99</b><td>11032<td>0/4/4<td><b>R</b>
+<td>0.02<td>326<td>0.0<td>0.03<td>0.03
+<td>207.2.199.229</tr>
+
+<tr><td><b>100</b><td>11034<td>0/9/9<td><b>R</b>
+<td>0.05<td>327<td>0.0<td>0.04<td>0.04
+<td>131.220.65.91</tr>
+
+<tr><td><b>101</b><td>11045<td>0/32/32<td><b>R</b>
+<td>0.55<td>251<td>0.0<td>0.10<td>0.10
+<td>128.253.67.102</tr>
+
+<tr><td><b>102</b><td>11046<td>0/4/4<td><b>R</b>
+<td>0.02<td>318<td>0.0<td>0.06<td>0.06
+<td>161.57.50.35</tr>
+
+<tr><td><b>103</b><td>11048<td>0/21/21<td><b>R</b>
+<td>0.13<td>229<td>0.0<td>0.05<td>0.05
+<td>153.37.114.96</tr>
+
+<tr><td><b>104</b><td>11050<td>0/9/9<td><b>R</b>
+<td>0.17<td>286<td>0.0<td>0.11<td>0.11
+<td>206.156.170.138</tr>
+
+<tr><td><b>105</b><td>11051<td>0/37/37<td><b>R</b>
+<td>0.27<td>231<td>0.0<td>0.10<td>0.10
+<td>208.212.66.66</tr>
+
+<tr><td><b>106</b><td>11060<td>0/18/18<td><b>R</b>
+<td>0.05<td>270<td>0.0<td>0.00<td>0.00
+<td>205.209.21.126</tr>
+
+<tr><td><b>107</b><td>11089<td>0/3/3<td><b>R</b>
+<td>0.16<td>304<td>0.0<td>0.03<td>0.03
+<td>206.186.80.120</tr>
+
+<tr><td><b>108</b><td>11102<td>0/9/9<td><b>R</b>
+<td>0.02<td>288<td>0.0<td>0.00<td>0.00
+<td>206.140.85.97</tr>
+
+<tr><td><b>109</b><td>11103<td>0/1/1<td><b>R</b>
+<td>0.00<td>308<td>0.0<td>0.00<td>0.00
+<td>194.152.3.181</tr>
+
+<tr><td><b>110</b><td>11130<td>0/25/25<td><b>R</b>
+<td>0.19<td>230<td>0.0<td>0.01<td>0.01
+<td>208.139.201.117</tr>
+
+<tr><td><b>111</b><td>11138<td>0/7/7<td><b>R</b>
+<td>0.34<td>251<td>0.0<td>0.05<td>0.05
+<td>153.36.36.169</tr>
+
+<tr><td><b>112</b><td>11140<td>0/55/55<td><b>R</b>
+<td>0.60<td>119<td>0.0<td>0.30<td>0.30
+<td>209.240.198.181</tr>
+
+<tr><td><b>113</b><td>11142<td>0/5/5<td><b>R</b>
+<td>0.04<td>267<td>0.0<td>0.02<td>0.02
+<td>192.89.216.2</tr>
+
+<tr><td><b>114</b><td>11143<td>0/4/4<td><b>R</b>
+<td>0.01<td>269<td>0.0<td>0.00<td>0.00
+<td>209.54.108.139</tr>
+
+<tr><td><b>115</b><td>11145<td>0/18/18<td><b>R</b>
+<td>0.16<td>115<td>0.0<td>0.03<td>0.03
+<td>141.214.182.250</tr>
+
+<tr><td><b>116</b><td>11148<td>0/33/33<td><b>R</b>
+<td>0.33<td>175<td>0.0<td>0.07<td>0.07
+<td>137.186.209.37</tr>
+
+<tr><td><b>117</b><td>11155<td>0/12/12<td><b>R</b>
+<td>0.04<td>231<td>0.0<td>0.03<td>0.03
+<td>130.38.163.247</tr>
+
+<tr><td><b>118</b><td>11159<td>0/5/5<td><b>R</b>
+<td>0.07<td>172<td>0.0<td>0.00<td>0.00
+<td>12.3.14.51</tr>
+
+<tr><td><b>119</b><td>11161<td>0/60/60<td><b>R</b>
+<td>0.44<td>78<td>0.0<td>0.16<td>0.16
+<td>206.53.113.239</tr>
+
+<tr><td><b>120</b><td>11177<td>0/26/26<td><b>R</b>
+<td>0.09<td>154<td>0.0<td>0.12<td>0.12
+<td>212.211.28.19</tr>
+
+<tr><td><b>121</b><td>11180<td>0/4/4<td><b>R</b>
+<td>0.02<td>250<td>0.0<td>0.00<td>0.00
+<td>152.204.32.218</tr>
+
+<tr><td><b>122</b><td>11185<td>0/25/25<td><b>R</b>
+<td>0.58<td>173<td>0.0<td>0.14<td>0.14
+<td>12.3.14.51</tr>
+
+<tr><td><b>123</b><td>11191<td>0/26/26<td><b>R</b>
+<td>0.27<td>171<td>0.0<td>0.17<td>0.17
+<td>209.68.1.26</tr>
+
+<tr><td><b>124</b><td>11196<td>0/3/3<td><b>R</b>
+<td>0.02<td>248<td>0.0<td>0.00<td>0.00
+<td>128.253.67.102</tr>
+
+<tr><td><b>125</b><td>11207<td>0/1/1<td><b>R</b>
+<td>0.01<td>250<td>0.0<td>0.00<td>0.00
+<td>207.59.113.196</tr>
+
+<tr><td><b>126</b><td>11208<td>0/40/40<td><b>R</b>
+<td>0.27<td>117<td>0.0<td>0.11<td>0.11
+<td>24.128.92.239</tr>
+
+<tr><td><b>127</b><td>11214<td>0/7/7<td><b>R</b>
+<td>0.08<td>232<td>0.0<td>0.01<td>0.01
+<td>207.173.246.164</tr>
+
+<tr><td><b>128</b><td>11220<td>0/20/20<td><b>R</b>
+<td>0.12<td>156<td>0.0<td>0.08<td>0.08
+<td>134.96.100.107</tr>
+
+<tr><td><b>129</b><td>11228<td>0/21/21<td><b>R</b>
+<td>0.20<td>177<td>0.0<td>0.03<td>0.03
+<td>137.186.209.37</tr>
+
+<tr><td><b>130</b><td>11229<td>0/3/3<td><b>R</b>
+<td>0.01<td>230<td>0.0<td>0.01<td>0.01
+<td>199.238.253.15</tr>
+
+<tr><td><b>131</b><td>11232<td>0/24/24<td><b>R</b>
+<td>0.68<td>176<td>0.0<td>0.11<td>0.11
+<td>198.66.160.106</tr>
+
+<tr><td><b>132</b><td>11253<td>0/21/21<td><b>R</b>
+<td>0.02<td>174<td>0.0<td>0.00<td>0.00
+<td>141.163.29.76</tr>
+
+<tr><td><b>133</b><td>11255<td>0/39/39<td><b>R</b>
+<td>0.83<td>74<td>0.0<td>0.36<td>0.36
+<td>206.53.113.239</tr>
+
+<tr><td><b>134</b><td>11262<td>0/18/18<td><b>R</b>
+<td>0.20<td>177<td>0.0<td>0.02<td>0.02
+<td>193.213.53.1</tr>
+
+<tr><td><b>135</b><td>11267<td>0/5/5<td><b>R</b>
+<td>0.05<td>173<td>0.0<td>0.05<td>0.05
+<td>129.2.103.26</tr>
+
+<tr><td><b>136</b><td>11280<td>0/20/20<td><b>R</b>
+<td>0.24<td>136<td>0.0<td>0.09<td>0.09
+<td>129.137.68.75</tr>
+
+<tr><td><b>137</b><td>11293<td>0/9/9<td><b>R</b>
+<td>0.02<td>173<td>0.0<td>0.05<td>0.05
+<td>12.3.14.51</tr>
+
+<tr><td><b>138</b><td>11296<td>0/13/13<td><b>R</b>
+<td>0.21<td>133<td>0.0<td>0.08<td>0.08
+<td>153.37.114.96</tr>
+
+<tr><td><b>139</b><td>11298<td>0/5/5<td><b>R</b>
+<td>0.04<td>178<td>0.0<td>0.02<td>0.02
+<td>194.109.6.90</tr>
+
+<tr><td><b>140</b><td>11299<td>0/3/3<td><b>R</b>
+<td>0.01<td>154<td>0.0<td>0.02<td>0.02
+<td>159.134.226.244</tr>
+
+<tr><td><b>141</b><td>11302<td>1/46/46<td><b>K</b>
+<td>0.58<td>2<td>0.6<td>0.17<td>0.17
+<td>209.167.3.194</tr>
+
+<tr><td><b>142</b><td>11304<td>0/7/7<td><b>R</b>
+<td>0.02<td>174<td>0.0<td>0.02<td>0.02
+<td>132.235.47.11</tr>
+
+<tr><td><b>143</b><td>11320<td>0/3/3<td><b>R</b>
+<td>0.01<td>176<td>0.0<td>0.00<td>0.00
+<td>212.216.99.7</tr>
+
+<tr><td><b>144</b><td>11330<td>0/0/0<td><b>R</b>
+<td>0.00<td>176<td>0.0<td>0.00<td>0.00
+<td></tr>
+
+<tr><td><b>145</b><td>11338<td>0/4/4<td><b>R</b>
+<td>0.01<td>150<td>0.0<td>0.02<td>0.02
+<td>159.134.226.244</tr>
+
+<tr><td><b>146</b><td>11339<td>0/4/4<td><b>R</b>
+<td>0.16<td>155<td>0.0<td>0.04<td>0.04
+<td>208.212.66.66</tr>
+
+<tr><td><b>147</b><td>11340<td>0/21/21<td><b>R</b>
+<td>0.15<td>97<td>0.0<td>0.08<td>0.08
+<td>159.116.252.3</tr>
+
+<tr><td><b>148</b><td>11344<td>0/17/17<td><b>R</b>
+<td>0.17<td>101<td>0.0<td>0.03<td>0.03
+<td>210.111.158.83</tr>
+
+<tr><td><b>149</b><td>11349<td>0/39/39<td>_
+<td>0.25<td>4<td>0.0<td>0.17<td>0.17
+<td>209.1.12.51</tr>
+
+<tr><td><b>150</b><td>11352<td>0/13/13<td><b>R</b>
+<td>0.37<td>116<td>0.0<td>0.07<td>0.07
+<td>150.198.244.29</tr>
+
+<tr><td><b>151</b><td>11354<td>0/6/6<td><b>R</b>
+<td>0.02<td>136<td>0.0<td>0.01<td>0.01
+<td>159.134.226.244</tr>
+
+<tr><td><b>152</b><td>11378<td>0/40/40<td><b>R</b>
+<td>0.38<td>1<td>0.0<td>0.18<td>0.18
+<td>198.59.148.11</tr>
+
+<tr><td><b>153</b><td>11380<td>0/56/56<td>_
+<td>0.54<td>2<td>0.0<td>0.22<td>0.22
+<td>129.132.31.7</tr>
+
+<tr><td><b>154</b><td>11388<td>0/3/3<td><b>R</b>
+<td>0.02<td>136<td>0.0<td>0.00<td>0.00
+<td>129.137.68.75</tr>
+
+<tr><td><b>155</b><td>11395<td>0/9/9<td><b>R</b>
+<td>0.04<td>98<td>0.0<td>0.01<td>0.01
+<td>204.128.192.59</tr>
+
+<tr><td><b>156</b><td>11397<td>0/11/11<td><b>R</b>
+<td>0.05<td>97<td>0.0<td>0.02<td>0.02
+<td>159.116.252.3</tr>
+
+<tr><td><b>157</b><td>11401<td>0/0/0<td><b>R</b>
+<td>0.00<td>138<td>0.0<td>0.00<td>0.00
+<td></tr>
+
+<tr><td><b>158</b><td>11402<td>0/13/13<td><b>R</b>
+<td>0.05<td>61<td>0.0<td>0.13<td>0.13
+<td>194.95.213.113</tr>
+
+<tr><td><b>159</b><td>11417<td>0/3/3<td><b>R</b>
+<td>0.02<td>118<td>0.0<td>0.00<td>0.00
+<td>209.240.198.186</tr>
+
+<tr><td><b>160</b><td>11419<td>0/12/12<td><b>R</b>
+<td>0.01<td>98<td>0.0<td>0.02<td>0.02
+<td>207.94.105.103</tr>
+
+<tr><td><b>161</b><td>11459<td>0/30/30<td>_
+<td>0.35<td>3<td>0.0<td>0.11<td>0.11
+<td>208.240.114.202</tr>
+
+<tr><td><b>162</b><td>11476<td>0/19/19<td>_
+<td>0.21<td>7<td>0.0<td>0.16<td>0.16
+<td>198.59.148.11</tr>
+
+<tr><td><b>163</b><td>11478<td>0/9/9<td>_
+<td>0.05<td>0<td>0.0<td>0.04<td>0.04
+<td>129.71.64.157</tr>
+
+<tr><td><b>164</b><td>11479<td>0/6/6<td><b>R</b>
+<td>0.17<td>79<td>0.0<td>0.02<td>0.02
+<td>203.56.239.200</tr>
+
+<tr><td><b>165</b><td>11482<td>0/34/34<td>_
+<td>0.45<td>4<td>0.0<td>0.13<td>0.13
+<td>129.132.31.7</tr>
+
+<tr><td><b>166</b><td>11483<td>0/39/39<td>_
+<td>0.27<td>5<td>0.0<td>0.11<td>0.11
+<td>208.143.10.120</tr>
+
+<tr><td><b>167</b><td>11484<td>0/28/28<td>_
+<td>0.20<td>6<td>0.0<td>0.27<td>0.27
+<td>205.188.154.1</tr>
+
+<tr><td><b>168</b><td>11498<td>0/24/24<td>_
+<td>0.22<td>1<td>0.0<td>0.12<td>0.12
+<td>129.132.31.7</tr>
+
+<tr><td><b>169</b><td>11501<td>0/1/1<td><b>R</b>
+<td>0.01<td>96<td>0.0<td>0.00<td>0.00
+<td>159.116.252.3</tr>
+
+<tr><td><b>170</b><td>11503<td>0/4/4<td><b>R</b>
+<td>0.02<td>80<td>0.0<td>0.06<td>0.06
+<td>199.100.49.105</tr>
+
+<tr><td><b>171</b><td>11505<td>0/24/24<td>_
+<td>0.23<td>2<td>0.0<td>0.13<td>0.13
+<td>193.158.139.113</tr>
+
+<tr><td><b>172</b><td>11517<td>0/23/23<td>_
+<td>0.08<td>6<td>0.0<td>0.11<td>0.11
+<td>129.132.31.7</tr>
+
+<tr><td><b>173</b><td>11521<td>0/3/3<td><b>R</b>
+<td>0.01<td>78<td>0.0<td>0.00<td>0.00
+<td>204.178.77.46</tr>
+
+<tr><td><b>174</b><td>11528<td>0/1/1<td><b>R</b>
+<td>0.00<td>75<td>0.0<td>0.00<td>0.00
+<td>62.112.0.10</tr>
+
+<tr><td><b>175</b><td>11538<td>0/4/4<td><b>R</b>
+<td>0.01<td>61<td>0.0<td>0.00<td>0.00
+<td>207.13.93.102</tr>
+
+<tr><td><b>177</b><td>11543<td>0/22/22<td>_
+<td>0.12<td>6<td>0.0<td>0.04<td>0.04
+<td>194.109.6.90</tr>
+
+<tr><td><b>178</b><td>11547<td>0/12/12<td><b>R</b>
+<td>0.05<td>19<td>0.0<td>0.04<td>0.04
+<td>207.220.84.100</tr>
+
+<tr><td><b>179</b><td>11549<td>0/20/20<td><b>R</b>
+<td>0.06<td>0<td>0.0<td>0.06<td>0.06
+<td>129.71.64.157</tr>
+
+<tr><td><b>180</b><td>11565<td>1/17/17<td><b>W</b>
+<td>0.45<td>0<td>0.0<td>0.07<td>0.07
+<td>196.28.7.31</tr>
+
+<tr><td><b>181</b><td>11569<td>0/16/16<td>_
+<td>0.27<td>4<td>0.0<td>0.05<td>0.05
+<td>129.132.31.7</tr>
+
+<tr><td><b>182</b><td>11573<td>0/11/11<td><b>W</b>
+<td>0.41<td>0<td>0.0<td>0.11<td>0.11
+<td>209.68.1.26</tr>
+
+<tr><td><b>183</b><td>11579<td>0/5/5<td><b>W</b>
+<td>0.04<td>28<td>0.0<td>0.03<td>0.03
+<td>207.172.166.206</tr>
+
+<tr><td><b>184</b><td>11582<td>0/16/16<td>_
+<td>0.03<td>0<td>0.0<td>0.11<td>0.11
+<td>129.71.64.157</tr>
+
+<tr><td><b>185</b><td>11584<td>0/12/12<td>_
+<td>0.05<td>7<td>0.0<td>0.07<td>0.07
+<td>129.132.31.7</tr>
+
+<tr><td><b>186</b><td>11595<td>1/12/12<td><b>W</b>
+<td>0.38<td>1<td>0.0<td>0.06<td>0.06
+<td>194.133.33.19</tr>
+
+<tr><td><b>187</b><td>11634<td>0/5/5<td>_
+<td>0.07<td>4<td>0.0<td>0.00<td>0.00
+<td>129.71.64.157</tr>
+
+<tr><td><b>188</b><td>11636<td>1/6/6<td><b>W</b>
+<td>0.02<td>0<td>0.0<td>0.01<td>0.01
+<td>194.18.163.1</tr>
+
+</table>
+ <hr> <table>
+ <tr><th>Srv<td>Server number
+ <tr><th>PID<td>OS process ID
+ <tr><th>Acc<td>Number of accesses this connection / this child / this slot
+ <tr><th>M<td>Mode of operation
+ <tr><th>CPU<td>CPU usage, number of seconds
+ <tr><th>SS<td>Seconds since beginning of most recent request
+ <tr><th>Conn<td>Kilobytes transferred this connection
+ <tr><th>Child<td>Megabytes transferred this child
+ <tr><th>Slot<td>Total megabytes transferred this slot
+ </table>
+</BODY></HTML>
+>How-To-Repeat:
+Unknown.  We once "fixed" a server when we found a .htaccess file that had no
+carriage return in it - but this does not appear to be the case in the most
+recent incidents.
+I believe this is the same problem described in the PR #1724, which was never
+completely understood and resolved.
+>Fix:
+Something is causing httpd processes not to return to the idle state.
+We are working on an upgrade to Apache 1.3.3 to see if this resolves the
+problem.
+>Audit-Trail:
+
+From: sigma@pair.com
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: general/3190: httpd processes hang and never free up their slot, until MaxClients reached
+Date: Mon, 12 Oct 1998 11:17:26 -0400 (EDT)
+
+ Upon further investigation, we have found that the phenomenon of the last
+ two numbers in the Acc report being the same is only happening because the
+ MaxRequestsPerChild was set to 10240, but servers would hang sooner than
+ that.  Upon lowering it to 24, we've found that some processes do make it
+ past 24 and die normally.  Even after completely restarting the system,
+ the problem is the same.  The problem also remains if we "chmod 0" every
+ Web directory.  We're working now on removing portions of the virtual
+ domains to see if this helps isolate the problem.
+ 
+ Kevin Martin
+ sigma@pair.com
+ 
+ > Thank you very much for your problem report.
+ > It has the internal identification `general/3190'.
+ > The individual assigned to look at your
+ > report is: apache. 
+ > 
+ > >Category:       general
+ > >Responsible:    apache
+ > >Synopsis:       httpd processes hang and never free up their slot, until MaxClients reached
+ > >Arrival-Date:   Mon Oct 12 08:00:01 PDT 1998
+ > 
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: manoj
+State-Changed-When: Tue Oct 13 15:42:30 PDT 1998
+State-Changed-Why:
+Please try to duplicate this behavior with version 1.3.3. We
+can't support old versions of Apache.
+
+From: Marc Slemko <marcs@znep.com>
+To: sigma@pair.com
+Cc: apbugs@apache.org
+Subject: Re: general/3190: httpd processes hang and never free up their
+ slot, until MaxClients reached
+Date: Wed, 14 Oct 1998 14:53:16 -0700 (PDT)
+
+ On Tue, 13 Oct 1998 sigma@pair.com wrote:
+ 
+ > 
+ > > Please try to duplicate this behavior with version 1.3.3. We
+ > > can't support old versions of Apache.
+ > 
+ > I had thought that 1.2.6 was still supported to some degree and that there
+ 
+ There may be a 1.2.7 release if necessary, but there are so many bug fixes
+ that have gone in between 1.2.x and 1.3.x that we don't have the time to
+ spend trying to debug problems that may well be fixed in the current code.
+ 
+ 
+
+From: Kevin Martin <sigma@smx.pair.com>
+To: marcs@znep.com (Marc Slemko)
+Cc: sigma@pair.com, apbugs@apache.org
+Subject: Re: general/3190: httpd processes hang and never free up their slot, until MaxClients reached
+Date: Wed, 14 Oct 1998 21:27:27 -0400 (EDT)
+
+ No problem, I understand, thank you for clarifying.  If this problem recurs
+ in any fashion on 1.3.3, I'll re-open this.
+ 
+ Thanks,
+ Kevin
+ 
+ > On Tue, 13 Oct 1998 sigma@pair.com wrote:
+ > 
+ > > 
+ > > > Please try to duplicate this behavior with version 1.3.3. We
+ > > > can't support old versions of Apache.
+ > > 
+ > > I had thought that 1.2.6 was still supported to some degree and that there
+ > 
+ > There may be a 1.2.7 release if necessary, but there are so many bug fixes
+ > that have gone in between 1.2.x and 1.3.x that we don't have the time to
+ > spend trying to debug problems that may well be fixed in the current code.
+ > 
+ > 
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: manoj
+State-Changed-When: Wed Oct 14 23:56:53 PDT 1998
+State-Changed-Why:
+User has not yet been able to repeat problem on 1.3.3.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

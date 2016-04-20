@@ -1,0 +1,97 @@
+Received: (qmail 11699 invoked by uid 2012); 12 Nov 1997 22:22:55 -0000
+Message-Id: <19971112222255.11698.qmail@hyperreal.org>
+Date: 12 Nov 1997 22:22:55 -0000
+From: Kevin Geddie <klgeddie@magma.ca>
+Reply-To: klgeddie@magma.ca
+To: apbugs@hyperreal.org
+Subject: Security error in non-parsed header (nph-*) scripts - QUERY_STRING environment variable
+X-Send-Pr-Version: 3.2
+
+>Number:         1406
+>Category:       general
+>Synopsis:       Security error in non-parsed header (nph-*) scripts - QUERY_STRING environment variable
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Nov 12 14:30:00 PST 1997
+>Last-Modified:  Sat Jan  3 10:46:46 PST 1998
+>Originator:     klgeddie@magma.ca
+>Organization:
+>Release:        1.2.4
+>Environment:
+BSDi versions 2.1 and 3.0
+
+BSD/OS media.magma.ca 2.1 BSDI BSD/OS 2.1 Kernel #6: Tue Mar 25 20:01:02 EST 1997     klgeddie@media.magma.ca:/usr/src/sys/compile/LOCAL  i386
+BSD/OS media2.magma.ca 3.0 BSDI BSD/OS 3.0 Kernel #10: Fri Apr 25 12:32:45 EDT 1997     klgeddie@media2.magma.ca:/usr/src/sys/compile/LOCAL  i386
+>Description:
+The problem is that the QUERY_STRING environment variable is NOT being set
+correctly for non-parsed header scripts.  Apparently, the QUERY_STRING is
+considered to be a filename, and is expanded according to UNIX rules,
+including wildcards.
+
+Here's a simple non-parsed-header script (call if nph-test-cgi):
+
+--------------------------------- cut here ------------------------------------
+#!/bin/sh
+
+echo HTTP/1.0 200 OK
+echo Content-type: text/plain
+echo Server: $SERVER_SOFTWARE
+echo
+
+echo CGI/1.0 test script report:
+echo
+
+echo argc is $#. argv is "$*".
+echo
+
+echo QUERY_STRING = $QUERY_STRING
+--------------------------------- cut here ------------------------------------
+
+Assume your web server's domain name is "web.server.com".
+Go to the following URL:  http://web.server.com/cgi-bin/nph-test-cgi?*
+
+The output from the CGI will not be quite what you would expect.
+You would expect that QUERY_STRING environment variable would equal "*",
+but instead it contains a listing of ALL of the files in the "cgi-bin"
+directory.  It also allows relative paths, so that the URL
+
+http://web.server.com/cgi-bin/nph-test-cgi?../*
+
+will give you a listing of all of the files/directories in the "cgi-bin"
+directory's parent directory.
+
+By the way, the above script behaves properly if the script is NOT a
+non-parsed-header script.  That is, the QUERY_STRING environment variable
+is equal to "*".
+>How-To-Repeat:
+See full description.
+>Fix:
+Attempt to set the QUERY_STRING environment variable in the same way (perhaps
+using the same code), whether the script is a non-parsed-header script or not
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Wed Nov 12 14:44:51 PST 1997
+State-Changed-Why:
+Your script is what is doing the expansion.  The script
+you give behaves exactly the same way both when done as a
+nph- script and a non-nph script; both ways it displays
+the list of files.
+
+This is a bug in your script.  You either need to disable
+filename globbing (set -f) or put double quotes around your
+string.
+
+I suspect that if you look again you will find it does
+happen for non-nph scripts if they are written exactly
+the same.
+Release-Changed-From-To: 1.1.1 - 1.2.4-1.2.4
+Release-Changed-By: coar
+Release-Changed-When: Sat Jan  3 10:46:46 PST 1998
+>Unformatted:
+

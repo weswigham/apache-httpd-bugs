@@ -1,0 +1,367 @@
+Received: (qmail 29485 invoked by uid 2012); 14 Mar 1999 18:13:59 -0000
+Message-Id: <19990314181359.29484.qmail@hyperreal.org>
+Date: 14 Mar 1999 18:13:59 -0000
+From: Joseph Pietras <joseph.pietras@chironcomputing.com>
+Reply-To: joseph.pietras@chironcomputing.com
+To: apbugs@hyperreal.org
+Subject: the start/stop file, apachectl, need minor addtions for HP and Linux
+X-Send-Pr-Version: 3.2
+
+>Number:         4056
+>Category:       config
+>Synopsis:       the start/stop file, apachectl, need minor addtions for HP and Linux
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Mar 14 10:20:00 PST 1999
+>Closed-Date:    Mon Oct 30 19:04:42 PST 2000
+>Last-Modified:  Mon Oct 30 19:04:42 PST 2000
+>Originator:     joseph.pietras@chironcomputing.com
+>Release:        1.3.4
+>Organization:
+>Environment:
+I use apache in Solaris, Linux, HP-UX, etc. environments
+>Description:
+HP-UX,
+	the file, /sbin/init.d/apacectl, and the links (hard or soft) such as
+	/sbin/rc1.d/K99apachectl and /sbin/rc3.d/S99apachectl
+	must accept the "start_msg" and "stop_msg" options to work with HP
+Linux	
+	For RedHat, /sbin/rc.d/init.d/apacectl, needs two lines, they are comments
+>How-To-Repeat:
+Yes,
+Just run on Linux/HP
+
+I modifed the file apachectl fix the above, a copy is in the next panel
+As I use apache, and love it, and as I have about 500,000 lines of shell
+written to date, I wanted to contribute and feel I have sufficient UNIX
+and shell exp. to do so.
+
+>Fix:
+#!/bin/sh
+# chkconfig: 345 72 28
+# description: Starts the SMDP (OpenSysMon) subsystem.
+# the above two lines are for Linux for the RunLevel editor
+#
+# Apache control script designed to allow an easy command line interface
+# to controlling Apache.  Written by Marc Slemko, 1997/08/23
+#
+# The exit codes returned are:
+#   EXIT_STATUS=
+#       0 - operation completed successfully
+#       1 - error, missing file or other "UNIX" error
+#       2 - usage error
+#       3 - httpd could not be started
+#       4 - httpd could not be stopped
+#       5 - httpd could not be started during a restart
+#       6 - httpd could not be restarted during a restart
+#       7 - httpd could not be restarted during a graceful restart
+#       8 - configuration syntax error
+#
+# When multiple arguments are given, only the error from the _last_
+# one is reported.  Run "apachectl help" for usage info
+#
+#
+# |||||||||||||||||||| START CONFIGURATION SECTION  ||||||||||||||||||||
+# --------------------                              --------------------
+#
+# the path to your PID file
+PIDFILE=/usr/local/apache/logs/httpd.pid
+#
+# the path to your httpd binary, including options if necessary
+HTTPD='/usr/local/apache/src/httpd'
+#
+# a command that outputs a formatted text version of the HTML at the
+# url given on the command line.  Designed for lynx, however other
+# programs may work.
+LYNX="lynx -dump"
+#
+# the URL to your server's mod_status status page.  If you do not
+# have one, then status and fullstatus will not work.
+STATUSURL="http://localhost/server-status"
+#
+SYM=""; # or SYM=-s for symbolic links
+T_LINK=/etc/init.d/apachectl; # location of the "true" link
+K_LINK=/etc/rc1.d/K99apachectl; # location of the "kill" link
+S_LINK=/etc/rc3.d/S99apachectl; # location of the "start" link
+#
+# --------------------                              --------------------
+# ||||||||||||||||||||   END CONFIGURATION SECTION  ||||||||||||||||||||
+
+EXIT_STATUS=0
+
+set_running_status () {
+    # check for pidfile
+    if [ -f $PIDFILE ] ; then
+        PID=`cat $PIDFILE`
+        if kill -0 $PID; then
+            STATUS="httpd (pid $PID) running"
+            RUNNING=1
+        else
+            STATUS="httpd (pid $PID?) not running"
+            RUNNING=0
+        fi
+    else
+        STATUS="httpd (no pid file) not running"
+        RUNNING=0
+    fi
+}
+
+
+if [ $# -eq 0 ]; then
+  set -- help; # load $1 to be ``help''
+  ## set help; # load $1 to be ``help'', if you system does not take ``--''
+fi
+
+while [ $# -gt 0 ]; do
+
+    ARG="${1}";
+
+    case "${ARG}" in
+
+        start_msg) echo Start Apache HTTP server;;
+
+        stop_msg)  echo Stop Apache HTTP server;;
+                set_running_status;
+                if [ $RUNNING -eq 1 ]; then
+                    echo "$0 $ARG: httpd (pid $PID) already running"
+                    continue
+                fi
+                if $HTTPD ; then
+                    echo "$0 $ARG: httpd started"
+                else
+                    echo "$0 $ARG: httpd could not be started"
+                    EXIT_STATUS=3
+                fi
+                ;;
+
+        stop)
+                set_running_status;
+                if [ $RUNNING -eq 0 ]; then
+                    echo "$0 $ARG: $STATUS"
+                    continue
+                fi
+                if kill $PID ; then
+                    echo "$0 $ARG: httpd stopped"
+                else
+                    echo "$0 $ARG: httpd could not be stopped"
+                    EXIT_STATUS=4
+                fi
+                ;;
+
+        restart)
+                set_running_status;
+                if [ $RUNNING -eq 0 ]; then
+                    echo "$0 $ARG: httpd not running, trying to start"
+                    if $HTTPD ; then
+                        echo "$0 $ARG: httpd started"
+                    else
+                        echo "$0 $ARG: httpd could not be started"
+                        EXIT_STATUS=5
+                    fi
+                else
+                    if $HTTPD -t >/dev/null 2>&1; then
+                        if kill -HUP $PID ; then
+                            echo "$0 $ARG: httpd restarted"
+                        else
+                            echo "$0 $ARG: httpd could not be restarted"
+                            EXIT_STATUS=6
+                        fi
+                    else
+                        echo "$0 $ARG: configuration broken, ignoring restart"
+                        echo "$0 $ARG: (run 'apachectl configtest' for details)"
+                        EXIT_STATUS=6
+                    fi
+                fi
+                ;;
+
+        graceful)
+                set_running_status;
+                if [ $RUNNING -eq 0 ]; then
+                    echo "$0 $ARG: httpd not running, trying to start"
+                    if $HTTPD ; then
+                        echo "$0 $ARG: httpd started"
+                    else
+                        echo "$0 $ARG: httpd could not be started"
+                        EXIT_STATUS=5
+                    fi
+                else
+                    if $HTTPD -t >/dev/null 2>&1; then
+                        if kill -USR1 $PID ; then
+                            echo "$0 $ARG: httpd gracefully restarted"
+                        else
+                            echo "$0 $ARG: httpd could not be restarted"
+                            EXIT_STATUS=7
+                        fi
+                    else
+                        echo "$0 $ARG: configuration broken, ignoring restart"
+                        echo "$0 $ARG: (run 'apachectl configtest' for details)"
+                        EXIT_STATUS=7
+                    fi
+                fi
+                ;;
+
+        status)
+                $LYNX $STATUSURL | awk ' /process$/ { print; exit } { print } '
+                ;;
+
+        fullstatus)
+                $LYNX $STATUSURL
+                ;;
+
+        configtest)
+                if $HTTPD -t; then
+                    :
+                else
+                    EXIT_STATUS=8
+                fi
+                ;;
+
+        unlink)
+                if [ -f ${T_LINK} ]; then
+                    echo /bin/rm -f ${K_LINK} ${S_LINK};
+                         /bin/rm -f ${K_LINK} ${S_LINK};
+                else
+                    echo ${0}, fatal error, file: ${T_LINK} does not exist;
+                    EXIT_STATUS=1;
+                fi
+                ;;
+
+        link)
+                if [ -f ${T_LINK} ]; then
+                    /bin/rm -f ${K_LINK} ${S_LINK};
+                    /bin/ln ${SYM} ${T_LINK} ${K_LINK};
+                    /bin/ln ${SYM} ${T_LINK} ${S_LINK};
+                    /bin/ls -il ${T_LINK} ${K_LINK} ${S_LINK};
+                else
+                    echo ${0}, fatal error, file: ${T_LINK} does not exist;
+                    EXIT_STATUS=1;
+                fi
+                ;;
+
+        *)
+                echo "usage: $0 (start | stop | restart | fullstatus | status | graceful | configtes
+t | help | link | unlink | start_msg | stop_msg)";
+                echo "start      - start httpd";
+                echo "stop       - stop httpd";
+                echo "restart    - restart httpd if running by sending a SIGHUP or start if ";
+                echo "               not running";
+                echo "fullstatus - dump a full status screen; requires lynx and mod_status enabled";
+                echo "status     - dump a short status screen; requires lynx and mod_status enabled"
+;
+                echo "graceful   - do a graceful restart by sending a SIGUSR1 or start if not runnin
+g";
+                echo "configtest - do a configuration syntax test";
+                echo "help       - this screen";
+                echo "start_msg  - issues a one line start message, for HP-UX";
+                echo "stop_msg   - issues a one line stop message, for HP-UX";
+                echo "link       - creates these links:";
+                echo "                  /bin/ln ${SYM} ${T_LINK} ${K_LINK}";
+                echo "                  /bin/ln ${SYM} ${T_LINK} ${S_LINK}";
+                echo "unlink     - removes the above links";
+                EXIT_STATUS=2
+            ;;
+
+    esac
+
+    shift; # remove $1
+
+done;
+
+
+exit $EXIT_STATUS
+
+# ====================================================================
+# Copyright (c) 1995-1999 The Apache Group.  All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+#
+# 1. Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in
+#    the documentation and/or other materials provided with the
+#    distribution.
+#
+# 3. All advertising materials mentioning features or use of this
+#    software must display the following acknowledgment:
+#    "This product includes software developed by the Apache Group
+#    for use in the Apache HTTP server project (http://www.apache.org/)."
+#
+# 4. The names "Apache Server" and "Apache Group" must not be used to
+#    endorse or promote products derived from this software without
+#    prior written permission. For written permission, please contact
+#    apache@apache.org.
+#
+# 5. Products derived from this software may not be called "Apache"
+#    nor may "Apache" appear in their names without prior written
+#    permission of the Apache Group.
+#
+# 6. Redistributions of any form whatsoever must retain the following
+#    acknowledgment:
+#    "This product includes software developed by the Apache Group
+#    for use in the Apache HTTP server project (http://www.apache.org/)."
+#
+# THIS SOFTWARE IS PROVIDED BY THE APACHE GROUP ``AS IS'' AND ANY
+# EXPRESSED OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+# PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE APACHE GROUP OR
+# ITS CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+# NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+# HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+# STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
+# OF THE POSSIBILITY OF SUCH DAMAGE.
+# ====================================================================
+#
+# This software consists of voluntary contributions made by many
+# individuals on behalf of the Apache Group and was originally based
+# on public domain software written at the National Center for
+# Supercomputing Applications, University of Illinois, Urbana-Champaign.
+# For more information on the Apache Group and the Apache HTTP server
+# project, please see <http://www.apache.org/>.
+#
+
+        start)
+>Release-Note:
+>Audit-Trail:
+Release-Changed-From-To: -1.3.4
+Release-Changed-By: coar
+Release-Changed-When: Tue Mar 23 14:17:20 PST 1999
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 15:14:52 PDT 1999
+State-Changed-Why:
+Could you send a patch?  I think your post was corrupted.
+
+Dean
+State-Changed-From-To: feedback-closed
+State-Changed-By: slive
+State-Changed-When: Mon Oct 30 19:04:40 PST 2000
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

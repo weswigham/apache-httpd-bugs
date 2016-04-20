@@ -1,0 +1,304 @@
+From apwww@hyperreal.org  Mon Aug 18 15:31:09 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id PAA24449;
+	Mon, 18 Aug 1997 15:31:09 -0700 (PDT)
+Message-Id: <199708182231.PAA24449@hyperreal.org>
+Date: Mon, 18 Aug 1997 15:31:09 -0700 (PDT)
+From: jay mortensen <jay@syrres.com>
+Reply-To: jay@syrres.com
+To: apbugs@hyperreal.org
+Subject: minimal csh CGI won't run, while perl and sh will
+X-Send-Pr-Version: 3.2
+
+>Number:         1011
+>Category:       mod_cgi
+>Synopsis:       minimal csh CGI won't run, while perl and sh will
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          support
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Aug 18 15:40:00 1997
+>Originator:     jay@syrres.com
+>Organization:
+>Release:        1.2.1
+>Environment:
+Linux web2 1.2.1 #10 Mon Jul 1 05:36:57 EDT 1996 i586
+>Description:
+perl and sh CGIs do work. and the csh script works under apache .8.14 on
+the same box, and under a 1.2 b10 on a different linux box running linux 2.0.
+
+the error message seems to indicate that for some reason the CGI handler
+is looking for a $home variable?  here's the error log entry
+
+No $home variable set.
+[Mon Aug 18 16:32:36 1997] access to /home/jay/public_html/test.cgi
+failed for nemesis.syrres.com, reason: Premature end of script headers
+
+here's the script
+
+#!/bin/csh
+echo "Content-type: text/html"
+echo ""
+echo "<HTML>"
+echo "test"
+echo "</html>\n"
+>How-To-Repeat:
+http://www.syracuse.ny.us:8080/~jay/test.cgi if you insist on seeing it crash :)
+
+i can produce the same error message on the command line if i unset the HOME
+environment variable lihe this:
+
+web2> test.cgi
+Content-type: text/html
+
+<HTML>
+test
+</html>
+
+web2> unsetenv HOME
+web2> test.cgi
+No $home variable set.
+Signal 7
+web2> 
+>Fix:
+nope. i'm hoping you do :%2
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: jay mortensen <jay@syrres.com>
+Subject: Re: mod_cgi/1011: minimal csh CGI won't run, while perl and sh will
+Date: Mon, 18 Aug 1997 16:01:14 -0700 (PDT)
+
+ 
+ 
+ 
+ On Mon, 18 Aug 1997, jay mortensen wrote:
+ 
+ > #!/bin/csh
+ > echo "Content-type: text/html"
+ > echo ""
+ > echo "<HTML>"
+ > echo "test"
+ > echo "</html>\n"
+ > >How-To-Repeat:
+ > http://www.syracuse.ny.us:8080/~jay/test.cgi if you insist on seeing it crash :)
+ > 
+ > i can produce the same error message on the command line if i unset the HOME
+ > environment variable lihe this:
+ 
+ csh absolutely sucks as a scripting language.  You shouldn't use it.  I
+ think you have discovered your own problem though: 
+ 
+ > web2> unsetenv HOME
+ > web2> test.cgi
+ > No $home variable set.
+ > Signal 7
+ 
+ Your script is running your .cshrc or some crud like that.  Hardly a
+ friendly thing to be doing.  If you're dead set on using csh then you
+ should change the first line to: 
+ 
+ #!/bin/csh -f
+ 
+ Dean
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Mon Aug 18 20:29:29 PDT 1997
+State-Changed-Why:
+As Dean said, one of your .cshrc or similar files is
+running things or your csh is _really_ brain dead.
+Not an Apache problem.
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Subject: Re: mod_cgi/1011: minimal csh CGI won't run, while perl and sh will (fwd)
+Date: Tue, 19 Aug 1997 08:24:23 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Tue, 19 Aug 1997 09:19:40 -0400
+ From: jay mortensen <jay@nemesis.syrres.com>
+ Reply-To: jay@syrres.com
+ To: marc@hyperreal.org, Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: mod_cgi/1011: minimal csh CGI won't run, while perl and sh will
+ 
+ marc & dean
+ 
+ thanks for your responses. i apologize for submitting the support request
+ before waiting for help from the newsgroup.
+ 
+ Marc wrote:
+ > As Dean said, one of your .cshrc or similar files is
+ > running things or your csh is _really_ brain dead.
+ > Not an Apache problem.
+ 
+ still doesn't make sense (details below)
+ 
+ i wouldn't be so quick to call this "not an Apache problem", since it ONLY
+ appears in 1.2.1. i currently have .8.14 running on the same box on a different
+ port and the same script runs fine. so at the minimum, if this isn't a PROBLEM
+ per se, there is some difference in how the two versions handle the CGI
+ 
+ On Aug 18,  4:01pm, Dean Gaudet wrote:
+ > Subject: Re: mod_cgi/1011: minimal csh CGI won't run, while perl and sh wi
+ >
+ >
+ > On Mon, 18 Aug 1997, jay mortensen wrote:
+ >
+ > > #!/bin/csh
+ > > echo "Content-type: text/html"
+ > > echo ""
+ > > echo "<HTML>"
+ > > echo "test"
+ > > echo "</html>\n"
+ > > >How-To-Repeat:
+ > > http://www.syracuse.ny.us:8080/~jay/test.cgi if you insist on seeing it
+ crash :)
+ > >
+ > > i can produce the same error message on the command line if i unset the
+ HOME
+ > > environment variable lihe this:
+ >
+ > csh absolutely sucks as a scripting language.  You shouldn't use it.
+ 
+ agreed. in fact i don't really care about the csh script (its an old hack i
+ wrote before i learned of the wonders of perl), but i'm concerned about the
+ fact that this version of apache doesn't behave the same as the earlier version
+ running on the same box. thought it might be a sign of bigger problems to
+ come...
+ 
+ >
+ > > web2> unsetenv HOME
+ > > web2> test.cgi
+ > > No $home variable set.
+ > > Signal 7
+ >
+ > Your script is running your .cshrc or some crud like that.  Hardly a
+ > friendly thing to be doing.  If you're dead set on using csh then you
+ > should change the first line to:
+ >
+ > #!/bin/csh -f
+ 
+ i already tried this. no dice. my server is running as "nobody", and there are
+ no associated .cshrc or .login files. i tried changing the User and Group to an
+ existing non-privileged user, but that didn't make a difference either. i also
+ tried removing the system-wide /etc/csh.cshrc and /etc/csh.login files
+ 
+ anyway, for now i'm going to ditch the csh script and see how it goes...
+ 
+ thanks
+ jay
+ 
+ --
+ 
+ /////////////////////////////////////////////////////////////////
+ Gerald E. Mortensen (Jay)   Manager, Internet Projects
+ (315)452-8503               Syracuse Research Corp.
+ jay@syrres.com              http://midas.syrres.com/~jay/
+ /////////////////////////////////////////////////////////////////
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Subject: Re: mod_cgi/1011: minimal csh CGI won't run, while perl and sh will (fwd)
+Date: Thu, 21 Aug 1997 23:35:21 -0700 (PDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Tue, 19 Aug 1997 09:19:40 -0400
+ From: jay mortensen <jay@nemesis.syrres.com>
+ Reply-To: jay@syrres.com
+ To: marc@hyperreal.org, Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: mod_cgi/1011: minimal csh CGI won't run, while perl and sh will
+ 
+ marc & dean
+ 
+ thanks for your responses. i apologize for submitting the support request
+ before waiting for help from the newsgroup.
+ 
+ Marc wrote:
+ > As Dean said, one of your .cshrc or similar files is
+ > running things or your csh is _really_ brain dead.
+ > Not an Apache problem.
+ 
+ still doesn't make sense (details below)
+ 
+ i wouldn't be so quick to call this "not an Apache problem", since it ONLY
+ appears in 1.2.1. i currently have .8.14 running on the same box on a different
+ port and the same script runs fine. so at the minimum, if this isn't a PROBLEM
+ per se, there is some difference in how the two versions handle the CGI
+ 
+ On Aug 18,  4:01pm, Dean Gaudet wrote:
+ > Subject: Re: mod_cgi/1011: minimal csh CGI won't run, while perl and sh wi
+ >
+ >
+ > On Mon, 18 Aug 1997, jay mortensen wrote:
+ >
+ > > #!/bin/csh
+ > > echo "Content-type: text/html"
+ > > echo ""
+ > > echo "<HTML>"
+ > > echo "test"
+ > > echo "</html>\n"
+ > > >How-To-Repeat:
+ > > http://www.syracuse.ny.us:8080/~jay/test.cgi if you insist on seeing it
+ crash :)
+ > >
+ > > i can produce the same error message on the command line if i unset the
+ HOME
+ > > environment variable lihe this:
+ >
+ > csh absolutely sucks as a scripting language.  You shouldn't use it.
+ 
+ agreed. in fact i don't really care about the csh script (its an old hack i
+ wrote before i learned of the wonders of perl), but i'm concerned about the
+ fact that this version of apache doesn't behave the same as the earlier version
+ running on the same box. thought it might be a sign of bigger problems to
+ come...
+ 
+ >
+ > > web2> unsetenv HOME
+ > > web2> test.cgi
+ > > No $home variable set.
+ > > Signal 7
+ >
+ > Your script is running your .cshrc or some crud like that.  Hardly a
+ > friendly thing to be doing.  If you're dead set on using csh then you
+ > should change the first line to:
+ >
+ > #!/bin/csh -f
+ 
+ i already tried this. no dice. my server is running as "nobody", and there are
+ no associated .cshrc or .login files. i tried changing the User and Group to an
+ existing non-privileged user, but that didn't make a difference either. i also
+ tried removing the system-wide /etc/csh.cshrc and /etc/csh.login files
+ 
+ anyway, for now i'm going to ditch the csh script and see how it goes...
+ 
+ thanks
+ jay
+ 
+ --
+ 
+ /////////////////////////////////////////////////////////////////
+ Gerald E. Mortensen (Jay)   Manager, Internet Projects
+ (315)452-8503               Syracuse Research Corp.
+ jay@syrres.com              http://midas.syrres.com/~jay/
+ /////////////////////////////////////////////////////////////////
+ 
+>Unformatted:
+
+
+>Last-Modified:  Mon Aug 18 20:29:30 PDT 1997
+
+
+

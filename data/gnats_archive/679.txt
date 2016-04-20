@@ -1,0 +1,162 @@
+From nobody@hyperreal.com  Wed Jun  4 23:37:45 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id XAA00559;
+	Wed, 4 Jun 1997 23:37:45 -0700 (PDT)
+Message-Id: <199706050637.XAA00559@hyperreal.com>
+Date: Wed, 4 Jun 1997 23:37:45 -0700 (PDT)
+From: Andreas Jung <ajung@sz-sb.de>
+Reply-To: ajung@sz-sb.de
+To: apbugs@hyperreal.com
+Subject: mod_log_config logs wrong month names in german/english
+X-Send-Pr-Version: 3.2
+
+>Number:         679
+>Category:       mod_log-any
+>Synopsis:       mod_log_config logs wrong month names in german/english
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jun  4 23:40:02 1997
+>Last-Modified:  Sun Jul  6 19:02:21 PDT 1997
+>Originator:     ajung@sz-sb.de
+>Organization:
+>Release:        1.2b10
+>Environment:
+Sparc Solaris 2.5.1,gcc 2.5.1
+SunOS saarland 5.5.1 Generic_103640-05 sun4m sparc SUNW,SPARCstation-20    
+>Description:
+During analyzing the logs of May of my Apache server I noticed our
+analyzing software ANALOG showed up to 80% of corrupt lines in every logfile
+from our virtual host. After heavy searching I found that Apache logged the
+monthname both in the german and the english abrevation:
+
+ts006p3.pop7a.netvision.net.il - - [01/May/1997:13:28:39 +0200] "GET /hsif01.htm
+ HTTP/1.0" 200 2420 "http://www.siebert.de/" "Mozilla/2.0 (compatible; MSIE 3.02
+; Windows 95)" 193.141.187.6
+ts006p3.pop7a.netvision.net.il - - [01/Mai/1997:13:28:40 +0200] "GET /hsif02.htm
+ HTTP/1.0" 200 1294 "http://www.siebert.de/" "Mozilla/2.0 (compatible; MSIE 3.02
+; Windows 95)" 193.141.187.6
+
+
+May is correct, but Mai is the german translation and ANALOG is confused of that !
+The problem is that Apache switches between the english and german version without 
+any concept. As you can see in the lines above the switch happens during running.
+We have a "setenv LANG de" in our shell startup script however it should not 
+affect the right logging of apache !
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Jun 28 15:57:28 PDT 1997
+State-Changed-Why:
+I'm suspecting some module or maybe something involving mod_include
+is playing with the locale environment variables.  So that a
+child starts off running correctly, but then something mucks
+with the settings and it stops running correctly.
+
+Do you always start apache with the same environment variables?
+(i.e. wrap it in an "env - FOOBAR=blah httpd -d /path/to/serverrot"
+sort of script)
+
+Do any of your server side includes play with the locale settings?
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Andreas Jung <ajung@sz-sb.de>
+Subject: Re: mod_log-any/679: mod_log_config logs wrong month names in german/english
+Date: Sun, 29 Jun 1997 03:49:03 -0700 (PDT)
+
+ 
+ I just looked at php-2.0b12 source code and it issues
+ 
+ setlocale(LC_ALL,""); 
+ 
+ At the beginning of a request.  This changes the locale from the default
+ "C" to "de", since you indicated that your LANG variable is set to "de". 
+ So any httpd children which run a php request will end up in the de locale
+ and this will affect logging. 
+ 
+ Apache uses the strftime() function to print dates, and that is influenced
+ by setlocale().  I can't think of anything that is portable that would do
+ what you want. 
+ 
+ You should be able to avoid your logging inconsistency by removing LANG=de
+ from your environment.  Should you want it for CGIs you can always use the
+ mod_env module to add it. 
+ 
+ If you want to hack apache to do something specific for you then you could
+ add setlocale(LC_ALL,"C") into the top of multi_log_transaction in
+ mod_log_config.
+ 
+ Unless someone else has a suggestion ...
+ 
+ Dean
+ 
+ On Sun, 29 Jun 1997, Andreas Jung wrote:
+ 
+ > On Sat, 28 Jun 1997 dgaudet@hyperreal.com wrote:
+ > 
+ > > Synopsis: mod_log_config logs wrong month names in german/english
+ > > 
+ > > State-Changed-From-To: open-analyzed
+ > > State-Changed-By: dgaudet
+ > > State-Changed-When: Sat Jun 28 15:57:28 PDT 1997
+ > > State-Changed-Why:
+ > > I'm suspecting some module or maybe something involving mod_include
+ > > is playing with the locale environment variables.  So that a
+ > > child starts off running correctly, but then something mucks
+ > > with the settings and it stops running correctly.
+ > 
+ > Aside from the standard distribution, I'am only using PHP additionally.
+ > mod_include is compiled in however I don't use it at this time.
+ > 
+ >  
+ > > Do you always start apache with the same environment variables?
+ > > (i.e. wrap it in an "env - FOOBAR=blah httpd -d /path/to/serverrot"
+ > > sort of script)
+ > 
+ > Apache is always started at boot time from a dedicated www account.
+ > However this account has no locale enviroment variables set.
+ > 
+ > > Do any of your server side includes play with the locale settings?
+ > > 
+ > 
+ > No ! :-)
+ > 
+ > I think the logging modules should be fixed the way that it logs the time
+ > independentl of the locale settings.
+ > 
+ > Best regards,
+ > Andreas
+ > 
+ >     ------------------------------------------------------------------------
+ >    - Andreas Jung, Bruchwiesenanlage 2,D-66125 Saarbrücken, Germany       -
+ >   - Phone: +49-(0)6897/972207, EMail: ajung@sz-sb.de (PGP key available) - 
+ >  - URL: http://home.pages.de/~ajung, IRC: YET@#saar                     - 
+ >   - Member of the Python Software Activity (PSA), Contributor of the     -
+ >    - Python Starship Project: http://starship.skyport.net                 -
+ >     ------------------------------------------------------------------------
+ > 
+ > 
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: marc
+State-Changed-When: Sun Jul  6 19:02:21 PDT 1997
+State-Changed-Why:
+As Dean says, is related to PHP changing the locale.
+Apache perhaps should do something about the locale itself,
+but it is not acceptable to reset it all the time in case
+some other module changed it because of the performance
+implications.
+>Unformatted:
+
+
+

@@ -1,0 +1,447 @@
+Received: (qmail 17033 invoked by uid 2012); 17 Feb 1998 00:32:35 -0000
+Message-Id: <19980217003235.17032.qmail@hyperreal.org>
+Date: 17 Feb 1998 00:32:35 -0000
+From: Valerio Paolini <valdez@alinet.it>
+Reply-To: valdez@alinet.it
+To: apbugs@hyperreal.org
+Subject: Follows symbolic links wether or not disabled
+X-Send-Pr-Version: 3.2
+
+>Number:         1818
+>Category:       config
+>Synopsis:       Follows symbolic links wether or not disabled
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Feb 16 16:40:00 PST 1998
+>Last-Modified:  Tue Aug  4 18:46:17 PDT 1998
+>Originator:     valdez@alinet.it
+>Organization:
+>Release:        1.2.5
+>Environment:
+RedHat Linux 5.0 on Cyrix P166+
+>Description:
+If I disable FollowSymLinks or FollowSymLinkIfOwner, Apache will
+serve a file linked anyway! I checked all my configurations,
+I followed the suggested security tips (disable access to / dir),
+but symbolic links are still functioning; note that there is no
+<location> directive that overrides a <directory> directive.
+
+It is a big problem: 700 users and no control over symlinks to
+/etc/passwd!!!
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Valerio Paolini <valdez@alinet.it>
+Cc: apbugs@hyperreal.org
+Subject: Re: config/1818: Follows symbolic links wether or not disabled
+Date: Mon, 16 Feb 1998 16:47:46 -0800 (PST)
+
+ Can you provide a minimal example configuration which shows this problem? 
+ Frequently when users try to construct a small reproduceable example for
+ us they discover things hidden in srm.conf or access.conf or in .htaccess
+ files which they didn't intend... 
+ 
+ Dean
+ 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Valerio VALDEZ Paolini <valdez@alinet.it>
+Cc: apbugs@hyperreal.org
+Subject: Re: config/1818: Follows symbolic links wether or not disabled
+Date: Tue, 17 Feb 1998 03:05:45 -0800 (PST)
+
+ On Tue, 17 Feb 1998, Valerio VALDEZ Paolini wrote:
+ 
+ > 	I hope it is not a misconfiguration because I don't want
+ > to waste your time.
+ 
+ It looks like you're missing any "Options" settings at the global level,
+ and the default is "Options all" which includes FollowSymLinks.  You
+ should be able to put this:
+ 
+ Options Indexes Includes ExecCGI
+ 
+ somewhere like the <Directory /> section ... although you probably want to
+ be more restrictive than that.
+ 
+ It's not a waste of time... it just re-enforces that we need to come up
+ with an easier to understand config.
+ 
+ Dean
+ 
+
+From: "Valerio VALDEZ Paolini" <valdez@alinet.it>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: config/1818: Follows symbolic links wether or not disabled
+Date: Tue, 17 Feb 1998 11:52:24 +0100
+
+ Goodmorning Dean,
+ 
+ 	some more informations about the 'bug'.
+ I got Apache 1.2.5-1 directly from RedHat (we run a mirror
+ at university). I checked the original rpm packet on my
+ cdrom and there are no info about the packager or anything
+ else.
+ 
+ 	Yesterday night I told you that I have the problem
+ at home with version 1.2.5 and not at university with version
+ 1.2.4: this is not true, I have the same problem in both
+ places; this seems to confirm what you said about misconfiguration.
+ But I really can't understand why and where the problem is.
+ 
+ 	I cannot provide you an example, but it is very simple
+ to reproduce it: just link /etc/passwd in your home directory
+ being user and try to access it from the internet. Here it works.
+ 
+ 	I hope it is not a misconfiguration because I don't want
+ to waste your time.
+ 
+ 	The directory structure (pruned) is as follows:
+ 
+ .		(the subtree starts here at /home/web-moo/webspace/)
+ |-- adm
+ |-- auth	(here I have users' logins & pwd)
+ |   |-- passwd
+ |   `-- www.totale
+ |-- bin
+ |   |-- backup
+ |   |-- banner
+ |   |-- configs
+ |   |-- counter
+ |   |-- log_http
+ |   |-- security
+ |   `-- utils
+ |-- cgi-bin	(here are ScriptAliased my scripts)
+ |   |-- banner.cgi
+ |   |-- counter.cgi
+ |   `-- yeti
+ |       |-- access_log.cgi
+ |       |-- auth.cgi
+ |       |-- cambio_passwd.cgi
+ |       |-- debug.cgi
+ |       |-- directory.cgi
+ |       |-- lista.cgi
+ |       |-- logger_add.cgi
+ |       |-- messaggio.cgi
+ |       |-- privacy.cgi
+ |       |-- status1.cgi
+ |       |-- status2.cgi
+ |       `-- yeti.pm
+ |-- data
+ |-- lock
+ |-- log
+ `-- web		(here is my document root)
+     |-- accesso_ristretto.shtml
+     |-- home.html
+     |-- index.html
+     |-- index.shtml
+     |-- cdl
+     |-- comesifa
+     |-- esaminando
+     |-- feedback
+     |-- icons
+     |-- images
+     |-- informazioni
+     |-- laureando
+     |-- servizi
+     |-- software
+     |-- tzone
+     `-- yeti
+ 
+ 705 directories, 5051 files
+ 
+ 	The are many many directories and no .htaccess somewhere to
+ override default configuration, I tried to search them as usual
+ with find / -name ".htaccess": brute force.
+ 
+ 	Here are my config files:
+ 
+ HTTPD.CONF -----------------------------------------------------
+ 
+ ServerType standalone
+ 
+ Port 80
+ 
+ HostnameLookups on
+ 
+ User www-data
+ Group www-data
+ 
+ BrowserMatch Mozilla/2 nokeepalive
+ 
+ ServerAdmin webmaster@caristudenti.cs.unibo.it
+ 
+ ServerRoot /etc/httpd/
+ 
+ ErrorLog /var/log/apache/error.log
+ 
+ LogFormat "%{%a %d/%m/%Y
+ %H:%M:%S}t|%h|%u|%f|%b|%{Referer}i|\"%{User-agent}i\"|%T|%s"
+ 
+ TransferLog /var/log/apache/access.log
+ 
+ PidFile /var/run/httpd.pid
+ 
+ ScoreBoardFile logs/apache_status
+ 
+ #ServerName CariStudenti.CS.UniBO.IT
+ 
+ Timeout 400
+ 
+ KeepAlive On
+ 
+ MaxKeepAliveRequests 100
+ 
+ KeepAliveTimeout 15
+ 
+ MinSpareServers 1
+ MaxSpareServers 1
+ 
+ StartServers 1
+ 
+ MaxClients 15
+ 
+ MaxRequestsPerChild 30
+ 
+ ACCESS.CONF ---------------------------------------------
+ 
+ <Directory />
+ 	AllowOverride None
+ 	Order deny,allow
+ 	Deny from all
+ </Directory>
+ 
+ <Directory /etc>
+ 	AllowOverride None
+ 	Order deny,allow
+ 	Deny from all
+ </Directory>
+ 
+ <Directory /home/>
+ 	AllowOverride None
+ 	Order deny,allow
+ 	Allow from all
+ </Directory>
+ 
+ <Directory /home/web-moo/webspace/cgi-bin/yeti/>
+ 	deny from all 
+ 	allow from cs.unibo.it
+ 	AuthType Basic 
+ 	AuthUserFile /home/web-moo/webspace/auth/www.totale
+ 	AuthName CariStudenti 
+ 	require valid-user 
+ 	satisfy any 
+ </Directory>
+ 
+ <Directory /home/web-moo/webspace/web>
+ 	Options Indexes Includes
+ 	AllowOverride None
+ 	order allow,deny
+ 	allow from all
+ </Directory>
+ 
+ <Directory /home/web-moo/webspace/web/yeti/>
+ 	deny from all 
+ 	allow from cs.unibo.it 
+ 	AuthType Basic 
+ 	AuthUserFile /home/web-moo/webspace/auth/www.totale 
+ 	AuthName CariStudenti 
+ 	require valid-user 
+ 	satisfy any 
+ </Directory>
+ 
+ <Directory /home/web-moo/webspace/web/servizi/>
+ 	deny from all 
+ 	allow from cs.unibo.it 
+ 	AuthType Basic 
+ 	AuthUserFile /home/web-moo/webspace/auth/www.totale 
+ 	AuthName CariStudenti 
+ 	require valid-user 
+ 	satisfy any 
+ </Directory>
+ 
+ <Directory /home/web-moo/webspace/web/esaminando/>
+ 	deny from all 
+ 	allow from cs.unibo.it 
+ 	AuthType Basic 
+ 	AuthUserFile /home/web-moo/webspace/auth/www.totale 
+ 	AuthName CariStudenti 
+ 	require valid-user 
+ 	satisfy any 
+ </Directory>
+ 
+ <Location /server-status>
+ 	SetHandler server-status
+ 	order deny,allow
+ 	deny from all
+ 	allow from localhost
+ </Location>
+ 
+ SRM.CONF --------------------------------------------------------
+ 
+ DocumentRoot /home/web-moo/webspace/web
+ 
+ UserDir "."
+ 
+ DirectoryIndex home.shtml home.html index.shtml index.html home.htm index.htm
+ 
+ FancyIndexing on
+ 
+ AddIconByEncoding (CMP,/icons/compressed.gif) x-compress x-gzip
+ 
+ AddIconByType (TXT,/icons/text.gif) text/*
+ AddIconByType (IMG,/icons/image2.gif) image/*
+ AddIconByType (SND,/icons/sound2.gif) audio/*
+ AddIconByType (VID,/icons/movie.gif) video/*
+ 
+ AddIcon /icons/binary.gif .bin .exe
+ AddIcon /icons/binhex.gif .hqx
+ AddIcon /icons/tar.gif .tar
+ AddIcon /icons/world2.gif .wrl .wrl.gz .vrml .vrm .iv
+ AddIcon /icons/compressed.gif .Z .z .tgz .gz .zip
+ AddIcon /icons/a.gif .ps .ai .eps
+ AddIcon /icons/layout.gif .html .shtml .htm .pdf
+ AddIcon /icons/text.gif .txt
+ AddIcon /icons/c.gif .c
+ AddIcon /icons/p.gif .pl .py
+ AddIcon /icons/f.gif .for
+ AddIcon /icons/dvi.gif .dvi
+ AddIcon /icons/uuencoded.gif .uu
+ AddIcon /icons/script.gif .conf .sh .shar .csh .ksh .tcl
+ AddIcon /icons/tex.gif .tex
+ AddIcon /icons/bomb.gif core
+ 
+ AddIcon /icons/back.gif ..
+ AddIcon /icons/hand.right.gif README
+ AddIcon /icons/folder.gif ^^DIRECTORY^^
+ AddIcon /icons/blank.gif ^^BLANKICON^^
+ 
+ DefaultIcon /icons/unknown.gif
+ 
+ ReadmeName README
+ HeaderName HEADER
+ 
+ IndexIgnore */.??* *~ *# */HEADER* */README* */RCS
+ 
+ AccessFileName .htaccess
+ 
+ DefaultType text/plain
+ 
+ AddEncoding x-compress Z
+ AddEncoding x-gzip gz
+ 
+ AddLanguage en .en
+ AddLanguage it .it
+ 
+ LanguagePriority it en
+ 
+ Alias /icons/	/home/web-moo/webspace/web/icons/
+ Alias /img/		/home/web-moo/webspace/web/images/
+ Alias /vangoof	/home/casolari/vg/
+ 
+ ScriptAlias /cgi-bin/ /home/web-moo/webspace/cgi-bin/
+ 
+ AddType text/html .htm
+ 
+ # To use CGI scripts:
+ #AddHandler cgi-script .cgi
+ 
+ AddType text/html .shtml
+ AddHandler server-parsed .shtml
+ 
+ ErrorDocument   400     /errori/400.shtml
+ ErrorDocument   401     /errori/401.shtml
+ ErrorDocument   402     /errori/402.shtml
+ ErrorDocument   403     /errori/403.shtml
+ ErrorDocument   404     /errori/404.shtml
+ ErrorDocument   405     /errori/405.shtml
+ ErrorDocument   500     /errori/500.shtml
+ ErrorDocument   501     /errori/501.shtml
+ ErrorDocument   503     /errori/503.shtml
+ 
+ ----------------------------------------------
+ 
+ 	Thank you very much for your attention; I hope we can solve
+ the problem as soon as possible. If you need some more information,
+ please write me. Please forgive my english!
+ 
+ 	Ciao,
+ 
+ 		Valerio
+ 
+ 
+ --------------------------------------------------------------------------
+  Valerio Paolini, studente del Corso di Laurea in Informatica della
+  Facolta' di Scienze MM.FF.NN. dell'Universita' di Bologna, Italia.
+ --------------------------------------------------------------------------
+  valdez@alinet.it		www.alinet.it/valdez
+  paolini@cs.unibo.it		caristudenti.cs.unibo.it/~paolini
+ --------------------------------------------------------------------------
+  Via Matteotti 22, 40100 Bologna BO, Italia, tel. +39(0)51361581
+ -------------------------------------------------------------------------- 
+ 
+
+From: "Valerio VALDEZ Paolini" <valdez@alinet.it>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: config/1818: Follows symbolic links wether or not disabled
+Date: Wed, 18 Feb 1998 02:42:26 +0100
+
+ Ciao Dean,
+ 
+ >It looks like you're missing any "Options" settings at the global level,
+ >and the default is "Options all" which includes FollowSymLinks.  You
+ >should be able to put this: Options Indexes Includes ExecCGI
+ 
+ Yes, I tried and it works. 'Options None' would be the same?
+ 
+ >It's not a waste of time... it just re-enforces that we need to come up
+ >with an easier to understand config.
+ 
+ If you need some help, please tell me. Proof reading, trying examples
+ (there are too few examples), just tell me. I use Apache at my university,
+ where I am webmaster: so I think I must help you someway.
+ 
+ Thank you very much Dean.
+ 
+ 	Valerio
+ 
+ --------------------------------------------------------------------------
+  Valerio Paolini, studente del Corso di Laurea in Informatica della
+  Facolta' di Scienze MM.FF.NN. dell'Universita' di Bologna, Italia.
+ --------------------------------------------------------------------------
+  valdez@alinet.it		www.alinet.it/valdez
+  paolini@cs.unibo.it		caristudenti.cs.unibo.it/~paolini
+ --------------------------------------------------------------------------
+  Via Matteotti 22, 40100 Bologna BO, Italia, tel. +39(0)51361581
+ -------------------------------------------------------------------------- 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Wed Feb 18 12:39:49 PST 1998
+State-Changed-Why:
+The default for options was undocumented.
+
+Dean
+Release-Changed-From-To: 1.2.5 RedHat-1.2.5
+Release-Changed-By: coar
+Release-Changed-When: Tue Aug  4 18:46:16 PDT 1998
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

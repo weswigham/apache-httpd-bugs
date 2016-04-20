@@ -1,0 +1,120 @@
+From apwww@hyperreal.org  Thu Sep 25 11:33:40 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id LAA21007;
+	Thu, 25 Sep 1997 11:33:40 -0700 (PDT)
+Message-Id: <199709251833.LAA21007@hyperreal.org>
+Date: Thu, 25 Sep 1997 11:33:40 -0700 (PDT)
+From: Jean-Pierre Arneodo <arneodo@micronet.fr>
+Reply-To: arneodo@micronet.fr
+To: apbugs@hyperreal.org
+Subject: APACHE_TLS cannot be used in modules on Windows95
+X-Send-Pr-Version: 3.2
+
+>Number:         1168
+>Category:       os-windows
+>Synopsis:       APACHE_TLS cannot be used in modules on Windows95
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Sep 25 11:40:02 1997
+>Last-Modified:  Fri Dec 26 07:57:36 PST 1997
+>Originator:     arneodo@micronet.fr
+>Organization:
+>Release:        1.3a1
+>Environment:
+PC running Windows 95
+compiled with MSVC++5.0
+>Description:
+On Windows 95, a dll cannot be load by LoadLibraryEx 
+if the symbol APACHE_TLS is used in the module.
+LoadLibraryEx return code is 1114.
+MessageId: ERROR_DLL_INIT_FAILED
+MessageText:
+ A dynamic link library (DLL) initialization routine failed.
+
+>How-To-Repeat:
+
+#include "httpd.h"
+#include "http_config.h"
+#include "multithread.h"
+
+/*
+** Directive: LoadModule test_module modules/ApacheTest.dll
+**
+** This directive doesn't work on Windows 95 if you use
+** APACHE_TLS in the module.
+**
+** Configuration:
+**  - Compiled on NT4 with msvc+5.0
+**
+*/
+
+/*static            request_rec *out;  LoadModule works fine */
+static APACHE_TLS request_rec *out;	/* LoadModule doesn't work */
+
+static int test_handler (request_rec *r)
+{
+	out = r;	/* Just for a test */
+    return OK;
+}
+
+static handler_rec test_handlers[] = {
+	{ "test", test_handler },
+	{ NULL }
+};
+
+module MODULE_VAR_EXPORT test_module =
+{
+    STANDARD_MODULE_STUFF,
+    NULL,			/* initializer */
+    NULL,			/* dir config creater */
+    NULL,			/* dir merger --- default is to override */
+    NULL,			/* server config */
+    NULL,			/* merge server config */
+    NULL,			/* command table */
+    test_handlers,  /* handlers */
+    NULL,           /* filename translation */
+    NULL,           /* check_user_id */
+    NULL,           /* check auth */
+    NULL,           /* check access */
+    NULL,           /* type_checker */
+    NULL,           /* fixups */
+    NULL,           /* logger */
+    NULL,           /* header parser */
+    NULL            /* child_init */
+};
+
+>Fix:
+n
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Sun Nov 23 12:45:53 PST 1997
+State-Changed-Why:
+Please try this with the 1.3b3 beta just announced, and
+let us know if this is still a problem..
+State-Changed-From-To: feedback-analyzed
+State-Changed-By: pcs
+State-Changed-When: Mon Dec  1 07:51:01 PST 1997
+State-Changed-Why:
+There is a bug in MSVC++ which means you cannot use
+__declspec(thread) in DLL's loaded with LoadLibrary().
+Apache modules are loaded with LoadLibrary(), and
+APACHE_TLS is defined as __declspec(), so this
+means you cannot use APACHE_TLS in apache modules.
+
+MS recommend you use the Tls*() functions instead for
+thread-local storage. More details are in the MS Knowledge
+Base, article 118816.
+State-Changed-From-To: analyzed-closed
+State-Changed-By: ben
+State-Changed-When: Fri Dec 26 07:57:35 PST 1997
+State-Changed-Why:
+Microsoft's problem, not ours.
+>Unformatted:
+
+

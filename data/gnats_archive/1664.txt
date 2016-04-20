@@ -1,0 +1,178 @@
+Received: (qmail 857 invoked by uid 2012); 13 Jan 1998 19:59:04 -0000
+Message-Id: <19980113195904.856.qmail@hyperreal.org>
+Date: 13 Jan 1998 19:59:04 -0000
+From: William Nau <nau@ssesco.com>
+Reply-To: nau@ssesco.com
+To: apbugs@hyperreal.org
+Subject: Failure to properly startup every time
+X-Send-Pr-Version: 3.2
+
+>Number:         1664
+>Category:       os-os2
+>Synopsis:       Failure to properly startup every time
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jan 13 13:10:01 PST 1998
+>Last-Modified:  Thu Jan 29 18:29:05 PST 1998
+>Originator:     nau@ssesco.com
+>Organization:
+>Release:        1.3b3
+>Environment:
+Binary distribution of 1.3b3 for OS/2 from Apache
+web site.
+
+I'm currently running OS/2 Warp 4.0 Client with no
+fixpaks installed.  Full LAN support is installed.
+>Description:
+This occurs only once out of every few (4-5) startups.
+When I kill the server and restart it quickly (in a
+command file), the server sometimes fails to start 
+properly.  Before being accessed, the number of httpd
+processes quickly drops to one.  If a port 80 request
+is made by a browser, that process dies.
+
+This appears to be new in the 1.3b3 beta.  It didn't 
+appear in the 1.2.4 release from Softlink.
+
+BTW:  1.3b3 seems to be a lot snappier than 1.2.4
+>How-To-Repeat:
+I terminate the running process using the terminate.cmd
+file provided in the Softlink distribution.  The new
+process is started with a 'detach httpd'.
+
+Basically, you run it and watch the process list.
+If it drops to a single process in ten seconds or
+so, it failed.  If the processes remain, you're ok.
+
+The exact command script is as follows:
+/* BEGIN HTTPD COMMAND SCRIPT */
+/* */
+CALL RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
+CALL RxFuncAdd 'SysCurPos', 'RexxUtil', 'SysCurPos'
+CALL RxFuncAdd 'SysCls', 'RexxUtil', 'SysCls'
+CALL SysLoadFuncs
+
+'c:'
+'cd \os2httpd'
+hostfile = 'hostname';
+
+'hostname >' hostfile
+hostname = LINEIN(hostfile)
+CALL STREAM hostfile 'c' 'close'
+say 'HOSTNAME =' hostname
+'set HOSTNAME='hostname
+
+'cd os2'
+'call terminate.cmd'
+'cd ..'
+
+'detach httpd.exe'
+/* END HTTPD COMMAND SCRIPT */
+
+If I can provide more informatin let me know.
+>Fix:
+
+>Audit-Trail:
+
+From: "Brian Havard" <brianh@kheldar.apana.org.au>
+To: "William Nau" <nau@ssesco.com>
+Cc: "apbugs@apache.org" <apbugs@apache.org>
+Subject: Re: os-os2/1664: Failure to properly startup every time
+Date: Wed, 14 Jan 98 21:09:29 +1000
+
+ >When I kill the server and restart it quickly (in a
+ >command file), the server sometimes fails to start 
+ >properly.  Before being accessed, the number of httpd
+ >processes quickly drops to one.  If a port 80 request
+ >is made by a browser, that process dies.
+ >
+ >This appears to be new in the 1.3b3 beta.  It didn't 
+ >appear in the 1.2.4 release from Softlink.
+ 
+ It would seem that the problem occurs when the new server starts up before
+ the original server has finished shutting down. The new server can't open
+ port 80 if the old server hasn't closed it yet so it terminates with an
+ error.
+ 
+ Ideally, you need to wait for the old process to die before starting the new
+ one but a delay of a few seconds should be enough to make the script work as
+ intended (EG "call SysSleep 5")
+ 
+ Also, there's a bug in 1.3 beta 3 (now fixed) that caused shutdown to take an
+ unnecessarily long time which would have increase the chances of this
+ happening.
+ 
+ --
+  ______________________________________________________________________________
+  |  Brian Havard                 |  "He is not the messiah!                   |
+  |  brianh@kheldar.apana.org.au  |  He's a very naughty boy!" - Life of Brian |
+  ------------------------------------------------------------------------------
+ 
+
+From: "William Nau" <nau@ssesco.com>
+To: "Brian Havard" <brianh@kheldar.apana.org.au>
+Cc: "apbugs@apache.org" <apbugs@apache.org>
+Subject: Re: os-os2/1664: Failure to properly startup every time
+Date: Wed, 14 Jan 98 07:58:57 
+
+ Brian,
+ 
+ Thanks much for the info (very prompt).  I implemented a delay.  Five 
+ seconds didn't always do it, but ten seconds appears to do the job (idle 
+ P150).
+ 
+ On Wed, 14 Jan 98 21:09:29 +1000, Brian Havard wrote:
+ >>When I kill the server and restart it quickly (in a
+ >>command file), the server sometimes fails to start 
+ >>properly.  Before being accessed, the number of httpd
+ >>processes quickly drops to one.  If a port 80 request
+ >>is made by a browser, that process dies.
+ >>
+ >>This appears to be new in the 1.3b3 beta.  It didn't 
+ >>appear in the 1.2.4 release from Softlink.
+ >
+ >It would seem that the problem occurs when the new server starts up before
+ >the original server has finished shutting down. The new server can't open
+ >port 80 if the old server hasn't closed it yet so it terminates with an
+ >error.
+ >
+ >Ideally, you need to wait for the old process to die before starting the new
+ >one but a delay of a few seconds should be enough to make the script work as
+ >intended (EG "call SysSleep 5")
+ >
+ >Also, there's a bug in 1.3 beta 3 (now fixed) that caused shutdown to take an
+ >unnecessarily long time which would have increase the chances of this
+ >happening.
+ >
+ >--
+ > 
+ _______________________________________________________________________
+ _______
+ > |  Brian Havard                 |  "He is not the messiah!                   |
+ > |  brianh@kheldar.apana.org.au  |  He's a very naughty boy!" - Life of Brian |
+ > ------------------------------------------------------------------------------
+ >
+ 
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Jan 29 18:29:05 PST 1998
+State-Changed-Why:
+User fixed it by increasing their delay... probably also will
+be helped in 1.3b4 by Brian Havard's patch.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,90 @@
+Received: (qmail 9289 invoked by uid 501); 31 Jan 2002 07:08:32 -0000
+Message-Id: <20020131070832.9288.qmail@apache.org>
+Date: 31 Jan 2002 07:08:32 -0000
+From: Garrett D'Amore <garrett@west.sun.com>
+Reply-To: garrett@west.sun.com
+To: submit@bugz.apache.org
+Subject: accept mutex limits Apache scalability
+X-Send-Pr-Version: 3.110
+
+>Number:         9660
+>Category:       general
+>Synopsis:       accept mutex limits Apache scalability
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          feedback
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan 30 23:10:00 PST 2002
+>Closed-Date:
+>Last-Modified:  Tue Mar 26 06:05:38 PST 2002
+>Originator:     garrett@west.sun.com
+>Release:        2.0.28 (beta)
+>Organization:
+>Environment:
+Solaris 8, UltraSPARC-III.  Large SMP (30+ procs) machine.  1Gb ethernet.
+>Description:
+We've been doing some performance analysis of Apache using very large
+web server configurations, and we're running into a bottleneck that
+appears to be traceable to the serialized accept.
+
+Solaris actually scales far better if mutiple threads or processes
+are allowed to sit in accept().
+
+Essentially, we have abottleneck of around 1900 ops/sec, and careful
+profiling shows idle cpu (alot, actually), and a lock contention on the
+accept lock.  While the lock contention isn't too bad a problem (measured
+using lockstat(1m)), the fact that an artificial latency is induced by
+this serialization of accept limits the number of connections we can accept
+per second, even on very large (30+ processors) SMP machines.
+
+(For the record, these were performed using mod_ssl and a hardware crypto
+card capable of 4000+ RSA ops/sec.)  The problem was also demonstrated under
+Apache 1.3.12, with slightly different config files, but the same general
+profile analysis.
+
+>How-To-Repeat:
+Configure a large web server and do lots of client connects (thousands) per
+second.  Notice (if your box is big enough) that you slow down substantially
+as you reach a threshold, which is due to limits on the accept()/sec call.
+You need to use 1Gb ether to ensure that network is not a bottleneck.
+(At 100Mb, bottleneck occurs at around 1300 due to bandwidth.)
+>Fix:
+It seems to me, that a special MPM could be created, which used a single-process
+model, and created multiple acceptor threads.  I believe one could even derive
+from the threaded MPM, but configure for only one process, and at least
+one dedicated acceptor thread per Listen directive.  With such a configuration,
+you don't need to serialize accesses to the accept mutex.
+
+I'm tempted to try to write such a beast myself, but I wonder if someone else
+has already done this.  Are there any guidelines for MPM developers, or should
+I just start hacking at the source?
+
+Thanks!
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: jim
+State-Changed-When: Tue Mar 26 06:05:38 PST 2002
+State-Changed-Why:
+Solaris 8 is specifically setup so that in the single listen case, accepts are *not* serialized. Are you using multiple Listens? On all MPMs?
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

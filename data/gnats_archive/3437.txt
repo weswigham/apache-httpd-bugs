@@ -1,0 +1,401 @@
+Received: (qmail 4216 invoked by uid 2012); 21 Nov 1998 12:42:38 -0000
+Message-Id: <19981121124238.4215.qmail@hyperreal.org>
+Date: 21 Nov 1998 12:42:38 -0000
+From: Andrew Clark <andy@ppp1.com>
+Reply-To: andy@ppp1.com
+To: apbugs@hyperreal.org
+Subject: Interprets method incorrectly.
+X-Send-Pr-Version: 3.2
+
+>Number:         3437
+>Category:       general
+>Synopsis:       Interprets method incorrectly.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          feedback
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Nov 21 04:50:00 PST 1998
+>Closed-Date:
+>Last-Modified:  Thu May 25 10:58:53 PDT 2000
+>Originator:     andy@ppp1.com
+>Release:        1.3.3
+>Organization:
+>Environment:
+Linux 2.0.35 i586, gcc version 2.8.1
+>Description:
+The method is not being interpreted correctly.  When I ask for 
+'PUT' /foo.html http/1.0' it seems to ignore the method by always using 'GET'.
+ However when the filename doesn't contain a period, it is used correctly.  For
+example, I am able to retreive a document using 'GEE /index.html http/1.0'.
+ When I try a 'PUT /foo http/1.0' it creates the file 'foo'.
+>How-To-Repeat:
+23 veger />telnet veger.ppp1.com 80
+Trying 207.211.163.141...
+Connected to veger.
+Escape character is '^]'.
+PUT /foo.html http/1.0
+
+HTTP/1.1 404 Not Found
+Date: Sat, 21 Nov 1998 12:32:23 GMT
+Server: Apache/1.3.3 (Unix) PHP/3.0.5
+Connection: close
+Content-Type: text/html
+
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<HTML><HEAD>
+<TITLE>404 Not Found</TITLE>
+</HEAD><BODY>
+<H1>Not Found</H1>
+The requested URL /foo.html was not found on this server.<P>
+</BODY></HTML>
+Connection closed by foreign host.
+24 veger />telnet veger.ppp1.com 80
+Trying 207.211.163.141...
+Connected to veger.
+Escape character is '^]'.
+PUT /foo http/1.0
+
+HTTP/1.1 200 Request fullfilled, but you should provide a date in your request...
+Date: Sat, 21 Nov 1998 12:32:37 GMT
+Server: Apache/1.3.3 (Unix) PHP/3.0.5
+Connection: close
+Content-Type: text/html
+
+Doh! The server had a problem"Connection closed by foreign host.
+25 veger />telnet veger.ppp1.com 80
+Trying 207.211.163.141...
+Connected to veger.
+Escape character is '^]'.
+GEE /foo.html http/1.0
+
+HTTP/1.1 404 Not Found
+Date: Sat, 21 Nov 1998 12:32:58 GMT
+Server: Apache/1.3.3 (Unix) PHP/3.0.5
+Connection: close
+Content-Type: text/html
+
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<HTML><HEAD>
+<TITLE>404 Not Found</TITLE>
+</HEAD><BODY>
+<H1>Not Found</H1>
+The requested URL /foo.html was not found on this server.<P>
+</BODY></HTML>
+Connection closed by foreign host.
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Sat Nov 21 07:33:15 PST 1998
+State-Changed-Why:
+So how do you have it setup to handle PUT?
+
+Anything in the error log?
+
+From: Andrew Clark <andorko@veger.ppp1.com>
+To: marc@apache.org
+Cc: apbugs@Apache.Org
+Subject: Re: general/3437: Interprets method incorrectly.
+Date: Sat, 21 Nov 1998 12:43:38 -0800
+
+ marc@apache.org wrote:
+ 
+ > [In order for any reply to be added to the PR database, ]
+ > [you need to include <apbugs@Apache.Org> in the Cc line ]
+ > [and leave the subject line UNCHANGED.  This is not done]
+ > [automatically because of the potential for mail loops. ]
+ > [If you do not include this Cc, your reply may be ig-   ]
+ > [nored unless you are responding to an explicit request ]
+ > [from a developer.                                      ]
+ > [Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+ >
+ > Synopsis: Interprets method incorrectly.
+ >
+ > State-Changed-From-To: open-feedback
+ > State-Changed-By: marc
+ > State-Changed-When: Sat Nov 21 07:33:15 PST 1998
+ > State-Changed-Why:
+ > So how do you have it setup to handle PUT?
+ 
+ ---access.conf---snipit--
+ <Directory /usr/local/www>
+ Options All
+ AllowOverride AuthConfig Limit
+ order allow,deny
+ allow from all
+ </Directory>
+ Script PUT /cgi-bin/putscript
+ --------------------------
+ Yes, I do not have any access restrictions for testing purposes.
+ The script used for put is from
+ 'http://symposia.inria.fr/symposia/userdoc/put/put-c.html'
+ However it does not appear that the script is even getting invoked.
+ 
+ >
+ > Anything in the error log?
+ 
+ ----error.log------
+ [Sat Nov 21 04:32:37 1998] [error] [client 207.211.163.141] malformed
+ header from script. Bad header=This behavior is temporary.:
+ /usr/local/apache/share/cgi-bin/putscript
+ ----(Error is not actually a problem, I didn't include any headers in
+ that request)----
+ [Sat Nov 21 12:22:56 1998] [error] [client 127.0.0.1] Invalid method in
+ request GEE /foo/bar/html http/1.0
+ ----(Correctly identifies invalid method)----
+ 
+ ----access.log-----
+ 207.211.163.141 - - [21/Nov/1998:04:32:37 -0800] "PUT /foo http/1.0" 500
+ 30
+ 207.211.163.141 - - [21/Nov/1998:04:32:58 -0800] "GEE /foo.html
+ http/1.0" 404 202
+ 127.0.0.1 - - [21/Nov/1998:12:22:56 -0800] "GEE /foo/bar/html http/1.0"
+ 501 206
+ 127.0.0.1 - - [21/Nov/1998:12:23:21 -0800] "PUT /foo/bar.html http/1.0"
+ 403 0
+ 207.211.163.139 - - [21/Nov/1998:12:24:53 -0800] "PUT /rab.html
+ HTTP/1.0" 404 202
+ 207.211.163.141 - - [21/Nov/1998:12:25:38 -0800] "GEE /index.html
+ http/1.0" 200 3008
+ 207.211.163.141 - - [21/Nov/1998:12:26:13 -0800] "GEE /foo.html
+ http/1.0" 404 202
+ 207.211.163.139 - - [21/Nov/1998:12:29:57 -0800] "PUT /tmp/foo.html
+ HTTP/1.0" 404 206
+ 
+ -----(note that 'GEE /foo/bar/html http/1.0' results in an error
+ correctly, but 'GEE /index.html http/1.0' does not)
+ 
+Comment-Added-By: coar
+Comment-Added-When: Sun Nov 22 05:41:19 PST 1998
+Comment-Added:
+
+There is a significant error in your test cases.  The
+HTTP-Version component *must* be upper-case; i.e.,
+"HTTP/1.0" and not "http/1.0".
+
+Why do you think that the script isn't getting invoked
+when you've got an error message concerning it in the
+error log?
+
+Try using a corrected request-line and see if that changes
+the behaviour at all.
+
+
+From: Marc Slemko <marcs@znep.com>
+To: Andrew Clark <andorko@veger.ppp1.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: general/3437: Interprets method incorrectly.
+Date: Sun, 22 Nov 1998 23:19:44 -0800 (PST)
+
+ On Sat, 21 Nov 1998, Andrew Clark wrote:
+ 
+ > <Directory /usr/local/www>
+ > Options All
+ > AllowOverride AuthConfig Limit
+ > order allow,deny
+ > allow from all
+ > </Directory>
+ > Script PUT /cgi-bin/putscript
+ > --------------------------
+ > Yes, I do not have any access restrictions for testing purposes.
+ > The script used for put is from
+ > 'http://symposia.inria.fr/symposia/userdoc/put/put-c.html'
+ > However it does not appear that the script is even getting invoked.
+ 
+ Are you sure that it isn't the script doing bogus things?  If you do
+ "Script PUT /cgi-bin/printenv" instead (assuming printenv exists on your
+ server), do you see the same behaviour?
+ 
+ Are you sure that there isn't a difference in that some of the files exist
+ and some don't?  You PUT /foo, then try /foo/bar.html.
+ 
+ 
+
+From: Andrew Clark <andorko@veger.ppp1.com>
+To: Marc Slemko <marcs@znep.com>
+Cc: coar@apache.org, apbugs@apache.org, andy@ppp1.com
+Subject: Re: general/3437: Interprets method incorrectly.
+Date: Sun, 22 Nov 1998 23:51:24 -0800
+
+ I Changed the script line to read 'Script PUT /cgi-bin/printenv'.
+ I also verified that none of the files already exist.
+ When testing, I also was sure to use a capitolized 'HTTP/1.0' this time.
+ If anyone would like to experiment, you are welcome to telnet to the server on
+ port 80.  The hostname is veger.ppp1.com
+ 
+ Marc Slemko wrote:
+ 
+ > On Sat, 21 Nov 1998, Andrew Clark wrote:
+ >
+ > > <Directory /usr/local/www>
+ > > Options All
+ > > AllowOverride AuthConfig Limit
+ > > order allow,deny
+ > > allow from all
+ > > </Directory>
+ > > Script PUT /cgi-bin/putscript
+ > > --------------------------
+ > > Yes, I do not have any access restrictions for testing purposes.
+ > > The script used for put is from
+ > > 'http://symposia.inria.fr/symposia/userdoc/put/put-c.html'
+ > > However it does not appear that the script is even getting invoked.
+ >
+ > Are you sure that it isn't the script doing bogus things?  If you do
+ > "Script PUT /cgi-bin/printenv" instead (assuming printenv exists on your
+ > server), do you see the same behaviour?
+ >
+ > Are you sure that there isn't a difference in that some of the files exist
+ > and some don't?  You PUT /foo, then try /foo/bar.html.
+ 
+ ---session log---
+ 1 veger ~>telnet veger.ppp1.com 80
+ Trying 207.211.163.141...
+ Connected to veger.
+ Escape character is '^]'.
+ PUT /foobar.html HTTP/1.0
+ 
+ HTTP/1.1 404 Not Found
+ Date: Mon, 23 Nov 1998 07:33:40 GMT
+ Server: Apache/1.3.3 (Unix) PHP/3.0.5
+ Connection: close
+ Content-Type: text/html
+ 
+ <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+ <HTML><HEAD>
+ <TITLE>404 Not Found</TITLE>
+ </HEAD><BODY>
+ <H1>Not Found</H1>
+ The requested URL /foobar.html was not found on this server.<P>
+ </BODY></HTML>
+ Connection closed by foreign host.
+ 
+ 2 veger ~>telnet veger.ppp1.com 80
+ Trying 207.211.163.141...
+ Connected to veger.
+ Escape character is '^]'.
+ PUT /foobar HTTP/1.0
+ 
+ HTTP/1.1 200 OK
+ Date: Mon, 23 Nov 1998 07:34:11 GMT
+ Server: Apache/1.3.3 (Unix) PHP/3.0.5
+ Connection: close
+ Content-Type: text/html
+ 
+ SERVER_SOFTWARE = Apache/1.3.3 (Unix) PHP/3.0.5<BR>
+ GATEWAY_INTERFACE = CGI/1.1<BR>
+ DOCUMENT_ROOT = /usr/local/www<BR>
+ REDIRECT_URL = /foobar<BR>
+ REMOTE_ADDR = 207.211.163.141<BR>
+ SERVER_PROTOCOL = HTTP/1.0<BR>
+ SERVER_SIGNATURE = <BR>
+ REQUEST_METHOD = PUT<BR>
+ QUERY_STRING = <BR>
+ PATH = /usr/local/sbin:/usr/local/bin:/sbin:/usr/sbin:/bin:/usr/bin<BR>
+ REMOTE_PORT = 13531<BR>
+ SCRIPT_NAME = /cgi-bin/printenv<BR>
+ REDIRECT_STATUS = 200<BR>
+ SCRIPT_FILENAME = /usr/local/apache/share/cgi-bin/printenv<BR>
+ SERVER_NAME = veger.ppp1.com<BR>
+ PATH_INFO = /foobar<BR>
+ REQUEST_URI = /foobar<BR>
+ SERVER_PORT = 80<BR>
+ PATH_TRANSLATED = /usr/local/www/foobar<BR>
+ SERVER_ADMIN = andy@ppp1.com<BR>
+ Connection closed by foreign host.
+ 
+ 3 veger ~>telnet veger.ppp1.com 80
+ Trying 207.211.163.141...
+ Connected to veger.
+ Escape character is '^]'.
+ GUK /foo.html HTTP/1.0
+ 
+ HTTP/1.1 404 Not Found
+ Date: Mon, 23 Nov 1998 07:34:43 GMT
+ Server: Apache/1.3.3 (Unix) PHP/3.0.5
+ Connection: close
+ Content-Type: text/html
+ 
+ <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+ <HTML><HEAD>
+ <TITLE>404 Not Found</TITLE>
+ </HEAD><BODY>
+ <H1>Not Found</H1>
+ The requested URL /foo.html was not found on this server.<P>
+ </BODY></HTML>
+ Connection closed by foreign host.
+ 
+ 4 veger ~>telnet veger.ppp1.com 80
+ Trying 207.211.163.141...
+ Connected to veger.
+ Escape character is '^]'.
+ GUK /foo HTTP/1.0
+ 
+ HTTP/1.1 501 Method Not Implemented
+ Date: Mon, 23 Nov 1998 07:34:58 GMT
+ Server: Apache/1.3.3 (Unix) PHP/3.0.5
+ Allow: GET, HEAD, PUT, OPTIONS, TRACE
+ Connection: close
+ Content-Type: text/html
+ 
+ <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+ <HTML><HEAD>
+ <TITLE>501 Method Not Implemented</TITLE>
+ </HEAD><BODY>
+ <H1>Method Not Implemented</H1>
+ GUK to /foo not supported.<P>
+ </BODY></HTML>
+ Connection closed by foreign host.
+ ----------------
+ 
+ ---access.log---
+ 207.211.163.141 - - [22/Nov/1998:23:33:43 -0800] "PUT /foobar.html HTTP/1.0"
+ 404 205
+ 207.211.163.141 - - [22/Nov/1998:23:34:14 -0800] "PUT /foobar HTTP/1.0" 200
+ 682
+ 207.211.163.141 - - [22/Nov/1998:23:34:44 -0800] "GUK /foo.html HTTP/1.0" 404
+ 202
+ 207.211.163.141 - - [22/Nov/1998:23:34:59 -0800] "GUK /foo HTTP/1.0" 501 197
+ 207.211.163.141 - - [22/Nov/1998:23:37:03 -0800] "PUT /barfoo.html HTTP/1.0"
+ 404 205
+ -----------------
+ 
+ ---error.log ---
+ [Sun Nov 22 23:34:59 1998] [error] [client 207.211.163.141] Invalid method in
+ request GUK /foo HTTP/1.0
+ ---------------
+ 
+Comment-Added-By: coar
+Comment-Added-When: Thu May 25 10:58:49 PDT 2000
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

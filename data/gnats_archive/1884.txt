@@ -1,0 +1,124 @@
+Received: (qmail 27027 invoked by uid 2012); 27 Feb 1998 22:11:54 -0000
+Message-Id: <19980227221154.27026.qmail@hyperreal.org>
+Date: 27 Feb 1998 22:11:54 -0000
+From: Todd Eigenschink <eigenstr@mixi.net>
+Reply-To: eigenstr@mixi.net
+To: apbugs@hyperreal.org
+Subject: Implementation of new option for HostnameLookups: LogOnly
+X-Send-Pr-Version: 3.2
+
+>Number:         1884
+>Category:       other
+>Synopsis:       Implementation of new option for HostnameLookups: LogOnly
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Feb 27 14:20:00 PST 1998
+>Last-Modified:  Tue May 19 19:56:25 PDT 1998
+>Originator:     eigenstr@mixi.net
+>Organization:
+>Release:        1.2.5
+>Environment:
+Any system
+>Description:
+This is a feature suggestion, with a patch to implement it for Apache
+1.2.5.
+
+"HostnameLookups Off" is the best way to run a web server, but means
+that to get meaningful information from web stats programs, a resolver
+needs to be run against the logs.  Leaving lookups off is good for
+speed, but it's because the lookups would ordinarily be in the
+request-processing chain of events.  Once the request is complete and
+logging starts, that server is blocked from further requests until
+logging is complete.
+
+We implemented a new option for HostnameLookups, LogOnly, which
+restricts the name lookup activity to the logging phase (where it
+won't hurt request response time, at least as long as enough servers
+are already running to process incoming requests).
+
+I'm going to *try* pasting the patch into the "fix" field.  If it
+gets munged, contact me for a clean version.
+>How-To-Repeat:
+
+>Fix:
+--- http_core.c.orig    Mon Feb  9 19:12:52 1998
++++ http_core.c Wed Feb 25 19:20:45 1998
+@@ -338,9 +338,11 @@
+     if (dir_config) 
+        dir_conf = (core_dir_config *)get_module_config(dir_config, &core_module
+);
+ 
+-   if ((!dir_conf) || (type != REMOTE_NOLOOKUP && conn->remote_host == NULL &&
+-                     ((dir_conf->hostname_lookups) || 
+-                     (get_child_status(conn->child_num) == SERVER_BUSY_LOG))))
++   if ((!dir_conf) || 
++       (type != REMOTE_NOLOOKUP && conn->remote_host == NULL &&
++       ( dir_conf->hostname_lookups || 
++         (get_child_status(conn->child_num) == SERVER_BUSY_LOG &&
++          dir_conf->hostname_lookups == 3))))
+     {
+ #ifdef STATUS
+        int old_stat = update_child_status(conn->child_num,
+@@ -979,9 +981,18 @@
+     return NULL;
+ }
+
+ 
+-const char *set_hostname_lookups (cmd_parms *cmd, core_dir_config *d, int arg)
++const char *set_hostname_lookups (cmd_parms *cmd, core_dir_config *d, 
++                                 char *arg)
+ {
+-    d->hostname_lookups = arg;
++    if (*arg == '\0' || (strcasecmp (arg, "on") && strcasecmp (arg, "off") &&
++                        strcasecmp (arg, "logonly") ) )
++      return "Hostnamelookup must be either On, Off, or LogOnly";
++
++    d->hostname_lookups = 2;
++
++    if ( !strcasecmp (arg, "off") ) d->hostname_lookups = 0;
++    else if ( !strcasecmp (arg, "logonly") ) d->hostname_lookups = 3;
++
+     return NULL;
+ }
+ 
+@@ -1207,7 +1218,7 @@
+ 
+ { "ServerType", server_type, NULL, RSRC_CONF, TAKE1,"'inetd' or 'standalone'"},
+ { "Port", server_port, NULL, RSRC_CONF, TAKE1, "A TCP port number"},
+-{ "HostnameLookups", set_hostname_lookups, NULL, ACCESS_CONF|RSRC_CONF, FLAG, "
+\"on\" to enable or \"off\" to disable reverse DNS lookups" },
++{ "HostnameLookups", set_hostname_lookups, NULL, ACCESS_CONF|RSRC_CONF, TAKE1, 
+"\"on\" to enable, \"off\" to disable, or \"logonly\" to enable only during logg
+ing reverse DNS lookups" },
+ { "User", set_user, NULL, RSRC_CONF, TAKE1, "Effective user id for this server"
+},
+ { "Group", set_group, NULL, RSRC_CONF, TAKE1, "Effective group id for this serv
+er"},
+ { "ServerAdmin", set_server_string_slot,
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: brian
+State-Changed-When: Tue May 19 19:56:25 PDT 1998
+State-Changed-Why:
+Interesting idea.  I think the consensus of the group has
+been that now that we have (in 1.3) a reliable piped logs
+mechanism, we are avoiding new logging features in-process.
+If you are willing to maintain this as a patch, I would
+recommend posting it on a web site and registering it with
+<http://modules.apache.org/>.  Thanks!
+
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

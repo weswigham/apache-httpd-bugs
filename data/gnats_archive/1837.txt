@@ -1,0 +1,116 @@
+Received: (qmail 1169 invoked by uid 2012); 19 Feb 1998 03:22:08 -0000
+Message-Id: <19980219032208.1168.qmail@hyperreal.org>
+Date: 19 Feb 1998 03:22:08 -0000
+From: Derek Bruneau <derek@tripod.com>
+Reply-To: derek@tripod.com
+To: apbugs@hyperreal.org
+Subject: POSTing to script requiring authentication hangs if error 401 doc contains certain SSIs
+X-Send-Pr-Version: 3.2
+
+>Number:         1837
+>Category:       protocol
+>Synopsis:       POSTing to script requiring authentication hangs if error 401 doc contains certain SSIs
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Feb 18 19:30:00 PST 1998
+>Last-Modified:  Fri Feb 20 10:43:59 PST 1998
+>Originator:     derek@tripod.com
+>Organization:
+>Release:        1.2.5
+>Environment:
+SunOS 5.5.1 Generic_103640-08 sun4u sparc SUNW,Ultra-1
+Using gcc; tested bug under Netscape 3.01 and MSIE 4.0.
+>Description:
+When POSTing to a script requiring authentication, the request hangs if the
+error 401 document contains two or more SSIs that are handled by
+default_handler().  In our case, we have a server-parsed error401.html document
+that uses the "include virtual" directive to incorporate two other documents,
+neither of which is of a file type that has an assigned handler.
+
+I think the problem is that each SSI creates a subrequest that calls
+should_client_block() within discard_request_body(); both calls return true,
+but the main request does not keep track of what the subrequests have done to
+the request body.  As a result, when the second subrequest is created from the
+main request's request_rec, the server tries to get rid of the POST's request
+body a second time.  When this happens, the read on the connection fails to
+find the expected bytes, which were consumed during the first subrequest.
+(The other factor in this bug is the fact that the main request does not discard
+the request body itself.)  Or so it seems...
+>How-To-Repeat:
+Create an error 401 document with two SSIs for odd file types (.tmplt, .js,
+etc.) that will fall through to the default handler.  Then set up a POST to a 
+script that needs authentication; the connection should hang while trying to
+handle the second SSI in the error 401 doc.
+>Fix:
+I looked at the patch in PR#1399, but that doesn't seem to fix this problem
+because the main request for the error 401 document satisfies is_HTTP_ERROR();
+should_client_block() then returns 0, and the request body is not read.
+
+My thought is to add a little more logic to the first line of
+should_client_block():
+
+  if (r->read_length || is_HTTP_ERROR(r->status)
+    || (r->main && is_HTTP_ERROR(r->main->status))
+    return 0;
+
+So neither the main request of an error document nor any subrequests thereof
+will satisfy should_client_block().
+
+But I haven't tested this thoroughly.  I'm not all that familiar with the core,
+and I don't know if this screws up somewhere other than the case I'm looking at.
+As a non-code solution, assigning handlers for all file types used in SSIs
+should also get around the problem
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Derek Bruneau <derek@tripod.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: protocol/1837: POSTing to script requiring authentication hangs if error 401 doc contains certain SSIs
+Date: Wed, 18 Feb 1998 20:08:18 -0800 (PST)
+
+ Can you try 1.2.6-dev?  The patch in PR#1399 is incomplete.  What's
+ actually in 1.2.6-dev is close to what you've proposed here.  You can pick
+ up the latest snapshot at <ftp://dev.apache.org/httpd/from-cvs/1.2/>. 
+ We're actually intending to roll a release tonight. 
+ 
+ Dean
+ 
+
+From: Derek Bruneau <derek@tripod.com>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: protocol/1837: POSTing to script requiring authentication
+  hangs if error 401 doc contains certain SSIs
+Date: Fri, 20 Feb 1998 10:23:44 -0500
+
+ Thanks, Dean.  I've installed the latest snapshot, and it looks good so far.
+ 
+ Derek
+ 
+ At 08:08 PM 2/18/98 -0800, Dean Gaudet wrote:
+ >Can you try 1.2.6-dev?  The patch in PR#1399 is incomplete.  What's
+ >actually in 1.2.6-dev is close to what you've proposed here.  You can pick
+ >up the latest snapshot at <ftp://dev.apache.org/httpd/from-cvs/1.2/>. 
+ >We're actually intending to roll a release tonight. 
+ >
+ >Dean
+ >
+ >
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Fri Feb 20 10:43:59 PST 1998
+State-Changed-Why:
+User reports it is solved by the current codebase.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

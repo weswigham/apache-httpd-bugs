@@ -1,0 +1,411 @@
+Received: (qmail 3084 invoked by uid 2012); 1 Mar 1999 22:53:17 -0000
+Message-Id: <19990301225317.3083.qmail@hyperreal.org>
+Date: 1 Mar 1999 22:53:17 -0000
+From: Brett Baugh <bbaugh@austin.rr.com>
+Reply-To: bbaugh@austin.rr.com
+To: apbugs@hyperreal.org
+Subject: A patch for making "fancy" output be in a table instead of <PRE> tags.
+X-Send-Pr-Version: 3.2
+
+>Number:         3981
+>Category:       mod_autoindex
+>Synopsis:       A patch for making "fancy" output be in a table instead of <PRE> tags.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Mar  1 16:10:01 PST 1999
+>Last-Modified:  Tue Apr 20 15:54:33 PDT 1999
+>Originator:     bbaugh@austin.rr.com
+>Organization:
+>Release:        1.3.4
+>Environment:
+Linux dev.sapermedia.com 2.1.129 #7 SMP Thu Feb 4 11:52:55 CST 1999 i586 unknown
+gcc version egcs-2.90.29 980515 (egcs-1.0.3 release)
+>Description:
+One day I was looking at a listing of MP3s done with FancyIndexing and
+realized that 23 characters just wasn't enough to get more than the band's name,
+and pointing at the link and reading the status bar doesn't work because all the
+spaces in the URL get turned into %20's and makes what shows up in the status
+bar about as long and unreadable as the link text itself, so I decided to fix
+it by making it into a table instead.  No fixed-width font, no truncated file
+names, no more hassles.  This is a patch (I have one for 1.2.6 too, if anyone's
+interested, but that's in mod_dir.c).
+>How-To-Repeat:
+Just look at any virtual directory listing (one without a premade index).
+>Fix:
+*** mod_autoindex.c.orig        Tue Mar  2 16:01:21 1999
+--- mod_autoindex.c     Tue Mar  2 15:58:17 1999
+***************
+*** 62,67 ****
+--- 62,71 ----
+   * 3/23/93
+   *
+   * Adapted to Apache by rst.
++  *
++  * Adapted to output a table instead of the usual 23-character-truncated
++  * filenames listing because I couldn't stand it anymore...
++  *   -bbaugh@austin.rr.com
+   */
+
+  #include "httpd.h"
+***************
+*** 973,1022 ****
+      return (p);
+  }
+
+- static char *terminate_description(autoindex_config_rec *d, char *desc,
+-                                  int autoindex_opts)
+- {
+-     int maxsize = 23;
+-     register int x;
+-
+-     if (autoindex_opts & SUPPRESS_LAST_MOD) {
+-       maxsize += 19;
+-     }
+-     if (autoindex_opts & SUPPRESS_SIZE) {
+-       maxsize += 7;
+-     }
+-
+-     for (x = 0; desc[x] && (maxsize > 0 || desc[x]=='<'); x++) {
+-       if (desc[x] == '<') {
+-           while (desc[x] != '>') {
+-               if (!desc[x]) {
+-                   maxsize = 0;
+-                   break;
+-               }
+-               ++x;
+-           }
+-       }
+-       else if (desc[x] == '&') {
+-           /* entities like &auml; count as one character */
+-           --maxsize;
+-           for ( ; desc[x] != ';'; ++x) {
+-               if (desc[x] == '\0') {
+-                      maxsize = 0;
+-                      break;
+-               }
+-           }
+-         }
+-       else {
+-           --maxsize;
+-       }
+-     }
+-     if (!maxsize && desc[x] != '\0') {
+-       desc[x - 1] = '>';      /* Grump. */
+-       desc[x] = '\0';         /* Double Grump! */
+-     }
+-     return desc;
+- }
+-                   
+  /*
+   * Emit the anchor for the specified field.  If a field is the key for the
+   * current request, the link changes its meaning to reverse the order when
+--- 977,982 ----
+***************
+*** 1048,1081 ****
+   * the \0 termination byte.  The buffer will be prefilled with blanks.
+   * If the pad argument is false, any extra spaces at the end of the
+   * buffer are omitted.  (Used when constructing anchors.)
+   */
+- static ap_inline char *widthify(const char *s, char *buff, int size, int pad)
+- {
+-     int s_len; 
+-            
+-     memset(buff, ' ', size);
+-     buff[size - 1] = '\0';
+-     s_len = strlen(s);
+-     if (s_len > (size - 1)) {
+-       ap_cpystrn(buff, s, size);
+-       if (size > 1) {
+-           buff[size - 2] = '>';
+-       }
+-       if (size > 2) {
+-           buff[size - 3] = '.';
+-       }
+-       if (size > 3) {
+-           buff[size - 4] = '.';
+-       }
+-     }
+-     else {
+-       ap_cpystrn(buff, s, s_len + 1);
+-       if (pad) {
+-           buff[s_len] = ' ';
+-       }
+-     }
+-     return buff;
+- }
+   
+  static void output_directories(struct ent **ar, int n,
+                               autoindex_config_rec *d, request_rec *r,
+--- 1008,1016 ----
+   * the \0 termination byte.  The buffer will be prefilled with blanks.
+   * If the pad argument is false, any extra spaces at the end of the
+   * buffer are omitted.  (Used when constructing anchors.)
++  *
++  * This is of course moot now since there's no more need to truncate strings.
+   */
+
+  static void output_directories(struct ent **ar, int n,
+                               autoindex_config_rec *d, request_rec *r,
+***************
+*** 1108,1117 ****
+      name_scratch[name_width] = '\0';
+
+      if (autoindex_opts & FANCY_INDEXING) {
+!       ap_rputs("<PRE>", r);
+        if ((tp = find_default_icon(d, "^^BLANKICON^^"))) {
+            ap_rvputs(r, "<IMG SRC=\"", ap_escape_html(scratch, tp),
+!                  "\" ALT=\"     \"", NULL);
+            if (d->icon_width && d->icon_height) {
+                ap_rprintf
+                    (
+--- 1043,1052 ----
+      name_scratch[name_width] = '\0';
+  
+      if (autoindex_opts & FANCY_INDEXING) {
+!       ap_rputs("<table border=0 cellpadding=5><tr><th align=left valign=top>", r);
+        if ((tp = find_default_icon(d, "^^BLANKICON^^"))) {
+            ap_rvputs(r, "<IMG SRC=\"", ap_escape_html(scratch, tp), 
+!                  "\" ALT=\" \"", NULL);
+            if (d->icon_width && d->icon_height) {
+                ap_rprintf
+                    (
+***************
+*** 1121,1154 ****
+                        d->icon_width
+                    );
+            }
+!           ap_rputs("> ", r);
+        }
+!         emit_link(r, widthify("Name", name_scratch,
+!                             (name_width > 5) ? 5 : name_width, K_NOPAD),
+!                 K_NAME, keyid, direction, static_columns);
+!       if (name_width > 5) {
+!           memset(name_scratch, ' ', name_width);
+!           name_scratch[name_width] = '\0';
+!           ap_rputs(&name_scratch[5], r);
+!       }
+!       /*
+!        * Emit the guaranteed-at-least-one-space-between-columns byte.
+!        */
+!       ap_rputs(" ", r);
+        if (!(autoindex_opts & SUPPRESS_LAST_MOD)) {
+!             emit_link(r, "Last modified", K_LAST_MOD, keyid, direction,
+                        static_columns);
+-           ap_rputs("       ", r);
+        }
+        if (!(autoindex_opts & SUPPRESS_SIZE)) {
+!             emit_link(r, "Size", K_SIZE, keyid, direction, static_columns);
+!           ap_rputs("  ", r);
+        }
+        if (!(autoindex_opts & SUPPRESS_DESC)) {
+!             emit_link(r, "Description", K_DESC, keyid, direction,
+                        static_columns);
+        }
+!       ap_rputs("\n<HR>\n", r);
+      }
+      else {
+        ap_rputs("<UL>", r);
+--- 1056,1076 ----
+                        d->icon_width
+                    );
+            }
+!           ap_rputs("></th>", r);
+        } 
+!         emit_link(r, "<th align=left valign=top>Name</th>", K_NAME, keyid, direction, static_columns);
+        if (!(autoindex_opts & SUPPRESS_LAST_MOD)) {
+!             emit_link(r, "<th align=left valign=top>Last modified</th>", K_LAST_MOD, keyid, direction,
+                        static_columns);
+        }
+        if (!(autoindex_opts & SUPPRESS_SIZE)) {
+!             emit_link(r, "<th align=left valign=top>Size</th>", K_SIZE, keyid, direction, static_columns);
+        }
+        if (!(autoindex_opts & SUPPRESS_DESC)) {
+!             emit_link(r, "<th align=left valign=top>Description</th>", K_DESC, keyid, direction,
+                        static_columns);
+        }
+!       ap_rputs("</tr>\n", r);
+      }
+      else {
+        ap_rputs("<UL>", r);
+***************
+*** 1161,1185 ****
+      
+        ap_clear_pool(scratch);
+
+        if (is_parent(ar[x]->name)) {
+            t = ap_make_full_path(scratch, name, "../");
+            ap_getparents(t);
+            if (t[0] == '\0') {   
+                t = "/";
+            }
+!              /* 1234567890123456 */
+!           t2 = "Parent Directory";
+!           pad = name_scratch + 16;
+!           anchor = ap_escape_html(scratch, ap_os_escape_path(scratch, t, 0));
+        }
+        else {
+            t = ar[x]->name;
+            pad = name_scratch + strlen(t);
+            t2 = ap_escape_html(scratch, t);
+-           anchor = ap_escape_html(scratch, ap_os_escape_path(scratch, t, 0));
+        }
+
+        if (autoindex_opts & FANCY_INDEXING) {
+            if (autoindex_opts & ICONS_ARE_LINKS) {
+                ap_rvputs(r, "<A HREF=\"", anchor, "\">", NULL);
+            }  
+--- 1083,1111 ----
+      
+        ap_clear_pool(scratch);
+
++ /*
++  * Even though we aren't using the "pad" variable for "fancy" output anymore,
++  * it's still needed for plain <PRE><UL><LI><ETC> output...
++  */
+        if (is_parent(ar[x]->name)) {
+            t = ap_make_full_path(scratch, name, "../");
+            ap_getparents(t);
+            if (t[0] == '\0') {
+                t = "/";
+            }
+!           t2 = "<td align=left valign=top>Parent Directory</td>";
+!             pad = name_scratch + 16;
+        }
+        else {
+            t = ar[x]->name;
+            pad = name_scratch + strlen(t);
+            t2 = ap_escape_html(scratch, t);
+        }
++       anchor = ap_escape_html(scratch, ap_os_escape_path(scratch, t, 0));
+            
+        if (autoindex_opts & FANCY_INDEXING) {
++           ap_rputs("<tr>", r);
++           ap_rputs("<td align=left valign=top>", r);
+            if (autoindex_opts & ICONS_ARE_LINKS) {
+                ap_rvputs(r, "<A HREF=\"", anchor, "\">", NULL);
+            }
+***************
+*** 1199,1221 ****
+            if (autoindex_opts & ICONS_ARE_LINKS) {
+                ap_rputs("</A>", r);
+            }
+            
+!           ap_rvputs(r, " <A HREF=\"", anchor, "\">",
+!                     widthify(t2, name_scratch, name_width, K_NOPAD),
+!                     "</A>", NULL);
+!           /*
+!            * We know that widthify() prefilled the buffer with spaces
+!            * before doing its thing, so use them.
+!            */
+!           nwidth = strlen(t2);
+!           if (nwidth < (name_width - 1)) {
+!               name_scratch[nwidth] = ' ';
+!               ap_rputs(&name_scratch[nwidth], r);
+!           }
+!           /*
+!            * The blank before the storm.. er, before the next field.
+!            */
+!           ap_rputs(" ", r);   
+            if (!(autoindex_opts & SUPPRESS_LAST_MOD)) {
+                if (ar[x]->lm != -1) {
+                    char time_str[MAX_STRING_LEN];
+--- 1125,1134 ----
+            if (autoindex_opts & ICONS_ARE_LINKS) {
+                ap_rputs("</A>", r);
+            }
++           ap_rputs("</td>", r);   
+             
+!           ap_rvputs(r, "<td align=left valign=top><A HREF=\"", anchor, "\">", t2, "</A></td>", NULL);
+!           ap_rputs("<td align=left valign=top>", r);
+            if (!(autoindex_opts & SUPPRESS_LAST_MOD)) {
+                if (ar[x]->lm != -1) {
+                    char time_str[MAX_STRING_LEN];
+***************
+*** 1224,1252 ****
+                    ap_rputs(time_str, r);
+                }
+                else {
+!                   /*Length="22-Feb-1998 23:42  " (see 4 lines above) */
+!                   ap_rputs("                   ", r);
+                }
+            } 
+            if (!(autoindex_opts & SUPPRESS_SIZE)) {
+                ap_send_size(ar[x]->size, r);
+-               ap_rputs("  ", r);
+            }
+!           if (!(autoindex_opts & SUPPRESS_DESC)) {
+!               if (ar[x]->desc) {
+!                   ap_rputs(terminate_description(d, ar[x]->desc,
+!                                                  autoindex_opts), r);
+!               }
+            }
+        }
+        else {
+            ap_rvputs(r, "<LI><A HREF=\"", anchor, "\"> ", t2,
+                      "</A>", pad, NULL);
+        }
+!       ap_rputc('\n', r);
+      }
+      if (autoindex_opts & FANCY_INDEXING) {
+!       ap_rputs("</PRE>", r);
+      }
+      else {
+        ap_rputs("</UL>", r);
+--- 1137,1168 ----
+                    ap_rputs(time_str, r);
+                }
+                else {
+!                   ap_rputs("&nbsp;", r);
+                }
+            }
++           ap_rputs("</td><td align=left valign=top>", r);
+            if (!(autoindex_opts & SUPPRESS_SIZE)) {
+                ap_send_size(ar[x]->size, r);
+            }
+!           else {
+!               ap_rputs("&nbsp;", r);
+!           }
+!           ap_rputs("</td><td align=left valign=top>", r);
+!           if (!(autoindex_opts & SUPPRESS_DESC) && ar[x]->desc) {
+!               ap_rvputs(r, ar[x]->desc, "</td>", NULL);
+!           }
+!           else {
+!               ap_rputs("&nbsp;</td>", r);
+            }
+        }
+        else {
+            ap_rvputs(r, "<LI><A HREF=\"", anchor, "\"> ", t2,
+                      "</A>", pad, NULL);
+        }
+!       ap_rputs("</tr>\n", r);
+      }
+      if (autoindex_opts & FANCY_INDEXING) {
+!       ap_rputs("</TABLE>", r);
+      }
+      else {
+        ap_rputs("</UL>", r);
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 15:54:33 PDT 1999
+State-Changed-Why:
+Doesn't "IndexOptions FancyIndexing NameWidth=*" solve this problem?
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

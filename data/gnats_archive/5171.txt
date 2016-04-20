@@ -1,0 +1,111 @@
+Received: (qmail 1866 invoked by uid 2012); 19 Oct 1999 20:57:51 -0000
+Message-Id: <19991019205751.1862.qmail@hyperreal.org>
+Date: 19 Oct 1999 20:57:51 -0000
+From: Jim Patterson <Jim.Patterson@Cognos.COM>
+Reply-To: Jim.Patterson@Cognos.COM
+To: apbugs@hyperreal.org
+Subject: Apache server goes into an infinite loop after CGI error
+X-Send-Pr-Version: 3.2
+
+>Number:         5171
+>Category:       os-windows
+>Synopsis:       Apache server goes into an infinite loop after CGI error
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 19 15:10:01 PDT 1999
+>Closed-Date:    Sun Jul 16 19:19:49 PDT 2000
+>Last-Modified:  Sun Jul 16 19:19:49 PDT 2000
+>Originator:     Jim.Patterson@Cognos.COM
+>Release:        1.3.9
+>Organization:
+>Environment:
+Windows NT 4.0 SP4
+Visual C++ 5.0 SP3
+>Description:
+ap_read
+bur_read
+saferead_guts
+read_with_errors
+ap_bgets
+cgi_handler
+ap_invoke_handler
+process_request_internal
+ap_process_request
+child_sub_main
+child_main
+_threadstartex
+>How-To-Repeat:
+I think that this is a timeout problem - the CGI timed out. It could also be a 
+failure in the CGI but I don't think so. If you arent satisfied by my proposed
+fix, I will attempt to create a CGI that will reproduce it for you.
+>Fix:
+The problem appears to be an invalid assumption by saferead_guts (src/main/buff.c) 
+on Win32, or an improper Win32 implementation of ap_read (same file). 
+
+saferead_guts loops until it gets no error or the error is other than EINTR.
+However, ap_read for Win32 calls the Win32 API function ReadFile directly.
+Because it's not using the C RTL, errno isn't set. If a) ReadFile fails and 
+b) errno has the value EINTR initially, saferead_guts retries the read. In
+my situation, the cgi process has gone away so ReadFile persistently returns
+an error status. Because no code is setting the errno flag, it loops endlessly.
+
+Since I presume ReadFile is being used for a valid reason (i.e. you won't
+want to switch to using the C RTL read() routine), I suggest that the logic
+be modified for Win32 to not check for the EINTR condition. There is no 
+equivalent to the EINTR interrupt of a system call on Win32. 
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: stoddard
+State-Changed-When: Wed Dec  1 09:22:46 PST 1999
+State-Changed-Why:
+Jim, thanks for the info. Did you verify that errno 
+was indeed set to EINTR? I have a fix for this in the 
+current development tree, but one tester is still reporting the infinite loop problem. 
+
+If you are interested, you can download the latest development code for Apache 1.3 from http://dev.apache.org/from-cvs and give it a spin. 
+I'd be interested to know if you still see the same problem.
+Comment-Added-By: coar
+Comment-Added-When: Wed Jun  7 12:47:05 PDT 2000
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: wrowe
+State-Changed-When: Sun Jul 16 19:19:49 PDT 2000
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

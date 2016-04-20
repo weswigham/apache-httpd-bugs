@@ -1,0 +1,251 @@
+Received: (qmail 25280 invoked by uid 2012); 16 Feb 1998 16:04:02 -0000
+Message-Id: <19980216160402.25279.qmail@hyperreal.org>
+Date: 16 Feb 1998 16:04:02 -0000
+From: Carsten Schabacker <c.schabacker@gis.ibfs.de>
+Reply-To: c.schabacker@gis.ibfs.de
+To: apbugs@hyperreal.org
+Subject: After  CGI (POST) HTTP-Headers shown in browser and internal Error "OK" (200)
+X-Send-Pr-Version: 3.2
+
+>Number:         1813
+>Category:       protocol
+>Synopsis:       After  CGI (POST) HTTP-Headers shown in browser and internal Error "OK" (200)
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Feb 16 08:10:01 PST 1998
+>Last-Modified:  Wed May 20 03:23:05 PDT 1998
+>Originator:     c.schabacker@gis.ibfs.de
+>Organization:
+>Release:        1.3b3
+>Environment:
+AIX 4.1.5, gcc 2.8.0
+>Description:
+After a CGI-Script returns (only POST method) i get some HTTP-Headers in 
+the document.  Example Output:
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<TITLE>Passwort f. HTTP-Server &auml;ndern</TITLE>
+<body>
+<h1>Passwort wurde geändert</h1>
+</body>
+HTTP/1.1 200 OK
+Date: Mon, 16 Feb 1998 15:16:58 GMT
+Server: Apache/1.3b3
+Connection: close
+Content-Type: text/html
+
+After this i get the "internal error" message "<h1>OK</h1>"
+>How-To-Repeat:
+If you wish i can send you the .shtml and cgi script (python 1.5 with 
+mod_python)
+>Fix:
+I think the problem is that the programm does not check if a header-string
+is empty and always appends newlines.  [spurious newlines are added; grep 
+for "\015\012" through 'src/main/http_protocol.c']
+I think you bvputs/rvputs (or a wrapper around this) should test.
+
+To hide the "OK"-Error-Message i applied this patch:
+
+diff --recursive -u apache_1.3b3/src/main/http_protocol.c apache_1.3b3-modified/
+src/main/http_protocol.c
+--- apache_1.3b3/src/main/http_protocol.c       Sat Nov  1 23:24:08 1997
++++ apache_1.3b3-modified/src/main/http_protocol.c      Mon Feb 16 16:21:22 1998
+@@ -2012,7 +2013,7 @@
+         while (r->prev && (r->prev->status != HTTP_OK))
+             r = r->prev;
+     }
+-    {
++    if( status != HTTP_OK) {
+         char *title = status_lines[idx];
+         /* folks decided they didn't want the error code in the H1 text */
+ 
+%0
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Carsten Schabacker <c.schabacker@gis.ibfs.de>
+Cc: apbugs@hyperreal.org
+Subject: Re: protocol/1813: After  CGI (POST) HTTP-Headers shown in browser and internal Error "OK" (200)
+Date: Mon, 16 Feb 1998 09:42:37 -0700 (MST)
+
+ On 16 Feb 1998, Carsten Schabacker wrote:
+ 
+ > >Description:
+ > After a CGI-Script returns (only POST method) i get some HTTP-Headers in=
+ =20
+ > the document.  Example Output:
+ >
+ >=20
+ > <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+ > <TITLE>Passwort f. HTTP-Server &auml;ndern</TITLE>
+ > <body>
+ > <h1>Passwort wurde ge=E4ndert</h1>
+ > </body>
+ > HTTP/1.1 200 OK
+ > Date: Mon, 16 Feb 1998 15:16:58 GMT
+ > Server: Apache/1.3b3
+ > Connection: close
+ > Content-Type: text/html
+ 
+ This it the output from where?  What are the headers on this response?
+ 
+ >=20
+ > After this i get the "internal error" message "<h1>OK</h1>"
+ > >How-To-Repeat:
+ > If you wish i can send you the .shtml and cgi script (python 1.5 with=20
+ > mod_python)
+ 
+ Are you sure it is not a problem with mod_python?
+ 
+ Is there any authentication required for the document in question?
+ 
+ Can you repeat it by hand, eg. telnetting to the port and entering the
+ request yourself?
+ 
+ > >Fix:
+ > I think the problem is that the programm does not check if a header-strin=
+ g
+ > is empty and always appends newlines.  [spurious newlines are added; grep=
+ =20
+ > for "\015\012" through 'src/main/http_protocol.c']
+ > I think you bvputs/rvputs (or a wrapper around this) should test.
+ 
+ I'm not sure I understand what you are saying here...
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: protocol/1813: After  CGI (POST) HTTP-Headers shown in    browser and internal Error "OK" (200) (fwd)
+Date: Wed, 11 Mar 1998 12:45:20 -0700 (MST)
+
+   This message is in MIME format.  The first part should be readable text,
+   while the remaining parts are likely unreadable without MIME-aware tools.
+   Send mail to mime@docserver.cac.washington.edu for more info.
+ 
+ --Multipart_Tue_Feb_17_10:05:22_1998-1
+ Content-Type: TEXT/PLAIN; CHARSET=US-ASCII
+ Content-ID: <Pine.BSF.3.95.980311124517.15492k@alive.znep.com>
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: 17 Feb 1998 10:05:22 +0100
+ From: Carsten Schabacker <c.schabacker@gis.ibfs.de>
+ To: Marc Slemko <marcs@znep.com>
+ Subject: Re: protocol/1813: After  CGI (POST) HTTP-Headers shown in    browser and internal Error "OK" (200)
+ 
+ >>>>> In <Pine.BSF.3.95.980216094021.2516E-100000@alive.znep.com> 
+ >>>>>	Marc Slemko <marcs@znep.com> wrote:
+ MS> On 16 Feb 1998, Carsten Schabacker wrote:
+ 
+ Hi Marc,
+ 
+ MS> Are you sure it is not a problem with mod_python?
+ No, but i can make a try without mod_python ... you are right, the problem
+ seems to be in mod_python. 
+ 
+ This is what i found out
+ external python:  GET ok   POST ok
+ mod_python:       GET ok   POST not ok
+ 
+ (mod_python.c Revision: 4.2 Date: 1998/01/25 10:29:29)
+ 
+ I think i go back to external python.
+ 
+ MS> Is there any authentication required for the document in question?
+ Yes, there is a .htaccess file in the directory where the html-pages are 
+ stored and in the /cgi-sbin/ directory.
+ 
+ MS> > >Fix:
+ MS> I'm not sure I understand what you are saying here...
+ As i understand the http protocol there must be a empty newline between the
+ headers and the body (like in a e-mail), right ?
+ If so: if you put out a empty string followed by a newline the header will
+ end and the body starts, this is what i thought what goes wrong.
+ 
+ Thanks for your quick anser,
+ 		greetings Carsten
+ 
+ --Multipart_Tue_Feb_17_10:05:22_1998-1
+ Content-Type: TEXT/PLAIN; CHARSET=US-ASCII
+ Content-ID: <Pine.BSF.3.95.980311124517.15492l@alive.znep.com>
+ Content-Description: 
+ 
+ GiS - Gesellschaft fuer integrierte Systemplanung mbH   Tel. +49-6201-503-38
+ Carsten Schabacker                                      Fax  +49-6201-503-66
+ Junkersstr. 2                               E-Mail  c.schabacker@gis.ibfs.de
+ D-69469 Weinheim                           private  cs@spock.rhein-neckar.de
+ 
+ --Multipart_Tue_Feb_17_10:05:22_1998-1--
+
+From: Marc Slemko <marcs@znep.com>
+To: Carsten Schabacker <c.schabacker@gis.ibfs.de>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: protocol/1813: After  CGI (POST) HTTP-Headers shown in    browser and internal Error "OK" (200)
+Date: Thu, 12 Mar 1998 18:01:18 -0700 (MST)
+
+ On 17 Feb 1998, Carsten Schabacker wrote:
+ 
+ > >>>>> In <Pine.BSF.3.95.980216094021.2516E-100000@alive.znep.com> 
+ > >>>>>	Marc Slemko <marcs@znep.com> wrote:
+ > MS> On 16 Feb 1998, Carsten Schabacker wrote:
+ > 
+ > Hi Marc,
+ > 
+ > MS> Are you sure it is not a problem with mod_python?
+ > No, but i can make a try without mod_python ... you are right, the problem
+ > seems to be in mod_python. 
+ > 
+ > This is what i found out
+ > external python:  GET ok   POST ok
+ > mod_python:       GET ok   POST not ok
+ > 
+ > (mod_python.c Revision: 4.2 Date: 1998/01/25 10:29:29)
+ > 
+ > I think i go back to external python.
+ > 
+ > MS> Is there any authentication required for the document in question?
+ > Yes, there is a .htaccess file in the directory where the html-pages are 
+ > stored and in the /cgi-sbin/ directory.
+ 
+ And if you remove the authentication, does it work?
+ 
+ What client are you using?
+ 
+ > 
+ > MS> > >Fix:
+ > MS> I'm not sure I understand what you are saying here...
+ > As i understand the http protocol there must be a empty newline between the
+ > headers and the body (like in a e-mail), right ?
+ > If so: if you put out a empty string followed by a newline the header will
+ > end and the body starts, this is what i thought what goes wrong.
+ 
+ Erm... but what would be doing that?  If the script is doing it, it is
+ broken.
+ 
+ Give a snapshot of the current to-be-1.2.6 tree at:
+ 
+ 	http://dev.apache.org/from-cvs/1.2/
+ 
+ It may fix the issue.
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: brian
+State-Changed-When: Wed May 20 03:23:04 PDT 1998
+State-Changed-Why:
+Apparently the bug is with mod_python.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

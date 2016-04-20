@@ -1,0 +1,153 @@
+Received: (qmail 6819 invoked by uid 2012); 25 Mar 1999 01:56:48 -0000
+Message-Id: <19990325015648.6818.qmail@hyperreal.org>
+Date: 25 Mar 1999 01:56:48 -0000
+From: Nick Kralevich <nickkral@cal.alumni.berkeley.edu>
+Reply-To: nickkral@cal.alumni.berkeley.edu
+To: apbugs@hyperreal.org
+Subject: mod_rewrite adds "Vary: Host, Host" header
+X-Send-Pr-Version: 3.2
+
+>Number:         4117
+>Category:       mod_rewrite
+>Synopsis:       mod_rewrite adds "Vary: Host, Host" header
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Mar 24 18:00:02 PST 1999
+>Last-Modified:  Fri Jul 30 20:57:07 PDT 1999
+>Originator:     nickkral@cal.alumni.berkeley.edu
+>Organization:
+>Release:        1.3.4
+>Environment:
+[admin admin]$ uname -a
+Linux sd2.mailbank.com 2.0.34 #1 Fri Aug 28 19:39:04 PDT 1998 mips unknown
+[admin admin]$ gcc -v
+Reading specs from /usr/lib/gcc-lib/mipsel-linux/2.7.2/specs
+gcc version 2.7.2
+[admin admin]$ /usr/local/bin/httpd -V   
+Server version: Apache/1.3.4 (Unix)
+Server built:   Mar 16 1999 15:40:19
+Server's Module Magic Number: 19990108:0
+Server compiled with....
+ -D HAVE_MMAP
+ -D HAVE_SHMGET
+ -D USE_SHMGET_SCOREBOARD
+ -D USE_MMAP_FILES
+ -D USE_FLOCK_SERIALIZED_ACCEPT
+ -D HTTPD_ROOT="/usr/local"
+ -D SUEXEC_BIN="/usr/local/bin/suexec"
+ -D SHARED_CORE_DIR="/usr/local/libexec"
+ -D DEFAULT_PIDLOG="/var/run/httpd.pid"
+ -D DEFAULT_SCOREBOARD="/var/run/httpd.scoreboard"
+ -D DEFAULT_LOCKFILE="/var/run/httpd.lock"
+ -D DEFAULT_XFERLOG="/var/log/httpd/access_log"
+ -D DEFAULT_ERRORLOG="/var/log/httpd/error_log"
+ -D TYPES_CONFIG_FILE="/etc/httpd/conf/mime.types"
+ -D SERVER_CONFIG_FILE="/etc/httpd/conf/httpd.conf"
+ -D ACCESS_CONFIG_FILE="/etc/httpd/conf/access.conf"
+ -D RESOURCE_CONFIG_FILE="/etc/httpd/conf/srm.conf"
+[admin admin]$ /usr/local/bin/httpd -l 
+Compiled-in modules:
+  http_core.c
+  mod_env.c
+  mod_log_config.c
+  mod_mime.c
+  mod_negotiation.c
+  mod_status.c
+  mod_include.c
+  mod_autoindex.c
+  mod_dir.c
+  mod_cgi.c
+  mod_asis.c
+  mod_imap.c
+  mod_actions.c
+  mod_userdir.c
+  mod_proxy.c
+  mod_alias.c
+  mod_rewrite.c
+  mod_access.c
+  mod_auth.c
+  mod_auth_anon.c
+  mod_expires.c
+  mod_headers.c
+  mod_usertrack.c
+  mod_setenvif.c
+>Description:
+Possibly related to PR 1644:
+
+Apache adds the following header to an HTTP request:
+
+  Vary: Host, Host
+
+Apache should only output "Vary: Host", and should not duplicate
+multiple fields.
+
+This occurs with the mod_rewrite rule of:
+
+RewriteCond   %{ENV:WasFound}  !^yes$
+RewriteCond   %{HTTP_HOST}  !^$
+RewriteCond   ${lc:%{HTTP_HOST}}  ^www\.(.+)\.(the)([^\.])([^\.]+)\.([^\.]+)$  [OR,NC]
+RewriteCond   ${lc:%{HTTP_HOST}}  ^(.+)\.(the)([^\.])([^\.]+)\.([^\.]+)$       [OR,NC]
+RewriteCond   ${lc:%{HTTP_HOST}}  ^www\.(.+)\.()([^\.])([^\.]+)\.([^\.]+)$     [OR,NC]
+RewriteCond   ${lc:%{HTTP_HOST}}  ^(.+)\.()([^\.])([^\.]+)\.([^\.]+)$
+RewriteCond   /home/restrict/vhosts/%3/%2%3%4.%5/%1.%2%3%4.%5%{REQUEST_FILENAME}  -f [OR]
+RewriteCond   /home/restrict/vhosts/%3/%2%3%4.%5/%1.%2%3%4.%5%{REQUEST_FILENAME}  -d [OR]
+RewriteCond   /home/restrict/vhosts/%3/%2%3%4.%5/%1.%2%3%4.%5/.htaccess -f
+RewriteRule   ^/(.*)$   /home/restrict/vhosts/%3/%2%3%4.%5/%1.%2%3%4.%5/$1  [E=VHOST:%1.%2%3%4.%5,L,E=WasFound:yes]
+
+My theory is that, because multiple "HTTP_HOST" fields appear
+in the RewriteCond, apache adds one "Host" entry for each "and"ed
+RewriteCond (but not for the "or"s).
+>How-To-Repeat:
+Create a mod_rewrite rule with somthing like the above, that
+has multiple HTTP_HOST checks.
+>Fix:
+Problem Report 1644 is listed as still open, which leads me to
+believe that this issue is being worked on.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 12:51:58 PDT 1999
+State-Changed-Why:
+Yeah but it's technically correct to send duplicate Host
+tokens... to fix it would require a sort or other more complicated
+structure... which is in my opinion a total waste of time.
+Also I doubt anyone actually uses Vary given that nobody
+(not even apache) implements it properly.
+
+Dean
+State-Changed-From-To: closed-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 16:49:21 PDT 1999
+State-Changed-Why:
+Roy seems to think this should still be open.  Whatever.
+State-Changed-From-To: feedback-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 16:49:47 PDT 1999
+State-Changed-Why:
+I suppose analysed is a better state.
+State-Changed-From-To: analyzed-closed
+State-Changed-By: fielding
+State-Changed-When: Fri Jul 30 20:57:05 PDT 1999
+State-Changed-Why:
+
+A fix has been applied to the next release (1.3.8).
+
+....Roy
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

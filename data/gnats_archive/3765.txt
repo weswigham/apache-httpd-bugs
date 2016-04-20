@@ -1,0 +1,127 @@
+Received: (qmail 7368 invoked by uid 32767); 26 Jan 1999 01:55:24 -0000
+Message-Id: <19990126015524.7367.qmail@hyperreal.org>
+Date: 26 Jan 1999 01:55:24 -0000
+From: edward sexton <ebs@kevlo.com>
+Reply-To: ebs@kevlo.com
+To: apbugs@hyperreal.org
+Subject: File permissions by httpd running as nobody change to read only for new files
+X-Send-Pr-Version: 3.2
+
+>Number:         3765
+>Category:       general
+>Synopsis:       File permissions by httpd running as nobody change to read only for new files
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jan 25 19:10:01 PST 1999
+>Last-Modified:  Mon Jan 25 20:59:59 PST 1999
+>Originator:     ebs@kevlo.com
+>Organization:
+>Release:        1.3.3
+>Environment:
+FreeBSD kevlo.com 2.2.1-RELEASE FreeBSD 2.2.1-RELEASE #0: Sat Aug 23 14:33:33 CDT 1997
+cc -v = gcc version 2.7.2.1
+64MB RAM Pentium 200MHZ
+Virtual Hosting machine with about 12 vhosts.
+>Description:
+There are cgi programs which write temporary data files as 
+owner: nobody group: web.  The directory that the files are created in is of 
+permission:  drwx----wx  14 ebs  web.  This directory is world writable.
+
+I increased Min/MaxServers, then killed and started apache via apachctl.
+When I did this, nobody files were of permission -rw-r-r--.  I then killed 
+and started apache again, and now the temporary files are of permission:
+-rw-rw-r--.
+
+httpd.conf is set for:
+User nobody
+Group nobody
+
+/etc/group is set for:
+......
+web:*:69:root,ebs,cam,webadmin
+ebs:*:1000:
+cam:*:1001:
+kevlo:*:1002:
+webadmin:*:1003:
+nogroup:*:65533:
+nobody:*:65534:
+
+gdb info on httpd parent root process:
+root@kevlo.com---(333)-->gdb  /usr/local/etc/httpd/sbin/httpd-1.3.3 25651
+GDB is free software and you are welcome to distribute copies of it
+ under certain conditions; type "show copying" to see the conditions.
+There is absolutely no warranty for GDB; type "show warranty" for details.
+GDB 4.16 (i386-unknown-freebsd),
+Copyright 1996 Free Software Foundation, Inc...
+
+/usr/local/etc/httpd/etc/apache/25651: No such file or directory.
+Attaching to program `/usr/local/etc/httpd/sbin/httpd-1.3.3', process 25651
+Reading symbols from /usr/libexec/ld.so...done.
+Reading symbols from /usr/lib/libm.so.2.0...done.
+Reading symbols from /usr/lib/libcrypt.so.2.0...done.
+Reading symbols from /usr/lib/libc.so.3.0...done.
+0x81297c1 in select ()
+
+gdb on child httpd process:
+
+root@kevlo.com---(316)-->gdb /usr/local/etc/httpd/sbin/httpd-1.3.3 25653
+GDB is free software and you are welcome to distribute copies of it
+ under certain conditions; type "show copying" to see the conditions.
+There is absolutely no warranty for GDB; type "show warranty" for details.
+GDB 4.16 (i386-unknown-freebsd),
+Copyright 1996 Free Software Foundation, Inc...
+
+/usr/local/etc/httpd/etc/apache/25653: No such file or directory.
+Attaching to program `/usr/local/etc/httpd/sbin/httpd-1.3.3', process 25653
+Reading symbols from /usr/libexec/ld.so...done.
+Reading symbols from /usr/lib/libm.so.2.0...done.
+Reading symbols from /usr/lib/libcrypt.so.2.0...done.
+Reading symbols from /usr/lib/libc.so.3.0...done.
+0x80fa8c1 in accept ()
+>How-To-Repeat:
+I don't have a good way to reproduce this sorry.
+>Fix:
+should i add in /etc/group the user nobody to the web group?
+
+should i change httpd.conf to run as user nobody group web?
+
+sorry for my ignorance with some obvious things i'm still learning.
+
+thank you very much.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Mon Jan 25 20:59:59 PST 1999
+State-Changed-Why:
+You appear to be a bit confused about Unix permissions.
+
+First, you claim the CGI creates files as group web, but
+then you REMOVE permission for group web to write to the
+directory by not having it group writable.
+
+You don't make it clear exactly what you want to happen and
+what you were seeing happen, but the mode on files created
+is determined by your CGI, in combination with the umask.
+If you have a different umask when starting the process, then
+the default modes will be different.
+
+There really doesn't look like there is anything wrong with
+Apache here; we really can't teach you how Unix permissions
+work...
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

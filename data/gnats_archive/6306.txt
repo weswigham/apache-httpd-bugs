@@ -1,0 +1,89 @@
+Received: (qmail 64834 invoked by uid 501); 13 Jul 2000 10:58:50 -0000
+Message-Id: <20000713105849.64833.qmail@locus.apache.org>
+Date: 13 Jul 2000 10:58:49 -0000
+From: Johannes Schmidt-Fischer <jsf@InterFace-AG.com>
+Reply-To: jsf@InterFace-AG.com
+To: submit@bugz.apache.org
+Subject: ProxyPassReverse matches hostnames case sensitive
+X-Send-Pr-Version: 3.110
+
+>Number:         6306
+>Category:       mod_proxy
+>Synopsis:       ProxyPassReverse matches hostnames case sensitive
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jul 13 04:00:01 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     jsf@InterFace-AG.com
+>Release:        1.3.11
+>Organization:
+apache
+>Environment:
+Suse Linux 6.3 (problem is not os specific btw)
+>Description:
+When using ProxyPass and ProxyPassReverse for passing through to another HTTP
+server and for reversing any redirect information coming back the matching of
+the URL returned from that other server is matched by using strncmp() which is
+case sensitive and therefore doesn't change the redirect information if the
+hostname coming back is not equal to the hostname in the ProxyPassReverse
+statement.
+
+In the ProxyPassReverse statement the hostname must be given exactly as it is
+returned from that other server, otherwise the given URL will never match. This
+is not according to hostnames not being case sensitive in e.g. DNS.
+>How-To-Repeat:
+You need two HTTP servers (virtual hosts within one server will do I think). In
+my example these two servers are named host1.MyDomain.com and host2.MyDomain.com.
+
+Configuration for host1.MyDomain.com in httpd.conf:
+
+
+ProxyPass / http://host2.mydomain.com/
+ProxyPassReverse / http://host2.mydomain.com/
+
+Configuration for host2.MyDomain.com:
+
+The ServerName returned is host2.MyDomain.com.
+Let's assume that there is a directory "Documents" in the DocumentRoot directory.
+
+Now I try to access this directory by sending the URL
+http://host1.mydomain.com/Documents to the server host1.MyDomain.com. This URL
+is transformed by means of ProxyPass and sent to host2.MyDomain.com as
+http://host2.mydomain.com/Documents . This other server returns a "permanently
+moved" answer with the new location of http://host2.MyDomain.com/Documents/ .
+Since this doesn't match with the ProxyPassReverse statement it is sent back as
+is to the browser which in turn tries to contact host2.MyDomain.com directly
+which might or might not be possible.
+>Fix:
+The simple solution would be to describe this "feature" in the mod_proxy
+documentation (e.g. as a "Caveat").
+
+Otherwise it would be necessary to split a location URL and the ProxyPassReverse
+URL (param #2) both into access method, hostname, and (partial) path and to match
+those separately (access method and path case sensitive, hostname not case sensitive).
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

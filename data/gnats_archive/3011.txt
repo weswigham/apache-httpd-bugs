@@ -1,0 +1,232 @@
+Received: (qmail 7387 invoked by uid 2012); 16 Sep 1998 15:50:50 -0000
+Message-Id: <19980916155050.7386.qmail@hyperreal.org>
+Date: 16 Sep 1998 15:50:50 -0000
+From: Thomas Graf <graf@essi.fr>
+Reply-To: graf@essi.fr
+To: apbugs@hyperreal.org
+Subject: Wrong order of bytes in IP address for Listen and VirtualHost directives
+X-Send-Pr-Version: 3.2
+
+>Number:         3011
+>Category:       os-dgux
+>Synopsis:       Wrong order of bytes in IP address for Listen and VirtualHost directives
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Sep 16 09:00:01 PDT 1998
+>Last-Modified:  Sun Jun 13 05:02:24 PDT 1999
+>Originator:     graf@essi.fr
+>Organization:
+>Release:        1.3.1
+>Environment:
+Data General DG/UX for Intel
+
+uname -a: dgux dms1 R4.20MU01 generic AViiON Pentium
+>Description:
+Named virtual hosts (3 names, 1 IP address) did not work until I gave the
+IP address in opposite order (least significant byte first).
+In this case:
+www.dms.at and dms1.essi.fr have the IP address 157.169.10.160. The
+NameVirtualHost and <VirtualHost> did not show an error (httpd -S), but virtual
+hosts did not work.
+When I added the following directive in httpd.conf:
+Listen 157.169.10.160:80
+I got the error message:
+[Tue Sep 15 14:30:58 1998] [crit] (126)Can't assign requested address: make_sock: could not bind to address 160.10.169.157 port 80
+Virtual hosts work since I replaced the IP address with 160.10.169.157.
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Thomas Graf <graf@essi.fr>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/3011: Wrong order of bytes in IP address for Listen
+ and VirtualHost directives
+Date: Wed, 16 Sep 1998 10:01:05 -0700 (PDT)
+
+ On 16 Sep 1998, Thomas Graf wrote:
+ 
+ > Data General DG/UX for Intel
+ 
+ What compiler are you using?
+ 
+ > 
+ > uname -a: dgux dms1 R4.20MU01 generic AViiON Pentium
+ > >Description:
+ > Named virtual hosts (3 names, 1 IP address) did not work until I gave the
+ > IP address in opposite order (least significant byte first).
+ > In this case:
+ > www.dms.at and dms1.essi.fr have the IP address 157.169.10.160. The
+ > NameVirtualHost and <VirtualHost> did not show an error (httpd -S), but virtual
+ > hosts did not work.
+ > When I added the following directive in httpd.conf:
+ > Listen 157.169.10.160:80
+ > I got the error message:
+ > [Tue Sep 15 14:30:58 1998] [crit] (126)Can't assign requested address: make_sock: could not bind to address 160.10.169.157 port 80
+ > Virtual hosts work since I replaced the IP address with 160.10.169.157.
+ 
+ This really looks like a bogosity in the OS.
+ 
+ What does the inet_network man page say WRT the byte order returned?
+ 
+ If you compile and run the following program:
+ 
+ #include <sys/types.h>
+ #include <sys/socket.h>
+ #include <netinet/in.h>
+ #include <arpa/inet.h>
+ #include <stdio.h>
+ 
+ int main () {
+         printf("inet_network(\"10.11.12.13\") = %ld\n",
+                 inet_network("10.11.12.13"));
+ }
+ 
+ what do you get?
+ 
+
+From: Thomas Graf <graf@essi.fr>
+To: Marc Slemko <marcs@znep.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/3011: Wrong order of bytes in IP address for Listen
+ 	 and VirtualHost directives
+Date: Wed, 16 Sep 1998 17:29:24 +0000
+
+ Marc Slemko wrote:
+ 
+ > On 16 Sep 1998, Thomas Graf wrote:
+ >
+ > > Data General DG/UX for Intel
+ >
+ > What compiler are you using?
+ >
+ > >
+ > > uname -a: dgux dms1 R4.20MU01 generic AViiON Pentium
+ > > >Description:
+ > > Named virtual hosts (3 names, 1 IP address) did not work until I gave the
+ > > IP address in opposite order (least significant byte first).
+ > > In this case:
+ > > www.dms.at and dms1.essi.fr have the IP address 157.169.10.160. The
+ > > NameVirtualHost and <VirtualHost> did not show an error (httpd -S), but virtual
+ > > hosts did not work.
+ > > When I added the following directive in httpd.conf:
+ > > Listen 157.169.10.160:80
+ > > I got the error message:
+ > > [Tue Sep 15 14:30:58 1998] [crit] (126)Can't assign requested address: make_sock: could not bind to address 160.10.169.157 port 80
+ > > Virtual hosts work since I replaced the IP address with 160.10.169.157.
+ >
+ > This really looks like a bogosity in the OS.
+ >
+ > What does the inet_network man page say WRT the byte order returned?
+ >
+ 
+  All Internet addresses are returned in network order (bytes ordered
+  from left to right).  All network numbers and local address parts are
+  returned as machine-format integer values.
+ 
+ 
+ > If you compile and run the following program:
+ >
+ > #include <sys/types.h>
+ > #include <sys/socket.h>
+ > #include <netinet/in.h>
+ > #include <arpa/inet.h>
+ > #include <stdio.h>
+ >
+ > int main () {
+ >         printf("inet_network(\"10.11.12.13\") = %ld\n",
+ >                 inet_network("10.11.12.13"));
+ > }
+ >
+ > what do you get?
+ >
+ 
+ The output of this program is:
+ inet_network("10.11.12.13") = 168496141
+ (which is the same as on my Linux 2.0.35 system).
+ 
+ Thomas.
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Sun Sep 27 11:06:09 PDT 1998
+State-Changed-Why:
+[Marc is working this one]
+Category-Changed-From-To: general-os-dgux
+Category-Changed-By: coar
+Category-Changed-When: Sun Sep 27 11:06:09 PDT 1998
+
+State-Changed-From-To: feedback-analyzed
+State-Changed-By: lars
+State-Changed-When: Sat Nov 14 09:29:58 PST 1998
+State-Changed-Why:
+
+
+
+From: Rodent of Unusual Size <Ken.Coar@Golux.Com>
+To: Apache bug database <apbugs@Apache.Org>
+Cc: "Lee Yee, Amiel" <Amiel.LeeYee@cigna.com>
+Subject: Re: os-dgux/3011: Wrong order of bytes in IP address for Listen and VirtualHost directives
+Date: Wed, 18 Nov 1998 15:21:26 -0500
+
+ Lee Yee, Amiel wrote:
+ > 
+ > I apologize for having to respond to this in this
+ > manner; however there is a possible solution for
+ > this one also.  I don't  know why but I took a chance
+ > and it seems to be putting to vhosts in the correct
+ > order now. I suspect it lies with the two different
+ > versions of DG/UX. One for the motorola and one
+ > for the Intel. I spoke to Thomas Graf and he seems
+ > to have confirmed this, and I have had no problems
+ > with my virtual hosts to this date and I tend to
+ > have 4-5 vhosts per machine.
+ > 
+ > In the ap_config.h file I moved the
+ > #define ap_inet_addr inet_network into
+ > the Motorola section since it seems that this was the
+ > offending line.  This is what leads me to suspect it
+ > has to do with the difference between a Motorola compile
+ > and an Intel compile of the DGUX system.   If we can
+ > put it the bug tracking report I would appreciate it
+ > or if you can show me how I will do it so as to give
+ > other DGUX users a work around for this problem,
+ > and not give up on Apache so quickly.
+ > 
+ > #elif defined(DGUX)
+ > #define NO_KILLPG
+ > #undef  NO_SETSID
+ > #undef NEED_STRDUP
+ > #if _IX86_DG /* Intel */
+ > #undef NEED_STRCASECMP
+ > #undef NEED_STRNCASECMP
+ > #else /* Motorola */
+ > #define NEED_STRCASECMP
+ > #define NEED_STRNCASECMP
+ > #define ap_inet_addr inet_network
+ > #endif
+State-Changed-From-To: analyzed-open
+State-Changed-By: lars
+State-Changed-When: Sun Jun 13 05:02:24 PDT 1999
+State-Changed-Why:
+
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

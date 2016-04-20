@@ -1,0 +1,260 @@
+Received: (qmail 3916 invoked by uid 2012); 5 Nov 1998 00:07:48 -0000
+Message-Id: <19981105000748.3915.qmail@hyperreal.org>
+Date: 5 Nov 1998 00:07:48 -0000
+From: Dean Pentcheff <help@biol.sc.edu>
+Reply-To: help@biol.sc.edu
+To: apbugs@hyperreal.org
+Subject: Patch to add the "MOVE" HTTP method.
+X-Send-Pr-Version: 3.2
+
+>Number:         3344
+>Category:       protocol
+>Synopsis:       Patch to add the "MOVE" HTTP method.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Nov  4 16:10:00 PST 1998
+>Last-Modified:  Sat Aug 14 23:24:21 PDT 1999
+>Originator:     help@biol.sc.edu
+>Organization:
+>Release:        1.3.3
+>Environment:
+Any.
+>Description:
+Netscape, in its most recent client, makes use of a "new" HTTP directive (MOVE).
+In parallel with support for PUT and DELETE, I've patched Apache to handle the
+MOVE directive.
+
+In case the text that I paste into the "suggested fix" box doesn't make it, you
+can also fetch the patch from the posting I made to comp.infosystems.www.servers.unix.
+That can be had at: http://www.dejanews.com/getdoc.xp?AN=405799286
+>How-To-Repeat:
+(Not really a bug, but a limitation of the current implementation.)
+>Fix:
+Following is the text of the patch (and description) I posted a little while ago:
+
+The most recent release of Netscape Communicator (4.5) can use an HTTP
+server to save and load users' profiles.  To achieve this, it uses the
+HTTP methods "PUT", "GET", "DELETE", and (unfortunately) the more
+exotic "MOVE".  (Yes, I am aware that there is a non-GUI configuration
+setting that prevents NS from using "MOVE", but out of the box, it
+uses "MOVE".  Here's a reference for the anti-MOVE configuration
+setting: <URL:http://www.dejanews.com/getdoc.xp?AN=403965014>).
+
+The "MOVE" method is currently unsupported by the Apache WWW server.
+The following patch adds the "MOVE" method to the server source code.
+Note that, as with "PUT", there are serious configuration and security
+implications of supporting this method.  Furthermore, this patch just
+gives the framework to allow some server-side process to deal with the
+"MOVE" method but doesn't directly implement any action (directly
+parallel to the way Apache handles "PUT" et al.).  
+
+Another thing to note is that the "MOVE" method (at least as used by
+Netscape Communicator 4.5) encapsulates the target URI name in an HTTP
+header labelled "New-URI".  This patch gives no direct access to the
+URI value of that header (though that information is accessible to
+Apache modules -- see the next message in this two-message series).  
+
+This message (1/2) contains the patch to the Apache server 1.3.3 code
+itself.  The next message (2/2) is a coordinated change I made to the
+"mod_put.c" module.  That module is not distributed with Apache, but
+can be found (along with many others) via the Apache Module Registry
+located at <URL:http://modules.apache.org>.
+
+Apply the patch in this message by making the top of the Apache source
+code your current directory (e.g. "cd /wherever/apache_1.3.3").  Then
+give the command: 
+                patch -p1 < /path/to/this/patchfile
+
+One key thing to note is that this patch changes the values of the
+constants that define the method types (in httpd.h).  Any code that
+depends on these constants will need to be recompiled.
+
+-Dean
+ -- 
+N. Dean Pentcheff                                           <help@biol.sc.edu>
+Biological Sciences, Univ. of South Carolina, Columbia SC 29208 (803-777-7068)
+
+====== Patch follows =======
+diff -C3 --exclude=*.[oa~] --recursive apache_1.3.3/src/include/httpd.h apache_hacked/src/include/httpd.h
+*** apache_1.3.3/src/include/httpd.h    Wed Oct  7 05:19:06 1998
+--- apache_hacked/src/include/httpd.h   Tue Oct 27 20:09:09 1998
+***************
+*** 532,547 ****
+                                    ((x) == HTTP_NOT_IMPLEMENTED))
+  
+  
+! #define METHODS 8
+  #define M_GET 0
+  #define M_PUT 1
+  #define M_POST 2
+  #define M_DELETE 3
+! #define M_CONNECT 4
+! #define M_OPTIONS 5
+! #define M_TRACE 6
+! #define M_INVALID 7
+! 
+  #define CGI_MAGIC_TYPE "application/x-httpd-cgi"
+  #define INCLUDES_MAGIC_TYPE "text/x-server-parsed-html"
+  #define INCLUDES_MAGIC_TYPE3 "text/x-server-parsed-html3"
+--- 532,548 ----
+                                    ((x) == HTTP_NOT_IMPLEMENTED))
+  
+  
+! #define METHODS 9              
+  #define M_GET 0
+  #define M_PUT 1
+  #define M_POST 2
+  #define M_DELETE 3
+! #define M_MOVE 4
+! #define M_CONNECT 5
+! #define M_OPTIONS 6
+! #define M_TRACE 7
+! #define M_INVALID 8
+!                
+  #define CGI_MAGIC_TYPE "application/x-httpd-cgi"
+  #define INCLUDES_MAGIC_TYPE "text/x-server-parsed-html"
+  #define INCLUDES_MAGIC_TYPE3 "text/x-server-parsed-html3"
+diff -C3 --exclude=*.[oa~] --recursive apache_1.3.3/src/main/http_core.c apache_hacked/src/main/http_core.c
+*** apache_1.3.3/src/main/http_core.c   Thu Oct  1 00:52:28 1998
+--- apache_hacked/src/main/http_core.c  Tue Oct 27 20:10:53 1998
+***************
+*** 1080,1086 ****
+        else if (!strcmp(method, "DELETE")) {
+            limited |= (1 << M_DELETE);
+        }
+!         else if (!strcmp(method, "CONNECT")) {
+            limited |= (1 << M_CONNECT);
+        }
+        else if (!strcmp(method, "OPTIONS")) {
+--- 1080,1089 ----
+        else if (!strcmp(method, "DELETE")) {
+            limited |= (1 << M_DELETE);
+        }
+!       else if (!strcmp(method, "MOVE")) {
+!           limited |= (1 << M_MOVE);
+!       }
+!     else if (!strcmp(method, "CONNECT")) {
+            limited |= (1 << M_CONNECT);
+        }
+        else if (!strcmp(method, "OPTIONS")) {
+diff -C3 --exclude=*.[oa~] --recursive apache_1.3.3/src/main/http_protocol.c apache_hacked/src/main/http_protocol.c
+*** apache_1.3.3/src/main/http_protocol.c       Tue Oct  6 15:06:09 1998
+--- apache_hacked/src/main/http_protocol.c      Tue Oct 27 20:11:40 1998
+***************
+*** 690,695 ****
+--- 690,697 ----
+          r->method_number = M_PUT;
+      else if (!strcmp(r->method, "DELETE"))
+          r->method_number = M_DELETE;
++     else if (!strcmp(r->method, "MOVE"))
++         r->method_number = M_MOVE;
+      else if (!strcmp(r->method, "CONNECT"))
+          r->method_number = M_CONNECT;
+      else if (!strcmp(r->method, "OPTIONS"))
+***************
+*** 1241,1246 ****
+--- 1243,1249 ----
+                         (r->allowed & (1 << M_POST)) ? ", POST" : "",
+                         (r->allowed & (1 << M_PUT)) ? ", PUT" : "",
+                         (r->allowed & (1 << M_DELETE)) ? ", DELETE" : "",
++                        (r->allowed & (1 << M_MOVE)) ? ", MOVE" : "",
+                         (r->allowed & (1 << M_OPTIONS)) ? ", OPTIONS" : "",
+                         ", TRACE",
+                         NULL);
+diff -C3 --exclude=*.[oa~] --recursive apache_1.3.3/src/modules/standard/mod_actions.c apache_hacked/src/modules/standard/mod_actions.c
+*** apache_1.3.3/src/modules/standard/mod_actions.c     Thu Aug  6 13:30:53 1998
+--- apache_hacked/src/modules/standard/mod_actions.c    Tue Oct 27 20:14:06 1998
+***************
+*** 86,91 ****
+--- 86,92 ----
+      char *post;                       /* Added with Script POST */
+      char *put;                        /* Added with Script PUT */
+      char *delete;             /* Added with Script DELETE */
++     char *move;         /* Added with Script MOVE */
+  } action_dir_config;
+  
+  module action_module;
+***************
+*** 100,105 ****
+--- 101,107 ----
+      new->post = NULL;
+      new->put = NULL;
+      new->delete = NULL;
++     new->move = NULL;
+  
+      return new;
+  }
+***************
+*** 118,123 ****
+--- 120,126 ----
+      new->post = add->post ? add->post : base->post;
+      new->put = add->put ? add->put : base->put;
+      new->delete = add->delete ? add->delete : base->delete;
++     new->move = add->move ? add->move : base->move;
+  
+      return new;
+  }
+***************
+*** 140,145 ****
+--- 143,150 ----
+        m->put = script;
+      else if (!strcmp(method, "DELETE"))
+        m->delete = script;
++     else if (!strcmp(method, "MOVE"))
++       m->move = script;
+      else
+        return "Unknown method type for Script";
+  
+***************
+*** 171,176 ****
+--- 176,183 ----
+        r->allowed |= (1 << M_PUT);
+      if (conf->delete)
+        r->allowed |= (1 << M_DELETE);
++     if (conf->move)
++       r->allowed |= (1 << M_MOVE);
+  
+      /* First, check for the method-handling scripts */
+      if ((r->method_number == M_GET) && r->args && conf->get)
+***************
+*** 181,186 ****
+--- 188,195 ----
+        script = conf->put;
+      else if ((r->method_number == M_DELETE) && conf->delete)
+        script = conf->delete;
++     else if ((r->method_number == M_MOVE) && conf->move)
++       script = conf->move;
+  
+      /* Check for looping, which can happen if the CGI script isn't */
+      if (script && r->prev && r->prev->prev)
+
+
+========= This is the end of the patch message ========
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: fielding
+State-Changed-When: Sat Aug 14 23:24:20 PDT 1999
+State-Changed-Why:
+
+MOVE was added to 1.3.4 as part of the mod_dav additions.
+
+....Roy
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

@@ -1,0 +1,203 @@
+Received: (qmail 29468 invoked by uid 2012); 18 Oct 1997 16:28:45 -0000
+Message-Id: <19971018162845.29467.qmail@hyperreal.org>
+Date: 18 Oct 1997 16:28:45 -0000
+From: Schwarz@hyperreal.org, Mac <mac@aeria.phil.uni-erlangen.de>
+Reply-To: mac@aeria.phil.uni-erlangen.de
+To: apbugs@hyperreal.org
+Subject: IP based access configuration in <Location> wont't work
+X-Send-Pr-Version: 3.2
+
+>Number:         1248
+>Category:       mod_access
+>Synopsis:       IP based access configuration in <Location> wont't work
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Oct 18 09:30:01 PDT 1997
+>Last-Modified:  Sun Nov  2 14:20:58 PST 1997
+>Originator:     mac@aeria.phil.uni-erlangen.de
+>Organization:
+>Release:        1.3b2
+>Environment:
+HP-UX 10.10 A
+LINT A.10.32.10 CXREF  A.10.32.10
+HP92453-01 A.10.32.11 HP C Compiler
+/usr/lib/libc: $Revision: 76.3 $
+>Description:
+In my configuration for apache 1.2.4 I had an IP based configuration for
+<Location /status> and <Location /server-info>. Using apache 1.3b2 I'm
+getting an 'access denied by server configuration' trying to access
+the status and server-info pages. By changing the line from
+allow from 131.188.191.64
+to
+allow from aeria.phil.uni-erlangen.de
+access to these pages will work again. The <Directory> directive still works
+with IPs and: no, there are no comments in the same line.
+>How-To-Repeat:
+Send me an IP/FQDN pair from the client you use for testing and I could set up 
+status IP based and server-info domain name based for this client.
+>Fix:
+No
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Mon Oct 20 23:46:20 PDT 1997
+State-Changed-Why:
+I can't reproduce this, I tried this:
+
+<Location /server-status>
+    SetHandler server-status
+    order deny,allow
+    deny from all
+    allow from 127.0.0.1
+</Location>
+
+and it worked no problem.  Is that similar to what you
+have?  Can you try an allow 127.0.0.1 and access it
+locally?
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: mod_access/1248: IP based access configuration in <Location> (fwd)
+Date: Tue, 21 Oct 1997 13:26:02 -0700 (PDT)
+
+ Ok the bug looks to be in the address parsing for addresses without '/' in
+ them.  It works fine if the address is 131.188.191.4/32 (which uses
+ ap_inet_addr()).  It breaks if the address is 131.188.191.4.
+ 
+ Dean
+ 
+ ---------- Forwarded message ----------
+ Date: Tue, 21 Oct 1997 22:08:30 +0200 (METDST)
+ From: Mac Schwarz <mac@aeria.phil.uni-erlangen.de>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Cc: Mac Schwarz <mac@aeria.phil.uni-erlangen.de>
+ Subject: Re: mod_access/1248: IP based access configuration in <Location>
+ 
+ 
+ On 21-Oct-97 Dean Gaudet wrote:
+ >
+ >
+ >On Tue, 21 Oct 1997, Mac Schwarz wrote:
+ >
+ >> Thanks for the fast response. I tried following configuration
+ >> on the www server aka adyton.phil.uni-erlangen.de aka 131.188.191.4:
+ >> 
+ >> ----------------------------------------------------------
+ >> <Location /server-status>
+ >> SetHandler server-status
+ >> order deny,allow
+ >> deny from all
+ >> allow from 127.0.0.1 
+ >> </Location>
+ >> 
+ >> error_log:
+ >> [Tue Oct 21 14:52:35 1997] [error] Client denied by server 
+ >> configuration: /usr/local/www/htdocs/server-info
+ >                                      ^^^^^^^^^^^^
+ >
+ >Did you also try /server-status ? 
+ >
+ 
+ Just a cut'n'paste mistake. I checked both server-info and server-status
+ to see if the problem is related to mod_info or mod_status.
+ 
+ >> httpd_1.2.4 worked fine with the second configuration. Is there a
+ >> new directive with a conflicting default value i missed to set?
+ >
+ >There shouldn't be any settings affecting this.  We did change the default
+ >for HostnameLookups ... but I tried both on and off when I was testing
+ >127.0.0.1.
+ >
+ >Ok give this a try:
+ >
+ >allow from 131.188.191.
+ >
+ >That'll allow from everything in 131.188.191.0/24 ... but it doesn't use
+ >the inet_addr() C library function, maybe there's a bug in your system's
+ >inet_addr. 
+ >
+ >Dean
+ >
+ _____________________________________________________________
+ >Oh wait, also try: 131.188.191.4/32  -- I was wrong, "131.188.191.4"
+ >doesn't use inet_addr, it uses a parsing routine I rewrote.  So if you try
+ >"131.188.191.4/32" then you'll be going through the system's inet_addr
+ >routine ... and it'll help isolate the problem.
+ >
+ >Thanks
+ >Dean
+ 
+ O.K., that could be the problem (see below). There's one patch 
+ from hp affecting libinet I haven't installed yet. 
+ But I've got no physical access to the web-server right now 
+ (building is closed already) and I don't trust autoboot 
+ enough to patch it remotely. So don't spend any time with 
+ that problem until I patched the system tomorrow or the day 
+ after. I'll mail you the results.
+ 
+ <Location /server-status>
+ SetHandler server-status
+ order deny,allow
+ deny from all
+ allow from 131.188.191.
+ </Location>
+ 
+ [Tue Oct 21 22:01:53 1997] [error] Client denied by server
+ configuration: /usr/local/www/htdocs/server-status
+ 
+ <Location /server-status>
+ SetHandler server-status
+ order deny,allow
+ deny from all
+ allow from 131.188.191
+ </Location>
+ 
+ [Tue Oct 21 22:05:29 1997] [error] Client denied by server 
+ configuration: /usr/local/www/htdocs/server-status
+ 
+ <Location /server-status>
+ SetHandler server-status
+ order deny,allow
+ deny from all
+ allow from 131.188.191.4/32
+ </Location>
+ 
+ adyton.phil.uni-erlangen.de - - [21/Oct/1997:22:02:40 +0200] 
+ "GET /server-status HTTP/1.0" 200 6429
+ 
+ <Location /server-status>
+ SetHandler server-status
+ order deny,allow
+ deny from all
+ allow from 131.188.191.4
+ </Location>
+ 
+ [Tue Oct 21 22:03:13 1997] [error] Client denied by server 
+ configuration: /usr/local/www/htdocs/server-status
+ 
+ Thaks and best regards,
+ 
+         mac Schwarz
+ 
+ --------------------------------------------------------------
+ mac Schwarz / AERIA Projekt / Inst. f. Klassische Archaeologie
+ e-mail: mac@aeria.phil.uni-erlangen.de  /  Tel.: 09131-85-4791
+  FAU Erlangen-Nuernberg   /   Kochstr.4   /   91054 Erlangen
+   <http://www.phil.uni-erlangen.de/~p1altar/aeriahome.html>
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sun Nov  2 14:20:57 PST 1997
+State-Changed-Why:
+Fixed by my patch.
+
+Dean
+>Unformatted:
+

@@ -1,0 +1,402 @@
+Received: (qmail 25152 invoked by uid 2012); 13 Apr 1999 09:29:37 -0000
+Message-Id: <19990413092937.25151.qmail@hyperreal.org>
+Date: 13 Apr 1999 09:29:37 -0000
+From: Graham Leggett <graham@vwv.com>
+Reply-To: graham@vwv.com
+To: apbugs@hyperreal.org
+Subject: Reverse proxy features disables caching features
+X-Send-Pr-Version: 3.2
+
+>Number:         4236
+>Category:       mod_proxy
+>Synopsis:       Reverse proxy features disables caching features
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Apr 13 02:30:01 PDT 1999
+>Closed-Date:    Sat Feb 05 13:41:07 PST 2000
+>Last-Modified:  Sat Feb 05 13:41:07 PST 2000
+>Originator:     graham@vwv.com
+>Release:        v1.34
+>Organization:
+>Environment:
+SunOS infobase2 5.7 Generic sun4u sparc SUNW,Ultra-250
+gcc v2.8.1
+>Description:
+If Apache is configured as a virtual host webserver, and if ProxyPass and
+ProxyPassReverse are used to hide webtrees beneath the virtual server's
+webtree, the caching capability of mod_proxy is disabled and the configured
+cache directory remains empty.
+
+Tests indicate that Apache is trying to cache the files passed through the
+reverse proxy, however Apache tries to save these files with a NULL string
+filename, which obviously fails.
+>How-To-Repeat:
+
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+
+From: Graham Leggett <minfrin@sharp.fm>
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: mod_proxy/4236: Reverse proxy features disables caching features
+Date: Fri, 16 Apr 1999 11:45:01 +0200
+
+ apbugs@hyperreal.org wrote:
+ 
+ > >Synopsis:       Reverse proxy features disables caching features
+ 
+ More info on this problem.
+ 
+ The following config does not work:
+ 
+ CacheRoot /path/to/cache
+ <VirtualHost blah>
+ ProxyPass 		/ http://website.com/
+ ProxyPassReverse	/ http://website.com/
+ </VirtualHost>
+ 
+ The ProxyPass directive above works fine within the virtual host, but
+ the CacheRoot parameter is out of scope (where it should be in scope)
+ and caching reverts to the default of NULL.
+ 
+ The following config does work:
+ 
+ <VirtualHost blah>
+ CacheRoot /path/to/cache
+ ProxyPass 		/ http://website.com/
+ ProxyPassReverse	/ http://website.com/
+ </VirtualHost>
+ 
+ Both the ProxyPass and the CacheRoot directive share the same scope and
+ the config works.
+ 
+ Regards,
+ Graham
+ -- 
+ -----------------------------------------
+ graham@vwv.com			"There's a moon
+ 					over Bourbon Street
+ 						tonight...
+
+From: Graham Leggett <minfrin@sharp.fm>
+To: apbugs@Apache.Org
+Cc:  Subject: Re: mod_proxy/4236: Reverse proxy features disables caching features
+Date: Mon, 11 Oct 1999 18:51:06 +0200
+
+ This is a multi-part message in MIME format.
+ --------------D4FF865243CCC024B2ABF2D1
+ Content-Type: text/plain; charset=us-ascii
+ Content-Transfer-Encoding: 7bit
+ 
+ Hi all,
+ 
+ The following patch fixes this problem, and also fixes a bug where the
+ default value of ProxyReceiveBufferSize was left uninitalised which
+ could have caused sporadic problems with the proxy.
+ 
+ Regards,
+ Graham
+ -- 
+ -----------------------------------------
+ minfrin@sharp.fm		"There's a moon
+ 					over Bourbon Street
+ 						tonight...
+ --------------D4FF865243CCC024B2ABF2D1
+ Content-Type: text/plain; charset=us-ascii;
+  name="proxy-config-fix.patch"
+ Content-Transfer-Encoding: 7bit
+ Content-Disposition: inline;
+  filename="proxy-config-fix.patch"
+ 
+ diff -c -r apache_1.3.9-orig/src/CHANGES apache_1.3.9/src/CHANGES
+ *** apache_1.3.9-orig/src/CHANGES	Sat Aug 14 05:21:15 1999
+ --- apache_1.3.9/src/CHANGES	Fri Oct  1 05:11:14 1999
+ ***************
+ *** 1,5 ****
+ --- 1,12 ----
+   Changes with Apache 1.3.9
+   
+ +   *) Fix problem with proxy configuration where globally set configuration
+ +      options were overridden inside virtual hosts.
+ +      [Graham Leggett <minfrin@sharp.fm>]
+ + 
+ +   *) Fix ProxyReceiveBufferSize where default value was left uninitialised.
+ +      [Graham Leggett <minfrin@sharp.fm>]
+ + 
+     *) Remove bogus error message when a redirect doesn't set Location.
+        Instead, use an empty string to avoid coredump if the error message
+        was supposed to include a location.  [Roy Fielding]
+ diff -c -r apache_1.3.9-orig/src/modules/proxy/mod_proxy.c apache_1.3.9/src/modules/proxy/mod_proxy.c
+ *** apache_1.3.9-orig/src/modules/proxy/mod_proxy.c	Wed Mar 10 12:42:46 1999
+ --- apache_1.3.9/src/modules/proxy/mod_proxy.c	Fri Oct  1 04:48:46 1999
+ ***************
+ *** 417,434 ****
+ --- 417,481 ----
+       ps->allowed_connect_ports = ap_make_array(p, 10, sizeof(int));
+       ps->domain = NULL;
+       ps->viaopt = via_off; /* initially backward compatible with 1.3.1 */
+ +     ps->viaopt_set = 0; /* 0 means default */
+       ps->req = 0;
+ +     ps->req_set = 0;
+ +     ps->recv_buffer_size = 0; /* this default was left unset for some reason */
+ +     ps->recv_buffer_size_set = 0;
+   
+       ps->cache.root = NULL;
+       ps->cache.space = DEFAULT_CACHE_SPACE;
+ +     ps->cache.space_set = 0;
+       ps->cache.maxexpire = DEFAULT_CACHE_MAXEXPIRE;
+ +     ps->cache.maxexpire_set = 0;
+       ps->cache.defaultexpire = DEFAULT_CACHE_EXPIRE;
+ +     ps->cache.defaultexpire_set = 0;
+       ps->cache.lmfactor = DEFAULT_CACHE_LMFACTOR;
+ +     ps->cache.lmfactor_set = 0;
+       ps->cache.gcinterval = -1;
+ +     ps->cache.gcinterval_set = 0;
+       /* at these levels, the cache can have 2^18 directories (256,000)  */
+       ps->cache.dirlevels = 3;
+ +     ps->cache.dirlevels_set = 0;
+       ps->cache.dirlength = 1;
+ +     ps->cache.dirlength_set = 0;
+       ps->cache.cache_completion = DEFAULT_CACHE_COMPLETION;
+ +     ps->cache.cache_completion_set = 0;
+ + 
+ +     return ps;
+ + }
+ + 
+ + static void *
+ +      merge_proxy_config(pool *p, void *basev,
+ +                         void *overridesv)
+ + {
+ +     proxy_server_conf *ps = ap_pcalloc(p, sizeof(proxy_server_conf));
+ +     proxy_server_conf *base = (proxy_server_conf *) basev;
+ +     proxy_server_conf *overrides = (proxy_server_conf *) overridesv;
+ + 
+ +     ps->proxies = ap_append_arrays(p, base->proxies, overrides->proxies);
+ +     ps->aliases = ap_append_arrays(p, base->aliases, overrides->aliases);
+ +     ps->raliases = ap_append_arrays(p, base->raliases, overrides->raliases);
+ +     ps->noproxies = ap_append_arrays(p, base->noproxies, overrides->noproxies);
+ +     ps->dirconn = ap_append_arrays(p, base->dirconn, overrides->dirconn);
+ +     ps->nocaches = ap_append_arrays(p, base->nocaches, overrides->nocaches);
+ +     ps->allowed_connect_ports = ap_append_arrays(p, base->allowed_connect_ports, overrides->allowed_connect_ports);
+ + 
+ +     ps->domain = (overrides->domain == NULL) ? base->domain : overrides->domain;
+ +     ps->viaopt = (overrides->viaopt_set == 0) ? base->viaopt : overrides->viaopt;
+ +     ps->req = (overrides->req_set == 0) ? base->req : overrides->req;
+ +     ps->recv_buffer_size = (overrides->recv_buffer_size_set == 0) ? base->recv_buffer_size : overrides->recv_buffer_size;
+ + 
+ +     ps->cache.root = (overrides->cache.root == NULL) ? base->cache.root : overrides->cache.root;
+ +     ps->cache.space = (overrides->cache.space_set == 0) ? base->cache.space : overrides->cache.space;
+ +     ps->cache.maxexpire = (overrides->cache.maxexpire_set == 0) ? base->cache.maxexpire : overrides->cache.maxexpire;
+ +     ps->cache.defaultexpire = (overrides->cache.defaultexpire_set == 0) ? base->cache.defaultexpire : overrides->cache.defaultexpire;
+ +     ps->cache.lmfactor = (overrides->cache.lmfactor_set == 0) ? base->cache.lmfactor : overrides->cache.lmfactor;
+ +     ps->cache.gcinterval = (overrides->cache.gcinterval_set == 0) ? base->cache.gcinterval : overrides->cache.gcinterval;
+ +     /* at these levels, the cache can have 2^18 directories (256,000)  */
+ +     ps->cache.dirlevels = (overrides->cache.dirlevels_set == 0) ? base->cache.dirlevels : overrides->cache.dirlevels;
+ +     ps->cache.dirlength = (overrides->cache.dirlength_set == 0) ? base->cache.dirlength : overrides->cache.dirlength;
+ +     ps->cache.cache_completion = (overrides->cache.cache_completion_set == 0) ? base->cache.cache_completion : overrides->cache.cache_completion;
+   
+       return ps;
+   }
+ ***************
+ *** 627,632 ****
+ --- 674,680 ----
+       ap_get_module_config(parms->server->module_config, &proxy_module);
+   
+       psf->req = flag;
+ +     psf->req_set = 1;
+       return NULL;
+   }
+   
+ ***************
+ *** 641,646 ****
+ --- 689,695 ----
+       if (sscanf(arg, "%d", &val) != 1)
+   	return "CacheSize value must be an integer (kBytes)";
+       psf->cache.space = val;
+ +     psf->cache.space_set = 1;
+       return NULL;
+   }
+   
+ ***************
+ *** 665,670 ****
+ --- 714,720 ----
+       if (sscanf(arg, "%lg", &val) != 1)
+   	return "CacheLastModifiedFactor value must be a float";
+       psf->cache.lmfactor = val;
+ +     psf->cache.lmfactor_set = 1;
+   
+       return NULL;
+   }
+ ***************
+ *** 679,684 ****
+ --- 729,735 ----
+       if (sscanf(arg, "%lg", &val) != 1)
+   	return "CacheMaxExpire value must be a float";
+       psf->cache.maxexpire = (int) (val * (double) SEC_ONE_HR);
+ +     psf->cache.maxexpire_set = 1;
+       return NULL;
+   }
+   
+ ***************
+ *** 692,697 ****
+ --- 743,749 ----
+       if (sscanf(arg, "%lg", &val) != 1)
+   	return "CacheDefaultExpire value must be a float";
+       psf->cache.defaultexpire = (int) (val * (double) SEC_ONE_HR);
+ +     psf->cache.defaultexpire_set = 1;
+       return NULL;
+   }
+   
+ ***************
+ *** 705,710 ****
+ --- 757,763 ----
+       if (sscanf(arg, "%lg", &val) != 1)
+   	return "CacheGcInterval value must be a float";
+       psf->cache.gcinterval = (int) (val * (double) SEC_ONE_HR);
+ +     psf->cache.gcinterval_set = 1;
+       return NULL;
+   }
+   
+ ***************
+ *** 721,726 ****
+ --- 774,780 ----
+       if (val * psf->cache.dirlength > CACHEFILE_LEN)
+   	return "CacheDirLevels*CacheDirLength value must not be higher than 20";
+       psf->cache.dirlevels = val;
+ +     psf->cache.dirlevels_set = 1;
+       return NULL;
+   }
+   
+ ***************
+ *** 737,742 ****
+ --- 791,797 ----
+       if (val * psf->cache.dirlevels > CACHEFILE_LEN)
+   	return "CacheDirLevels*CacheDirLength value must not be higher than 20";
+       psf->cache.dirlength = val;
+ +     psf->cache.dirlength_set = 1;
+       return NULL;
+   }
+   
+ ***************
+ *** 782,787 ****
+ --- 837,843 ----
+       }
+   
+       psf->recv_buffer_size = s;
+ +     psf->recv_buffer_size_set = 1;
+       return NULL;
+   }
+   
+ ***************
+ *** 798,803 ****
+ --- 854,861 ----
+   
+       if (s > 0)
+         psf->cache.cache_completion = ((float)s / 100);
+ + 
+ +     psf->cache.cache_completion = 1;
+       return NULL;    
+   }
+   
+ ***************
+ *** 820,825 ****
+ --- 878,884 ----
+                  "off | on | full | block";
+       }
+   
+ +     psf->viaopt_set = 1;
+       return NULL;    
+   }
+   
+ ***************
+ *** 881,887 ****
+       NULL,			/* create per-directory config structure */
+       NULL,			/* merge per-directory config structures */
+       create_proxy_config,	/* create per-server config structure */
+ !     NULL,			/* merge per-server config structures */
+       proxy_cmds,			/* command table */
+       proxy_handlers,		/* handlers */
+       proxy_trans,		/* translate_handler */
+ --- 940,946 ----
+       NULL,			/* create per-directory config structure */
+       NULL,			/* merge per-directory config structures */
+       create_proxy_config,	/* create per-server config structure */
+ !     merge_proxy_config,		/* merge per-server config structures */
+       proxy_cmds,			/* command table */
+       proxy_handlers,		/* handlers */
+       proxy_trans,		/* translate_handler */
+ diff -c -r apache_1.3.9-orig/src/modules/proxy/mod_proxy.h apache_1.3.9/src/modules/proxy/mod_proxy.h
+ *** apache_1.3.9-orig/src/modules/proxy/mod_proxy.h	Sun Feb  7 15:48:31 1999
+ --- apache_1.3.9/src/modules/proxy/mod_proxy.h	Mon Sep 27 08:50:07 1999
+ ***************
+ *** 193,205 ****
+ --- 193,213 ----
+   struct cache_conf {
+       const char *root;		/* the location of the cache directory */
+       off_t space;			/* Maximum cache size (in 1024 bytes) */
+ +     char space_set;
+       time_t maxexpire;		/* Maximum time to keep cached files in secs */
+ +     char maxexpire_set;
+       time_t defaultexpire;	/* default time to keep cached file in secs */
+ +     char defaultexpire_set;
+       double lmfactor;		/* factor for estimating expires date */
+ +     char lmfactor_set;
+       time_t gcinterval;		/* garbage collection interval, in seconds */
+ +     char gcinterval_set;
+       int dirlevels;		/* Number of levels of subdirectories */
+ +     char dirlevels_set;
+       int dirlength;		/* Length of subdirectory names */
+ +     char dirlength_set;
+       float cache_completion;	/* Force cache completion after this point */
+ +     char cache_completion_set;
+   };
+   
+   typedef struct {
+ ***************
+ *** 213,225 ****
+ --- 221,236 ----
+       array_header *allowed_connect_ports;
+       char *domain;		/* domain name to use in absence of a domain name in the request */
+       int req;			/* true if proxy requests are enabled */
+ +     char req_set;
+       enum {
+         via_off,
+         via_on,
+         via_block,
+         via_full
+       } viaopt;                   /* how to deal with proxy Via: headers */
+ +     char viaopt_set;
+       size_t recv_buffer_size;
+ +     char recv_buffer_size_set;
+   } proxy_server_conf;
+   
+   struct hdr_entry {
+ 
+ --------------D4FF865243CCC024B2ABF2D1--
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Feb  5 13:41:07 PST 2000
+State-Changed-Why:
+fixed in 1.3.10.  thanks
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

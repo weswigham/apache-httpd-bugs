@@ -1,0 +1,131 @@
+Received: (qmail 9220 invoked by uid 2012); 7 Jul 1999 17:01:42 -0000
+Message-Id: <19990707170142.9216.qmail@hyperreal.org>
+Date: 7 Jul 1999 17:01:42 -0000
+From: Craig Comstock <comstock@eecs.ukans.edu>
+Reply-To: comstock@eecs.ukans.edu
+To: apbugs@hyperreal.org
+Subject: SuExec doesn't allow LD_LIBRARY_PATH to be a part of "safe_env_lst"
+X-Send-Pr-Version: 3.2
+
+>Number:         4709
+>Category:       suexec
+>Synopsis:       SuExec doesn't allow LD_LIBRARY_PATH to be a part of "safe_env_lst"
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jul  7 10:10:01 PDT 1999
+>Last-Modified:  Thu Jul  8 09:24:44 PDT 1999
+>Originator:     comstock@eecs.ukans.edu
+>Organization:
+>Release:        1.3.6
+>Environment:
+OSF1 tesla.eecs.ukans.edu V4.0 878 alpha
+DEC C V5.6-071
+>Description:
+I wanted my users to be able to use two environment variables so that they could use
+DBD::Oracle. LD_LIBRARY_PATH and ORACLE_HOME. Also want to use SuExec. The two environment
+variables are set in httpd.conf as SetEnv directives. These environment variables
+work fine on the share/cgi-bin scripts but don't get passed to user cgi-bin scripts.
+>How-To-Repeat:
+Modify src/support/suexec.c as follows:
+
+char *safe_env_lst[] =
+{
+/* add in the following two entries
+    "LD_LIBRARY_PATH",
+    "ORACLE_HOME",
+
+Recompile with suexec support.
+Edit httpd.conf and add:
+
+SetEnv ORACLE_HOME foo
+SetEnv LD_LIBRARY_PATH bar
+
+and see what environment variables you get from a simple env.cgi script in both 
+the share/cgi-bin dir and a user dir.
+
+#!/bin/sh
+echo content-type:text/html
+echo
+echo "<pre>"
+env
+
+The share/cgi-bin/env.cgi script should show both LD_LIBRARY_PATH and ORACLE_HOME.
+
+The userdir env.cgi seems to show ORACLE_HOME but not LD_LIBRARY_PATH.
+
+>Fix:
+I tried modifying the c source for suexec, and found that I could get ORACLE_HOME
+throught to user CGI scripts, but not LD_LIBRARY_PATH. Is there something else
+somewhere that is blocking LD_LIBRARY_PATH?
+>Audit-Trail:
+
+From: Craig Comstock <comstock@eecs.ukans.edu>
+To: apbugs@apache.org
+Cc:  Subject: Re: suexec/4709: 
+Date: Wed, 7 Jul 1999 07:19:51 -0500 (CDT)
+
+ I have fixed the problem... for some reason adding LD_LIBRARY_PATH
+ to the safe_env_lst array did not allow the LD_LIBRARY_PATH var through
+ to the CGI environment.
+ 
+ I further modified the suexec.c code to push the LD_LIBRARY_PATH into
+ the cleanenv array.
+ 
+ static void clean_env(void)
+ {
+   char pathbuf[512];
+ >  char libpathbuf[512]; < added this line
+ 
+ then later...
+ 
+ sprintf(libpathbuf,"LD_LIBRARY_PATH=%s","/usr/oracle/lib");
+ cleanenv[cidx]=strdup(libpathbuf);
+ cidx++;
+ 
+ cleanenv[cidx] = NULL;
+ environ = cleanenv;
+ }
+ 
+ int main...... 
+ 
+ Please let me know if this is a good/bad fix, or any better ways to fix
+ this problem!
+ 
+ Craig Comstock         
+ Web/Database Developer                                    
+ Electrical Engineering and Computer Science Dept.   
+ The University of Kansas                                     
+   
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Thu Jul  8 09:24:44 PDT 1999
+State-Changed-Why:
+The whole point of the restriction of what environment
+variables can be passed to CGIs is to stop things like
+LD_LIBRARY_PATH.  It is a security hole to allow LD_LIBRARY_PATH
+to be passed through, because it means that if someone can
+get access to the UID that can run suexec then they can
+execute arbitrary (ie. not just set CGIs) code as any user
+that suexec will use.
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

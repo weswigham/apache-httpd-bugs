@@ -1,0 +1,271 @@
+Received: (qmail 5905 invoked by uid 2012); 2 Aug 1998 00:24:03 -0000
+Message-Id: <19980802002403.5904.qmail@hyperreal.org>
+Date: 2 Aug 1998 00:24:03 -0000
+From: FreeLSD <freelsd@telekom.ru>
+Reply-To: freelsd@telekom.ru
+To: apbugs@hyperreal.org
+Subject: [PATCH] User/Group for <Directory> and <Location> i.e. not only in global and <Virtual>.
+X-Send-Pr-Version: 3.2
+
+>Number:         2760
+>Category:       config
+>Synopsis:       [PATCH] User/Group for <Directory> and <Location> i.e. not only in global and <Virtual>.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Aug  1 17:30:00 PDT 1998
+>Last-Modified:  Sun Aug  2 07:26:31 PDT 1998
+>Originator:     freelsd@telekom.ru
+>Organization:
+>Release:        1.3.1
+>Environment:
+grr... Environment not empty. any environment. :)
+>Description:
+make this possible (via suexec):
+<Directory /user-owned-portion-of-server/cgi-bin>
+   User user
+   Group user
+</Directory>
+
+<Location /my/cgi-bin/script.cgi>
+   User user2
+   Group nobody
+</Location>
+
+>How-To-Repeat:
+we can't =)
+>Fix:
+diff -ur apache_1.3.1/src/include/http_core.h apache_1.3.1-hacked/src/include/http_core.h
+--- apache_1.3.1/src/include/http_core.h	Thu Jul  2 01:19:51 1998
++++ apache_1.3.1-hacked/src/include/http_core.h	Sat Aug  1 23:08:15 1998
+@@ -225,6 +225,10 @@
+     array_header *sec;
+     regex_t *r;
+ 
++    /* uid/gid for <Directory*> and <Location*>. Hacked by FreeLSD. */
++    uid_t dir_uid;   /* effective user id when calling exec wrapper */
++    gid_t dir_gid;   /* effective group id when calling exec wrapper */
++
+ } core_dir_config;
+ 
+ /* Per-server core configuration */
+diff -ur apache_1.3.1/src/main/http_core.c apache_1.3.1-hacked/src/main/http_core.c
+--- apache_1.3.1/src/main/http_core.c	Mon Jul 13 15:32:39 1998
++++ apache_1.3.1-hacked/src/main/http_core.c	Sat Aug  1 23:01:07 1998
+@@ -132,6 +132,9 @@
+     conf->hostname_lookups = HOSTNAME_LOOKUP_UNSET;
+     conf->do_rfc1413 = DEFAULT_RFC1413 | 2; /* set bit 1 to indicate default */
+     conf->satisfy = SATISFY_NOSPEC;
++    
++    conf->dir_uid = -1;
++    conf->dir_gid = -1;
+ 
+ #ifdef RLIMIT_CPU
+     conf->limit_cpu = NULL;
+@@ -258,6 +261,10 @@
+     if (new->satisfy != SATISFY_NOSPEC) {
+         conf->satisfy = new->satisfy;
+     }
++
++    if (new->dir_uid != (uid_t)-1) conf->dir_uid = new->dir_uid;
++    if (new->dir_gid != (gid_t)-1) conf->dir_gid = new->dir_gid;
++    
+     return (void*)conf;
+ }
+ 
+@@ -1611,30 +1618,37 @@
+     return NULL;
+ }
+ 
+-static const char *set_user(cmd_parms *cmd, void *dummy, char *arg)
++static const char *set_user(cmd_parms *cmd, core_dir_config *d, char *arg)
+ {
+-    const char *err = ap_check_cmd_context(cmd, NOT_IN_DIR_LOC_FILE|NOT_IN_LIMIT);
++    const char *err = ap_check_cmd_context(cmd, NOT_IN_FILES|NOT_IN_LIMIT);
+     if (err != NULL) {
+         return err;
+     }
+ 
+     if (!cmd->server->is_virtual) {
+-	ap_user_name = arg;
+-	cmd->server->server_uid = ap_user_id = ap_uname2id(arg);
++        if (cmd->path != NULL) d->dir_uid = ap_uname2id(arg);
++        else {
++            ap_user_name = arg;
++            cmd->server->server_uid = ap_user_id = ap_uname2id(arg);
++        }
+     }
+     else {
+         if (ap_suexec_enabled) {
+-	    cmd->server->server_uid = ap_uname2id(arg);
++            if (cmd->path != NULL) d->dir_uid = ap_uname2id(arg);
++            else cmd->server->server_uid = ap_uname2id(arg);
+ 	}
+-	else {
++        else {
++            if (cmd->path != NULL) d->dir_uid = ap_user_id;
+ 	    cmd->server->server_uid = ap_user_id;
+ 	    fprintf(stderr,
+-		    "Warning: User directive in <VirtualHost> "
++                    "Warning: User directive in <VirtualHost>, "
++                    "<Directory>, <Location> "
+ 		    "requires SUEXEC wrapper.\n");
+ 	}
+     }
+ #if !defined (BIG_SECURITY_HOLE) && !defined (__EMX__)
+-    if (cmd->server->server_uid == 0) {
++    if (cmd->server->server_uid == 0 ||
++        (cmd->path != NULL && d->dir_uid == 0)) {
+ 	fprintf(stderr,
+ 		"Error:\tApache has not been designed to serve pages while\n"
+ 		"\trunning as root.  There are known race conditions that\n"
+@@ -1652,25 +1666,31 @@
+     return NULL;
+ }
+ 
+-static const char *set_group(cmd_parms *cmd, void *dummy, char *arg)
++static const char *set_group(cmd_parms *cmd, core_dir_config *d, char *arg)
+ {
+-    const char *err = ap_check_cmd_context(cmd, NOT_IN_DIR_LOC_FILE|NOT_IN_LIMIT);
++    const char *err = ap_check_cmd_context(cmd, NOT_IN_FILES|NOT_IN_LIMIT);
+     if (err != NULL) {
+         return err;
+     }
+ 
+     if (!cmd->server->is_virtual) {
+-	cmd->server->server_gid = ap_group_id = ap_gname2id(arg);
++        if (cmd->path != NULL) d->dir_gid = ap_gname2id(arg);
++        else {
++            cmd->server->server_gid = ap_group_id = ap_gname2id(arg);
++        }
+     }
+     else {
+         if (ap_suexec_enabled) {
+-	    cmd->server->server_gid = ap_gname2id(arg);
++            if (cmd->path != NULL) d->dir_gid = ap_gname2id(arg);
++            else cmd->server->server_gid = ap_gname2id(arg);
+ 	}
+-	else {
+-	    cmd->server->server_gid = ap_group_id;
++        else {
++            if (cmd->path != NULL) d->dir_gid = ap_group_id;
++            else cmd->server->server_gid = ap_group_id;
+ 	    fprintf(stderr,
+-		    "Warning: Group directive in <VirtualHost> requires "
+-		    "SUEXEC wrapper.\n");
++                    "Warning: Group directive in <VirtualHost>, "
++                    "<Directory>, <Location> "
++                    "requires SUEXEC wrapper.\n");
+ 	}
+     }
+ 
+@@ -2369,10 +2389,10 @@
+ { "HostnameLookups", set_hostname_lookups, NULL, ACCESS_CONF|RSRC_CONF, TAKE1,
+   "\"on\" to enable, \"off\" to disable reverse DNS lookups, or \"double\" to "
+   "enable double-reverse DNS lookups" },
+-{ "User", set_user, NULL, RSRC_CONF, TAKE1,
+-  "Effective user id for this server"},
+-{ "Group", set_group, NULL, RSRC_CONF, TAKE1,
+-  "Effective group id for this server"},
++{ "User", set_user, NULL, ACCESS_CONF|RSRC_CONF, TAKE1,
++  "Effective user id for this server or directory/location"},
++{ "Group", set_group, NULL, ACCESS_CONF|RSRC_CONF, TAKE1,
++  "Effective group id for this server or directory/location"},
+ { "ServerAdmin", set_server_string_slot,
+   (void *)XtOffsetOf (server_rec, server_admin), RSRC_CONF, TAKE1,
+   "The email address of the server administrator" },
+diff -ur apache_1.3.1/src/main/util_script.c apache_1.3.1-hacked/src/main/util_script.c
+--- apache_1.3.1/src/main/util_script.c	Fri Jul 10 12:33:36 1998
++++ apache_1.3.1-hacked/src/main/util_script.c	Sat Aug  1 22:38:43 1998
+@@ -635,15 +635,11 @@
+ 			     char **env, int shellcmd)
+ {
+     int pid = 0;
+-#if defined(RLIMIT_CPU)  || defined(RLIMIT_NPROC) || \
+-    defined(RLIMIT_DATA) || defined(RLIMIT_VMEM) || defined (RLIMIT_AS)
+ 
+     core_dir_config *conf;
+     conf = (core_dir_config *) ap_get_module_config(r->per_dir_config,
+ 						    &core_module);
+ 
+-#endif
+-
+ #ifndef WIN32
+     /* the fd on r->server->error_log is closed, but we need somewhere to
+      * put the error messages from the log_* functions. So, we use stderr,
+@@ -1023,11 +1019,15 @@
+     if (ap_suexec_enabled
+ 	&& ((r->server->server_uid != ap_user_id)
+ 	    || (r->server->server_gid != ap_group_id)
+-	    || (!strncmp("/~", r->uri, 2)))) {
++            || (!strncmp("/~", r->uri, 2)
++            || (conf->dir_uid != (uid_t)-1)
++            || (conf->dir_gid != (gid_t)-1) ))) {
+ 
+ 	char *execuser, *grpname;
+ 	struct passwd *pw;
+-	struct group *gr;
++        struct group *gr;
++        uid_t suexec_uid;
++        gid_t suexec_gid;
+ 
+ 	if (!strncmp("/~", r->uri, 2)) {
+ 	    gid_t user_gid;
+@@ -1057,20 +1057,26 @@
+ 	    else {
+ 		grpname = gr->gr_name;
+ 	    }
+-	}
+-	else {
+-	    if ((pw = getpwuid(r->server->server_uid)) == NULL) {
++        }
++        else {
++           if (conf->dir_uid != (uid_t)-1) suexec_uid = conf->dir_uid;
++            else suexec_uid = r->server->server_uid;
++
++            if (conf->dir_gid != (gid_t)-1) suexec_gid = conf->dir_gid;
++            else suexec_gid = r->server->server_gid;
++
++	    if ((pw = getpwuid(suexec_uid)) == NULL) {
+ 		ap_log_error(APLOG_MARK, APLOG_ERR, r->server,
+ 			     "getpwuid: invalid userid %ld",
+-			     (long) r->server->server_uid);
++			     (long) suexec_uid);
+ 		return (pid);
+ 	    }
+ 	    execuser = ap_pstrdup(r->pool, pw->pw_name);
+ 
+-	    if ((gr = getgrgid(r->server->server_gid)) == NULL) {
++	    if ((gr = getgrgid(suexec_gid)) == NULL) {
+ 		ap_log_error(APLOG_MARK, APLOG_ERR, r->server,
+ 			     "getgrgid: invalid groupid %ld",
+-			     (long) r->server->server_gid);
++			     (long) suexec_gid);
+ 		return (pid);
+ 	    }
+ 	    grpname = gr->gr_name;
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: coar
+State-Changed-When: Sun Aug  2 07:26:31 PDT 1998
+State-Changed-Why:
+
+I'm marking this as suspended so it can be reviewed
+in the next feature cycle.  Thanks for the report!
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

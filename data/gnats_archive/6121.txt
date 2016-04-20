@@ -1,0 +1,160 @@
+Received: (qmail 53389 invoked by uid 501); 26 May 2000 07:00:46 -0000
+Message-Id: <20000526070046.53385.qmail@locus.apache.org>
+Date: 26 May 2000 07:00:46 -0000
+From: Adrian Mugnolo <adrian@mugnolo.com>
+Reply-To: adrian@mugnolo.com
+To: submit@bugz.apache.org
+Subject: This patch adds an offset param to rotatelogs(8)
+X-Send-Pr-Version: 3.110
+
+>Number:         6121
+>Category:       other
+>Synopsis:       This patch adds an offset param to rotatelogs(8)
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri May 26 00:10:00 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     adrian@mugnolo.com
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+FreeBSD bigmac.mugnolo.com 3.4-STABLE FreeBSD 3.4-STABLE #3: Mon May 22 08:18:20 ART 2000     root@bigmac.mugnolo.com:/usr/src/sys/compile/BIGMAC  i386
+>Description:
+The standard rotatelogs(8) creates new log files at time(3) multiples. This imposes a limitation if trying to synchronize log rotation w/ date rollover or weekdays. This patch adds an offset param to solve this inconvenience.
+>How-To-Repeat:
+I needed a midnight log rotation for cleanup, reporting, etc. Being at GMT-3 logs were created at 9:00 pm daily. Same thing happens if you want rotation to happen every Wednesday at 7:00 am, for example.
+>Fix:
+--- rotatelogs.c	2000/05/26 04:46:15	1.1
++++ rotatelogs.c	2000/05/26 06:29:30
+@@ -18,31 +18,34 @@
+ int main (int argc, char **argv)
+ {
+     char buf[BUFSIZE], buf2[MAX_PATH];
+-    time_t tLogEnd = 0;
++    time_t tLogEnd = (time_t) 0;
+     time_t tRotation;
++    int nOffset = 0;
+     int nLogFD = -1;
+     int nRead;
+     char *szLogRoot;
+ 
+-    if (argc != 3) {
++    if (argc != 3 && argc != 4) {
+ 	fprintf(stderr,
+-		"%s <logfile> <rotation time in seconds>\n\n",
++		"%s <logfile> <rotation time in seconds> [<offset in seconds>]\n\n",
+ 		argv[0]);
+ #ifdef OS2
+ 	fprintf(stderr,
+-		"Add this:\n\nTransferLog \"|%s.exe /some/where 86400\"\n\n",
++		"Add this:\n\nTransferLog \"|%s.exe /some/where 86400 10800\"\n\n",
+ 		argv[0]);
+ #else
+ 	fprintf(stderr,
+-		"Add this:\n\nTransferLog \"|%s /some/where 86400\"\n\n",
++		"Add this:\n\nTransferLog \"|%s /some/where 86400 10800\"\n\n",
+ 		argv[0]);
+ #endif
+ 	fprintf(stderr,
+ 		"to httpd.conf. The generated name will be /some/where.nnnn "
+ 		"where nnnn is the\nsystem time at which the log nominally "
+ 		"starts (N.B. this time will always be a\nmultiple of the "
+-		"rotation time, so you can synchronize cron scripts with it).\n"
+-		"At the end of each rotation time a new log is started.\n");
++		"rotation time plus the offset if specified, so you can\n"
++		"synchronize cron scripts with it). At the end of each "
++		"rotation time a new\nlog is started. The optional offset "
++		"allows `fine tuning' with local date\nrollover or weekday.\n");
+ 	exit(1);
+     }
+ 
+@@ -52,6 +55,13 @@
+ 	fprintf(stderr, "Rotation time must be > 0\n");
+ 	exit(6);
+     }
++    if (argc == 4) {
++	nOffset = atoi(argv[3]);
++	if (nOffset <= -604800 || nOffset >= 604800) {
++	    fprintf(stderr, "Offset must be -604800 < n < 604800\n");
++	    exit(6);
++	}
++    }
+ 
+     for (;;) {
+ 	nRead = read(0, buf, sizeof buf);
+@@ -65,7 +75,8 @@
+ 	    nLogFD = -1;
+ 	}
+ 	if (nLogFD < 0) {
+-	    time_t tLogStart = (time(NULL) / tRotation) * tRotation;
++	    time_t tLogStart = (time(NULL) / tRotation) * tRotation
++		+ (time_t) nOffset;
+ 	    sprintf(buf2, "%s.%010d", szLogRoot, (int) tLogStart);
+ 	    tLogEnd = tLogStart + tRotation;
+ 	    nLogFD = open(buf2, O_WRONLY | O_CREAT | O_APPEND, 0666);
+--- rotatelogs.8	2000/05/26 06:31:54	1.1
++++ rotatelogs.8	2000/05/26 06:43:01
+@@ -57,6 +57,7 @@
+ .B rotatelogs
+ .I logfile
+ .I rotationtime
++.I offset
+ .PP
+ .SH DESCRIPTION
+ .B rotatelogs
+@@ -67,16 +68,27 @@
+    TransferLog "|rotatelogs /path/to/logs/access_log 86400"
+ .mf
+ 
+-This creates the files /path/to/logs/access_log.nnnn where nnnn is the system
+-time at which the log nominally starts (this time will always be a multiple of
+-the rotation time, so you can synchronize cron scripts with it).  At the end
+-of each rotation time (here after 24 hours) a new log is started.
++or:
++
++.fi
++   TransferLog "|rotatelogs /path/to/logs/access_log 86400 10800"
++.mf
++
++This creates the files /path/to/logs/access_log.nnnn where nnnn is the
++system time at which the log nominally starts (this time will always be a
++multiple of the rotation time plus the offset if specified, so you can
++synchronize cron scripts with it). At the end of each rotation time a new
++log is started. The optional offset allows `fine tuning' with local date
++rollover or weekday.
+ .SH OPTIONS
+ .IP \fB\fIlogfile\fP
+ The path plus basename of the logfile. The suffix .nnnn is automatically
+ added.
+ .IP \fB\fIrotationtime\fP
+ The rotation time in seconds.
++.IP \fB\fIoffset\fP
++The offset in seconds. Allows adjusting nnnn for local date rollover or
++weekday. For GMT-3 midnight log rotation use 10800.
+ .PD
+ .SH SEE ALSO
+ .BR httpd(8)
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

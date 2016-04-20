@@ -1,0 +1,190 @@
+From apwww@hyperreal.org  Sat Sep 20 08:12:50 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id IAA21325;
+	Sat, 20 Sep 1997 08:12:50 -0700 (PDT)
+Message-Id: <199709201512.IAA21325@hyperreal.org>
+Date: Sat, 20 Sep 1997 08:12:50 -0700 (PDT)
+From: Chris Hardie <silas@TSETSE.CS.EARLHAM.EDU>
+Reply-To: silas@TSETSE.CS.EARLHAM.EDU
+To: apbugs@hyperreal.org
+Subject: Apache DNS resolution backs up in named, eventually rendering server unusable.
+X-Send-Pr-Version: 3.2
+
+>Number:         1152
+>Category:       general
+>Synopsis:       Apache DNS resolution backs up in named, eventually rendering server unusable.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Sep 20 08:20:02 1997
+>Last-Modified:  Fri Oct 31 20:50:22 PST 1997
+>Originator:     silas@cs.earlham.edu
+>Organization:
+>Release:        apache_1.2.0
+>Environment:
+ULTRIX 4.4 RISC
+>Description:
+The server has DNS lookup for clients enabled.  Ever so often, the server
+cannot resolve the name of the client and is stuck in "D" (DNS) mode, even
+if the request is properly served.
+Eventually,
+all available servers are stuck in "D" mode and the server is rendered inoperable.
+Both the server and NAMED appear to function perfectly outside of this problem.
+The servers stuck in "D" are flushed out (resolve their client name and
+continue with normal operation) when NAMED is given a SIGHUP.  
+>How-To-Repeat:
+If you look at http://www.cs.earlham.edu/server-status you can see the
+symptoms of the problem (unless an administrator has SIGHUPed NAMED, which
+we are having to do at least once every day.
+>Fix:
+As mentioned, sending a SIGHUP to NAMED flushes out the stuck servers as
+a temporary solution.  Beyond that...%3
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Sat Sep 20 12:37:25 PDT 1997
+State-Changed-Why:
+I'm really not sure that this is an Apache problem or that
+we can do anything about it.  If the DNS query isn't timing
+out, then your DNS server is not properly timing out.
+If you can't make it work correctly, you may need to
+turn off reverse DNS lookups.
+
+What version of BIND are you using?  Try upgrading it.
+
+Try pointing your machine at another name server on your
+site that has a better version of named.
+
+It would be possible to try modifying the timeouts for
+name resolution, but I doubt that will help too much since
+it is broken already.
+
+The fact that restarting named fixes it indicates that
+named is blocking in a query and not properly returning
+an answer or a failure as it should.
+
+From: Marc Slemko <marcs@znep.com>
+To: silas@math.earlham.edu
+Subject: Re: general/1152: Apache DNS resolution backs up in named, eventually         rendering server unusable.
+Date: Tue, 23 Sep 1997 16:08:27 -0600 (MDT)
+
+ 
+ On Tue, 23 Sep 1997, Chris Hardie wrote:
+ 
+ > 
+ > Thank you for your reply.
+ > 
+ > We have resinstalled named, bind, and other related services in previous
+ > attempts to solve this problem with no success.
+ > 
+ > I realize that it would likely be a waste of your time to try to fix a
+ > problem so deeply involving "foreign" software but I believe the people
+ > working on it on this end have looked at many if not all of the angles and
+ > come up empty handed, and so I was "hoping" it would be something in the
+ > Apache code.
+ > 
+ > Perhaps you could just tell me where to find the source where I might
+ > modify the DNS lookup timeouts?
+ 
+ If you do a nslookup on one of the IPs that isn't being resolved,
+ does it return properly?
+ 
+ You could try adding something like:
+ 
+         _res.retrans = 1;
+         _res.retry = 1; 
+ 
+ (you will probably need an #include <resolv.h> at the top of the
+ file too) to the start of main() in http_main.c.  .retrans is the
+ retransmission interval, retry is the # of times to retry.
+ 
+ This should work if your BIND is anything near standard.
+ 
+ I am not convinced this will help, though, since it should be
+ eventually timing out anyway but it obviously isn't.
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Subject: Re: general/1152: Apache DNS resolution backs up in named, eventually         rendering server unusable. (fwd)
+Date: Tue, 23 Sep 1997 16:03:09 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Tue, 23 Sep 1997 00:19:52 -0500 (EST)
+ From: Chris Hardie <silas@TSETSE.cs.earlham.edu>
+ Reply-To: silas@math.earlham.edu
+ To: Marc Slemko <marc@hyperreal.org>
+ Subject: Re: general/1152: Apache DNS resolution backs up in named, eventually         rendering server unusable.
+ 
+ 
+ Thank you for your reply.
+ 
+ We have resinstalled named, bind, and other related services in previous
+ attempts to solve this problem with no success.
+ 
+ I realize that it would likely be a waste of your time to try to fix a
+ problem so deeply involving "foreign" software but I believe the people
+ working on it on this end have looked at many if not all of the angles and
+ come up empty handed, and so I was "hoping" it would be something in the
+ Apache code.
+ 
+ Perhaps you could just tell me where to find the source where I might
+ modify the DNS lookup timeouts?
+ 
+ Thanks for your time,
+ Chris Hardie
+ 
+ On Sat, 20 Sep 1997, Marc Slemko wrote:
+ 
+ > Synopsis: Apache DNS resolution backs up in named, eventually rendering server unusable.
+ >
+ > State-Changed-From-To: open-analyzed
+ > State-Changed-By: marc
+ > State-Changed-When: Sat Sep 20 12:37:25 PDT 1997
+ > State-Changed-Why:
+ > I'm really not sure that this is an Apache problem or that
+ > we can do anything about it.  If the DNS query isn't timing
+ > out, then your DNS server is not properly timing out.
+ > If you can't make it work correctly, you may need to
+ > turn off reverse DNS lookups.
+ >
+ > What version of BIND are you using?  Try upgrading it.
+ >
+ > Try pointing your machine at another name server on your
+ > site that has a better version of named.
+ >
+ > It would be possible to try modifying the timeouts for
+ > name resolution, but I doubt that will help too much since
+ > it is broken already.
+ >
+ > The fact that restarting named fixes it indicates that
+ > named is blocking in a query and not properly returning
+ > an answer or a failure as it should.
+ >
+ 
+ ---------------------------------------------
+ Chris Hardie           silas@math.earlham.edu
+          Earlham College, Box 903
+             Richmond, IN 47374
+         http://www.summersault.com/
+      http://www.cs.earlham.edu/~silas/
+               vincendum est
+ ---------------------------------------------
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: marc
+State-Changed-When: Fri Oct 31 20:50:22 PST 1997
+State-Changed-Why:
+Appears to be OS problem; little Apache can do about it.
+>Unformatted:
+
+
+
+

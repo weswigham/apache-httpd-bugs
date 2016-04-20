@@ -1,0 +1,223 @@
+Received: (qmail 94096 invoked by uid 501); 18 Sep 2000 20:22:58 -0000
+Message-Id: <20000918202258.94085.qmail@locus.apache.org>
+Date: 18 Sep 2000 20:22:58 -0000
+From: Christian Smith <csmith@smith-family.com>
+Reply-To: csmith@smith-family.com
+To: submit@bugz.apache.org
+Subject: Apache treats an HTTP 1.1 PUT request as a GET in some cases
+X-Send-Pr-Version: 3.110
+
+>Number:         6548
+>Category:       general
+>Synopsis:       Apache treats an HTTP 1.1 PUT request as a GET in some cases
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Sep 18 13:30:00 PDT 2000
+>Closed-Date:    Mon Sep 18 14:02:02 PDT 2000
+>Last-Modified:  Thu Sep 21 14:00:01 PDT 2000
+>Originator:     csmith@smith-family.com
+>Release:        1.3.12
+>Organization:
+>Environment:
+Rhapsody silo 5.3 Kernel Release 5.3: Wed Mar  3 00:37:58 PST 1999; root(rcbuild
+er):Objects/kernel-154.5.obj~2/RELEASE_PPC
+
+Running apache 1.3.12 on an Apple PowerMac running OS X Server 1.1
+>Description:
+Have built apache 1.3.12 with mod_put linked in. Have configured Apache to allow PUT requests for / and for /cgi-bin/. PUT requests within / but not within /cgi-bin/ function properly.
+
+PUT requests to URIs within /cgi-bin/ result in apache issuing a response as tho an HTTP GET request had been sent. I have verified that indeep a PUT request IS being sent. If the cgi is present the cgi is executed and apache returns the result of the cgi. If the file does not exist apahie returns an error 404.
+>How-To-Repeat:
+Contact me at csmith@smith-family.com and I can provide an account on a server with which to test this. I can also provide relevent config files.
+>Fix:
+No, sorry. 
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: fanf
+State-Changed-When: Mon Sep 18 14:02:01 PDT 2000
+State-Changed-Why:
+Apache leaves a lot of the correct handling of different
+HTTP methods (GET, POST, PUT) to CGIs. I.e. your CGI is
+not handling the PUT correctly. If you are trying to use
+PUTs to publish CGI scripts then it sounds like mod_put
+isn't going to solve your problem.
+
+
+From: Christian Smith <csmith@smith-family.com>
+To: Cc: apbugs@Apache.Org
+Subject: Re: general/6548: Apache treats an HTTP 1.1 PUT request as a GET in some cases
+Date: Mon, 18 Sep 2000 22:21:46 -0400
+
+ On Monday, September 18, 2000 at 21:02, fanf@apache.org wrote:
+ 
+ > Apache leaves a lot of the correct handling of different HTTP methods
+ > (GET, POST, PUT) to CGIs. I.e. your CGI is not handling the PUT correctly.
+ > If you are trying to use PUTs to publish CGI scripts then it sounds like
+ > mod_put isn't going to solve your problem.
+ 
+ I'm not convinced that this is the case. It looks to me like the PUT request
+ is not being passed to mod_put at all and that Apache is handling the PUT
+ request as a GET. 
+ 
+ In fact, consider a web server which does not have mod_put installed at all. Tests performed with server at <http://www.barebones.com>
+ 
+ A PUT to /test.html (which does not exist) returns
+ 
+ HTTP/1.1 405 Method Not Allowed
+ 
+ A PUT to /index.html (which does exist) returns
+ 
+ HTTP/1.1 405 Method Not Allowed
+ 
+ 
+ However:
+ 
+ A PUT to /cgi-bin/test.html (which does not exist) returns
+ 
+ HTTP/1.1 404 Not Found
+ 
+ A PUT to /cgi-bin/faq/faq.pl (which does exist) returns
+ 
+ HTTP/1.1 200 OK
+ 
+ followed by the output of executing the cgi at this URL.
+ 
+ 
+ Now, the server at this address is running Tenon's iTools but you'll get the
+ same behaviour with the server at <http://www.apache.org>.
+ 
+ This is an Apache bug, not a mod_put bug. I don't know if mod_put can handle
+ a PUT to a file in the /cgi-bin/ tree (I suspect it can) but it is never
+ getting the chance to try because Apache has a bug.
+ 
+ Chris
+
+From: Christian Smith <csmith@smith-family.com>
+To: Cc: apbugs@Apache.Org
+Subject: Re: general/6548: Apache treats an HTTP 1.1 PUT request as a GET in some cases
+Date: Mon, 18 Sep 2000 22:22:01 -0400
+
+ On Monday, September 18, 2000 at 22:08, fanf@apache.org (Tony Finch) wrote:
+ 
+ > Christian Smith <csmith@smith-family.com> wrote:
+ > >On Monday, September 18, 2000 at 21:02, fanf@apache.org wrote:
+ > >
+ > >> Apache leaves a lot of the correct handling of different HTTP methods
+ > >> (GET, POST, PUT) to CGIs. I.e. your CGI is not handling the PUT correctly.
+ > >> If you are trying to use PUTs to publish CGI scripts then it sounds like
+ > >> mod_put isn't going to solve your problem.
+ > >
+ > >I'm not convinced that this is the case. It looks to me like the PUT request
+ > >is not being passed to mod_put at all
+ > 
+ > Correct.
+ > 
+ > >and that Apache is handling the PUT request as a GET. 
+ > 
+ > No, the CGI is handling the PUT as if it were a GET. Your example of a
+ > server without mod_put illustrates this.
+ 
+ That doesn't compute. What about the case where one tries tp PUT to a URI
+ which doesn't point to an exiting file. The server returns an error 404. You
+ can not possible tell me that the CGI is handling the PUT as a GET because
+ the CGI does not exist.
+ 
+ > >This is an Apache bug, not a mod_put bug.
+ > 
+ > No, it's a deliberate feature -- otherwise CGIs would be considerably
+ > less useful.
+ 
+ Perhaps "deliberate mis-feature". Seems to me the RFC is pretty clear on
+ what is supposed to happen when a PUT command is received and it is pretty
+ clear that Apache is NOT doing the right thing and is therefor NOT compliant
+ with RFC 2068.
+ 
+ Further more, RFC 2068 says
+ 
+ > The PUT method requests that the enclosed entity be stored under the
+ > supplied Request-URI. If the Request-URI refers to an already existing
+ > resource, the enclosed entity SHOULD be considered as a modified version
+ > of the one residing on the origin server. If the Request-URI does not
+ > point to an existing resource, and that URI is capable of being defined as
+ > a new resource by the requesting user agent, the origin server can create
+ > the resource with that URI.
+ 
+ Under this definition the current behaviour for an existing file and a file
+ which does not exist are both broken. You simply can not justify the current
+ behaviour as a feature as it violates RFC 2068.
+ 
+ Please fix.
+ 
+ Chris
+
+From: Tony Finch <dot@dotat.at>
+To: Christian Smith <csmith@barebones.com>
+Cc: "Fielding, Roy" <fielding@eBuilt.com>, vincent@hpwww.ec-lyon.fr,
+	ylafon@w3.org, Karl Dubost <karl@w3.org>, apbugs@apache.org
+Subject: Re: general/6548: Apache treats an HTTP 1.1 PUT request as a GET  in some cases
+Date: Thu, 21 Sep 2000 20:55:58 +0000
+
+ Christian Smith <csmith@barebones.com> wrote:
+ >On Thursday, September 21, 2000 at 11:51, fielding@eBuilt.com (Fielding, Roy) wrote:
+ >
+ >> The cgi-bin namespace within Apache is not a filesystem.  Resources
+ >> within that space are part of the server and responsible for their
+ >> own HTTP processing.  If there is a CGI script within that space that
+ >> does not properly respond to a PUT, then delete that CGI script.
+ >
+ >Thank you for the clarification on this issue. 
+ >
+ >> This does not in any way change Apache's compliance with RFC 2616.
+ >> Apache httpd does not distribute with CGI scripts enabled.
+ >> Each resource defines the methods which are applicable to it.
+ >> No resource is required to allow PUT.
+ >> 
+ >> mod_put will not work for the /cgi-bin namespace because that would
+ >> generally be considered a security hole.
+ >
+ >More of a hole than having individual CGIs responsible for their own HTTP
+ >processing?
+ 
+ Of course. Putting un-audited code on your web server is dangerous,
+ especially server code (CGIs) that doesn't uderstand HTTP to the
+ extent that is required.
+ 
+ >How is it possible then to create a resource within the cgi-bin namespace
+ >via http PUT?
+ 
+ Write a CGI to handle 404 errors which knows what to do with a PUT.
+ 
+ >Seems like there would also be issues with DELETE. Asking an
+ >object to delete itslef seems like a bad idea...
+ 
+ Probably :-)
+ 
+ Tony.
+ -- 
+ en oeccget g mtcaa    f.a.n.finch
+ v spdlkishrhtewe y    dot@dotat.at
+ eatp o v eiti i d.    fanf@covalent.net
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

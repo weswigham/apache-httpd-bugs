@@ -1,0 +1,254 @@
+Received: (qmail 16211 invoked by uid 501); 15 Dec 2000 06:28:58 -0000
+Message-Id: <20001215062858.16210.qmail@locus.apache.org>
+Date: 15 Dec 2000 06:28:58 -0000
+From: Mike Abbott <mja@sgi.com>
+Reply-To: mja@sgi.com
+To: submit@bugz.apache.org
+Subject: Copious build warnings
+X-Send-Pr-Version: 3.110
+
+>Number:         6980
+>Category:       build
+>Synopsis:       Copious build warnings
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Dec 14 22:30:00 PST 2000
+>Closed-Date:    Fri Mar 02 18:33:32 PST 2001
+>Last-Modified:  Fri Mar 02 18:33:32 PST 2001
+>Originator:     mja@sgi.com
+>Release:        2.0a9
+>Organization:
+>Environment:
+Irix 6.5
+MIPSpro 7.2
+>Description:
+Compiling Apache/2.0 alpha 9 on Irix 6.5 with SGI's MIPSpro 7.2
+compilers generates over 1,600 remarks and warnings:
+
+Compiler:
+
+Remark  Number of       Remark
+Number  Occurrences     Description
+------- -----------     -----------
+1174    424             parameter "xxx" was declared but never referenced
+1196     13             function declared implicitly
+1209    412             controlling expression is constant
+1355      4             extra ";" ignored
+1506     48             implicit conversion from "some-type" to
+                            "other-type":  rounding, sign extension, or
+                            loss of accuracy may result
+1552     14             variable "xxx" was set but never used
+1692     16             prototyped function redeclared without prototype
+
+Warning Number of       Warning
+Number  Occurrences     Description
+------- -----------     -----------
+1042      4             operand types are incompatible
+1048    265             cast between pointer-to-object and
+                            pointer-to-function
+1110      5             statement is unreachable
+1164     13             argument of type "some-type" is incompatible
+                            with parameter of type "other-type"
+1183      1             pointless comparison of unsigned integer with zero
+1184      2             possible use of "=" where "==" was intended
+1185      9             enumerated type mixed with another type
+1515      1             a value of type "some-type" cannot be
+                            assigned to an entity of type "other-type"
+
+Linker:
+
+Warning Number of       Warning
+Number  Occurrences     Description
+------- -----------     -----------
+84       31             xxx.so is not used for resolving any symbol
+85      104             definition of xxx in /usr/lib32/libnsl.so
+                            preempts that definition in
+                            /usr/lib32/mips4/libc.so
+134     265             weak definition of xxx in /usr/lib32/libnsl.so
+                            preempts that weak definition in
+                            /usr/lib32/mips4/libc.so
+        (-lnsl is not necessary but configure uses it anyway)
+
+Plus 17 "top_builddir changed after being used" warnings from make
+itself, and that's all for a 32-bit build.  Compiling 64-bit doesn't
+work at all, but I didn't really expect it to.  Also, configure fails to
+detect netinet/tcp.h (previously reported as PR#6459 which is still
+open) and there are problems with the test directories (which lack
+makefiles but are attempted to build anyway, unsuccessfully) that force
+me to use "make -i" or else have the build (and make install) fail every
+time.
+
+The ASF rejected the patches I contributed to eliminate Apache/1.3's
+similar abundance of verbiage.  I choose not to waste my time again, but
+I thought maybe somebody else would like to clean up at least some of
+these compilation issues.  I think the fact that there are so many makes
+Apache look bad (I believe in strictly warning-free code), but maybe
+nobody cares since most folks use less stringent build tools like gcc
+and gmake.
+
+The complete output from configure and make is too large to include here
+so is available from:
+        http://oss.sgi.com/projects/apache/out.2.0a9
+>How-To-Repeat:
+I turned on as many modules as I could to expose as many warnings as
+possible:
+env CFLAGS="-fullwarn" configure \
+        --prefix=/a/mja/apache2.0a9 \
+        --with-maintainer-mode \
+        --enable-modules="file_cache \
+                cache \
+                disk_cache \
+                ext_filter \
+                status \
+                info \
+                suexec \
+                cgid \
+                vhost_alias \
+                speling \
+                rewrite \
+                so \
+                mime_magic \
+                cern_meta \
+                expires \
+                headers \
+                usertrack \
+                unique_id"
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: trawick
+State-Changed-When: Fri Mar  2 10:37:17 PST 2001
+State-Changed-Why:
+I have looked through http://oss.sgi.com/projects/apache/out.2.0a9.
+
+Some of these warnings will always exist... Examples:
+
+===> lib/apr/shmem/unix
+        cc -fullwarn -g -g  -D_POSIX_THREAD_SAFE_FUNCTIONS  -c -I../../include -Imm shmem.c
+"shmem.c", line 64: remark(1174): parameter "cont" was declared but never
+          referenced
+  apr_status_t apr_shm_init(struct shmem_t **m, apr_size_t reqsize, const char *file, apr_pool_t *cont)
+
+(because many APR functions have parameters which are not necessary
+on all platforms; also many Directive processing functions have
+parameters which are made available by the configuration code
+but not used for particular directives)
+
+"http_core.c", line 3289: remark(1209): controlling expression is constant
+              AP_BUCKET_INSERT_BEFORE(eos, e);
+
+(because we frequently use macro constructs which use constant controlling expressions)
+
+(not an exhaustive list)
+
+These probably won't go away until we know of a platform where it
+is invalid and/or somebody wants to make the exports.c generation
+more complex:
+
+"exports.c", line 286: warning(1048): cast between pointer-to-object and
+          pointer-to-function
+  const void *ap_hack_apr_kill = (const void *)apr_kill;
+
+Others have been fixed:
+
+e.g., top_builddir warnings from make (at least they went
+away on Tru64)
+
+(not an exhaustive list)
+
+Many others can't be investigated properly by somebody with no access 
+to an SGI machine:
+
+"htpasswd.c", line 668: remark(1196): function declared implicitly
+      unlink(tempfilename);
+      ^
+"mpmt_pthread.c", line 188: remark(1196): function declared implicitly
+      chdir(ap_coredump_dir);
+
+(not an exhaustive list)
+
+others I will fix right now and reference this bug:
+
+"mpmt_pthread.c", line 190: remark(1506): implicit conversion from
+          "unsigned int" to "long":  rounding, sign extension, or loss of
+          accuracy may result
+      kill(ap_my_pid, sig);
+
+(I'll look for more which have obvious, risk-free solutions)
+
+It is very possible that since 2.0a9 there are new warnings
+on SGI.
+
+There were some comments in the original problem report about 
+Apache not caring about warnings.  This is simply not true.
+For many months we have tracked any change to warnings or errors
+from configure or build on a number of platforms.  Any change is 
+attended to as soon as practical.  The unfortunate truth is
+that we do not have access to all platforms on which our users
+deploy Apache.  When this is the case, the best way for users
+to deal with problems with warnings (IMHO) is to pick a single 
+problem to solve, solve it, and post the patch to either 
+new-httpd@apache.org or dev@apr.apache.org with an 
+explanation.
+
+State-Changed-From-To: analyzed-closed
+State-Changed-By: trawick
+State-Changed-When: Fri Mar  2 18:33:32 PST 2001
+State-Changed-Why:
+As much as practical has been fixed in the current CVS 
+repositories for Apache and APR.  Some warnings not mentioned
+in an earlier update had already been fixed.  Many more
+warnings were fixed for this PR.
+
+Here is a synopsis of what went in.  Warnings not related
+to observable behavior were not mentioned in detail.  Some
+code near or intertwined with code causing a warning was
+found to be in error and was fixed.
+
+Index: CHANGES
+===================================================================
+RCS file: /home/cvs/httpd-2.0/CHANGES,v
+retrieving revision 1.118
+diff -u -r1.118 CHANGES
+--- CHANGES	2001/03/02 22:46:30	1.118
++++ CHANGES	2001/03/03 02:25:08
+@@ -1,5 +1,13 @@
+ Changes with Apache 2.0.14-dev
+ 
++  *) Fix a number of SGI compile warnings throughout the server.  Fix some
++     bad parameters to apr_bucket_read().  Fix a bad statement in 
++     ap_method_in_list().  For the mod_rewrite cache use apr_time_t 
++     consistently; we were mixing apr_time_t and time_t in invalid ways 
++     before.  In load_file(), call apr_dso_error() instead of 
++     apr_strerror() so that we get a more specific string on some platforms.
++     PR #6980  [Jeff Trawick]
+
+Hopefully a build of current code will be relatively clean,
+especially after certain expected warnings (mentioned in a
+previous update) are filtered out.
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

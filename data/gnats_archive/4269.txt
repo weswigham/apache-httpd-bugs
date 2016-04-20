@@ -1,0 +1,374 @@
+Received: (qmail 10278 invoked by uid 2012); 19 Apr 1999 03:48:06 -0000
+Message-Id: <19990419034806.10277.qmail@hyperreal.org>
+Date: 19 Apr 1999 03:48:06 -0000
+From: Allen Scott-Thoennes <sthoenna@efn.org>
+Reply-To: sthoenna@efn.org
+To: apbugs@hyperreal.org
+Subject: make install fails on os/2
+X-Send-Pr-Version: 3.2
+
+>Number:         4269
+>Category:       os-os2
+>Synopsis:       make install fails on os/2
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Apr 18 20:50:00 PDT 1999
+>Last-Modified:  Tue May 11 11:30:01 PDT 1999
+>Originator:     sthoenna@efn.org
+>Organization:
+apache
+>Release:        1.3.6
+>Environment:
+OS/2 Warp 3 FP19
+compiler: emx0.9c or emx0.9d
+GNU make 3.75
+>Description:
+`make install` fails on os/2 with three different problems.
+First, an outright bug in Makefile.tmpl in install-include causes an
+error when OSDIR starts with 'os' :) producing this error:
+===> [include: Installing Apache C header files]
+
+cp ./src/include/*.h /usr/local/apache/include/
+
+cp ./src/os2/os.h /usr/local/apache/include/
+>How-To-Repeat:
+
+cp: ./src/os2/os.h: No such file or directory
+
+cp ./src/os2/os-inline.c /usr/local/apache/include/
+>Fix:
+
+cp: ./src/os2/os-inline.c: No such file or directory
+
+make: *** [install-include] Error 1
+>Audit-Trail:
+
+From: sthoenna@efn.org (sthoenna@efn.org)
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: os-os2/4269: make install fails on os/2
+Date: Sun, 18 Apr 1999 20:09:56 -0700
+
+ apbugs@hyperreal.org wrote:
+ >Thank you very much for your problem report.
+ >It has the internal identification `os-os2/4269'.
+ >The individual assigned to look at your
+ >report is: apache. 
+ >
+ >>Category:       os-os2
+ >>Responsible:    apache
+ >>Synopsis:       make install fails on os/2
+ >>Arrival-Date:   Sun Apr 18 20:50:00 PDT 1999
+ >
+ 
+ I got cut off in the middle, but here's the body of my report:
+ 
+ `make install` fails on os/2 with three different problems.
+ 1) an outright bug in Makefile.tmpl in install-include causes an
+ error when OSDIR starts with 'os' :) producing this error:
+ 
+ % make install-include
+ ===> [include: Installing Apache C header files]
+ cp ./src/include/*.h /usr/local/apache/include/
+ cp ./src/os2/os.h /usr/local/apache/include/
+ cp: ./src/os2/os.h: No such file or directory
+ cp ./src/os2/os-inline.c /usr/local/apache/include/
+ cp: ./src/os2/os-inline.c: No such file or directory
+ make: *** [install-include] Error 1
+ 
+ See patch below for fix.
+ 
+ 
+ 2) Due to the presence of the INSTALL file in the distribution, make "fails"
+ on a non case-sensitive file system such as HPFS:
+ 
+ % make install
+ make: `install' is up to date.
+ 
+ As a workaround, INSTALL can be renamed or deleted.
+ For a permanent fix, the 'install' target should have as a dependency a
+ file that is pretty much guaranteed to exist and to be newer than INSTALL.
+ For instance, Makefile itself.  See patch below.
+ 
+ 
+ 3) Install tries to install the programs as httpd, htdigest, htpasswd, etc.
+ These of course have been built with an .exe extension, so the install
+ doesn't exactly work.  As a workaround I modified install.sh to take an
+ -e parameter to add an extension to the src and dst filenames (see patch
+ below) and added "-e .exe" to IFLAGS_PROGRAM and IFLAGS_CORE in the
+ Makefile.  (STRIPPROG also needed to be set to "emxbind -s")  To automate
+ this change to Makefile for os2, top level Configure needs to become
+ os-aware, which it currently isn't except for for shadowing purposes.
+ A patch to Configure is forthcoming.
+ 
+ --- /apache_1.3.6/Makefile.tmpl	Mon Mar 15 17:38:28 1999
+ +++ ./Makefile.tmpl	Sun Apr 18 19:36:52 1999
+ @@ -201,7 +201,7 @@
+  #   the install target for installing the complete Apache
+  #   package. This is implemented by running subtargets for the
+  #   separate parts of the installation process.
+ -install:
+ +install: Makefile
+  	@if [ ! -f $(TOP)/$(SRC)/.apaci.build.ok ]; then \
+  		$(MAKE) -f $(TOP)/$(MKF) $(MFLAGS) $(MFWD) build; \
+  	else \
+ @@ -367,7 +367,7 @@
+  install-include:
+  	@echo "===> [include: Installing Apache C header files]"
+  	$(CP) $(TOP)/$(SRC)/include/*.h $(root)$(includedir)/
+ -	@osdir=`grep '^OSDIR=' $(TOP)/$(SRC)/Makefile.config | sed -e 's:^OSDIR=.*/os:os:'`; \
+ +	@osdir=`grep '^OSDIR=' $(TOP)/$(SRC)/Makefile.config | sed -e 's:^OSDIR=.*/os/:os/:'`; \
+  		echo "$(CP) $(TOP)/$(SRC)/$${osdir}/os.h $(root)$(includedir)/"; \
+  		$(CP) $(TOP)/$(SRC)/$${osdir}/os.h $(root)$(includedir)/; \
+  		echo "$(CP) $(TOP)/$(SRC)/$${osdir}/os-inline.c $(root)$(includedir)/"; \
+ 
+ 
+ --- /apache_1.3.6/src/helpers/install.sh	Wed Feb 10 05:09:12 1999
+ +++ ./install.sh	Thu Apr  8 22:00:52 1999
+ @@ -32,6 +32,7 @@
+  chowncmd=""
+  chgrpcmd=""
+  stripcmd=""
+ +addsuffix=""
+  rmcmd="$rmprog -f"
+  mvcmd="$mvprog"
+  src=""
+ @@ -56,6 +57,9 @@
+          -S) stripcmd="$stripprog $2"
+              shift; shift; continue
+              ;;
+ +        -e) addsuffix="$2"
+ +            shift; shift; continue
+ +            ;;
+          *)  if [ "x$src" = "x" ]; then
+                  src=$1
+              else
+ @@ -86,6 +90,13 @@
+  #  Make a temp file name in the proper directory.
+  dstdir=`dirname $dst`
+  dsttmp=$dstdir/#inst.$$#
+ +
+ +#  Add a suffix (such as ".exe") to the src and dst
+ +
+ +if [ "x$addsuffix" != "x" ]; then
+ +     src="$src$addsuffix"
+ +     dst="$dst$addsuffix"
+ +fi
+  
+  #  Move or copy the file name to the temp name
+  $instcmd $src $dsttmp
+ 
+
+From: sthoenna@efn.org (Yitzchak Scott-Thoennes)
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: os-os2/4269: make install fails on os/2
+Date: Tue, 11 May 1999 11:30:38 -0700
+
+ Ok, Ralf did a patch.  With it the following should work:
+ 
+ set OPTIM=-O2
+ set STRIPPROG=emxbind -sq
+ sh configure --prefix=/whereever
+ make
+ make install-all
+ 
+ Here it is:
+ 
+ Index: configure
+ ===================================================================
+ RCS file: /e/apache/REPOS/apache-1.3/configure,v
+ retrieving revision 1.86
+ diff -u -r1.86 configure
+ --- configure	1999/04/22 09:09:19	1.86
+ +++ configure	1999/04/28 07:49:21
+ @@ -103,6 +103,11 @@
+  esac
+  
+  ##
+ +##  determine platform id
+ +##
+ +PLATFORM="`$aux/GuessOS`"
+ +
+ +##
+  ##  display version information
+  ##
+  if [ "x$quiet" = "xno" ]; then
+ @@ -220,6 +225,19 @@
+  suexec_gidmin=100
+  suexec_safepath="/usr/local/bin:/usr/bin:/bin"
+  
+ +#   the installation flags
+ +iflags_program="-m 755 -s"
+ +iflags_core="-m 755"
+ +iflags_dso="-m 755"
+ +iflags_script="-m 755"
+ +iflags_data="-m 644"
+ +case $PLATFORM in
+ +    *OS/2* ) 
+ +        iflags_program="$iflags_program -e .exe" 
+ +        iflags_core="$iflags_core -e .exe" 
+ +        ;;
+ +esac
+ +
+  #   various other flags
+  support=1
+  confadjust=1
+ @@ -374,6 +392,7 @@
+              echo " --with-perl=FILE       path to the optional Perl interpreter"
+              echo " --without-support      disable the build and installation of support tools"
+              echo " --without-confadjust   disable the user/situation adjustments in config"
+ +            echo " --without-execstrip    disable the stripping of executables on installation"
+              echo ""
+              echo "suEXEC options:"
+              echo " --enable-suexec        enable the suEXEC feature"
+ @@ -862,6 +881,9 @@
+          --without-confadjust)
+              confadjust=0
+              ;;
+ +        --without-execstrip)
+ +            iflags_program=`echo "$iflags_program" | sed -e 's/-s//'`
+ +            ;;
+          --suexec-caller=*)
+              suexec_caller="$apc_optarg"
+              suexec_ok=1
+ @@ -1130,6 +1152,11 @@
+  -e "s%@MKF@%$mkf%g" \
+  -e "s%@AUX@%$aux%g" \
+  -e "s%@TARGET@%$thetarget%g" \
+ +-e "s%@IFLAGS_PROGRAM@%$iflags_program%g" \
+ +-e "s%@IFLAGS_CORE@%$iflags_core%g" \
+ +-e "s%@IFLAGS_DSO@%$iflags_dso%g" \
+ +-e "s%@IFLAGS_SCRIPT@%$iflags_script%g" \
+ +-e "s%@IFLAGS_DATA@%$iflags_data%g" \
+  -e "s%@prefix@%$prefix%g" \
+  -e "s%@exec_prefix@%$exec_prefix%g" \
+  -e "s%@bindir@%$bindir%g" \
+ Index: INSTALL
+ ===================================================================
+ RCS file: /e/apache/REPOS/apache-1.3/INSTALL,v
+ retrieving revision 1.54
+ diff -u -r1.54 INSTALL
+ --- INSTALL	1999/03/10 11:52:59	1.54
+ +++ INSTALL	1999/04/28 07:48:12
+ @@ -159,6 +159,7 @@
+                               [--with-perl=FILE]        [--suexec-uidmin=UID]
+                               [--without-support]       [--suexec-gidmin=GID]
+                               [--without-confadjust]    [--suexec-safepath=PATH]
+ +                             [--without-execstrip]
+  
+       Use the CC, OPTIM, CFLAGS, INCLUDES, LDFLAGS, LIBS, CFLAGS_SHLIB,
+       LD_SHLIB, LDFLAGS_SHLIB, LDFLAGS_SHLIB_EXPORT, RANLIB, DEPS and TARGET
+ @@ -370,6 +371,11 @@
+       user/situation dependent adjustments to the config files (Group, Port,
+       ServerAdmin, ServerName, etc.).  This is usually only interesting for
+       vendor package maintainers who wants to force the keeping of defaults.
+ +
+ +     Use the --without-execstrip option to disable the stripping of
+ +     executables on installation. This can be important on some platforms in
+ +     combination with --enable-rule=SHARED_CORE or when Apache was built with
+ +     debugging symbols which shouldn't be lost.
+   
+       Use the --enable-suexec option to enable the suEXEC feature by building
+       and installing the "suexec" support program. Use --suexec-caller=UID to
+ Index: Makefile.tmpl
+ ===================================================================
+ RCS file: /e/apache/REPOS/apache-1.3/Makefile.tmpl,v
+ retrieving revision 1.75
+ diff -u -r1.75 Makefile.tmpl
+ --- Makefile.tmpl	1999/04/22 09:11:15	1.75
+ +++ Makefile.tmpl	1999/04/28 07:50:04
+ @@ -81,11 +81,11 @@
+  RM              = rm -f
+  MKDIR           = $(TOP)/$(AUX)/mkdir.sh
+  INSTALL         = $(TOP)/$(AUX)/install.sh -c
+ -IFLAGS_PROGRAM  = -m 755 -s
+ -IFLAGS_CORE     = -m 755
+ -IFLAGS_DSO      = -m 755
+ -IFLAGS_SCRIPT   = -m 755 
+ -IFLAGS_DATA     = -m 644
+ +IFLAGS_PROGRAM  = @IFLAGS_PROGRAM@
+ +IFLAGS_CORE     = @IFLAGS_CORE@
+ +IFLAGS_DSO      = @IFLAGS_DSO@
+ +IFLAGS_SCRIPT   = @IFLAGS_SCRIPT@
+ +IFLAGS_DATA     = @IFLAGS_DATA@
+  INSTALL_PROGRAM = $(INSTALL) $(IFLAGS_PROGRAM)
+  INSTALL_CORE    = $(INSTALL) $(IFLAGS_CORE)
+  INSTALL_DSO     = $(INSTALL) $(IFLAGS_DSO)
+ @@ -198,10 +198,14 @@
+  ##                       Installation Targets
+  ## ------------------------------------------------------------------
+  
+ +#   indirection step to avoid conflict with INSTALL document 
+ +#   on case-insenstive filesystems, for instance on OS/2
+ +install: install-all
+ +
+  #   the install target for installing the complete Apache
+  #   package. This is implemented by running subtargets for the
+  #   separate parts of the installation process.
+ -install:
+ +install-all:
+  	@if [ ! -f $(TOP)/$(SRC)/.apaci.build.ok ]; then \
+  		$(MAKE) -f $(TOP)/$(MKF) $(MFLAGS) $(MFWD) build; \
+  	else \
+ @@ -373,7 +377,7 @@
+  install-include:
+  	@echo "===> [include: Installing Apache C header files]"
+  	$(CP) $(TOP)/$(SRC)/include/*.h $(root)$(includedir)/
+ -	@osdir=`grep '^OSDIR=' $(TOP)/$(SRC)/Makefile.config | sed -e 's:^OSDIR=.*/os:os:'`; \
+ +	@osdir=`grep '^OSDIR=' $(TOP)/$(SRC)/Makefile.config | sed -e 's:^OSDIR=.*/os/:os/:'`; \
+  		echo "$(CP) $(TOP)/$(SRC)/$${osdir}/os.h $(root)$(includedir)/"; \
+  		$(CP) $(TOP)/$(SRC)/$${osdir}/os.h $(root)$(includedir)/; \
+  		echo "$(CP) $(TOP)/$(SRC)/$${osdir}/os-inline.c $(root)$(includedir)/"; \
+ Index: src/helpers/install.sh
+ ===================================================================
+ RCS file: /e/apache/REPOS/apache-1.3/src/helpers/install.sh,v
+ retrieving revision 1.6
+ diff -u -r1.6 install.sh
+ --- src/helpers/install.sh	1999/02/10 12:09:38	1.6
+ +++ src/helpers/install.sh	1999/04/28 07:44:51
+ @@ -34,6 +34,7 @@
+  stripcmd=""
+  rmcmd="$rmprog -f"
+  mvcmd="$mvprog"
+ +ext=""
+  src=""
+  dst=""
+  while [ "x$1" != "x" ]; do
+ @@ -56,6 +57,9 @@
+          -S) stripcmd="$stripprog $2"
+              shift; shift; continue
+              ;;
+ +        -e) ext="$2"
+ +            shift; shift; continue
+ +            ;;
+          *)  if [ "x$src" = "x" ]; then
+                  src=$1
+              else
+ @@ -82,6 +86,10 @@
+  if [ -d $dst ]; then
+      dst="$dst/`basename $src`"
+  fi
+ +
+ +#  Add a possible extension (such as ".exe") to src and dst
+ +src="$src$ext"
+ +dst="$dst$ext"
+  
+  #  Make a temp file name in the proper directory.
+  dstdir=`dirname $dst`
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

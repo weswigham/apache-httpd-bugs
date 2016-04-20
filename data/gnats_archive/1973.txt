@@ -1,0 +1,308 @@
+Received: (qmail 23793 invoked by uid 2012); 20 Mar 1998 22:02:32 -0000
+Message-Id: <19980320220232.23792.qmail@hyperreal.org>
+Date: 20 Mar 1998 22:02:32 -0000
+From: Klaus Weber <kweber@chephren.germany.ncr.com>
+Reply-To: kweber@chephren.germany.ncr.com
+To: apbugs@hyperreal.org
+Subject: bind: Address family not supported by protocol family, httpd: could not bind to port 80
+X-Send-Pr-Version: 3.2
+
+>Number:         1973
+>Category:       general
+>Synopsis:       bind: Address family not supported by protocol family, httpd: could not bind to port 80
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Mar 20 14:10:01 PST 1998
+>Last-Modified:  Mon Jun 15 07:01:41 PDT 1998
+>Originator:     kweber@chephren.germany.ncr.com
+>Organization:
+>Release:        1.3b5
+>Environment:
+Using NCR-UNIX SVR4 MP-RAS Release 3.02
+Patchlevel current at March 1998
+
+uname -a >>> UNIX_SV echnaton 4.0 3.0 3433,3434,3432,3437-R Pentium(TM)-MCA
+Compiler >>>>> NCR High Performance C Compiler R3.0c
+>Description:
+It seems that the latest Version of NCR-Unix SVR$ MP-RAS 3.02 
+has the same Problem than Solaris and Unixware 1.0 (see below)
+
+
+ /* Solaris (probably versions 2.4, 2.5, and 2.5.1 with various levels
+  * of tcp patches) has some really weird bugs where if you dup the
+  * socket now it breaks things across SIGHUP restarts.  It'll either
+  * be unable to bind, or it won't respond.
+  */
+
+The Problem has not been seen on previous Versions of MP-RAS 
+>How-To-Repeat:
+unfortunatly not
+>Fix:
+a very rudimental fix in http_main.c
+May not not be the best solustion but it worked
+
+If compiling under NCR Unix MP-RAS 3.02 
+after 
+
+#if defined (UW) && UW < 200
+#define WORKAROUND_SOLARIS_BUG
+#endif
+
+add the following
+
+#if defined SVR4
+#define WORKAROUND_SOLARIS_BUG
+#endif
+%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: brian
+State-Changed-When: Tue May 19 19:06:30 PDT 1998
+State-Changed-Why:
+Hi.  We received a bug report from John Withers <withers@semi.kcsc.mwr.irs.gov>
+with a patch for this very platform in the last few weeks.
+1.3b7, when released, includes this patch; however the patch
+originally was against 1.2.6, so it's possible that something
+in the 1.3 vein is triggering this bug you're proposing this
+fix to.  I suggest you pull down the current CVS snapshot from
+http://dev.apache.org/from-cvs/ and give it a try; let us know
+if this bug still persists.  Obviously, it's going to be better
+to conditionalize the fix with an #ifdef MPRAS rather than
+an #ifdef SVR4.  Thanks.
+
+   Brian
+
+State-Changed-From-To: analyzed-feedback
+State-Changed-By: coar
+State-Changed-When: Thu May 28 05:04:26 PDT 1998
+State-Changed-Why:
+[Correct state is 'feedback']
+
+From: Klaus Weber <kweber@chephren.germany.ncr.com>
+To: "'brian@hyperreal.org'" <brian@hyperreal.org>
+Cc: "'apbugs@Apache.Org'" <apbugs@Apache.Org>
+Subject: general/1973: bind: Address family not supported by protocol family, httpd: could not bind to port 80
+Date: Tue, 2 Jun 1998 09:15:32 +0200
+
+ Hello,
+ 
+ Thanks for your response.
+ I loaded the latest release form your server. (1.3b8-dev)
+ But after compiling ist ended up with the problem mentioned below.
+ 
+ The following fixes solved the problem on MPRAS.
+ please note, it is actually not advisable to check for MPRAS, sinde GuessOS returns i486-ncr-sysv4 on all NCR systems running under SVR4.
+ 
+ Furthermore i suggest to change the Commentlength in the mod_autoindex.c from 23 to e.g. 73. this gives a more comprehensive output.
+ 
+ Below you find a diff output of the changed modules.
+ 
+ *** src/Configure	Tue Jun  2 09:00:26 1998
+ --- src/Configure.org	Tue Jun  2 08:59:21 1998
+ ***************
+ *** 575,586 ****
+   	LIBS="$LIBS -lsocket -lnsl -lcrypt -lgen"
+   	DBM_LIB=""
+   	;;
+ -     i486-ncr-sysv4)
+ -         OS='NCR MP/RAS'
+ -         CFLAGS="$CFLAGS -DSVR4 -DMPRAS"
+ -         DEF_WANTHSREGEX=yes
+ -         LIBS="$LIBS -lsocket -lnsl -lc -L/usr/ucblib -lucb"
+ -         ;;
+       maxion-*-sysv4*)
+       	OS='SVR4'
+   	CFLAGS="$CFLAGS -DSVR4"
+ --- 575,580 ----
+ 
+ 
+ 
+ *** src/modules/standard/mod_autoindex.c	Tue Jun  2 09:05:35 1998
+ --- src/modules/standard/mod_autoindex.c.org	Tue Jun  2 09:05:27 1998
+ ***************
+ *** 731,737 ****
+   static char *terminate_description(autoindex_config_rec * d, char *desc,
+   				   int autoindex_opts)
+   {
+ !     int maxsize = 73;
+       register int x;
+   
+       if (autoindex_opts & SUPPRESS_LAST_MOD)
+ --- 731,737 ----
+   static char *terminate_description(autoindex_config_rec * d, char *desc,
+   				   int autoindex_opts)
+   {
+ !     int maxsize = 23;
+       register int x;
+   
+       if (autoindex_opts & SUPPRESS_LAST_MOD)
+ 
+ 
+ 
+ 
+ *** src/main/http_main.c	Tue Jun  2 09:10:01 1998
+ --- src/main/http_main.c.org	Tue Jun  2 09:08:55 1998
+ ***************
+ *** 2836,2849 ****
+   #define WORKAROUND_SOLARIS_BUG
+   #endif
+   
+ -     /* NCR MP-RAS Version 3.02 (Y2K-Release with various levels
+ -      * of tcp patches) has some really weird bugs where if you dup the
+ -      * socket now it breaks things across SIGHUP restarts.  It'll either
+ -      * be unable to bind, or it won't respond.
+ -      */
+ - #if defined  MPRAS
+ - #define WORKAROUND_SOLARIS_BUG
+ - #endif
+       /* PR#1282 Unixware 1.x appears to have the same problem as solaris */
+   #if defined (UW) && UW < 200
+   #define WORKAROUND_SOLARIS_BUG
+ --- 2836,2841 ----
+ 
+ 
+ -- 
+ ---------
+ Klaus Weber
+ NCR CS 80633 Muenchen, Westendstrasse 193
+ Phone +49 89 57931157
+ Fax   +49 89 57931106
+ EMail   Klaus.Weber@Germany.NCR.COM
+         kweber@chephren.germany.ncr.com
+ ---------
+ 
+ 
+ 
+ ----------
+ Von: 	brian@hyperreal.org[SMTP:brian@hyperreal.org]
+ Gesendet: 	Mittwoch, 20. Mai 1998 04:06
+ An: 	apache-bugdb@apache.org; brian@apache.org; kweber@chephren.germany.ncr.com
+ Betreff: 	Re: general/1973: bind: Address family not supported by protocol family, httpd: could not bind to port 80
+ 
+ [In order for any reply to be added to the PR database, ]
+ [you need to include <apbugs@Apache.Org> in the Cc line ]
+ [and leave the subject line UNCHANGED.  This is not done]
+ [automatically because of the potential for mail loops. ]
+ 
+ 
+ Synopsis: bind: Address family not supported by protocol family, httpd: could not bind to port 80
+ 
+ State-Changed-From-To: open-analyzed
+ State-Changed-By: brian
+ State-Changed-When: Tue May 19 19:06:30 PDT 1998
+ State-Changed-Why:
+ Hi.  We received a bug report from John Withers <withers@semi.kcsc.mwr.irs.gov>
+ with a patch for this very platform in the last few weeks.
+ 1.3b7, when released, includes this patch; however the patch
+ originally was against 1.2.6, so it's possible that something
+ in the 1.3 vein is triggering this bug you're proposing this
+ fix to.  I suggest you pull down the current CVS snapshot from
+ http://dev.apache.org/from-cvs/ and give it a try; let us know
+ if this bug still persists.  Obviously, it's going to be better
+ to conditionalize the fix with an #ifdef MPRAS rather than
+ an #ifdef SVR4.  Thanks.
+ 
+    Brian
+ 
+ 
+ 
+ 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Klaus Weber <kweber@chephren.germany.ncr.com>
+Cc: apbugs@apache.org
+Subject: Re: general/1973: bind: Address family not supported by protocol family, httpd: could not bind to port 80
+Date: Thu, 4 Jun 1998 13:55:36 -0700 (PDT)
+
+ On 2 Jun 1998, Klaus Weber wrote:
+ 
+ >  The following fixes solved the problem on MPRAS.
+ >  please note, it is actually not advisable to check for MPRAS, sinde GuessOS returns i486-ncr-sysv4 on all NCR systems running under SVR4.
+ 
+ I'd like to apply your patch, but I'm confused.  It seems that you're
+ changing behaviour for all NCR SVR4 systems rather than just the MPRAS
+ system that you say has the problem.  Maybe you could improve GuessOS to
+ return more information if you need it to distinguish between different
+ NCR systems?
+ 
+ Or, does the problem exist in all NCR systems?
+ 
+ Thanks
+ Dean
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Jun  6 13:49:12 PDT 1998
+State-Changed-Why:
+Patch applied to 1.3.1-dev.
+
+Thanks!
+
+Dean
+Comment-Added-By: coar
+Comment-Added-When: Mon Jun 15 07:01:40 PDT 1998
+Comment-Added:
+[Attaching misdirected mail message.]
+
+Dean,
+
+1. starting with MP-RAS 2.2 all NCR Unix Systems using the same Operating 
+System BASE OS Software.
+
+2. I noticed the Problem only on the latest MP-RAS Release 3.02  (this is 
+the Y2K certified)
+
+3. Cause every Customer should upgrade to 3.02 ist should not lead to 
+Problems
+
+4. We are differentiate the Hardware platform by using either the  'uname 
+-m' or the  /usr/sbin/machinetype command. since there are many options to 
+this command i attached the output of machinetype -k for your information.
+
+Product="NCR Globalyst S40 Model 3438"
+Model=3438
+Class=3438
+Level=LEVEL4
+Processors=2
+CPUid=0
+CPU="Pentium"
+Speed=100
+CPUid=1
+CPU="Pentium"
+Speed=100
+Boot=0
+Dump=SUSDUMP
+RBIOS=NO
+EISA_PCI_Bus=yes
+
+5. If you think i should modify GuessOS and implement machinetype please 
+let me know.
+
+
+regards
+
+Klaus
+--
+---------
+Klaus Weber
+NCR CS 80633 Muenchen, Westendstrasse 193
+Phone +49 89 57931157
+Fax   +49 89 57931106
+EMail   Klaus.Weber@Germany.NCR.COM
+        kweber@chephren.germany.ncr.com
+---------
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

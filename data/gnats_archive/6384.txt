@@ -1,0 +1,348 @@
+Received: (qmail 35831 invoked by uid 501); 7 Aug 2000 09:02:02 -0000
+Message-Id: <20000807090202.35830.qmail@locus.apache.org>
+Date: 7 Aug 2000 09:02:02 -0000
+From: "Rüdiger" Kuhlmann <Tadu@gmx.de>
+Reply-To: Tadu@gmx.de
+To: submit@bugz.apache.org
+Subject: More autoconf/cross-compiling issues (cf PR#6379)
+X-Send-Pr-Version: 3.110
+
+>Number:         6384
+>Category:       build
+>Synopsis:       More autoconf/cross-compiling issues (cf PR#6379)
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Aug 07 02:10:02 PDT 2000
+>Closed-Date:    Wed Oct 04 22:42:48 PDT 2000
+>Last-Modified:  Wed Oct 04 22:42:48 PDT 2000
+>Originator:     Tadu@gmx.de
+>Release:        2.0a5
+>Organization:
+>Environment:
+cross-compiling on i686-linux
+>Description:
+
+Build process:
+
+  -add datadir and localstatedir substitutions
+  -fix layout name
+  -fix logfilename misspelling
+  -fix evaluation of installation dir variables and
+  -replace $foobar by $(foobar) to be usefull in the makefile
+
+Cross compile:
+
+  -add rules for cross-compiling in rules.mk. Okay, rule to check for
+   $CC_FOR_BUILD is still missing
+  -use CHECK_TOOL instead of CHECK_PROG for ranlib
+  -add missing "AR=@AR@" to severaly Makefile.in's
+  -cache result for "struct rlimit"
+  -compile all helper programs with native and cross compiler
+   and use the native version to generate header file
+
+Misc:
+
+  -do not call semctl with int instead of union
+
+If the patch is mangled here, go to
+http://www.mathematik.uni-karlsruhe.de/~kuhlmann/cross/apache2/apdiffs2
+
+Thanks.
+
+>How-To-Repeat:
+Try to cross-compile.
+>Fix:
+
+http://www.mathematik.uni-karlsruhe.de/~kuhlmann/cross/apache2/apdiffs2
+
+diff -b -B -U 3 -r -N -XNOT apache_2.0a5_orig/src/aclocal.m4 apache_2.0a5_amiga/src/aclocal.m4
+--- apache_2.0a5_orig/src/aclocal.m4    Fri Aug  4 19:47:03 2000
++++ apache_2.0a5_amiga/src/aclocal.m4   Mon Aug  7 00:44:52 2000
+@@ -57,6 +57,8 @@
+   APACHE_SUBST(cgidir)
+   APACHE_SUBST(logdir)
+   APACHE_SUBST(exec_prefix)
++  APACHE_SUBST(datadir)
++  APACHE_SUBST(localstatedir)
+   APACHE_SUBST(libexecdir)
+   APACHE_SUBST(htdocsdir)
+   APACHE_SUBST(includedir)
+@@ -332,13 +334,12 @@
+       -e "s/:[         ]*/=\'/g" \
+       -e "s/[  ]*$/'/g" \
+       $1 > $pldconf
+-  changequote([,])
+-  layout_name=$name
++  layout_name=$2
+   . $pldconf
+   rm $pldconf
+   for var in prefix exec_prefix bindir sbindir libexecdir mandir \
+       sysconfdir datadir iconsdir htdocsdir cgidir includedir \
+-             localstatedir runtimedir logfiledir proxycachedir; do
++             localstatedir runtimedir logdir proxycachedir; do
+     eval "val=\"\$$var\""
+     case $val in
+       *+)
+@@ -351,6 +352,7 @@
+  ;;
+     esac
+     val=`echo $val | sed -e 's:\(.\)/*$:\1:'`
++    val=`echo $val | sed -e 's:$\([a-z_]*\):$(\1):g'`
+     if test "$autosuffix" = "yes"; then
+       if echo $val | grep apache >/dev/null; then
+  addtarget=no
+@@ -361,8 +363,9 @@
+  val="$val/apache"
+       fi
+     fi
+-    eval "$var=\"$val\""
++    eval "$var='$val'"
+   done
++  changequote([,])
+ ])dnl
+ dnl
+ dnl APACHE_ENABLE_LAYOUT
+diff -b -B -U 3 -r -N -XNOT apache_2.0a5_orig/src/build/rules.mk apache_2.0a5_amiga/src/build/rules.mk
+--- apache_2.0a5_orig/src/build/rules.mk        Mon Jul 31 01:06:57 2000
++++ apache_2.0a5_amiga/src/build/rules.mk       Sun Aug  6 16:41:27 2000
+@@ -73,6 +73,16 @@
+ LINK    = $(LIBTOOL) --mode=link $(COMPILE) $(LTFLAGS) $(LDFLAGS) -o $@
+ SH_LINK = $(SH_LIBTOOL) --mode=link $(COMPILE) $(LTFLAGS) $(LDFLAGS) -o $@
+ 
++# Cross compile commands
++
++ifeq (,$(CC_FOR_BUILD))
++CC_FOR_BUILD  = $(CC)
++endif
++
++BUILD_COMPILE    = $(CC_FOR_BUILD) $(COMMON_FLAGS) $(CFLAGS) $(EXTRA_CFLAGS)
++BUILD_LT_COMPILE = $(BUILD_COMPILE) -c $< -o build-$(@:.lo=.o)
++BUILD_LINK       = $(BUILD_COMPILE) $(LTFLAGS) $(LDFLAGS) -o build-$@ 
++
+ # Helper programs
+ 
+ SH_LIBTOOL = $(SHELL) $(top_builddir)/shlibtool --silent
+diff -b -B -U 3 -r -N -XNOT apache_2.0a5_orig/src/configure.in apache_2.0a5_amiga/src/configure.in
+--- apache_2.0a5_orig/src/configure.in  Sun Jul 23 14:32:17 2000
++++ apache_2.0a5_amiga/src/configure.in Sun Aug  6 22:18:08 2000
+@@ -41,7 +43,7 @@
+ AC_PROG_CPP
+ AC_PROG_INSTALL
+ AC_PROG_LN_S
+-dnl AC_PROG_RANLIB
++AC_CHECK_TOOL(RANLIB, ranlib, true)
+ dnl AC_PATH_PROG(PERL_PATH, perl)
+ 
+ REENTRANCY_FLAGS
+diff -b -B -U 3 -r -N -XNOT apache_2.0a5_orig/src/lib/apr/Makefile.in apache_2.0a5_amiga/src/lib/apr/Makefile.in
+--- apache_2.0a5_orig/src/lib/apr/Makefile.in   Sun Jul 23 20:17:54 2000
++++ apache_2.0a5_amiga/src/lib/apr/Makefile.in  Sun Aug  6 21:43:36 2000
+@@ -13,6 +13,7 @@
+ CFLAGS=@CFLAGS@ @OPTIM@
+ LIBS=@LIBS@
+ LDFLAGS=@LDFLAGS@ $(LIBS)
++AR=@AR@
+ RANLIB=@RANLIB@
+ #
+ # Macros for supporting directories
+diff -b -B -U 3 -r -N -XNOT apache_2.0a5_orig/src/lib/apr/aclocal.m4 apache_2.0a5_amiga/src/lib/apr/aclocal.m4
+--- apache_2.0a5_orig/src/lib/apr/aclocal.m4    Fri Jun 30 03:56:48 2000
++++ apache_2.0a5_amiga/src/lib/apr/aclocal.m4   Sun Aug  6 22:06:54 2000
+@@ -241,7 +241,7 @@
+ dnl the way we might want it to.
+ 
+ AC_DEFUN(AC_PROG_RANLIB_NC,
+-[AC_CHECK_PROG(RANLIB, ranlib, ranlib, true)])
++[AC_CHECK_TOOL(RANLIB, ranlib, true)])
+ 
+ AC_DEFUN(APR_EBCDIC,[
+   AC_CACHE_CHECK([whether system uses EBCDIC],ac_cv_ebcdic,[
+diff -b -B -U 3 -r -N -XNOT apache_2.0a5_orig/src/lib/apr/configure.in apache_2.0a5_amiga/src/lib/apr/configure.in
+--- apache_2.0a5_orig/src/lib/apr/configure.in  Wed Aug  2 07:51:39 2000
++++ apache_2.0a5_amiga/src/lib/apr/configure.in Sun Aug  6 17:20:34 2000
+@@ -525,7 +527,7 @@
+   
+ AC_SUBST(oc) 
+ 
+-AC_MSG_CHECKING(struct rlimit)
++AC_CACHE_CHECK(struct rlimit,ac_cv_struct_rlimit,[
+ AC_TRY_RUN([
+ #include <sys/types.h>
+ #include <sys/time.h>
+@@ -537,13 +539,11 @@
+     limit.rlim_max = 0;
+     exit(0);
+ }], [
+-    struct_rlimit="1"
+-    AC_MSG_RESULT(yes) ], [
+-    struct_rlimit="0"
+-    AC_MSG_RESULT(no) ], [
+-    struct_rlimit="0"
+-    AC_MSG_RESULT(no) ] )
+-
++    ac_cv_struct_rlimit=yes ], [
++    ac_cv_struct_rlimit=no ], [
++    ac_cv_struct_rlimit=no ] ) ] )
++struct_rlimit=0
++test "x$ac_cv_struct_rlimit" = xyes && struct_rlimit=1
+ AC_SUBST(struct_rlimit)
+ 
+ dnl #----------------------------- Checking for Locking Characteristics 
+diff -b -B -U 3 -r -N -XNOT apache_2.0a5_orig/src/lib/apr/dso/unix/Makefile.in apache_2.0a5_amiga/src/lib/apr/dso/unix/Makefile.in
+--- apache_2.0a5_orig/src/lib/apr/dso/unix/Makefile.in  Thu Jul 13 18:23:35 2000
++++ apache_2.0a5_amiga/src/lib/apr/dso/unix/Makefile.in Mon Aug  7 10:25:30 2000
+@@ -5,6 +5,7 @@
+ 
+ RM=@RM@
+ CC=@CC@
++AR=@AR@
+ RANLIB=@RANLIB@
+ CFLAGS=@CFLAGS@ @OPTIM@
+ LIBS=@LIBS@
+diff -b -B -U 3 -r -N -XNOT apache_2.0a5_orig/src/lib/apr/shmem/unix/Makefile.in apache_2.0a5_amiga/src/lib/apr/shmem/unix/Makefile.in
+--- apache_2.0a5_orig/src/lib/apr/shmem/unix/Makefile.in        Sun Apr 30 19:58:31 2000
++++ apache_2.0a5_amiga/src/lib/apr/shmem/unix/Makefile.in       Sun Aug  6 21:42:27 2000
+@@ -5,6 +5,7 @@
+ 
+ RM=@RM@
+ CC=@CC@
++AR=@AR@
+ RANLIB=@RANLIB@
+ CFLAGS=@CFLAGS@ @OPTIM@
+ LIBS=@LIBS@
+diff -b -B -U 3 -r -N -XNOT apache_2.0a5_orig/src/lib/apr/shmem/unix/mm/configure.in apache_2.0a5_amiga/src/lib/apr/shmem/unix/mm/configure.in
+--- apache_2.0a5_orig/src/lib/apr/shmem/unix/mm/configure.in    Wed May  3 19:15:48 2000
++++ apache_2.0a5_amiga/src/lib/apr/shmem/unix/mm/configure.in   Sun Aug  6 22:20:12 2000
+@@ -46,6 +52,7 @@
+ AC_CONFIGURE_PART(Build Tools)
+ AC_PROG_CC
+ AC_PROG_CPP
++AC_CHECK_TOOL(RANLIB, ranlib, true)
+ AC_CHECK_DEBUGGING
+ AC_SET_MAKE
+ AC_PROG_LIBTOOL
+diff -b -B -U 3 -r -N -XNOT apache_2.0a5_orig/src/lib/apr/shmem/unix/mm/mm_core.c apache_2.0a5_amiga/src/lib/apr/shmem/unix/mm/mm_core.c
+--- apache_2.0a5_orig/src/lib/apr/shmem/unix/mm/mm_core.c       Wed May  3 19:15:49 2000
++++ apache_2.0a5_amiga/src/lib/apr/shmem/unix/mm/mm_core.c      Sun Aug  6 13:11:31 2000
+@@ -400,10 +400,11 @@
+  close(fdsem);
+ #endif
+ #if defined(MM_SEMT_IPCSEM)
++    mm_core_semctlarg.val = 0;
+     if (fdsem != -1)
+-        semctl(fdsem, 0, IPC_RMID, 0);
++        semctl(fdsem, 0, IPC_RMID, mm_core_semctlarg);
+     if (fdsem_rd != -1)
+-        semctl(fdsem_rd, 0, IPC_RMID, 0);
++        semctl(fdsem_rd, 0, IPC_RMID, mm_core_semctlarg);
+ #endif
+ #if defined(MM_SHMT_MMFILE)
+     unlink(fnmem);
+@@ -496,8 +497,9 @@
+     unlink(fnsem);
+ #endif
+ #if defined(MM_SEMT_IPCSEM)
+-    semctl(fdsem, 0, IPC_RMID, 0);
+-    semctl(fdsem_rd, 0, IPC_RMID, 0);
++    mm_core_semctlarg.val = 0;
++    semctl(fdsem, 0, IPC_RMID, mm_core_semctlarg);
++    semctl(fdsem_rd, 0, IPC_RMID, mm_core_semctlarg);
+ #endif
+     return;
+ }
+diff -b -B -U 3 -r -N -XNOT apache_2.0a5_orig/src/lib/pcre/Makefile.in apache_2.0a5_amiga/src/lib/pcre/Makefile.in
+--- apache_2.0a5_orig/src/lib/pcre/Makefile.in  Thu Jun 22 20:28:07 2000
++++ apache_2.0a5_amiga/src/lib/pcre/Makefile.in Sun Aug  6 16:10:12 2000
+@@ -10,10 +10,15 @@
+ 
+ $(LTLIBRARY_OBJECTS) dftables.lo: config.h
+ 
++dftables.lo: dftables.c config.h
++       $(BUILD_LT_COMPILE)
++       $(LT_COMPILE)
++
+ dftables: dftables.lo
++       $(BUILD_LINK) $(EXTRA_LDFLAGS) build-dftables.o $(EXTRA_LIBS)
+ $(LINK) $(EXTRA_LDFLAGS) dftables.lo $(EXTRA_LIBS)
+ 
+ chartables.c: dftables
+-       ./dftables > $@
++       ./build-dftables > $@
+ 
+ pcre.lo: chartables.c
+diff -b -B -U 3 -r -N -XNOT apache_2.0a5_orig/src/lib/pcre/configure.in apache_2.0a5_amiga/src/lib/pcre/configure.in
+--- apache_2.0a5_orig/src/lib/pcre/configure.in Tue May 16 13:54:36 2000
++++ apache_2.0a5_amiga/src/lib/pcre/configure.in        Sun Aug  6 22:07:37 2000
+@@ -32,7 +32,7 @@
+ AC_PROG_CC
+ dnl OS/390 doesn't have ranlib and its make utility thinks RANLIB=:
+ dnl is a rule, so set RANLIB to true if there is no ranlib.
+-AC_CHECK_PROG(RANLIB, ranlib, ranlib, true)
++AC_CHECK_TOOL(RANLIB, ranlib, true)
+ 
+ dnl Checks for header files.
+ 
+diff -b -B -U 3 -r -N -XNOT apache_2.0a5_orig/src/main/Makefile.in apache_2.0a5_amiga/src/main/Makefile.in
+--- apache_2.0a5_orig/src/main/Makefile.in      Fri Jul 28 22:31:00 2000
++++ apache_2.0a5_amiga/src/main/Makefile.in     Sun Aug  6 21:15:54 2000
+@@ -15,17 +15,23 @@
+ 
+ gen_uri_delims_OBJECTS = gen_uri_delims.lo
+ gen_uri_delims: $(gen_uri_delims_OBJECTS)
++       $(BUILD_LINK) $(EXTRA_LDFLAGS) $(foreach f,$(gen_uri_delims_OBJECTS),build-$(f:.lo=.o)) $(EXTRA_LIBS)
+ $(LINK) $(EXTRA_LDFLAGS) $(gen_uri_delims_OBJECTS) $(EXTRA_LIBS)
+ 
+ gen_test_char_OBJECTS = gen_test_char.lo util_debug.lo
+ gen_test_char: $(gen_test_char_OBJECTS)
++       $(BUILD_LINK) $(EXTRA_LDFLAGS) $(foreach f,$(gen_test_char_OBJECTS),build-$(f:.lo=.o)) $(EXTRA_LIBS)
+ $(LINK) $(EXTRA_LDFLAGS) $(gen_test_char_OBJECTS) $(EXTRA_LIBS)
+ 
++$(gen_uri_delims_OBJECTS) $(gen_test_char_OBJECTS): %.lo: %.c
++       $(BUILD_LT_COMPILE)
++       $(LT_COMPILE)
++
+ uri_delims.h: gen_uri_delims
+-       ./gen_uri_delims > uri_delims.h
++       ./build-gen_uri_delims > uri_delims.h
+ 
+ test_char.h: gen_test_char
+-       ./gen_test_char > test_char.h
++       ./build-gen_test_char > test_char.h
+ 
+ util_uri.lo: uri_delims.h
+ util.lo: test_char.h
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: abagchi
+State-Changed-When: Wed Oct  4 22:42:47 PDT 2000
+State-Changed-Why:
+These fixes have been applied to the HEAD of the CVS
+repository, and they will be available in the next alpha
+release.
+
+Thank you for using Apache
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

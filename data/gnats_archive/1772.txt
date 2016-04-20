@@ -1,0 +1,468 @@
+Received: (qmail 27445 invoked by uid 2012); 5 Feb 1998 03:01:57 -0000
+Message-Id: <19980205030157.27444.qmail@hyperreal.org>
+Date: 5 Feb 1998 03:01:57 -0000
+From: Ronald Tschalaer <Ronald.Tschalaer@psi.ch>
+Reply-To: Ronald.Tschalaer@psi.ch
+To: apbugs@hyperreal.org
+Subject: Can't handle both "Accept-Encoding: gzip" and "Accept-Encoding: x-gzip"
+X-Send-Pr-Version: 3.2
+
+>Number:         1772
+>Category:       mod_negotiation
+>Synopsis:       Can't handle both "Accept-Encoding: gzip" and "Accept-Encoding: x-gzip"
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Feb  4 19:10:01 PST 1998
+>Last-Modified:  Fri Feb  6 01:12:29 PST 1998
+>Originator:     Ronald.Tschalaer@psi.ch
+>Organization:
+>Release:        1.3b3 (and 1.2.x)
+>Environment:
+All environments
+>Description:
+According the HTTP/1.1 specs gzip and x-gzip (and compress and x-compress)
+should be considered equivalent. This is especially important so that new
+clients can start using the gzip (and compress) tokens, but the server can
+still handle older clients correctly. However, one cannot use the following
+in the config:
+
+AddEncoding gzip gz
+AddEncoding x-gzip gz
+
+because the internal encoding table is keyed off the file extension ("gz" in
+this case). Therefore, I have created a couple patches, one for mod_mime and
+one for mod_negotiation, which attempt to fix this.
+
+The idea is that any "x-" prefix in either an AddEncoding directive or in an
+Accept-Encoding header is stripped before the comparison is made. In addition,
+to deal with older clients that expect a "Content-Encoding: x-gzip" (and which
+would probably barf on a "Content-Encoding: gzip") the Content-Encoding header
+returned will contain the x- token if the x- token was used in the
+Accept-Encoding.
+
+Note that this patch will cause *all* x-YYY tokens to be treated as YYY.
+However, I dont' think this is a problem. In fact, one could probably
+consider it a feature, since now no changes to any server code are required
+when an x-YYY token is officially adopted as YYY.
+>How-To-Repeat:
+Using the standard configuration files (which contains "AddEncoding x-gzip gz")
+send a request for a resource which has both a gzip'd and a plain version
+available, using the "Accept-Encoding: gzip" header instead of the
+"Accept-Encoding: x-gzip" header. You will then get the plain version instead
+of the gzip'd one.
+>Fix:
+Here are my suggested patches to mod_negotiation and mod_mime. Note that
+since I'm not intimately familiar with mod_negotiation, I'm not sure if
+the complete if() in the second patch block (lines 2188-2204) is really
+necessary. I.e., is the value of "best->content_encoding" always the same
+as "sub_req->content_encoding"? If so, the code can be simplified.
+
+-------------------------------------------------------------------------
+mithrandir[standard] diff -c mod_negotiation.c{.orig,}
+*** mod_negotiation.c.orig      Wed Oct 22 22:30:26 1997
+--- mod_negotiation.c   Thu Feb  5 03:22:26 1998
+***************
+*** 1482,1490 ****
+       */
+      for (i = 0; i < neg->accept_encodings->nelts; ++i) {
+          char *name = accept_recs[i].type_name;
+  
+!         if (!strcmp(name, enc)) {
+              variant->encoding_quality = 1;
+              return;
+          }
+      }
+--- 1482,1495 ----
+       */
+      for (i = 0; i < neg->accept_encodings->nelts; ++i) {
+          char *name = accept_recs[i].type_name;
++         int off = 0;
+  
+!         if (!strncmp(name, "x-", 2))
+!             off = 2;
+! 
+!         if (!strcmp(name+off, enc)) {
+              variant->encoding_quality = 1;
++             variant->content_encoding = name;
+              return;
+          }
+      }
+***************
+*** 2183,2189 ****
+      r->filename = sub_req->filename;
+      r->handler = sub_req->handler;
+      r->content_type = sub_req->content_type;
+!     r->content_encoding = sub_req->content_encoding;
+      r->content_languages = sub_req->content_languages;
+      r->content_language = sub_req->content_language;
+      r->finfo = sub_req->finfo;
+--- 2188,2204 ----
+      r->filename = sub_req->filename;
+      r->handler = sub_req->handler;
+      r->content_type = sub_req->content_type;
+!     if (strncmp(best->content_encoding, "x-", 2) == 0  &&
+!         strcmp(best->content_encoding+2, sub_req->content_encoding) == 0) {
+!         /* return "Content-Encoding: x-gzip" if "Accept-Encoding: x-gzip"
+!          * Is the last strcmp() always true? If so, we could leave out
+!          * the complete if() and just use the line below
+!          */
+!         r->content_encoding = best->content_encoding;
+!     }
+!     else {
+!         r->content_encoding = sub_req->content_encoding;
+!     }
+      r->content_languages = sub_req->content_languages;
+      r->content_language = sub_req->content_language;
+      r->finfo = sub_req->finfo;
+mithrandir[standard] diff -c mod_mime.c{.orig,}
+*** mod_mime.c.orig     Sun Oct 26 21:20:05 1997
+--- mod_mime.c  Thu Feb  5 03:23:00 1998
+***************
+*** 127,132 ****
+--- 127,134 ----
+  {
+      if (*ext == '.')
+          ++ext;
++     if (!strncasecmp(enc, "x-", 2))
++         enc += 2;
+      table_set(m->encoding_types, ext, enc);
+      return NULL;
+  }
+------------------------------------------------------------------------
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Ronald Tschalaer <Ronald.Tschalaer@psi.ch>
+Cc: apbugs@hyperreal.org, "Roy T. Fielding" <fielding@kiwi.ICS.UCI.EDU>
+Subject: Re: mod_negotiation/1772: Can't handle both "Accept-Encoding: gzip" and "Accept-Encoding: x-gzip"
+Date: Thu, 5 Feb 1998 11:40:45 -0800 (PST)
+
+ Roy I'm not so clear on this one.  The spec does say gzip/x-gzip and
+ compress/x-compress should be considered equivalent, so that is a bug. 
+ But I can't find words in rfc2068, rfc2048 or rfc2045 which say we should
+ do this for all content encodings. 
+ 
+ Roland, in the second hunk of the patch to mod_neg, yeah sub_req ==
+ best->sub_req. 
+ 
+ Dean
+ 
+ P.S. Roland you may want to join the development mailing list, a whole
+ bunch of info is at http://dev.apache.org/.  Prompted by your
+ case-sensitivity bug reports with basic/digest auth I fixed a bunch of
+ other case-sensitivity issues in the server.
+ 
+ On 5 Feb 1998, Ronald Tschalaer wrote:
+ 
+ > 
+ > >Number:         1772
+ > >Category:       mod_negotiation
+ > >Synopsis:       Can't handle both "Accept-Encoding: gzip" and "Accept-Encoding: x-gzip"
+ > >Confidential:   no
+ > >Severity:       non-critical
+ > >Priority:       medium
+ > >Responsible:    apache
+ > >State:          open
+ > >Class:          sw-bug
+ > >Submitter-Id:   apache
+ > >Arrival-Date:   Wed Feb  4 19:10:01 PST 1998
+ > >Last-Modified:
+ > >Originator:     Ronald.Tschalaer@psi.ch
+ > >Organization:
+ > apache
+ > >Release:        1.3b3 (and 1.2.x)
+ > >Environment:
+ > All environments
+ > >Description:
+ > According the HTTP/1.1 specs gzip and x-gzip (and compress and x-compress)
+ > should be considered equivalent. This is especially important so that new
+ > clients can start using the gzip (and compress) tokens, but the server can
+ > still handle older clients correctly. However, one cannot use the following
+ > in the config:
+ > 
+ > AddEncoding gzip gz
+ > AddEncoding x-gzip gz
+ > 
+ > because the internal encoding table is keyed off the file extension ("gz" in
+ > this case). Therefore, I have created a couple patches, one for mod_mime and
+ > one for mod_negotiation, which attempt to fix this.
+ > 
+ > The idea is that any "x-" prefix in either an AddEncoding directive or in an
+ > Accept-Encoding header is stripped before the comparison is made. In addition,
+ > to deal with older clients that expect a "Content-Encoding: x-gzip" (and which
+ > would probably barf on a "Content-Encoding: gzip") the Content-Encoding header
+ > returned will contain the x- token if the x- token was used in the
+ > Accept-Encoding.
+ > 
+ > Note that this patch will cause *all* x-YYY tokens to be treated as YYY.
+ > However, I dont' think this is a problem. In fact, one could probably
+ > consider it a feature, since now no changes to any server code are required
+ > when an x-YYY token is officially adopted as YYY.
+ > >How-To-Repeat:
+ > Using the standard configuration files (which contains "AddEncoding x-gzip gz")
+ > send a request for a resource which has both a gzip'd and a plain version
+ > available, using the "Accept-Encoding: gzip" header instead of the
+ > "Accept-Encoding: x-gzip" header. You will then get the plain version instead
+ > of the gzip'd one.
+ > >Fix:
+ > Here are my suggested patches to mod_negotiation and mod_mime. Note that
+ > since I'm not intimately familiar with mod_negotiation, I'm not sure if
+ > the complete if() in the second patch block (lines 2188-2204) is really
+ > necessary. I.e., is the value of "best->content_encoding" always the same
+ > as "sub_req->content_encoding"? If so, the code can be simplified.
+ > 
+ > -------------------------------------------------------------------------
+ > mithrandir[standard] diff -c mod_negotiation.c{.orig,}
+ > *** mod_negotiation.c.orig      Wed Oct 22 22:30:26 1997
+ > --- mod_negotiation.c   Thu Feb  5 03:22:26 1998
+ > ***************
+ > *** 1482,1490 ****
+ >        */
+ >       for (i = 0; i < neg->accept_encodings->nelts; ++i) {
+ >           char *name = accept_recs[i].type_name;
+ >   
+ > !         if (!strcmp(name, enc)) {
+ >               variant->encoding_quality = 1;
+ >               return;
+ >           }
+ >       }
+ > --- 1482,1495 ----
+ >        */
+ >       for (i = 0; i < neg->accept_encodings->nelts; ++i) {
+ >           char *name = accept_recs[i].type_name;
+ > +         int off = 0;
+ >   
+ > !         if (!strncmp(name, "x-", 2))
+ > !             off = 2;
+ > ! 
+ > !         if (!strcmp(name+off, enc)) {
+ >               variant->encoding_quality = 1;
+ > +             variant->content_encoding = name;
+ >               return;
+ >           }
+ >       }
+ > ***************
+ > *** 2183,2189 ****
+ >       r->filename = sub_req->filename;
+ >       r->handler = sub_req->handler;
+ >       r->content_type = sub_req->content_type;
+ > !     r->content_encoding = sub_req->content_encoding;
+ >       r->content_languages = sub_req->content_languages;
+ >       r->content_language = sub_req->content_language;
+ >       r->finfo = sub_req->finfo;
+ > --- 2188,2204 ----
+ >       r->filename = sub_req->filename;
+ >       r->handler = sub_req->handler;
+ >       r->content_type = sub_req->content_type;
+ > !     if (strncmp(best->content_encoding, "x-", 2) == 0  &&
+ > !         strcmp(best->content_encoding+2, sub_req->content_encoding) == 0) {
+ > !         /* return "Content-Encoding: x-gzip" if "Accept-Encoding: x-gzip"
+ > !          * Is the last strcmp() always true? If so, we could leave out
+ > !          * the complete if() and just use the line below
+ > !          */
+ > !         r->content_encoding = best->content_encoding;
+ > !     }
+ > !     else {
+ > !         r->content_encoding = sub_req->content_encoding;
+ > !     }
+ >       r->content_languages = sub_req->content_languages;
+ >       r->content_language = sub_req->content_language;
+ >       r->finfo = sub_req->finfo;
+ > mithrandir[standard] diff -c mod_mime.c{.orig,}
+ > *** mod_mime.c.orig     Sun Oct 26 21:20:05 1997
+ > --- mod_mime.c  Thu Feb  5 03:23:00 1998
+ > ***************
+ > *** 127,132 ****
+ > --- 127,134 ----
+ >   {
+ >       if (*ext == '.')
+ >           ++ext;
+ > +     if (!strncasecmp(enc, "x-", 2))
+ > +         enc += 2;
+ >       table_set(m->encoding_types, ext, enc);
+ >       return NULL;
+ >   }
+ > ------------------------------------------------------------------------
+ > >Audit-Trail:
+ > >Unformatted:
+ > [In order for any reply to be added to the PR database, ]
+ > [you need to include <apbugs@Apache.Org> in the Cc line ]
+ > [and leave the subject line UNCHANGED.  This is not done]
+ > [automatically because of the potential for mail loops. ]
+ > 
+ > 
+ > 
+ > 
+ 
+
+From: "Roy T. Fielding" <fielding@kiwi.ics.uci.edu>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: Ronald Tschalaer <Ronald.Tschalaer@psi.ch>, apbugs@hyperreal.org
+Subject: Re: mod_negotiation/1772: Can't handle both "Accept-Encoding: gzip" and "Accept-Encoding: x-gzip" 
+Date: Thu, 05 Feb 1998 11:42:42 -0800
+
+ >Roy I'm not so clear on this one.  The spec does say gzip/x-gzip and
+ >compress/x-compress should be considered equivalent, so that is a bug. 
+ >But I can't find words in rfc2068, rfc2048 or rfc2045 which say we should
+ >do this for all content encodings. 
+ 
+ It's a good idea anyway.  My long-standing argument against the use of
+ "x-" prefixes is that the only way to make a clean transition between
+ them and a registered type is to strip any "x-" before comparison, thus
+ making any use of "x-" a waste of time.
+ 
+ +1 in concept, but I'd prefer it if the two-character comparisons were
+ not done using strncmp.  For example
+ 
+ >> !         if (!strncmp(name, "x-", 2))
+ 
+ sucks performance-wise when compared to
+ 
+              if (name[1] == '-' && (name[0] == 'x' || name[0] == 'X'))
+ 
+ It would be even better if it parsed the optional q-value, which was
+ recently added to the Accept-Encoding syntax (in spite of my objections).
+ 
+ ....Roy
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: "Roy T. Fielding" <fielding@kiwi.ics.uci.edu>
+Cc: Ronald Tschalaer <Ronald.Tschalaer@psi.ch>, apbugs@hyperreal.org
+Subject: Re: mod_negotiation/1772: Can't handle both "Accept-Encoding: gzip" and "Accept-Encoding: x-gzip" 
+Date: Thu, 5 Feb 1998 12:54:29 -0800 (PST)
+
+ On Thu, 5 Feb 1998, Roy T. Fielding wrote:
+ 
+ > >> !         if (!strncmp(name, "x-", 2))
+ > 
+ > sucks performance-wise when compared to
+ > 
+ >              if (name[1] == '-' && (name[0] == 'x' || name[0] == 'X'))
+ 
+ Heh.  This is exactly what I did in my working copy of Ronald's patch
+ already. 
+ 
+ Actually I think in mod_negotiation we're guaranteed that everything is
+ lower case.  I need to double check that again... it seemed to be correct
+ when I was looking at case-sensitivity.
+ 
+ Dean
+ 
+ 
+
+From: Ronald.Tschalaer@psi.ch (Life is hard... and then you die.)
+To: dgaudet@arctic.org,
+    APBUGS@hyperreal.org
+Cc:  Subject: Re: mod_negotiation/1772: Can't handle both "Accept-Encoding: gzip" and "Accept-Encoding: x-gzip"
+Date: Fri, 6 Feb 1998 02:51:56 +0200
+
+ > Roland, in the second hunk of the patch to mod_neg, yeah sub_req ==
+ > best->sub_req. 
+ 
+ Ok, in that case replacing 
+ 
+       r->content_encoding = sub_req->content_encoding;
+ by 
+       r->content_encoding = best->content_encoding;
+ 
+ will suffice (you've probably already done this).
+ 
+ 
+   Cheers,
+ 
+   Ronald
+ 
+
+From: Ronald.Tschalaer@psi.ch (Life is hard... and then you die.)
+To: dgaudet@arctic.org,
+    APBUGS@hyperreal.org,
+    FIELDING@kiwi.ics.uci.edu
+Cc:  Subject: Re: mod_negotiation/1772: Can't handle both "Accept-Encoding: gzip" and "Accept-Encoding: x-gzip" 
+Date: Fri, 6 Feb 1998 05:10:10 +0200
+
+  
+ > On Thu, 5 Feb 1998, Roy T. Fielding wrote:
+ >
+ > > >> !         if (!strncmp(name, "x-", 2))
+ > >
+ > > sucks performance-wise when compared to
+ > >
+ > >              if (name[1] == '-' && (name[0] == 'x' || name[0] == 'X'))
+ >
+ > Heh.  This is exactly what I did in my working copy of Ronald's patch
+ > already.
+  
+ Err, yes, I agree with both of you. I'll try to be less lazy next time...
+  
+ > Actually I think in mod_negotiation we're guaranteed that everything is
+ > lower case.  I need to double check that again... it seemed to be correct
+ > when I was looking at case-sensitivity.
+  
+ As far as I could see the code is fine in that respect (I would've sent
+ in another patch otherwise ;-).
+  
+ I just noticed that I had not quite fixed everything - I forgot about
+ mod_autoindex which also uses content-encoding (in AddIconByEncoding).
+ So here is the patch for mod_autoindex, including a fix for
+ case-sensitivity.
+ 
+ 
+   Cheers,
+ 
+   Ronald
+ 
+ ---------------------------------------------------------------------
+ *** mod_autoindex.c.orig	Wed Nov 12 22:37:45 1997
+ --- mod_autoindex.c	Fri Feb  6 04:56:34 1998
+ ***************
+ *** 176,181 ****
+ --- 176,187 ----
+       if (cmd->info == BY_PATH)
+   	if (!strcmp(to, "**DIRECTORY**"))
+   	    to = "^^DIRECTORY^^";
+ +     if (cmd->info == BY_ENCODING) {
+ + 	str_tolower(to);
+ + 	if (to[0] == 'x' && to[1] == '-') {
+ + 	    to += 2;
+ + 	}
+ +     }
+   
+       push_item(((autoindex_config_rec *) d)->alt_list, cmd->info, to, cmd->path, alt);
+       return NULL;
+ ***************
+ *** 193,198 ****
+ --- 199,210 ----
+       if (cmd->info == BY_PATH)
+   	if (!strcmp(to, "**DIRECTORY**"))
+   	    to = "^^DIRECTORY^^";
+ +     if (cmd->info == BY_ENCODING) {
+ + 	str_tolower(to);
+ + 	if (to[0] == 'x' && to[1] == '-') {
+ + 	    to += 2;
+ + 	}
+ +     }
+   
+       push_item(((autoindex_config_rec *) d)->icon_list, cmd->info, to, cmd->path,
+   	      iconbak);
+ ---------------------------------------------------------------------
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Feb  6 01:12:28 PST 1998
+State-Changed-Why:
+Patch committed, thanks!
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

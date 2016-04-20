@@ -1,0 +1,101 @@
+Received: (qmail 38493 invoked by uid 501); 21 Jun 2000 13:43:38 -0000
+Message-Id: <20000621134338.38492.qmail@locus.apache.org>
+Date: 21 Jun 2000 13:43:38 -0000
+From: Deon Ramsey <dra@computacenter.de>
+Reply-To: dra@computacenter.de
+To: submit@bugz.apache.org
+Subject: suexec is ignoring UserDir directive in httpd.conf
+X-Send-Pr-Version: 3.110
+
+>Number:         6221
+>Category:       suexec
+>Synopsis:       suexec is ignoring UserDir directive in httpd.conf
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jun 21 06:50:01 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     dra@computacenter.de
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+SunOS alioth 5.7 Generic_106542-07 i86pc i386 i86pc
+gcc 2.95
+>Description:
+When the UserDir directive is used in httpd.conf to set the default directory to something besides public_html
+and a cgi file is requested from a users directory, suexec still looks in the public_html directory for that
+file, resulting in the error 'emerg: cannot get docroot information' because of course that directory doesn't
+exist.
+>How-To-Repeat:
+Set up apache to use suexec. set UserDir to something other than public_html (I use etc/www for historical reasons). Put a cgi
+file into your directory (don't foget to enable cgi), then try to get that file. if you put a logical link
+from public_html to your directory getting the file will work.
+>Fix:
+The following patch to src/support/suexec.c will help in diagnosing the problem, and also give much
+more legible error messages for the future, you'll probably want to start from there:
+
+455,459c455,456
+<       if (((chdir(target_homedir)) != 0) ||
+<           ((chdir(USERDIR_SUFFIX)) != 0) ||
+<           ((getcwd(dwd, AP_MAXPATH)) == NULL) ||
+<           ((chdir(cwd)) != 0)) {
+<           log_err("emerg: cannot get docroot information (%s)\n",
+---
+>       if ((chdir(target_homedir)) != 0) {
+>           log_err("emerg: cannot cd to user homedir (%s)\n",
+462a460,474
+>       if ((chdir(USERDIR_SUFFIX)) != 0) {
+>           log_err("emerg: cannot cd to user subdir (%s/%s)\n",
+>                   target_homedir,USERDIR_SUFFIX);
+>           exit(112);
+>       }
+>       if ((getcwd(dwd, AP_MAXPATH)) == NULL) {
+>           log_err("emerg: cannot get user docroot information (%s)\n",
+>                   target_homedir);
+>           exit(112);
+>       }
+>       if ((chdir(cwd)) != 0) {
+>           log_err("emerg: cannot cd back (%s)\n",
+>                   cwd);
+>           exit(112);
+>       }
+465,468c477,478
+<       if (((chdir(DOC_ROOT)) != 0) ||
+<           ((getcwd(dwd, AP_MAXPATH)) == NULL) ||
+<           ((chdir(cwd)) != 0)) {
+<           log_err("emerg: cannot get docroot information (%s)\n", DOC_ROOT);
+---
+>       if ((chdir(DOC_ROOT)) != 0) {
+>           log_err("emerg: cannot cd to main docroot (%s)\n", DOC_ROOT);
+470a481,488
+>       if ((getcwd(dwd, AP_MAXPATH)) == NULL) {
+>           log_err("emerg: cannot get main docroot information (%s)\n", DOC_ROOT);
+>           exit(113);
+>       }
+>       if ((chdir(cwd)) != 0) {
+>           log_err("emerg: cannot cd back from main (%s)\n", cwd);
+>           exit(113);
+>       }
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

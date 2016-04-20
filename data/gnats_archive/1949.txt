@@ -1,0 +1,181 @@
+Received: (qmail 29372 invoked by uid 2012); 15 Mar 1998 05:56:52 -0000
+Message-Id: <19980315055652.29371.qmail@hyperreal.org>
+Date: 15 Mar 1998 05:56:52 -0000
+From: Paul Cassella <fortytwo@cmu.edu>
+Reply-To: fortytwo@cmu.edu
+To: apbugs@hyperreal.org
+Subject: patch for mod_autoindex to allow length of filenames to be specified
+X-Send-Pr-Version: 3.2
+
+>Number:         1949
+>Category:       mod_autoindex
+>Synopsis:       patch for mod_autoindex to allow length of filenames to be specified
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Mar 14 23:10:00 PST 1998
+>Last-Modified:  Wed Sep  2 14:13:18 PDT 1998
+>Originator:     fortytwo@cmu.edu
+>Organization:
+>Release:        1.3b5
+>Environment:
+Linux 2.0.33 / gcc-2.8.1, but probably n/a
+>Description:
+The current behavior is to truncate the filenames after 20 characters.  This can be a problem if filenames have common prefixes longer than this.
+
+The attached patch permits a variable, IndexFNameLen, to be set in .htaccess which will allow an arbitrary length to be used instead.  It Works For Me, but is otherwise untested.  This should probably be renamed to be more consistant with other variable names.
+
+>How-To-Repeat:
+http://sunsite.unc.edu/pub/Linux/Incoming
+>Fix:
+diff -r -u mod_autoindex.c.orig mod_autoindex.c
+--- mod_autoindex.c.orig    Wed Feb 11 21:18:43 1998
++++ mod_autoindex.c Mon Mar  9 02:37:37 1998
+@@ -119,6 +119,7 @@
+     char *default_icon;
+     int icon_width;
+     int icon_height;
++    int fnamelen;
+ 
+     array_header *icon_list, *alt_list, *desc_list, *ign_list;
+     array_header *hdr_list, *rdme_list, *opts_list;
+@@ -239,6 +240,13 @@
+     return NULL;
+ }
+ 
++static const char *set_fnamelen(cmd_parms *cmd, void *mconfig, char *arg)
++{
++    int l = atoi(arg);
++    ((autoindex_config_rec *)mconfig)->fnamelen = l > 4? l : 4;
++    return NULL;
++}
++
+ static const char *add_readme(cmd_parms *cmd, void *d, char *name)
+ {
+     if (strchr(name, '/')) {
+@@ -341,6 +349,8 @@
+     {"AddDescription", add_desc, BY_PATH, DIR_CMD_PERMS, ITERATE2,
+      "Descriptive text followed by one or more filenames"},
+     {"HeaderName", add_header, NULL, DIR_CMD_PERMS, TAKE1, "a filename"},
++    {"IndexFNameLen",set_fnamelen, NULL, DIR_CMD_PERMS, TAKE1,
++     "number of characters of filename to display"},
+     {"ReadmeName", add_readme, NULL, DIR_CMD_PERMS, TAKE1, "a filename"},
+     {"FancyIndexing", fancy_indexing, NULL, DIR_CMD_PERMS, FLAG,
+      "Limited to 'on' or 'off' (superseded by IndexOptions FancyIndexing)"},
+@@ -357,6 +367,7 @@
+ 
+     new->icon_width = 0;
+     new->icon_height = 0;
++    new->fnamelen = 23;
+     new->icon_list = make_array(p, 4, sizeof(struct item));
+     new->alt_list = make_array(p, 4, sizeof(struct item));
+     new->desc_list = make_array(p, 4, sizeof(struct item));
+@@ -377,6 +388,7 @@
+     new->default_icon = add->default_icon ? add->default_icon:base->default_icon;
+     new->icon_height = add->icon_height ? add->icon_height : base->icon_height;
+     new->icon_width = add->icon_width ? add->icon_width : base->icon_width;
++    new->fnamelen = add->fnamelen;
+ 
+     new->alt_list = append_arrays(p, add->alt_list, base->alt_list);
+     new->ign_list = append_arrays(p, add->ign_list, base->ign_list);
+@@ -723,7 +735,7 @@
+ static char *terminate_description(autoindex_config_rec * d, char *desc,
+                                   int autoindex_opts)
+ {
+-    int maxsize = 23;
++    int maxsize = d->fnamelen;
+     register int x;
+ 
+     if (autoindex_opts & SUPPRESS_LAST_MOD)
+@@ -816,7 +828,11 @@
+            rputs("> ", r);
+        }
+         emit_link(r, "Name", K_NAME, keyid, direction, static_columns);
+-       rputs("                   ", r);
++
++       tp = pcalloc(scratch,d->fnamelen-3);
++       memset(tp,' ',d->fnamelen-4);
++       tp[d->fnamelen-4]='\0';
++       rputs(tp, r);
+        if (!(autoindex_opts & SUPPRESS_LAST_MOD)) {
+             emit_link(r, "Last modified", K_LAST_MOD, keyid, direction,
+                       static_columns);
+@@ -838,6 +854,7 @@
+ 
+     for (x = 0; x < n; x++) {
+        char *anchor = NULL, *t = NULL, *t2 = NULL;
++        int tl;
+ 
+        clear_pool(scratch);
+ 
+@@ -849,23 +866,32 @@
+            anchor = pstrcat(scratch, "<A HREF=\"",
+                        escape_html(scratch, os_escape_path(scratch, t, 0)),
+                             "\">", NULL);
+-           t2 = "Parent Directory</A>       ";
++            t2 = pcalloc(scratch, d->fnamelen + 5);
++            strncpy(t2, "Parent Directory", d->fnamelen);
++            t2[d->fnamelen]='\0';
++            strcat(t2, "</A>");
++            tl=strlen(t2);
++            if (tl < d->fnamelen + 4) {
++                memset(t2 + tl, ' ', d->fnamelen + 4 - tl);
++                t2[d->fnamelen + 4] = '\0';
++           }
+        }
+        else {
+            t = ar[x]->name;
+            len = strlen(t);
+-           if (len > 23) {
++           if (len >= d->fnamelen) {
+                t2 = pstrdup(scratch, t);
+-               t2[21] = '.';
+-               t2[22] = '.';
+-               t2[23] = '\0';
++               t2[d->fnamelen-2] = '.';
++               t2[d->fnamelen-1] = '.';
++               t2[d->fnamelen] = '\0';
+                t2 = escape_html(scratch, t2);
+                t2 = pstrcat(scratch, t2, "</A>", NULL);
+            }
+            else {
+-               char buff[24] = "                       ";
++               char *buff = pcalloc(scratch,d->fnamelen-len+1);
++               memset(buff,' ',d->fnamelen - len);
++               buff[d->fnamelen - len] = '\0';
+                t2 = escape_html(scratch, t);
+-               buff[23 - len] = '\0';
+                t2 = pstrcat(scratch, t2, "</A>", buff, NULL);
+            }
+            anchor = pstrcat(scratch, "<A HREF=\""%2
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: brian
+State-Changed-When: Tue May 19 21:29:13 PDT 1998
+State-Changed-Why:
+Thanks for the report.  We're in feature-freeze at the moment
+for a 1.3.0 release; when we're out of that we'll consider
+adding this (which has been requested like, forever. :)  Thanks
+for the patch.
+State-Changed-From-To: suspended-closed
+State-Changed-By: coar
+State-Changed-When: Wed Sep  2 14:13:17 PDT 1998
+State-Changed-Why:
+
+This has been addressed by the addition of the NameLength
+keyword to the IndexOptions directive.  This will appear
+in the next release of Apache after 1.3.1.  Thanks for
+the report and for using Apache!
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

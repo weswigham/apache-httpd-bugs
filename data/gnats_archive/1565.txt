@@ -1,0 +1,201 @@
+Received: (qmail 12004 invoked by uid 2012); 17 Dec 1997 00:13:18 -0000
+Message-Id: <19971217001318.12003.qmail@hyperreal.org>
+Date: 17 Dec 1997 00:13:18 -0000
+From: Robert Bossecker <Robert.Bossecker@fresenius.de>
+Reply-To: Robert.Bossecker@fresenius.de
+To: apbugs@hyperreal.org
+Subject: ftp proxy grabs files relative to login point, which may cause some confusion
+X-Send-Pr-Version: 3.2
+
+>Number:         1565
+>Category:       mod_proxy
+>Synopsis:       ftp proxy grabs files relative to login point, which may cause some confusion
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Dec 16 16:20:00 PST 1997
+>Last-Modified:  Wed May 20 01:06:45 PDT 1998
+>Originator:     Robert.Bossecker@fresenius.de
+>Organization:
+>Release:        1.2.4
+>Environment:
+any
+>Description:
+if you access a URL like:
+ftp://ftpserver.ftp.server/dir1/dir2/dir3/file1
+and the ftp-server is configured to push you somewhere in the hierarchy
+(maybe /dir1/dir2/dir3)
+the proxy module tries a 
+cd dir1
+cd dir2
+cd dir3
+
+these requests will fail because we are already in dir3
+.
+>How-To-Repeat:
+sorry, because the only example i know is a URL with user and password.
+the given patch works as described.
+>Fix:
+so here i got a quick modification of the source-code
+by sending a "CWD /" at the beginning of the ftp session.
+
+
+----------snip---------
+*** apache_1.2.4.old/src/modules/proxy/proxy_ftp.c     Fri Aug 15 19:08:55 1997
+--- apache_1.2.4/src/modules/proxy/proxy_ftp.c     Tue Dec 16 13:19:41 1997
+***************
+*** 595,600 ****
+--- 595,623 ----
+  /* this is what we must do if we don't know the OS type of the remote
+   * machine
+   */
++    /* explicitly set the directory to /, to prevent from
++      being trapped by ftp-servers, which already set the
++      actual directory */
++       
++       bputs("CWD /\015\012", f);
++         bflush(f);
++         Explain0("FTP: CWD /");
++ /* responses: 250, 421, 500, 501, 502, 530, 550 */
++ /* 1,3 error, 2 success, 4,5 failure */
++       i = ftp_getrc(f);
++         Explain1("FTP: returned status %d",i);
++       if (i == -1) {
++           kill_timeout(r);
++           return proxyerror(r, "Error sending to remote server");
++       }
++       if (i == 550) {
++           kill_timeout(r);
++           return NOT_FOUND;
++       }
++       if (i != 250) {
++           kill_timeout(r);
++           return BAD_GATEWAY;
++       }
+      for (;;)
+      {
+        p = strchr(path, '/');
+%0
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Robert Bossecker <Robert.Bossecker@fresenius.de>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_proxy/1565: ftp proxy grabs files relative to login point, which may cause some confusion
+Date: Tue, 16 Dec 1997 17:29:34 -0700 (MST)
+
+ On 17 Dec 1997, Robert Bossecker wrote:
+ 
+ > >Description:
+ > if you access a URL like:
+ > ftp://ftpserver.ftp.server/dir1/dir2/dir3/file1
+ > and the ftp-server is configured to push you somewhere in the hierarchy
+ > (maybe /dir1/dir2/dir3)
+ > the proxy module tries a 
+ > cd dir1
+ > cd dir2
+ > cd dir3
+ > 
+ > these requests will fail because we are already in dir3
+ 
+ The current code is done the way it is on purpose; it follows RFC 1738.
+ 
+ That said, RFC 1738 is broken and the entire directory handling code of
+ the proxy_ftp.c should be rewritten, so that what you describe works among
+ many other things.
+ 
+ Sigh.  Since it may be a looooooong time before the proxy is fixed
+ properly, we will consider the impact of a workaround as you describe.
+ 
+ Thanks.
+ 
+
+From: Robert Bossecker <Robert.Bossecker@fresenius.de>
+To: Marc Slemko <marcs@znep.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_proxy/1565: ftp proxy grabs files relative to login point, which may cause some confusion
+Date: Wed, 17 Dec 1997 03:20:51 +0100
+
+ Hi,
+ 
+ Marc Slemko wrote:
+ 
+ > The current code is done the way it is on purpose; it follows RFC 1738.
+ >
+ > That said, RFC 1738 is broken and the entire directory handling code of
+ > the proxy_ftp.c should be rewritten, so that what you describe works among
+ > many other things.
+ >
+ 
+ I've read the corresponding section "3.2.2", which describes the proposed
+ behaviour.So what i can say is, that the mod_proxy is basically designed to
+ retrieve
+ the files conform to the RFC.
+ The problem i've reported showed up by updating a virus scanner for
+ the DOS/Windows Environment, the software allows you to specify a proxy and
+ then it tried to get a URL similar to those described in the problem.
+ But the URL they specify will get only a relative path according to RFC 1738.
+ 
+ So my quick hack is only a workaround to this problem, but maybe a lot of
+ other users will face the same problem if the try to update their virus
+ scanners.
+ Maybe these company should change their used URL, but maybe it's compiled
+ into the
+ product :-( and they are not willingly to change anything.
+ 
+ > Sigh.  Since it may be a looooooong time before the proxy is fixed
+ > properly, we will consider the impact of a workaround as you describe.
+ 
+ It is possible that we can use URL-rewriting for some locations, maybe the
+ best idea,
+ i tried it for this special case and it works.
+ 
+ Here comes the recipe:
+ 1. you need mod_rewrite
+ 2. add those lines and modify them corresponding to your needs
+ 
+ <Directory proxy:ftp://*@<some ftp-host>/*>
+ RewriteEngine on
+ RewriteRule ^(proxy:ftp://.*@<some ftp-host>/)(.*) $1%2F$2
+ </Directory>
+ 
+ This will put the "%2F" character between host-part and url-path.
+ maybe the pattern should be specified more precisely, if somebody uses a @ in
+ 
+ a url-path and no user/password is given in the url and the hostname also
+ appears in the url-path.
+ 
+ I think we can close this item, sorry for bothering you.
+ 
+ Thanks
+ 
+ --
+ Robert Bossecker  | Fresenius AG, Bad Homburg, Germany
+ UNIX-Systemmanager| Phone: +49 6171 60 7677
+                   | Fax  : +49 6171 60 7858
+                   | Email: Robert.Bossecker@fresenius.de
+ 
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: brian
+State-Changed-When: Wed May 20 01:06:45 PDT 1998
+State-Changed-Why:
+User says:
+>Unformatted:
+>I think we can close this item, sorry for bothering you.
+
+no problem!
+
+
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

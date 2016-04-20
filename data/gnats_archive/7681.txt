@@ -1,0 +1,94 @@
+Received: (qmail 28270 invoked by uid 501); 8 May 2001 11:30:09 -0000
+Message-Id: <20010508113009.28269.qmail@apache.org>
+Date: 8 May 2001 11:30:09 -0000
+From: Stefan Brohs <sbrohs@iPrimus0800.net>
+Reply-To: sbrohs@iPrimus0800.net
+To: submit@bugz.apache.org
+Subject: Apache does not accept connections for several minutes, then recovers mysteriously
+X-Send-Pr-Version: 3.110
+
+>Number:         7681
+>Category:       general
+>Synopsis:       Apache does not accept connections for several minutes, then recovers mysteriously
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue May 08 04:40:05 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     sbrohs@iPrimus0800.net
+>Release:        1.3.19
+>Organization:
+apache
+>Environment:
+Server version: Apache/1.3.19 (Unix)
+OS  Red Hat 7.0 Linux kernel 2.2.17-14smp on a 2-processor i686
+>Description:
+We run Web Hosting servers with Apache. On one of our machines we see the following
+behavior several times a week:
+Apache stops accepting connections for several minutes, then recovers mysteriously. All other network
+services (FTP, SSH) work perfectly all of the time. There are no entries in the Apache access or error logs
+for the time in question. For example: 
+www.xx1.de x.x.x.x - - [07/May/2001:00:01:30 +0200] "GET /index.htm HTTP/1.1" 404 291 "-"
+www.xx2.de y.y.y.y - - [07/May/2001:00:01:31 +0200] "GET /Damenli.gif HTTP/1.0" 200 3448 "xxx.html"
+www.xx2.de y.y.y.y - - [07/May/2001:00:01:39 +0200] "GET /bannera.jpg HTTP/1.0" 200 83832 "xxx.html"
+www.xx3.de z.z.z.z - - [07/May/2001:00:08:15 +0200] "GET /bild.jpg?1248148008 HTTP/1.0" 200 8321 "http://www.zzzz.com/cam.php4?von=0"
+Thus, no requests accepted for 7 minutes between 00:01:39 and 00:08:15. Our watchdog got timeouts during this period.
+We made a system call trace during another occurrence of this bug (process id 19071 was the Apache parent, the other ids are children).
+---------------------------------------------------------------------------------------------
+[root@www008 /root]# strace -p 23314
+fcntl(17, F_SETLKW, {type=F_WRLCK, whence=SEEK_SET, start=0, len=0}
+[root@www008 /root]# strace -p 23359
+fcntl(17, F_SETLKW, {type=F_WRLCK, whence=SEEK_SET, start=0, len=0}
+[root@www008 /root]# strace -p 24328
+fcntl(17, F_SETLKW, {type=F_WRLCK, whence=SEEK_SET, start=0, len=0}
+[root@www008 /root]# strace -p 19071
+select(0, NULL, NULL, NULL, {0, 750000}) = 0 (Timeout)
+time(NULL)                              = 988049887
+select(6, NULL, [5], NULL, {0, 0})      = 1 (out [5], left {0, 0})
+wait4(-1, 0xbffffa3c, WNOHANG, NULL)    = 0
+select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+time(NULL)                              = 988049888
+wait4(-1, 0xbffffa3c, WNOHANG, NULL)    = 0
+select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+time(NULL)                              = 988049889
+wait4(-1, 0xbffffa3c, WNOHANG, NULL)    = 0
+select(0, NULL, NULL, NULL, {1, 0} <unfinished ...>
+-----------------------------------------------------------------------------------------------
+Please note that the strace for the children contains just one line (the fcntl) and nothing else, while the strace for the parent 19071 looks OK.
+
+I should also note that this problem initially occurred on another hardware running Red Hat Linux 6.2 with kernel  2.2.16 and an earlier version of Apache. We have migrated the data
+to the current configuration, but the problem survived.
+
+Our guess is that this problem is perhaps related to the serialization problem discussed in the Apache Performance  Notes and http://www.uwsg.indiana.edu/hypermail/linux/kernel/0011.0/0596.html ,
+so we experimented with the serialization flags. It seems that the problem occurs most often (almost daily) in the following situation:  USE_SYSVSEM_SERIALIZED_ACCEPT and listening on two ports. It occurs less often with USE_SYSVSEM_SERIALIZED_ACCEPT listening on one port or with USE_FCNTL_SERIALIZED_ACCEPT listening on two ports.
+
+Any help is highly appreciated.
+>How-To-Repeat:
+Since it appears sporadically it is not reproducable.
+>Fix:
+-
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

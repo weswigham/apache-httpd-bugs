@@ -1,0 +1,140 @@
+Received: (qmail 25199 invoked by uid 2012); 29 Aug 1998 12:19:11 -0000
+Message-Id: <19980829121911.25198.qmail@hyperreal.org>
+Date: 29 Aug 1998 12:19:11 -0000
+From: Lupe Christoph <lupe@alanya.m.isar.de>
+Reply-To: lupe@alanya.m.isar.de
+To: apbugs@hyperreal.org
+Subject: segfault due to collaboration of mod_dir, mod_auth, mod_perl, and AuthenDBI
+X-Send-Pr-Version: 3.2
+
+>Number:         2924
+>Category:       mod_auth-any
+>Synopsis:       segfault due to collaboration of mod_autoindex, mod_auth, mod_perl, and AuthenDBI
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Aug 29 05:20:00 PDT 1998
+>Last-Modified:  Sat Aug 29 06:17:04 PDT 1998
+>Originator:     lupe@alanya.m.isar.de
+>Organization:
+>Release:        1.3.1
+>Environment:
+Solaris 2.6 x86 (105182-06),
+gcc version egcs-2.90.29 980515 (egcs-1.0.3 release),
+mod_perl 1.15, ApacheDBI 0.80
+>Description:
+The docroot contains a directory auth-required that is protected by:
+	AuthType Basic
+	PerlAuthenHandler Apache::AuthenDBI
+Because the docroot contains no index.html, mod_dir is used to provide
+an index page. Doing so, it calls for authorisation on auth-required
+even though that directory is not accessed, only listed (this might also
+be a bug, dunno).
+
+Unless AuthenDBI is used, this works OK. With AuthenDBI, the Apache process
+segfaults like this:
+
+Program received signal SIGSEGV, Segmentation fault.
+0xdfeec75c in strcmp ()
+(gdb) where
+#0  0xdfeec75c in strcmp ()
+#1  0x80a3eba in check_user_access (r=0x82f8038) at mod_auth.c:279
+#2  0x80a99ac in run_method (r=0x82f8038, offset=8, run_all=0) at 
+http_config.c:357
+#3  0x80a9bac in ap_check_auth (r=0x82f8038) at http_config.c:414
+#4  0x80bdd69 in ap_sub_req_lookup_file (new_file=0x821b856 "auth-required", 
+r=0x82f4038) at http_request.c:840
+#5  0x809b96d in make_autoindex_entry (name=0x821b856 "auth-required", 
+autoindex_opts=7, d=0x81ed830, r=0x82f4038, keyid=78 'N', direction=65 'A')
+    at mod_autoindex.c:754
+#6  0x809c9a4 in index_directory (r=0x82f4038, autoindex_conf=0x81ed830) at 
+mod_autoindex.c:1158
+#7  0x809cc06 in handle_autoindex (r=0x82f4038) at mod_autoindex.c:1223
+#8  0x80a9f23 in ap_invoke_handler (r=0x82f4038) at http_config.c:505
+#9  0x80be975 in process_request_internal (r=0x82f4038) at http_request.c:1174
+#10 0x80be9cf in ap_process_request (r=0x82f4038) at http_request.c:1191
+#11 0x80b5d9d in child_main (child_num_arg=0) at http_main.c:3665
+#12 0x80b5f54 in make_child (s=0x81ec838, slot=0, now=904201492) at 
+http_main.c:3738
+#13 0x80b60e3 in startup_children (number_to_start=1) at http_main.c:3812
+#14 0x80b6760 in standalone_main (argc=4, argv=0x8046f14) at http_main.c:4090
+#15 0x80b6f8b in main (argc=4, argv=0x8046f14) at http_main.c:4367
+(gdb) up
+#1  0x80a3eba in check_user_access (r=0x82f8038) at mod_auth.c:279
+279                     if (!strcmp(user, w))
+(gdb) p user
+$1 = 0x0
+(gdb) p w
+$2 = 0x82f89d0 "lupe"
+
+This is because AuthenDBI does not do authorisation for auth-required
+and returns like this:
+	    return OK unless $r->is_initial_req; # only the first internal request
+
+mod_auth gets handed a NULL pointer, and crashes.
+
+More details available on request.
+>How-To-Repeat:
+Install mod_perl 1.15 and ApacheDBI 0.80, plus some database, plus DBI, plus DBD::<whatever>.
+This is the config fragment:
+	<Directory /sw/www-turkey/auth-required>
+		order deny,allow
+		deny from all
+		allow from alanya.m.isar.de
+		allow from 192.168.0.1
+		allow from localhost
+		AddHandler cgi-script .cgi
+		AddHandler cgi-script .pl
+		Options Indexes FollowSymLinks ExecCGI
+		AllowOverride AuthConfig
+		<Limit GET POST>
+			AuthType Basic
+			AuthName Turkey
+			PerlAuthenHandler Apache::AuthenDBI
+			PerlSetVar Auth_DBI_data_source DBI:mysql:www
+			PerlSetVar Auth_DBI_username auth
+			PerlSetVar Auth_DBI_password auth
+			PerlSetVar Auth_DBI_pwd_table auth
+			PerlSetVar Auth_DBI_uid_field name
+			PerlSetVar Auth_DBI_pwd_field pw
+			require user lupe
+		</Limit>
+	</Directory>
+
+>Fix:
+I have asked Doug McEachern and the mod_perl list first. This is
+what Doug said:
+
+ouch, something should be fixed in mod_auth.c
+
+Either mod_dir should not try to authenticate (even with mod_auth, the
+user is not required to authenticate; it just returns somehow), or mod_auth
+should check for NULL pointers.
+>Audit-Trail:
+Comment-Added-By: coar
+Comment-Added-When: Sat Aug 29 06:17:04 PDT 1998
+Comment-Added:
+Just a couple of side-notes.. mod_dir doesn't provide
+the index listing, mod_autoindex does.  And listing the
+contents of a directory *is* accessing it, and so
+auth is required.  But these don't relate to your problem.
+Synopsis-Changed-From: segfault due to collaboration of mod_dir, mod_auth, mod_perl, and AuthenDBI
+Synopsis-Changed-To: segfault due to collaboration of mod_autoindex, mod_auth, mod_perl, and AuthenDBI
+Synopsis-Changed-By: coar
+Synopsis-Changed-When: Sat Aug 29 06:17:04 PDT 1998
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

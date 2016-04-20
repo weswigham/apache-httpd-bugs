@@ -1,0 +1,85 @@
+Received: (qmail 22180 invoked by uid 2012); 20 Nov 1998 04:34:13 -0000
+Message-Id: <19981120043413.22179.qmail@hyperreal.org>
+Date: 20 Nov 1998 04:34:13 -0000
+From: Vladimir Davydoff <vvdav@svzserv.kemerovo.su>
+Reply-To: vvdav@svzserv.kemerovo.su
+To: apbugs@hyperreal.org
+Subject: apache core dump when started with locale other then C
+X-Send-Pr-Version: 3.2
+
+>Number:         3427
+>Category:       mod_mime
+>Synopsis:       apache core dump when started with locale other then C
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Nov 19 20:40:00 PST 1998
+>Last-Modified:  Tue Apr 20 10:26:48 PDT 1999
+>Originator:     vvdav@svzserv.kemerovo.su
+>Organization:
+>Release:        1.3.3
+>Environment:
+FreeBSD 2.2.7
+>Description:
+In mod_mime.c structure array hash_buckets has 27 elements. When locale
+is set to national language, is_alpha returns "true" not only for [A-Z,a-z]
+and hash() may be > 27. In function find_ct:
+" || (type = ap_table_get(hash_buckets[hash(*ext)], ext))) { "
+                          ^^^^^^^^^^^^^^^^^^^^^^^^
+is out of memory.
+>How-To-Repeat:
+Access to file "any.русский.html"
+>Fix:
+1. Increase MIME_HASHSIZE to 258 :-)
+2. Fix hash()
+3. Start apache with environment setting locale to C
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 10:26:47 PDT 1999
+State-Changed-Why:
+This patch should do it... I'm committing it to 1.3.7-dev,
+thanks.
+
+Dean
+
+Index: modules/standard/mod_mime.c
+===================================================================
+RCS file: /home/cvs/apache-1.3/src/modules/standard/mod_mime.c,v
+retrieving revision 1.48
+diff -u -r1.48 mod_mime.c
+--- mod_mime.c  1999/01/01 19:05:11     1.48
++++ mod_mime.c  1999/04/20 17:26:07
+@@ -233,13 +233,8 @@
+  * get private versions through AddType...
+  */
+ 
+-/* MIME_HASHSIZE used to be 27 (26 chars and one "non-alpha" slot), but
+- * with character sets like EBCDIC, this is insufficient because the
+- * range 'a'...'z' is not contigous. Defining it as ('z'-'a'+2) is
+- * equivalent to 27 in ASCII, and makes it work in EBCDIC.
+- */
+-#define MIME_HASHSIZE ('z'-'a'+2)
+-#define hash(i) (ap_isalpha(i) ? (ap_tolower(i)) - 'a' : (MIME_HASHSIZE-1))
++#define MIME_HASHSIZE (32)
++#define hash(i) (ap_tolower(i) % MIME_HASHSIZE)
+ 
+ static table *hash_buckets[MIME_HASHSIZE];
+ 
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

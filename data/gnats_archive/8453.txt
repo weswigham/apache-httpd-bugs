@@ -1,0 +1,77 @@
+Received: (qmail 81268 invoked by uid 501); 2 Oct 2001 18:25:06 -0000
+Message-Id: <20011002182506.81265.qmail@apache.org>
+Date: 2 Oct 2001 18:25:06 -0000
+From: Jamshid Mahdavi <mahdavi@volera.com>
+Reply-To: mahdavi@volera.com
+To: submit@bugz.apache.org
+Subject: Bug in apr_poll_socket_clear in Apache 2.0.16 Beta
+X-Send-Pr-Version: 3.110
+
+>Number:         8453
+>Category:       general
+>Synopsis:       Bug in apr_poll_socket_clear in Apache 2.0.16 Beta
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 02 11:30:00 PDT 2001
+>Closed-Date:    Tue Oct 02 11:53:52 PDT 2001
+>Last-Modified:  Tue Oct 02 11:53:52 PDT 2001
+>Originator:     mahdavi@volera.com
+>Release:        2.0.16 Beta
+>Organization:
+>Environment:
+Redhat Linux 7.1, gcc.
+>Description:
+
+The code is dereferencing the wrong event variable at line 215.  
+Here is a correct patch.  I've also fixed the logic for the case where there
+are multiple events ORed together in the events list.
+
+--- poll.c~	Tue Oct  2 09:54:08 2001
++++ poll.c	Tue Oct  2 11:08:04 2001
+@@ -212,8 +212,8 @@
+     newevents = get_event(events);
+ 
+     while (i < aprset->curpos) {
+-        if (aprset->events[i] & newevents) {
+-            aprset->events[i] ^= newevents;
++        if (aprset->pollset[i].events & newevents) {
++            aprset->pollset[i].events &= ~newevents;
+         }
+         i++;
+     }
+>How-To-Repeat:
+I was trying to write a module which used this routine.  It should always
+fail because the current code dereferences a NULL pointer.
+>Fix:
+See patch above.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rbb
+State-Changed-When: Tue Oct  2 11:53:52 PDT 2001
+State-Changed-Why:
+I have committed this code, and it will be available in the
+next release of Apache 2.0.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

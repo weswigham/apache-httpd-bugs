@@ -1,0 +1,316 @@
+From apwww@hyperreal.org  Tue Sep 30 02:20:14 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id CAA16121;
+	Tue, 30 Sep 1997 02:20:14 -0700 (PDT)
+Message-Id: <199709300920.CAA16121@hyperreal.org>
+Date: Tue, 30 Sep 1997 02:20:14 -0700 (PDT)
+From: Charles Howes <chowes@ics.bc.ca>
+Reply-To: chowes@ics.bc.ca
+To: apbugs@hyperreal.org
+Subject: Too many virtual hosts cause cgi scripts to stop working
+X-Send-Pr-Version: 3.2
+
+>Number:         1181
+>Category:       general
+>Synopsis:       Too many virtual hosts cause cgi scripts to stop working
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Sep 30 02:30:02 1997
+>Originator:     chowes@ics.bc.ca
+>Organization:
+>Release:        1.2.4
+>Environment:
+Linux 2.0.30, maximum file descriptors 256
+uname -a: Linux c 2.0.30 #3 Tue Jul 22 18:21:58 PDT 1997 i586 
+>Description:
+The customer called to report that their page counter wasn't working.
+Testing showed that no cgi script anywhere was working.
+Tracing showed that open() calls were failing with EMFILE (Too many open files)
+Logs showed:
+[Tue Sep 30 01:15:46 1997] access to /www/cgi-bin/counter failed for cirrus.imag
+.net, reason: couldn't spawn child process
+>How-To-Repeat:
+Stuff 125 virtual servers, each with two log files, into your httpd.conf file.
+Agitate gently.  Pour into a tall glass and quaff deeply.  And then try to call
+a page counter.
+>Fix:
+Check for EMFILE and log a better error message, or find a way to reduce file
+handle usage
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: Lars.Eilebrecht@unix-ag.org
+State-Changed-When: Tue Sep 30 04:48:44 PDT 1997
+State-Changed-Why:
+
+This a frequently asked question.
+See http://www.apache.org/docs/misc/FAQ.html#fdlim
+for details.
+
+Severity-Changed-From-To: serious-non-critical
+Severity-Changed-By: Lars.Eilebrecht@unix-ag.org
+Severity-Changed-When: Tue Sep 30 04:48:44 PDT 1997
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Charles Howes <croot@ics.bc.ca>
+Subject: Re: general/1181: Too many virtual hosts cause cgi scripts to stop working
+Date: Tue, 30 Sep 1997 14:34:26 -0700 (PDT)
+
+ 
+ It'd be great if we could print an error in all cases, but the truth is we
+ can't.  In fact sometimes we have no idea an error has occured because
+ some library routine runs into the error and doesn't report it cleanly (or
+ portably).  I looked at printing errors a long time ago.  (I thought this
+ was explained somewhere ... maybe it's just in
+ htdocs/manual/misc/descriptors.html which is probably worth reading too.) 
+ 
+ Under Linux if you're comfortable with recompiling your kernel you can
+ raise your descriptors to 1024 without seriously causing problems.  See
+ <http://www.arctic.org/~dgaudet/patches/1024-descriptor.patch>.  That's
+ for 2.0.x kernels.  2.1.x kernels a similar patch can be used, and they
+ can go far higher than 1024. 
+ 
+ You'll need to recompile apache after installing that kernel, and ensure
+ you've got the right /usr/include/linux and /usr/include/asm symlinks
+ before doing it.  (You probably do ... it's hard to get anything done with
+ them wrong :) 
+ 
+ Dean
+ 
+
+From: Charles Howes <croot@ics.bc.ca>
+To: Dean Gaudet <dgaudet@arctic.org>
+Subject: Re: general/1181: Too many virtual hosts cause cgi scripts to stop working
+Date: Tue, 30 Sep 1997 14:58:07 -0700 (PDT)
+
+ 
+ On Tue, 30 Sep 1997, Dean Gaudet wrote:
+ 
+ > Date: Tue, 30 Sep 1997 14:34:26 -0700 (PDT)
+ > From: Dean Gaudet <dgaudet@arctic.org>
+ > To: Charles Howes <croot@ics.bc.ca>
+ > Cc: Lars.Eilebrecht@unix-ag.org, apbugs@apache.org
+ > Subject: Re: general/1181: Too many virtual hosts cause cgi scripts to stop working
+ > 
+ > It'd be great if we could print an error in all cases, but the truth is we
+ > can't.  In fact sometimes we have no idea an error has occured because
+ > some library routine runs into the error and doesn't report it cleanly (or
+ > portably).  I looked at printing errors a long time ago.  (I thought this
+ > was explained somewhere ... maybe it's just in
+ > htdocs/manual/misc/descriptors.html which is probably worth reading too.) 
+ 
+ I read it, I understood it.  However...
+ 
+ So 'getpwnam()' fails but doesn't return EMFILE.  Ok, fine.  Then it
+ tries 'exec()' and returns, with some error code.  At this point httpd
+ is about to return the error message 'Can't spawn child'.  Fine.
+ 
+ Just before it returns *that* error message, have it try opening
+ /dev/null once or twice, since if it is near enough the limit to fail
+ on getpwnam or exec, it's near enough the limit to fail on open(),
+ which *does* return a clean, portable error.  (Heck, if you can't open
+ /dev/null, it doesn't matter *what* error code is returned, does it?)
+ 
+ There, problem solved.  You'll be putting it into the next version of
+ Apache, yes?  :-)
+ 
+ (It'll *also* allow you to stop dealing with this frequently submitted bug
+ report, which is worth gold right there!  :-)
+ 
+ (And it'll save countless web admins headaches as they try and find
+ the cause of the mysterious failure of all cgi-bins on the system
+ simultaneously...)
+ 
+ > Under Linux if you're comfortable with recompiling your kernel you can
+ > raise your descriptors to 1024 without seriously causing problems.  See
+ > <http://www.arctic.org/~dgaudet/patches/1024-descriptor.patch>.  That's
+ > for 2.0.x kernels.  2.1.x kernels a similar patch can be used, and they
+ > can go far higher than 1024. 
+ > 
+ > You'll need to recompile apache after installing that kernel, and ensure
+ > you've got the right /usr/include/linux and /usr/include/asm symlinks
+ > before doing it.  (You probably do ... it's hard to get anything done with
+ > them wrong :) 
+ > 
+ > Dean
+ 
+ Ok, I'll try that too!  Thanks!
+ 
+ --
+ Charles Howes -- chowes@ics.bc.ca
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Charles Howes <croot@ics.bc.ca>
+Subject: Re: general/1181: Too many virtual hosts cause cgi scripts to stop working
+Date: Tue, 30 Sep 1997 15:31:18 -0700 (PDT)
+
+ 
+ The error is detected in the child, after the fork, at which time there is
+ no clear communication channel back to the parent.  In fact it does log
+ the errno from exec.  What you suggest is not portable if it masks another
+ error from exec, and how are we to know, without reading all the man pages
+ and trying it out everywhere, that some OS just happens to do things
+ correctly? 
+ 
+ On Tue, 30 Sep 1997, Charles Howes wrote:
+ 
+ > (And it'll save countless web admins headaches as they try and find
+ > the cause of the mysterious failure of all cgi-bins on the system
+ > simultaneously...)
+ 
+ But the reason for this is almost always because they have far too may
+ file descriptors open.  For which we have another solution:  don't open up
+ an access log for each vhost.  In 1.3 you can feed a pipe reliably with
+ your log, and the logger can split the log in real time. 
+ 
+ Dean
+ 
+
+From: Charles Howes <croot@ics.bc.ca>
+To: Dean Gaudet <dgaudet@arctic.org>
+Subject: Re: general/1181: Too many virtual hosts cause cgi scripts to stop working
+Date: Tue, 30 Sep 1997 16:06:58 -0700 (PDT)
+
+ 
+ On Tue, 30 Sep 1997, Dean Gaudet wrote:
+ 
+ > Return-Path: <dgaudet@arctic.org>
+ > Received: from swiss.ics.bc.ca (swiss3.ics.bc.ca [204.244.222.249]) by cheddar.ics.bc.ca (8.8.5/8.8.3) with ESMTP id PAA21462 for <croot@cheddar.ics.bc.ca>; Tue, 30 Sep 1997 15:30:11 -0700 (PDT)
+ > Received: from twinlark.arctic.org (twinlark.arctic.org [204.62.130.91]) by swiss.ics.bc.ca (8.8.5/8.8.5) with SMTP id PAA12216 for <croot@ics.bc.ca>; Tue, 30 Sep 1997 15:32:05 -0700 (PDT)
+ > Received: (qmail 21757 invoked by uid 500); 30 Sep 1997 22:31:18 -0000
+ > Date: Tue, 30 Sep 1997 15:31:18 -0700 (PDT)
+ > From: Dean Gaudet <dgaudet@arctic.org>
+ > To: Charles Howes <croot@ics.bc.ca>
+ > cc: Lars.Eilebrecht@unix-ag.org, apbugs@apache.org
+ > Subject: Re: general/1181: Too many virtual hosts cause cgi scripts to stop working
+ > In-Reply-To: <Pine.GSO.3.96.970930143644.19610C-100000@cheddar.ics.bc.ca>
+ > Message-ID: <Pine.LNX.3.95dg3.970930152655.18466K-100000@twinlark.arctic.org>
+ > MIME-Version: 1.0
+ > Content-Type: TEXT/PLAIN; charset=US-ASCII
+ > 
+ > The error is detected in the child, after the fork, at which time there is
+ > no clear communication channel back to the parent.  In fact it does log
+ > the errno from exec.  What you suggest is not portable if it masks another
+ > error from exec, and how are we to know, without reading all the man pages
+ > and trying it out everywhere, that some OS just happens to do things
+ > correctly? 
+ 
+ Sigh.  It all seemed so easy.
+ 
+ > On Tue, 30 Sep 1997, Charles Howes wrote:
+ > 
+ > > (And it'll save countless web admins headaches as they try and find
+ > > the cause of the mysterious failure of all cgi-bins on the system
+ > > simultaneously...)
+ > 
+ > But the reason for this is almost always because they have far too may
+ > file descriptors open.  For which we have another solution:  don't open up
+ > an access log for each vhost.  In 1.3 you can feed a pipe reliably with
+ > your log, and the logger can split the log in real time. 
+ 
+ Hmm... guess I should change from 1.2.4 to 1.3... :-)
+ 
+ --
+ Charles Howes -- chowes@ics.bc.ca
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Charles Howes <croot@ics.bc.ca>
+Subject: Re: general/1181: Too many virtual hosts cause cgi scripts to stop working
+Date: Tue, 30 Sep 1997 16:33:33 -0700 (PDT)
+
+ 
+ 
+ 
+ On Tue, 30 Sep 1997, Charles Howes wrote:
+ 
+ > Sigh.  It all seemed so easy.
+ 
+ Yeah I wish it were easy ... maybe we'll revisit it in 2.0.
+ 
+ > Hmm... guess I should change from 1.2.4 to 1.3... :-)
+ 
+ Well ... you may want to wait a week or two for 1.3b1.  I would really
+ like to have a reliable piped log tester ;)
+ 
+ Dean
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Charles Howes <croot@ics.bc.ca>
+Subject: Re: general/1181: Too many virtual hosts cause cgi scripts to stop working
+Date: Tue, 30 Sep 1997 17:02:00 -0700 (PDT)
+
+ 
+ Well I tried to avoid the need for that in 1.2.1 ... by using
+ fcntl(F_DUPFD) to move all the log file and socket descriptors above 15. 
+ The code that does that should log (I don't think it does now) an error
+ message when it can't ... 'cause that's when Apache does know you're
+ probably close to trouble.  That'd make it only log once per reboot and
+ impose no performance difficulties ... and probably be portable enough.
+ 
+ Hmm. 
+ 
+ Dean
+ 
+ On Tue, 30 Sep 1997, Charles Howes wrote:
+ 
+ > Hey, what happens if you open and close /dev/null a couple of times
+ > just after all the log files and sockets have been opened?  That'd be
+ > just as good as doing it at any other time, wouldn't it?
+ 
+
+From: Charles Howes <croot@ics.bc.ca>
+To: Dean Gaudet <dgaudet@arctic.org>
+Subject: Re: general/1181: Too many virtual hosts cause cgi scripts to stop working
+Date: Tue, 30 Sep 1997 19:12:02 -0700 (PDT)
+
+ 
+ On Tue, 30 Sep 1997, Dean Gaudet wrote:
+ 
+ > Return-Path: <dgaudet@arctic.org>
+ > Received: from swiss.ics.bc.ca (swiss3.ics.bc.ca [204.244.222.249]) by cheddar.ics.bc.ca (8.8.5/8.8.3) with ESMTP id RAA24114 for <croot@cheddar.ics.bc.ca>; Tue, 30 Sep 1997 17:00:52 -0700 (PDT)
+ > Received: from twinlark.arctic.org (twinlark.arctic.org [204.62.130.91]) by swiss.ics.bc.ca (8.8.5/8.8.5) with SMTP id RAA13354 for <croot@ics.bc.ca>; Tue, 30 Sep 1997 17:02:48 -0700 (PDT)
+ > Received: (qmail 26491 invoked by uid 500); 1 Oct 1997 00:02:00 -0000
+ > Date: Tue, 30 Sep 1997 17:02:00 -0700 (PDT)
+ > From: Dean Gaudet <dgaudet@arctic.org>
+ > To: Charles Howes <croot@ics.bc.ca>
+ > cc: apbugs@apache.org
+ > Subject: Re: general/1181: Too many virtual hosts cause cgi scripts to stop working
+ > In-Reply-To: <Pine.GSO.3.96.970930164739.19610F-100000@cheddar.ics.bc.ca>
+ > Message-ID: <Pine.LNX.3.95dg3.970930165944.18466Z-100000@twinlark.arctic.org>
+ > MIME-Version: 1.0
+ > Content-Type: TEXT/PLAIN; charset=US-ASCII
+ > 
+ > Well I tried to avoid the need for that in 1.2.1 ... by using
+ > fcntl(F_DUPFD) to move all the log file and socket descriptors above 15. 
+ > The code that does that should log (I don't think it does now) an error
+ > message when it can't ... 'cause that's when Apache does know you're
+ > probably close to trouble.  That'd make it only log once per reboot and
+ > impose no performance difficulties ... and probably be portable enough.
+ > 
+ > Hmm. 
+ > 
+ > Dean
+ 
+ Looking forward to 1.2.5!  :-)
+ 
+ --
+ Charles Howes -- chowes@ics.bc.ca
+ 
+>Unformatted:
+
+
+
+
+
+
+
+>Last-Modified:  Tue Sep 30 04:48:44 PDT 1997
+
+

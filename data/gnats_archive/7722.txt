@@ -1,0 +1,78 @@
+Received: (qmail 61324 invoked by uid 501); 15 May 2001 00:19:45 -0000
+Message-Id: <20010515001945.61323.qmail@apache.org>
+Date: 15 May 2001 00:19:45 -0000
+From: Craig Miskell <cmiskell@albatross.co.nz>
+Reply-To: cmiskell@albatross.co.nz
+To: submit@bugz.apache.org
+Subject: Passthrough rules don't uri-escape the arguments
+X-Send-Pr-Version: 3.110
+
+>Number:         7722
+>Category:       mod_rewrite
+>Synopsis:       Passthrough rules don't uri-escape the arguments
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon May 14 17:20:01 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     cmiskell@albatross.co.nz
+>Release:        1.3.20
+>Organization:
+apache
+>Environment:
+Using mod_rewrite and (at least) mod_WebObjects, the module from Apple that provides a module way to access WebObjects applications, rather than cgi
+>Description:
+Passthrough rules don't uri-escape the arguments, which is necessary for at least WebObjects module, and probably others.  
+>How-To-Repeat:
+Create a passthrough rule like
+RewriteRule ^/Foo/bar/([a-zA-Z0-9\ ]+)$ /Otherfoo/otherbar?something=$1 [PT]
+and when the $1 contains a space, any other handlers (at least Webobjects, I guess other ones as well) get confused because the URL has a space in it.
+>Fix:
+Here's my patch - it even honours the NE flag.  It doesn't change the escaping/non-escaping of the uri - that may also need to be added, in similar fashion to how it is done for Redirects. 
+(diff is diff -C3 format as HPUX diff doesn't handle unified format, or I couldn't convince it to do so)
+
+*** /tmp/mod_rewrite.c  Mon May 14 15:46:51 2001
+--- src/modules/standard/mod_rewrite.c  Tue May 15 12:12:45 2001
+***************
+*** 1207,1212 ****
+--- 1207,1221 ----
+               * r->uri! The difference here is: We do not try to
+               * add the document root
+               */
++             /* Arguments to a passthrough may very well contain things
++              * that must be escaped.
++              * but don't do it if there the user has explicitly requested
++              * that we don't
++              */
++             if (rulestatus != ACTION_NOESCAPE) {
++                 cp2 = ap_escape_uri(r->pool, r->args);
++                 r->args = ap_pstrdup(r->pool, cp2);
++             }
+              r->uri = ap_pstrdup(r->pool, r->filename+12);
+              return DECLINED;
+          }
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,150 @@
+Received: (qmail 45232 invoked by uid 501); 6 Oct 2000 16:22:14 -0000
+Message-Id: <20001006162214.45231.qmail@locus.apache.org>
+Date: 6 Oct 2000 16:22:14 -0000
+From: Brian W.Spolarich <briansp@walid.com>
+Reply-To: briansp@walid.com
+To: submit@bugz.apache.org
+Subject: http_vhost.c - fix_hostname() rejects 8-bit/multilingual characters in domain names
+X-Send-Pr-Version: 3.110
+
+>Number:         6635
+>Category:       general
+>Synopsis:       http_vhost.c - fix_hostname() rejects 8-bit/multilingual characters in domain names
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Oct 06 09:30:00 PDT 2000
+>Closed-Date:    Thu Nov 09 17:23:28 PST 2000
+>Last-Modified:  Thu Nov 09 17:23:28 PST 2000
+>Originator:     briansp@walid.com
+>Release:        >= 1.3.10
+>Organization:
+>Environment:
+All OS releases, patchlevels, and compilers.
+>Description:
+This is a repeat of BugID #5692, but I disagree with the response that
+the reporter received.  A rationale and detailed explanation are 
+included below.
+
+The patch that I've done so far is very simple, and just adds
+a -DSKIP_RFC1035_VALIDATION to the Makefile:
+
+Index: http_vhost.c
+===================================================================
+RCS file: /home/cvs/stronghold-3.0/main/http_vhost.c,v
+retrieving revision 1.1
+retrieving revision 1.2
+diff -c -r1.1 -r1.2
+*** http_vhost.c        2000/09/28 21:03:15     1.1
+--- http_vhost.c        2000/09/28 21:54:47     1.2
+***************
+*** 667,672 ****
+--- 667,676 ----
+      char *dst;
+  
+      /* check and copy the host part */
++ /* Skip RFC1035 hostname validation if we said we don't want it.  Important */
++ /* for sites that are running with multilingual domain names.               */
++ /* 2000-09-28 - Brian W. Spolarich - briansp@walid.com                      */
++ #ifndef SKIP_RFC1035_VALIDATION
+      src = r->hostname;
+      dst = host;
+      while (*src) {
+***************
+*** 679,684 ****
+--- 683,694 ----
+            *dst++ = *src++;
+        }
+      }
++ #else
++     while (*src) {
++       *dst++ = *src++;
++     }
++ #endif
++ 
+      /* check the port part */
+      if (*src++ == ':') {
+        while (*src) {
+>How-To-Repeat:
+Attempt to access a virtual host using characters outside of [a-z], [A-Z], "-",
+and ".".
+>Fix:
+While this was reported (and rejected) in BugID #5692, this (relatively new)
+behaviour is going to become an increasingly important problem for
+non-English-speaking Apache users who want to begin using the multilingual
+domain name services that are being offered by a number of organizations.
+
+While RFC1035 is still the current standard in effect for the DNS protocol,
+the IETF is actively engaged in the problem of internationalization of the
+DNS.  There are a number of proposals on the table, some of which are being
+actively evaluated and trialed, which enable, through modifications to
+the client resolver and an ASCII-Compatible Encoding (ACE), the use of 
+characters outside of the standard range in host labels without causing 
+interoperability and protocol-non-compliance issues.
+
+The mistake that fix_hostname() is making is the assumption that the hostname
+the user has entered into their browser (and has thus submitted in the
+HTTP/1.1 Host: header) is the 'real' hostname that was resolved with the
+DNS.  In the case of the current ACE-implementations out there, the
+name entered in the browser contains 'illegal' characters, while the
+actual hostname resolved via the client's gethostbyname() [or equivalent]
+is completely RFC1035-compliant.  However since Apache only sees what is
+submitted in the Host: header checking for compliance on this data isn't
+a valid assumption.
+
+Also, I'm not sure I see the value in checking for protocol compliance
+in this case, since it seems to be more of an 'academic' enforcement than
+an actual value-add in the code.  If the client is able to connect using
+the hostname they've claimed they were using, the server should assume
+that the 'right thing' has happened.  Apache acting as a 'protocol-cop'
+is going to frustrate users more than help them, I think.
+
+Given recent announcements by Network Solutions on the multilingual domain
+name testbed, I think that, in practical terms, multilingual domain names
+are a reality and should be supported by Apache. 
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: fanf
+State-Changed-When: Wed Oct 18 18:25:53 PDT 2000
+State-Changed-Why:
+The reason for the strict checking is to ensure that mass
+vhosting configurations are safe (e.g. mod_vhost_alias or
+mod_rewrite).
+
+Previous arguments that the checking is too strict have
+failed to convince us that the code is wrong, however I
+think that i18n is a good argument. AFAIK none of us have
+investigated i15d domain names yet but when we have the
+code will probably be changed to accommodate them.
+
+Thanks for the report.
+
+State-Changed-From-To: analyzed-closed
+State-Changed-By: fanf
+State-Changed-When: Thu Nov  9 17:23:27 PST 2000
+State-Changed-Why:
+I'm about to commit a fix for this PR.
+Thanks for using Apache!
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

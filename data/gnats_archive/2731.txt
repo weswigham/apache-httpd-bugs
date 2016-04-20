@@ -1,0 +1,216 @@
+Received: (qmail 28476 invoked by uid 2012); 28 Jul 1998 20:02:48 -0000
+Message-Id: <19980728200248.28475.qmail@hyperreal.org>
+Date: 28 Jul 1998 20:02:48 -0000
+From: John Stewart <john.stewart@artesyn.com>
+Reply-To: john.stewart@artesyn.com
+To: apbugs@hyperreal.org
+Subject: Proxy server process using incorrect IP intermittently when accessing other virtual servers.
+X-Send-Pr-Version: 3.2
+
+>Number:         2731
+>Category:       mod_proxy
+>Synopsis:       Proxy server process using incorrect IP intermittently when accessing other virtual servers.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jul 28 13:10:01 PDT 1998
+>Last-Modified:  Tue Oct 20 00:20:15 PDT 1998
+>Originator:     john.stewart@artesyn.com
+>Organization:
+>Release:        1.3.0
+>Environment:
+Solaris 2.6 x86
+
+uname -a == "SunOS goat 5.6 Generic i86pc i386 i86pc"
+>Description:
+My Solaris box (goat) is using multiple IP addresses with the same physical
+ethernet interface. Routes have been deleted such that all outgoing requests
+go through the main interface (goat.heurikon.com).
+
+Apache is configured with multiple virtual hosts, each with its own IP address.
+The machine's main IP is configured to be a proxy server on port 8080. Other
+virtual hosts include www.johnstewart.com and www.coldboot.com, each with its
+own IP.
+
+When using the Apache proxy to other web servers, they correctly see
+goat.heurikon.com as the source address. However, when accessing another one
+of the virtual servers on the same machine, it will sometimes correctly
+see it as coming from goat.heurikon.com and sometimes from the hostname 
+corresponding to the virtual server you are accessing. As an example, here
+is the log corresponding to a two loads of www.coldboot.com:
+
+www.coldboot.com - - [28/Jul/1998:14:53:55 -0500] "GET / HTTP/1.0" 304 -
+www.coldboot.com - - [28/Jul/1998:14:53:56 -0500] "GET /top.html HTTP/1.0" 304 -
+www.coldboot.com - - [28/Jul/1998:14:53:56 -0500] "GET /bottom.html HTTP/1.0" 304 -
+www.coldboot.com - - [28/Jul/1998:14:53:57 -0500] "GET /menu.html HTTP/1.0" 304 -
+goat.heurikon.com - - [28/Jul/1998:14:53:57 -0500] "GET /main.html HTTP/1.0" 304 -
+www.coldboot.com - - [28/Jul/1998:14:53:57 -0500] "GET /pics/back.gif HTTP/1.0" 304 -
+
+www.coldboot.com - - [28/Jul/1998:14:54:09 -0500] "GET / HTTP/1.0" 304 -
+www.coldboot.com - - [28/Jul/1998:14:54:10 -0500] "GET /top.html HTTP/1.0" 304 -
+goat.heurikon.com - - [28/Jul/1998:14:54:10 -0500] "GET /bottom.html HTTP/1.0" 304 -
+www.coldboot.com - - [28/Jul/1998:14:54:11 -0500] "GET /menu.html HTTP/1.0" 304 -
+goat.heurikon.com - - [28/Jul/1998:14:54:11 -0500] "GET /pics/back.gif HTTP/1.0" 304 -
+www.coldboot.com - - [28/Jul/1998:14:54:11 -0500] "GET /main.html HTTP/1.0" 304 -
+
+The client was the same machine, using goat.heurikon.com as the proxy server.
+
+I wouldn't have noticed this problem if /server-status hadn't been restricted
+to heurikon.com and I tried loading it from one of the other virtual servers.
+It is usually denied, sometimes nore. Seems to be about a 1 to 4 ratio. I was
+unable to ascertain a pattern.
+
+I can provide further information on request - I'd be glad to provide my config
+files if that will help!
+
+John Stewart
+Network/Security Admin
+Artesyn Technologies
+john.stewart@artesyn.com
+>How-To-Repeat:
+Not sure if it's a Solaris specfic problem or not...
+>Fix:
+Nope.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Tue Jul 28 22:33:15 PDT 1998
+State-Changed-Why:
+This is related completely to your OS; Apache does not
+specify any source address for the connections, but lets
+ the OS pick the one it wants to.  That is the correct thing
+for Apache to do.
+
+It is not unexpected that when connecting to another interface
+on the same machine the OS should pick that address as the
+source.  There have been some issues with Solaris 2.6 and
+picking which address to use, and I think there is a ndd
+setting that can tune it, but I'm not sure what it is offhand.
+
+Maybe ip_enable_group_ifs, and there may be a patch or two
+related to it.  2.6 attempts to "load balance" traffic
+to interfaces on the same subnet by randomly picking a source
+address.
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: mod_proxy/2731: Proxy server process using incorrect IP 
+ intermittently when accessing other virtual servers. (fwd)
+Date: Tue, 20 Oct 1998 00:14:22 -0700 (PDT)
+
+ ---------- Forwarded message ----------
+ Date: Wed, 29 Jul 1998 10:34:11 -0500
+ From: John Stewart <johns@heurikon.com>
+ To: marc@hyperreal.org
+ Cc: apache-bugdb@apache.org, adamb@jabba.heurikon.com
+ Subject: Re: mod_proxy/2731: Proxy server process using incorrect IP 
+     intermittently when accessing other virtual servers.
+ 
+ 
+ I appreciate your response, and this is not a critical problem, but with all 
+ due respect, I believe you are wrong. This is an Apache/Solaris issue, not a 
+ Solaris issue alone.
+ 
+ As I mentioned in my bug report, no other process uses any of these 
+ interfaces, including the SOCKs proxy I have on the machine, and any other 
+ network client. Additionally, the Apache proxy server itself *does not* 
+ exhibit this behavior when accessing web servers on other machines. It is only 
+ when accessing another virtual interface on the Apache process that this 
+ happens.
+ 
+ Also, the routes out the other interfaces do not exist. Here is my ifconfig -a:
+ 
+ # ifconfig -a
+ lo0: flags=849<UP,LOOPBACK,RUNNING,MULTICAST> mtu 8232
+         inet 127.0.0.1 netmask ff000000 
+ elx0: flags=863<UP,BROADCAST,NOTRAILERS,RUNNING,MULTICAST> mtu 1500
+         inet 204.95.85.90 netmask ffffff00 broadcast 204.95.85.255
+         ether 0:60:8:2b:21:1b 
+ elx0:1: flags=863<UP,BROADCAST,NOTRAILERS,RUNNING,MULTICAST> mtu 1500
+         inet 204.95.85.91 netmask ffffff00 broadcast 204.95.85.255
+ elx0:2: flags=863<UP,BROADCAST,NOTRAILERS,RUNNING,MULTICAST> mtu 1500
+         inet 204.95.85.92 netmask ffffff00 broadcast 204.95.85.255
+ elx0:3: flags=863<UP,BROADCAST,NOTRAILERS,RUNNING,MULTICAST> mtu 1500
+         inet 204.95.85.93 netmask ffffff00 broadcast 204.95.85.255
+ elx0:4: flags=863<UP,BROADCAST,NOTRAILERS,RUNNING,MULTICAST> mtu 1500
+         inet 204.95.85.89 netmask ffffff00 broadcast 204.95.85.255
+ 
+ And here is my netstat -r:
+ 
+ # netstat -r
+ 
+ Routing Table:
+   Destination           Gateway           Flags  Ref   Use   Interface
+ -------------------- -------------------- ----- ----- ------ ---------
+ 204.95.85.0          goat.heurikon.com     U        2     67  elx0
+ default              cisco1.heurikon.com   UG       0  14671  
+ localhost.heurikon.com localhost.heurikon.com  UH       0      2  lo0
+ 
+ As far as outgoing packets are concerned, those interfaces aren't used at all 
+ by Solaris (as I've said, this is true for all processes other than Apache).
+ 
+ As for the ip_enable_group_ifs option for /dev/ip, it was on. I set it to 0, 
+ and then the behavior worsened. According to the access log of the virtual 
+ server (www.johnstewart.com) I was trying to load, the proxy requests looked 
+ like they came from www.johnstewart.com instead of goat.heurikon.com. They 
+ should have all looked like goat.heurikon.com (at least it was previously 
+ intermittently correct).
+ 
+ Moreover, even with the ip_enable_group_ifs feature disabled, accessing 
+ external web servers exhibits the correct behavior. The proxy server sends 
+ requests out the goat.heurikon.com interface.
+ 
+ This is definitely not just a Solaris issue, but one exhibited by Apache alone 
+ under Solaris. Further, it is only an issue going to a different virtual 
+ server using the proxy server. As I've said, all other network processes are 
+ working correctly.
+ 
+ If this problem is not fixed, it is not a big deal. It's more a curiousity 
+ than a real issue. However, please do not close the case as it is, in my 
+ opinion, clearly a reproducible bug.
+ 
+ thanks
+ 
+ John Stewart
+ 
+ 
+ 
+ In message <19980729053316.16352.qmail@hyperreal.org>, marc@hyperreal.org write
+ s:
+ >Synopsis: Proxy server process using incorrect IP intermittently when accessin
+ >g other virtual servers.
+ >
+ >State-Changed-From-To: open-closed
+ >State-Changed-By: marc
+ >State-Changed-When: Tue Jul 28 22:33:15 PDT 1998
+ >State-Changed-Why:
+ >This is related completely to your OS; Apache does not
+ >specify any source address for the connections, but lets
+ > the OS pick the one it wants to.  That is the correct thing
+ >for Apache to do.
+ >
+ >It is not unexpected that when connecting to another interface
+ >on the same machine the OS should pick that address as the
+ >source.  There have been some issues with Solaris 2.6 and
+ >picking which address to use, and I think there is a ndd
+ >setting that can tune it, but I'm not sure what it is offhand.
+ >
+ >Maybe ip_enable_group_ifs, and there may be a patch or two
+ >related to it.  2.6 attempts to "load balance" traffic
+ >to interfaces on the same subnet by randomly picking a source
+ >address.
+ >
+ 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

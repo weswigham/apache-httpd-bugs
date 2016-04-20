@@ -1,0 +1,114 @@
+Received: (qmail 32502 invoked by uid 65534); 26 Feb 2000 00:14:38 -0000
+Message-Id: <20000226001438.32501.qmail@locus.apache.org>
+Date: 26 Feb 2000 00:14:38 -0000
+From: Thu Nguyen <tnn@ulogon.com>
+Reply-To: tnn@ulogon.com
+To: submit@bugz.apache.org
+Subject: apache server does not release memory (pool) automatically or when call ap_destroy_pool()
+X-Send-Pr-Version: 3.110
+
+>Number:         5812
+>Category:       apache-api
+>Synopsis:       apache server does not release memory (pool) automatically or when call ap_destroy_pool()
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          mistaken
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Feb 25 16:20:00 PST 2000
+>Closed-Date:    Sun Oct 01 12:00:37 PDT 2000
+>Last-Modified:  Sun Oct 01 12:00:37 PDT 2000
+>Originator:     tnn@ulogon.com
+>Release:        1.3.9
+>Organization:
+>Environment:
+Windows 98
+>Description:
+I'm writing a module to replace my CGI scripts. Everything goes very smooth, except that I found out:
+- in every call to my module handler the system allocated memory will not be free.
+- ex: I'm using libapreq in my code to receive a request, and upload file. every upload file, my system have to allocate a chunk of memory and never free it.
+- I tried to use subpool ap_make_sub_pool() out of r->pool and destroy it as soon as I finish. I call ap_bytes_in_pool() and see the same size as before and after ap_destroy_pool
+- I digged into alloc.c and found the defined tag: #define ALLOC_USE_MALLOC. wow, after compile the apache with this define the memory is free automatically. I don't even have to destroy it.
+
+question:
+- why is that?
+
+problem:
+- in my module, some handler will fail with ALLOC_USE_MALLOC
+
+I appologize if I bring up such a stupid problem. If so, please point out for what I should do to free up the memory when using pool
+
+
+Thanks
+Thu Nguyen
+>How-To-Repeat:
+-create a module with handler to open a file, save everything in the buffer created by ap_pcalloc()
+- monitor your system allocated memory and see it goes up and never back down.
+>Fix:
+ALLOC_USE_MALLOC seem to do the trick but cause other problems...
+wells, is there others?
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: wrowe
+State-Changed-When: Sun Oct  1 12:00:37 PDT 2000
+State-Changed-Why:
+>Unformatted:
+ >I'm writing a module to replace my CGI scripts. Everything
+ >goes very smooth, except that I found out:
+ >- in every call to my module handler the system allocated 
+ >memory will not be free.
+ 
+ Nor should you expect malloc'ed memory to ever be freed
+ unless you do so (course 101: intro to c lang)
+ 
+ >- ex: I'm using libapreq in my code to receive a request, 
+ >and upload file. every upload file, my system have to 
+ >allocate a chunk of memory and never free it.
+ 
+ Then go back to that library and see what gc it does... this
+ reports database is strictly for apache's own code.
+ 
+ >- I tried to use subpool ap_make_sub_pool() out of r->pool 
+ >and destroy it as soon as I finish. I call ap_bytes_in_pool
+ >() and see the same size as before and after 
+ >ap_destroy_pool
+ 
+ That's the cool thing, ap_palloc(r->pool), and when r->pool
+ is destroyed, so is your allocation.  You DON'T clean it up
+ yourself.
+ 
+ >- I digged into alloc.c and found the defined tag: #define 
+ >ALLOC_USE_MALLOC. wow, after compile the apache with this 
+ >define the memory is free automatically. I don't even have 
+ >to destroy it.
+ 
+ I wouldn't play with this if I were you.
+ 
+ Hope this helped a bit
+ 
+ Class-Changed-From-To: sw-bug-mistaken
+ Class-Changed-By: wrowe
+ Class-Changed-When: Sun Oct  1 12:00:37 PDT 2000
+ Severity-Changed-From-To: critical-non-critical
+ Severity-Changed-By: wrowe
+ Severity-Changed-When: Sun Oct  1 12:00:37 PDT 2000
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

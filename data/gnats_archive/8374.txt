@@ -1,0 +1,244 @@
+Received: (qmail 33405 invoked by uid 501); 20 Sep 2001 20:05:49 -0000
+Message-Id: <20010920200549.33404.qmail@apache.org>
+Date: 20 Sep 2001 20:05:49 -0000
+From: Ian Morgan <imorgan@webcon.net>
+Reply-To: imorgan@webcon.net
+To: submit@bugz.apache.org
+Subject: DoS Attack based on Timeout being to high (send vs. receive)
+X-Send-Pr-Version: 3.110
+
+>Number:         8374
+>Category:       protocol
+>Synopsis:       DoS Attack based on Timeout being to high (send vs. receive)
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Sep 20 13:10:00 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     imorgan@webcon.net
+>Release:        1.3.20
+>Organization:
+apache
+>Environment:
+Linux light.webcon.net 2.4.9 #2 SMP Thu Sep 20 11:35:54 EDT 2001 i686 unknown
+
+Bug is environment-agnostic.
+>Description:
+A client opens a connection to the server, and sits there doing nothing. The server will not timeout the connection until "Timeout" seconds is elapsed. This is usually a high number, anywhere from 5 to 20 minutes.
+
+A Denial of Service attack has been discovered where rogue cliets are openning connections and leaving them open. The number of httpd instances on the server skyrockets until the MaxServer limit is reached, blocking all further connections.
+>How-To-Repeat:
+See above.
+>Fix:
+Yes, make Timeout into separate timeouts for sending and receiving...
+
+Here is a patch (against 1.3.20) to do just that:
+
+diff -ur apache_1.3.20_dist+modssl/src/include/httpd.h apache_1.3.20_modified/src/include/httpd.h
+--- apache_1.3.20_dist+modssl/src/include/httpd.h       Thu Sep 20 15:34:00 2001
++++ apache_1.3.20_modified/src/include/httpd.h  Thu Sep 20 15:13:45 2001
+@@ -277,11 +277,16 @@
+ #define MAX_STRING_LEN HUGE_STRING_LEN
+ #define HUGE_STRING_LEN 8192
+ 
+-/* The timeout for waiting for messages */
++/* The timeout for waiting for messages sent */
+ #ifndef DEFAULT_TIMEOUT
+ #define DEFAULT_TIMEOUT 300
+ #endif
+ 
++/* The timeout for waiting for messages received */
++#ifndef DEFAULT_RECV_TIMEOUT
++#define DEFAULT_RECV_TIMEOUT 5
++#endif
++
+ /* The timeout for waiting for keepalive timeout until next request */
+ #ifndef DEFAULT_KEEPALIVE_TIMEOUT
+ #define DEFAULT_KEEPALIVE_TIMEOUT 15
+@@ -993,7 +998,8 @@
+     /* Transaction handling */
+ 
+     server_addr_rec *addrs;
+-    int timeout;               /* Timeout, in seconds, before we give up */
++    int timeout;               /* Timeout, in seconds, before we give up (general)*/
++    int recv_timeout;          /* Timeout, in seconds, before we give up on receives*/
+     int keep_alive_timeout;    /* Seconds we'll wait for another request */
+     int keep_alive_max;                /* Maximum requests per connection */
+     int keep_alive;            /* Use persistent connections? */
+diff -ur apache_1.3.20_dist+modssl/src/main/http_config.c apache_1.3.20_modified/src/main/http_config.c
+--- apache_1.3.20_dist+modssl/src/main/http_config.c    Thu Sep 20 15:34:00 2001
++++ apache_1.3.20_modified/src/main/http_config.c       Thu Sep 20 15:08:09 2001
+@@ -1467,6 +1467,7 @@
+     s->srm_confname = NULL;
+     s->access_confname = NULL;
+     s->timeout = 0;
++    s->recv_timeout = 0;
+     s->keep_alive_timeout = 0;
+     s->keep_alive = -1;
+     s->keep_alive_max = -1;
+@@ -1524,6 +1525,9 @@
+        if (virt->timeout == 0)
+            virt->timeout = main_server->timeout;
+ 
++       if (virt->recv_timeout == 0)
++           virt->recv_timeout = main_server->recv_timeout;
++
+        if (virt->keep_alive_timeout == 0)
+            virt->keep_alive_timeout = main_server->keep_alive_timeout;
+ 
+@@ -1591,6 +1595,7 @@
+     s->limit_req_fieldsize = DEFAULT_LIMIT_REQUEST_FIELDSIZE;
+     s->limit_req_fields = DEFAULT_LIMIT_REQUEST_FIELDS;
+     s->timeout = DEFAULT_TIMEOUT;
++    s->recv_timeout = DEFAULT_RECV_TIMEOUT;
+     s->keep_alive_timeout = DEFAULT_KEEPALIVE_TIMEOUT;
+     s->keep_alive_max = DEFAULT_KEEPALIVE;
+     s->keep_alive = 1;
+diff -ur apache_1.3.20_dist+modssl/src/main/http_core.c apache_1.3.20_modified/src/main/http_core.c
+--- apache_1.3.20_dist+modssl/src/main/http_core.c      Fri Mar  9 05:10:25 2001
++++ apache_1.3.20_modified/src/main/http_core.c Thu Sep 20 14:29:52 2001
+@@ -2125,6 +2125,17 @@
+     return NULL;
+ }
+ 
++static const char *set_recv_timeout(cmd_parms *cmd, void *dummy, char *arg)
++{
++    const char *err = ap_check_cmd_context(cmd, NOT_IN_DIR_LOC_FILE|NOT_IN_LIMIT);
++    if (err != NULL) {
++        return err;
++    }
++
++    cmd->server->recv_timeout = atoi(arg);
++    return NULL;
++}
++
+ static const char *set_keep_alive_timeout(cmd_parms *cmd, void *dummy,
+                                          char *arg)
+ {
+@@ -3090,6 +3101,7 @@
+ { "ServerPath", set_serverpath, NULL, RSRC_CONF, TAKE1,
+   "The pathname the server can be reached at" },
+ { "Timeout", set_timeout, NULL, RSRC_CONF, TAKE1, "Timeout duration (sec)" },
++{ "RecvTimeout", set_recv_timeout, NULL, RSRC_CONF, TAKE1, "Timeout duration for receiving requests (sec)" },
+ { "KeepAliveTimeout", set_keep_alive_timeout, NULL, RSRC_CONF, TAKE1,
+   "Keep-Alive timeout duration (sec)"},
+ { "MaxKeepAliveRequests", set_keep_alive_max, NULL, RSRC_CONF, TAKE1,
+diff -ur apache_1.3.20_dist+modssl/src/main/http_main.c apache_1.3.20_modified/src/main/http_main.c
+--- apache_1.3.20_dist+modssl/src/main/http_main.c      Thu Sep 20 15:34:00 2001
++++ apache_1.3.20_modified/src/main/http_main.c Thu Sep 20 15:08:09 2001
+@@ -1424,7 +1424,7 @@
+     if (r->connection->keptalive)
+        to = r->server->keep_alive_timeout;
+     else
+-       to = r->server->timeout;
++       to = r->server->recv_timeout;
+     ap_set_callback_and_alarm(timeout, to);
+ }
+ 
+@@ -1445,6 +1445,25 @@
+ #endif
+     timeout_name = name;
+     ap_set_callback_and_alarm(timeout, r->server->timeout);
++}
++
++API_EXPORT(void) ap_hard_recv_timeout(char *name, request_rec *r)
++{
++#ifdef NETWARE
++    get_tsd
++#endif
++    timeout_req = r;
++    timeout_name = name;
++    ap_set_callback_and_alarm(timeout, r->server->recv_timeout);
++}
++
++API_EXPORT(void) ap_soft_recv_timeout(char *name, request_rec *r)
++{
++#ifdef NETWARE
++    get_tsd
++#endif
++    timeout_name = name;
++    ap_set_callback_and_alarm(timeout, r->server->recv_timeout);
+ }
+ 
+ API_EXPORT(void) ap_kill_timeout(request_rec *dummy)
+diff -ur apache_1.3.20_dist+modssl/src/main/http_protocol.c apache_1.3.20_modified/src/main/http_protocol.c
+--- apache_1.3.20_dist+modssl/src/main/http_protocol.c  Thu Sep 20 15:34:00 2001
++++ apache_1.3.20_modified/src/main/http_protocol.c     Thu Sep 20 15:08:09 2001
+@@ -1135,7 +1135,7 @@
+         return NULL;
+     }
+     if (!r->assbackwards) {
+-        ap_hard_timeout("read request headers", r);
++        ap_hard_recv_timeout("read request headers", r);
+         get_mime_headers(r);
+         ap_kill_timeout(r);
+         if (r->status != HTTP_REQUEST_TIME_OUT) {
+@@ -2194,7 +2194,7 @@
+             r->connection->keepalive = -1;
+             return OK;
+         }
+-        ap_hard_timeout("reading request body", r);
++        ap_hard_recv_timeout("reading request body", r);
+         while ((rv = ap_get_client_block(r, dumpbuf, HUGE_STRING_LEN)) > 0)
+             continue;
+         ap_kill_timeout(r);
+diff -ur apache_1.3.20_dist+modssl/src/modules/proxy/proxy_http.c apache_1.3.20_modified/src/modules/proxy/proxy_http.c
+--- apache_1.3.20_dist+modssl/src/modules/proxy/proxy_http.c    Thu Sep 20 15:34:00 2001
++++ apache_1.3.20_modified/src/modules/proxy/proxy_http.c       Thu Sep 20 15:08:09 2001
+@@ -409,7 +409,7 @@
+     ap_bflush(f);
+     ap_kill_timeout(r);
+ 
+-    ap_hard_timeout("proxy receive", r);
++    ap_hard_recv_timeout("proxy receive", r);
+ 
+     len = ap_bgets(buffer, sizeof buffer - 1, f);
+     if (len == -1) {
+@@ -533,7 +533,7 @@
+        return i;
+     }
+ 
+-    ap_hard_timeout("proxy receive", r);
++    ap_hard_recv_timeout("proxy receive", r);
+ 
+ /* write status line */
+     if (!r->assbackwards)
+diff -ur apache_1.3.20_dist+modssl/src/modules/standard/mod_info.c apache_1.3.20_modified/src/modules/standard/mod_info.c
+--- apache_1.3.20_dist+modssl/src/modules/standard/mod_info.c   Fri Mar  9 05:10:34 2001
++++ apache_1.3.20_modified/src/modules/standard/mod_info.c      Thu Sep 20 14:31:39 2001
+@@ -511,8 +511,9 @@
+                         ap_excess_requests_per_child);
+             ap_rprintf(r, "<strong>Timeouts:</strong> "
+                         "<tt>connection: %d &nbsp;&nbsp; "
++                        "recv: %d &nbsp;&nbsp; "
+                         "keep-alive: %d</tt><br>",
+-                        serv->timeout, serv->keep_alive_timeout);
++                        serv->timeout, serv->recv_timeout, serv->keep_alive_timeout);
+             ap_rprintf(r, "<strong>Server Root:</strong> "
+                         "<tt>%s</tt><br>\n", ap_server_root);
+             ap_rprintf(r, "<strong>Config File:</strong> "
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

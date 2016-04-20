@@ -1,0 +1,105 @@
+Received: (qmail 19374 invoked by uid 2012); 15 Jun 1998 19:09:48 -0000
+Message-Id: <19980615190948.19373.qmail@hyperreal.org>
+Date: 15 Jun 1998 19:09:48 -0000
+From: Dave Dykstra <dwd@bell-labs.com>
+Reply-To: dwd@bell-labs.com
+To: apbugs@hyperreal.org
+Subject: incorrect handling of .Z and .gz extensions
+X-Send-Pr-Version: 3.2
+
+>Number:         2448
+>Category:       config
+>Synopsis:       incorrect handling of .Z and .gz extensions
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          analyzed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun 15 12:10:01 PDT 1998
+>Last-Modified:  Wed Jun 17 00:20:02 PDT 1998
+>Originator:     dwd@bell-labs.com
+>Organization:
+>Release:        1.3.0
+>Environment:
+IRIX 6.2 (SGI)
+>Description:
+I am using the distributed mime.types file, and tar.Z files get the MIME type
+text/html.  tar.gz files, on the other hand, get the type application/
+octet-stream.  I am not using mod_mime_magic.  There are entries in mime.types
+for application/x-compress and application/x-gzip but neither one has any
+extensions listed for them.  Question 1: why are the extensions missing from
+mime.types?  Question 2: why are the two kinds getting different results? (I
+didn't check source code for this).  When I put
+   AddType application/x-compress Z
+   AddType application/x-gzip gz
+in my .conf file then the tar.Z files get the correct type but the tar.gz files
+still show application/octet-stream.  Question 3: why the difference?
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Mon Jun 15 12:18:12 PDT 1998
+State-Changed-Why:
+There are not supposed to be mime types listed for .Z
+and .gz files because the default config file contains
+AddEncoding directives for those.  You should be getting
+a mime type of something (depending on if it is the default,
+if there are any mime types for other extensions, etc.)
+with an encoding of x-compress or x-gzip.
+Comment-Added-By: coar
+Comment-Added-When: Mon Jun 15 12:23:21 PDT 1998
+Comment-Added:
+As Marc pointed out, .Z and .gz don't properly identify
+content types, but rather content-encodings.  Remove the
+AddType directives you inserted for these, and make sure
+your server config files include
+
+  AddEncoding x-compress Z
+  AddEncoding x-gzip gz
+
+Reload the server and try to fetch a .tar, .tar.Z, and a
+.tar.gz file.  All should show up as application/x-tar
+with the Content-encoding response header missing,
+"x-compress," or "x-gzip" respectively.  If you don't get
+these, your server is probably misconfigured.
+Release-Changed-From-To: 1.3.1-dev snapshot 19980608130027-1.3.0
+Release-Changed-By: coar
+Release-Changed-When: Mon Jun 15 12:23:21 PDT 1998
+Category-Changed-From-To: mod_mime-config
+Category-Changed-By: coar
+Category-Changed-When: Mon Jun 15 12:23:21 PDT 1998
+
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: dwd@bell-labs.com
+Cc: apbugs@apache.org
+Subject: Re: mod_mime/2448: incorrect handling of .Z and .gz extensions
+Date: Wed, 17 Jun 1998 00:27:26 -0700 (PDT)
+
+ For the record, apache is broken in its handling of this stuff.
+ Specifically, if a browser does not send "Accept-Encoding: gzip" (or
+ x-gzip), apache should respond:
+ 
+ Content-Type: application/gzip
+ 
+ At the moment it incorrectly responds:
+ 
+ Content-Type: x/y  (the unzipped type, i.e. application/tar)
+ Content-Encoding: gzip
+ 
+ Dean
+ 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

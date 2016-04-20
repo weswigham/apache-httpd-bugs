@@ -1,0 +1,501 @@
+From nobody@hyperreal.org  Fri Jul 18 11:35:04 1997
+Received: (from nobody@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id LAA27833;
+	Fri, 18 Jul 1997 11:35:04 -0700 (PDT)
+Message-Id: <199707181835.LAA27833@hyperreal.org>
+Date: Fri, 18 Jul 1997 11:35:04 -0700 (PDT)
+From: Vermont Rutherfoord <vermont@gate.net>
+Reply-To: vermont@gate.net
+To: apbugs@hyperreal.org
+Subject: After a period of time (not found to coincide with server rehashes or any specific access), the server will read requests, but return no data (and close the connection).  It will still respond to a server-status request though.
+X-Send-Pr-Version: 3.2
+
+>Number:         885
+>Category:       general
+>Synopsis:       Server reads requests but sends no data
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jul 18 11:40:01 1997
+>Last-Modified:  Thu Nov 20 18:23:06 PST 1997
+>Originator:     vermont@gate.net
+>Organization:
+>Release:        1.2.1
+>Environment:
+Linux pandora 2.0.29-ISS #18 Tue Apr 1 07:25:28 EST 1997 i686.1
+gcc v2.7.2.1
+
+Apache is patched with the MS FrontPage WPP Apache patch which allows wildcards in scriptaliases
+>Description:
+What shows up in the errorlog after the problem starts:
+[Fri Jul 18 12:09:06 1997] send body lost connection to client 153.34.100.77
+[Fri Jul 18 12:09:16 1997] request lost connection to client 206.64.135.50
+[Fri Jul 18 12:09:16 1997] request lost connection to client 194.128.172.1
+[Fri Jul 18 12:09:16 1997] request lost connection to client 208.210.104.80
+[Fri Jul 18 12:09:16 1997] request lost connection to client 207.120.46.120
+[Fri Jul 18 12:09:17 1997] request lost connection to client 206.64.135.50
+[Fri Jul 18 12:09:17 1997] request lost connection to client 202.154.44.238
+[Fri Jul 18 12:09:18 1997] request lost connection to client 203.231.242.62
+[Fri Jul 18 12:09:18 1997] request lost connection to client 193.189.182.243
+[Fri Jul 18 12:09:19 1997] request lost connection to client 203.2.193.69
+[Fri Jul 18 12:09:19 1997] request lost connection to client 203.2.193.69
+[Fri Jul 18 12:09:19 1997] request lost connection to client 207.142.161.36
+[Fri Jul 18 12:09:19 1997] request lost connection to client 203.2.193.69
+[Fri Jul 18 12:09:19 1997] request lost connection to client 152.163.204.7
+[Fri Jul 18 12:09:19 1997] request lost connection to client 203.2.193.69
+[Fri Jul 18 12:09:19 1997] request lost connection to client 152.163.204.7
+
+There are still occasional errors about clients requesting nonexistant files (normal).
+Unknown if the client receives a response in those cases..
+Haven't thought to test this yet, but the next time it happens I will.
+I currently don't know what triggers the bug, but it usually happens after the server has been up for a few days without interruption.
+This has happened at least 3 times on one server that has 807 virtualhosts,
+and about the same number of times on a server that has 207 virtualhosts (and increasing).
+
+I upgraded from 1.2b11 and never saw this happen with that version.
+
+Top part of server status I grabbed from a server that was returning empty responses:
+   Current Time: Fri Jul 18 12:32:20 1997
+   Restart Time: Tue Jul 15 15:09:09 1997
+   Server uptime: 2 days 21 hours 23 minutes 11 seconds
+   Total accesses: 428419 - Total Traffic: 4.0 GB
+   CPU Usage: u2.37 s2.74 cu27.93 cs2.86 - 0.0144% CPU load
+   1.72 requests/sec - 16.7 kB/second - 9.7 kB/request
+   6 requests currently being processed, 6 idle servers
+W__WR_W_W_....R_................................................
+................................................................
+................................................................
+................................................................
+>How-To-Repeat:
+No idea
+>Fix:
+I will see if I find anything while looking through source code... 
+But no idea at the moment
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Jul 19 02:14:00 PDT 1997
+State-Changed-Why:
+This doesn't happen on my 2.0.30 servers... so it's something
+in your local config.
+
+Do you use NFS on these servers?
+
+Are you running a log per vhost?  If so what linux kernel
+patch are you using to get above 256 descriptors?
+
+Can you upgrade to 2.0.30?  2.0.29-ISS, depending on which
+of the ISS patches you're running, isn't the most stable.
+
+What happens if you add -DNO_SLACK to EXTRA_CFLAGS in your
+Configuration and rebuild?
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Illuminatus Primus <vermont@gate.net>
+Subject: Re: general/885: After a period of time (not found to coincide with server rehashes or any specific access), the server will read requests, but return no data (and close the connection).  It will still respond to a server-status request though.
+Date: Sat, 19 Jul 1997 13:44:44 -0700 (PDT)
+
+ 
+ On Sat, 19 Jul 1997, Illuminatus Primus wrote:
+ 
+ > (wasn't sure if i should cc apache-bugdb)..
+ 
+ It helps keep an audit trail of the report.  But no biggie.
+ 
+ > I grabbed another server-status (strange that that works, but retrieving
+ > documents doesn't), and it's pretty much like the last one..
+ 
+ Well server-status doesn't require it to access any file, which is why
+ I was wondering if you used NFS.
+ 
+ > > Do you use NFS on these servers?
+ > 
+ > Yes.. but Apache and none of the files it would access are mounted from a
+ > remote host (the user directories are exported however)..
+ 
+ So it's an NFS server and users change files from remote, but absolutely
+ nothing apache needs is nfs mounted on the webserver itself?
+ 
+ > No, logs are piped into a small c program i wrote to filter logs into
+ > different log files based on username (thanks to logformat this was easy).
+ 
+ log piping isn't terribly reliable in any version of apache at the moment...
+ but a broken pipe would affect server-status just as well.  (We have a
+ design for better piping, I hope to implement it in the next few weeks.)
+ 
+ > The log splitter does have internal numeric ip resolution (with some heavy
+ > duty caching) and before I set the lookup timeout length to 2 seconds it
+ > could lock up the server when someone accessed it from an ip that was
+ > hosted by an unresponsive name server.. However, server status would show
+ > the server full of requests, and accesses would hang instead of returning
+ > null pages when this happened... I haven't seen it happen again since the
+ > timeout code was added to the log splitter.
+ 
+ You could consider doing the lookups asynchronously.  The key thing is
+ to empty your incoming pipe as fast as possible.
+ 
+ > I'm running ISS #4, which I've heard many good reports about.. I've held
+ > off upgrading to 2.0.30 due to small bugs Ive heard are lurking in it
+ > (missing sysctl for one).. I might consider upgrading to a 2.0.31
+ > prepatch..
+ 
+ Unless you use sysctl it's not a biggie... and there's a patch for it
+ somewhere on www.linuxhq.com.  I tune everything via /proc.  I've got
+ pre-2.0.31-2 on a few machines.  Don't go to it unless your machine is
+ a dedicated web server with enough RAM to avoid ever swapping.
+ 
+ > > What happens if you add -DNO_SLACK to EXTRA_CFLAGS in your
+ > > Configuration and rebuild?
+ > 
+ > I just checked and there is no NO_SLACK option for 1.2b11.. and the same
+ > thing just happened for that version too.  Or is slack enabled by default
+ > in 1.2b11 and there simply isnt an option to disable it?
+ 
+ No the slack code didn't exist until 1.2.1.  So don't worry about it,
+ you've eliminated it as a problem.
+ 
+ If you have LOTS of disk to spare you could run strace on the parent
+ with -f -ff to do full tracing of all children.  Alternately you
+ could wait until the server is in a hung state then try to run
+ strace -p against (up to) 32 of the children and hope to catch some
+ useful trace info.  In any event, should you do one of these, then
+ I probably would only need the tail 30 or 40 lines of tracing on each
+ pid ... please don't send me a gig of traces ;)
+ 
+ It would really help if you could get a smaller reproduceable example.
+ 
+ Is there anything else weird about the machines when the lockup happens?
+ Any kernel messages?  Do you have to hard-restart the machine or just
+ restart apache?
+ 
+ Any possibility of logging direct to disk and running something like
+ "tail -f access_log | my_pipe_logger_program" for a while?
+ 
+ Dean
+ 
+State-Changed-From-To: analyzed-feedback
+State-Changed-By: coar
+State-Changed-When: Thu Nov 13 09:44:02 PST 1997
+State-Changed-Why:
+Has this issue been resolved yet?  Please let us know
+(and cc <apbugs@apache.org>) if we should keep the report
+open; otherwise it'll be closed in a few days.
+
+From: Illuminatus Primus <vermont@gate.net>
+To: coar@hyperreal.org
+Cc: apbugs@apache.org, apache-bugdb@apache.org, coar@apache.org
+Subject: Re: general/885: After a period of time (not found to coincide with server rehashes or any specific access), the server will read requests, but return no data (and close the connection).  It will still respond to a server-status request though.
+Date: Thu, 13 Nov 1997 14:59:52 -0500 (EST)
+
+   This message is in MIME format.  The first part should be readable text,
+   while the remaining parts are likely unreadable without MIME-aware tools.
+   Send mail to mime@docserver.cac.washington.edu for more info.
+ 
+ ---941424629-2105428548-879451192=:65950
+ Content-Type: TEXT/PLAIN; charset=US-ASCII
+ 
+ Yes, the problem was found to be that the logger process would die,
+ causing Apache to receive SIGPIPE whenever it would try to log something.
+ I noticed that on the list of changes for Apache 1.3, reliable piped logs
+ is amongst the changes.. thanks :)
+ 
+ However, in the process of trying to hunt the bug down, I also noticed
+ that the ap_slack function can have undesireable behavior on 2.0.29
+ kernels.. I wrote a small program (testslack.c, attached), which basically
+ uses the ap_slack function that I copied out of Apache 1.2.1 to
+ continuously remap fds: 
+ 
+ Here is the ap_slack that I found at the time:
+ 
+ #define LOW_SLACK_LINE 15
+ int ap_slack (int fd, int line)
+ {
+     int new_fd;
+ 
+     new_fd = fcntl (fd, F_DUPFD, LOW_SLACK_LINE);
+     if (new_fd == -1) {
+       return fd;
+     }
+     close (fd);
+     return new_fd;
+ }
+ 
+ In the case where fcntl reports a failure to remap the fd, ap_slack
+ returns the old fd.. However, in testing, it appears that fcntl does not
+ return -1 when it runs out of fds in 2.0.x kernels... 
+ 
+ With kernel 2.1.53, it open() returns -1 before slacking happens, so I
+ can't determine if fcntl works correctly.. but at least apache will see
+ the error immediately when open returns -1:
+ myfd: 3 slacked up: 909
+ myfd: 3 slacked up: 910
+ myfd: 3 slacked up: 911
+ myfd: -1 slacked up: -1
+ 
+ On 2.0.29 (ISS patch #4), this is the behavior right before it
+ reaches it's descriptor limit:
+ myfd: 3 slacked up: 253
+ myfd: 3 slacked up: 254
+ myfd: 3 slacked up: 255
+ myfd: 3 slacked up: 3
+ myfd: 4 slacked up: 4
+ myfd: 5 slacked up: 5
+ myfd: 6 slacked up: 6
+ myfd: 7 slacked up: 7
+ myfd: 8 slacked up: 8
+ myfd: 9 slacked up: 9
+ myfd: 10 slacked up: 10
+ myfd: 11 slacked up: 11
+ myfd: 12 slacked up: 12
+ myfd: 13 slacked up: 13
+ myfd: 14 slacked up: 14
+ myfd: -1 slacked up: -1
+ 
+ So, with 2.0.x kernels, ap_slack won't know that there was an error
+ remapping the fd, close the fd it was given, and return it to be used for
+ reading/writing/whatever, possibly resulting in SIGPIPES.. I thought
+ wrongly at the time that this might have been causing my problems, but of
+ course I soon found the real reason when my problem happened again and I
+ started an strace of Apache :).  But I still think it's a Bad Thing (tm) 
+ that a closed fd could possibly go floating around causing SIGPIPEs..
+ 
+ Fortunately, this small bug would/will only appear when 255-LOW_SLACK_LINE
+ fds have been allocated already, and it's relatively easy to work around
+ (just check to see if the new fd is the same as the old one)..
+ 
+ It's possible that this small bug has already been fixed in apache 1.2.4,
+ or linux 2.0.31 behaves more reasonably (I haven't tested it yet).. I was
+ going to report my findings earlier, but had a big load of work dumped on
+ me, and haven't remembered to get back to you guys since then.. sorry.
+ 
+ Thanks for the great work on Apache (I really like the new features in
+ 1.3!)..
+ 
+ -vermont@gate.net
+ 
+ On 13 Nov 1997 coar@hyperreal.org wrote:
+ 
+ > Synopsis: After a period of time (not found to coincide with server rehashes or any specific access), the server will read requests, but return no data (and close the connection).  It will still respond to a server-status request though.
+ > 
+ > State-Changed-From-To: analyzed-feedback
+ > State-Changed-By: coar
+ > State-Changed-When: Thu Nov 13 09:44:02 PST 1997
+ > State-Changed-Why:
+ > Has this issue been resolved yet?  Please let us know
+ > (and cc <apbugs@apache.org>) if we should keep the report
+ > open; otherwise it'll be closed in a few days.
+ > 
+ 
+ ---941424629-2105428548-879451192=:65950
+ Content-Type: TEXT/plain; name="testslack.c"
+ Content-Transfer-Encoding: BASE64
+ Content-ID: <Pine.A32.3.93.971113145952.65950C@inca.gate.net>
+ Content-Description: small program to test ap_slack function
+ 
+ I2luY2x1ZGUgPHN5cy90eXBlcy5oPg0KI2luY2x1ZGUgPHN5cy9zdGF0Lmg+
+ DQojaW5jbHVkZSA8ZmNudGwuaD4NCg0KI2RlZmluZSBMT1dfU0xBQ0tfTElO
+ RSAxNQ0KDQppbnQgYXBfc2xhY2sgKGludCBmZCwgaW50IGxpbmUpDQp7DQog
+ ICAgaW50IG5ld19mZDsNCg0KICAgIG5ld19mZCA9IGZjbnRsIChmZCwgRl9E
+ VVBGRCwgTE9XX1NMQUNLX0xJTkUpOw0KICAgIGlmIChuZXdfZmQgPT0gLTEp
+ IHsNCiAgICAgIHJldHVybiBmZDsNCiAgICB9DQogICAgY2xvc2UgKGZkKTsN
+ CiAgICByZXR1cm4gbmV3X2ZkOw0KfQ0KDQppbnQgbWFpbiAoaW50IGFyZ2Ms
+ IGNoYXIgKmFyZ3ZbXSkNCnsNCmNoYXIgZ2FyYmFnZVs5OV07DQppbnQgbXlm
+ ZDsNCg0KICB3aGlsZSAoZ2V0cygmZ2FyYmFnZSkpIHsNCiAgICAvKiB0aGUg
+ bnVtYmVyIG9mIHRoZSBiZWFzdCBtYXJrcyB0aGlzIHByb2dyYW0gKi8NCiAg
+ ICBteWZkID0gb3BlbigiZm9vb29vbyIsT19SRFdSfE9fQ1JFQVQsMDY2Nik7
+ DQogICAgcHJpbnRmKCJteWZkOiAlaSAiLCBteWZkKTsNCg0KICAgIG15ZmQg
+ PSBhcF9zbGFjayhteWZkLCA5OSk7DQogICAgcHJpbnRmKCJzbGFja2VkIHVw
+ OiAlaVxuIixteWZkKTsNCiAgfQ0KDQp9DQo=
+ ---941424629-2105428548-879451192=:65950--
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Illuminatus Primus <vermont@gate.net>
+Cc: apbugs@apache.org
+Subject: Re: general/885: After a period of time (not found to coincide with server rehashes or any specific access), the server will read requests, but return no data (and close the connection).  It will still respond to a server-status request though.
+Date: Thu, 13 Nov 1997 21:40:00 -0800 (PST)
+
+   This message is in MIME format.  The first part should be readable text,
+   while the remaining parts are likely unreadable without MIME-aware tools.
+   Send mail to mime@docserver.cac.washington.edu for more info.
+ 
+ ---941424629-2105428548-879451192=:65950
+ Content-Type: TEXT/PLAIN; CHARSET=US-ASCII
+ Content-ID: <Pine.LNX.3.95dg3.971113213237.10796P@twinlark.arctic.org>
+ 
+ 
+ 
+ On Thu, 13 Nov 1997, Illuminatus Primus wrote:
+ 
+ > Yes, the problem was found to be that the logger process would die,
+ > causing Apache to receive SIGPIPE whenever it would try to log something.
+ > I noticed that on the list of changes for Apache 1.3, reliable piped logs
+ > is amongst the changes.. thanks :)
+ 
+ Yup but you might want to wait for 1.3b3 ... there's a bug in b2 with
+ reliable piped logs. 
+ 
+ > However, in the process of trying to hunt the bug down, I also noticed
+ > that the ap_slack function can have undesireable behavior on 2.0.29
+ > kernels.. I wrote a small program (testslack.c, attached), which basically
+ > uses the ap_slack function that I copied out of Apache 1.2.1 to
+ > continuously remap fds: 
+ 
+ Oh interesting.  I'm looking at the kernel code right now ... there's no
+ big change in this area between 2.0.29 and 2.1.62.  But it does definately
+ look like a bug -- I just haven't convinced myself exactly how it's wrong. 
+ Look at this from linux/fs/fcntl.c: 
+ 
+         arg = find_next_zero_bit(&files->open_fds, NR_OPEN, arg);
+ 
+ arg is the arg passed to F_DUPFD ... but find_next_zero_bit will scan from
+ bit arg to bit arg + NR_OPEN - 1 ... which is wrong.
+ 
+ It's probably a matter of changing the second parm there to NR_OPEN - arg
+ ... but that might still be an off by 1.  I'm going to see if I can walk
+ through the code by hand and figure out the right solution.
+ 
+ > Fortunately, this small bug would/will only appear when 255-LOW_SLACK_LINE
+ > fds have been allocated already, and it's relatively easy to work around
+ > (just check to see if the new fd is the same as the old one)..
+ 
+ That'd be an easy thing to include... I'm not convinced it's 100% correct
+ yet though.
+ 
+ Laters
+ Dean
+ 
+ ---941424629-2105428548-879451192=:65950--
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Illuminatus Primus <vermont@gate.net>
+Cc: apbugs@apache.org
+Subject: Re: general/885: After a period of time (not found to coincide with server rehashes or any specific access), the server will read requests, but return no data (and close the connection).  It will still respond to a server-status request though.
+Date: Thu, 13 Nov 1997 21:51:29 -0800 (PST)
+
+   This message is in MIME format.  The first part should be readable text,
+   while the remaining parts are likely unreadable without MIME-aware tools.
+   Send mail to mime@docserver.cac.washington.edu for more info.
+ 
+ ---941424629-2105428548-879451192=:65950
+ Content-Type: TEXT/PLAIN; CHARSET=US-ASCII
+ Content-ID: <Pine.LNX.3.95dg3.971113213237.10796P@twinlark.arctic.org>
+ 
+ Oh I think you misunderstand how ap_slack works ... it never returns -1
+ ... it returns the original fd when it can't remap it above the slack
+ line.... so what you were seeing was correct.  At least I can't reproduce
+ any problem under linux 2.0.30 or 2.1.29. 
+ 
+ (Notwithstanding the interesting code in the kernel ... but I know what
+ it's up to at least.) 
+ 
+ Dean
+ 
+ 
+ ---941424629-2105428548-879451192=:65950--
+
+From: Illuminatus Primus <vermont@gate.net>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: general/885: After a period of time (not found to coincide with server rehashes or any specific access), the server will read requests, but return no data (and close the connection).  It will still respond to a server-status request though.
+Date: Fri, 14 Nov 1997 02:06:39 -0500 (EST)
+
+ On Thu, 13 Nov 1997, Dean Gaudet wrote:
+ 
+ > Oh I think you misunderstand how ap_slack works ... it never returns -1
+ > ... it returns the original fd when it can't remap it above the slack
+ > line.... so what you were seeing was correct.  At least I can't reproduce
+ > any problem under linux 2.0.30 or 2.1.29. 
+ > 
+ > (Notwithstanding the interesting code in the kernel ... but I know what
+ > it's up to at least.) 
+ > 
+ > Dean
+ 
+ Yes, I realize that ap_slack tries to return the original fd if a new one
+ cannot be allocated, but unforunately if there are lots of fds open and
+ fcntl fails to remap the fd on a 2.0.29 kernel, it will return a closed fd
+ :).. maybe i misworded the sentence about open() returning -1 once in a
+ while..
+ 
+ But in any case: what's going on with the code in the kernel?  It's
+ possible that the fcntl fd remapping code has never changed; in the tests
+ I never got to see if the behavior was different since the fds seem to run
+ out while doing open() in 2.1.53 even if there would appear to be some
+ spares below the slack line. Maybe it's a bug, or maybe there is a new
+ strange way of limiting per-process fds.. 
+ 
+ Well, good luck :)
+ 
+ -vermont@gate.net
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Illuminatus Primus <vermont@gate.net>
+Cc: apbugs@apache.org
+Subject: Re: general/885: After a period of time (not found to coincide with server rehashes or any specific access), the server will read requests, but return no data (and close the connection).  It will still respond to a server-status request though.
+Date: Tue, 18 Nov 1997 18:36:37 -0800 (PST)
+
+ On Fri, 14 Nov 1997, Illuminatus Primus wrote:
+ 
+ > Yes, I realize that ap_slack tries to return the original fd if a new one
+ > cannot be allocated, but unforunately if there are lots of fds open and
+ > fcntl fails to remap the fd on a 2.0.29 kernel, it will return a closed fd
+ > :).. maybe i misworded the sentence about open() returning -1 once in a
+ > while..
+ 
+ I don't see this wrong behaviour at all.  You mentioned this output
+ for 2.0.29:
+ 
+ On 2.0.29 (ISS patch #4), this is the behavior right before it
+  reaches it's descriptor limit:
+  myfd: 3 slacked up: 253
+  myfd: 3 slacked up: 254
+  myfd: 3 slacked up: 255
+  myfd: 3 slacked up: 3
+  myfd: 4 slacked up: 4
+  myfd: 5 slacked up: 5
+  myfd: 6 slacked up: 6
+  myfd: 7 slacked up: 7
+  myfd: 8 slacked up: 8
+  myfd: 9 slacked up: 9
+  myfd: 10 slacked up: 10
+  myfd: 11 slacked up: 11
+  myfd: 12 slacked up: 12
+  myfd: 13 slacked up: 13
+  myfd: 14 slacked up: 14
+  myfd: -1 slacked up: -1
+ 
+ This is perfectly correct behaviour.  file descriptor 3 is closed during
+ all the cases where ap_slack successfully moves it.  When it fails, it
+ returns 3 without closing it.  Nothing looks wrong.
+ 
+ The difference with 2.1.x is that it supports more descriptors per
+ process, but you also have to increase the system-wide number of files.
+ Something like "echo 4096 >/proc/sys/kernel/file-max" will do the trick.
+ Either that or you can "limit descriptors 64" and test with a smaller
+ number per task.
+ 
+ Dean
+ 
+Synopsis-Changed-From: After a period of time (not found to coincide with server rehashes or any specific access), the server will read requests, but return no data (and close the connection).  It will still respond to a server-status request though.
+Synopsis-Changed-To: Server reads requests but sends no data
+Synopsis-Changed-By: coar
+Synopsis-Changed-When: Wed Nov 19 08:38:06 PST 1997
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Nov 20 18:23:06 PST 1997
+State-Changed-Why:
+User resolved the original PR, and figured out his mistake
+in the later dialogue...
+
+Dean
+>Unformatted:
+
+
+

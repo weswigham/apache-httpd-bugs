@@ -1,0 +1,425 @@
+Received: (qmail 49125 invoked by uid 501); 19 Oct 2001 02:51:50 -0000
+Message-Id: <20011019025150.49124.qmail@apache.org>
+Date: 19 Oct 2001 02:51:50 -0000
+From: Takahiro Ishio <bero@bekkoame.ne.jp>
+Reply-To: bero@bekkoame.ne.jp
+To: submit@bugz.apache.org
+Subject: performance boost up on Windows
+X-Send-Pr-Version: 3.110
+
+>Number:         8580
+>Category:       os-windows
+>Synopsis:       performance boost up on Windows
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Oct 18 20:00:01 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     bero@bekkoame.ne.jp
+>Release:        1.3.22
+>Organization:
+apache
+>Environment:
+Windows 2000
+>Description:
+http://www.bekkoame.ne.jp/~bero/apache-mmap-en.html
+
+Apache developer says "Warning: Apache on NT has not yet been optimized for performance. Apache still performs best, and is most reliable on Unix platforms. "
+On Unix, apache use "mmap" function to read static contents.
+I implement same functionality on Windows, then it is very high performance max 100 times.
+
+BENCHMARK
+
+/ and /index.html.en are default page of Apache distribution (1456 byte)
+/webbench.jpg is 108026 byte
+
+under Windows 2000 SP2,NTFS,Celeron 700,128MB memory
+
+ab -n 100 c 10 (100 request 10 concurrent)
+
+	/	/index.html.en	/webbench.jpg
+normal	38.75	199.48		 487.60 (Kbyte/sec)
+mmap	37.98	200.48		5152.49
+cygwin	24.24	140.89		3824.25
+
+ab -n 10 (10 requests 1 concurrent)
+
+	/	/index.html.en	/webbench.jpg
+normal	42.97	114.87		  49.19
+mmap	41.92	107.69		1689.17
+cygwin	24.30	 82.29		1439.91
+>How-To-Repeat:
+
+>Fix:
+diff -u -r -N apache_1.3.22/src/ApacheCore.mak apache_1.3.22.mmap/src/ApacheCore.mak
+--- apache_1.3.22/src/ApacheCore.mak	Thu Oct  4 12:55:22 2001
++++ apache_1.3.22.mmap/src/ApacheCore.mak	Fri Oct 19 17:42:50 2001
+@@ -88,6 +88,7 @@
+ 	-@erase "$(INTDIR)\modules.obj"
+ 	-@erase "$(INTDIR)\multithread.obj"
+ 	-@erase "$(INTDIR)\readdir.obj"
++	-@erase "$(INTDIR)\mmap.obj"
+ 	-@erase "$(INTDIR)\registry.obj"
+ 	-@erase "$(INTDIR)\rfc1413.obj"
+ 	-@erase "$(INTDIR)\service.obj"
+@@ -190,6 +191,7 @@
+ 	"$(INTDIR)\modules.obj" \
+ 	"$(INTDIR)\multithread.obj" \
+ 	"$(INTDIR)\readdir.obj" \
++	"$(INTDIR)\mmap.obj" \
+ 	"$(INTDIR)\registry.obj" \
+ 	"$(INTDIR)\rfc1413.obj" \
+ 	"$(INTDIR)\service.obj" \
+@@ -269,6 +271,7 @@
+ 	-@erase "$(INTDIR)\modules.obj"
+ 	-@erase "$(INTDIR)\multithread.obj"
+ 	-@erase "$(INTDIR)\readdir.obj"
++	-@erase "$(INTDIR)\mmap.obj"
+ 	-@erase "$(INTDIR)\registry.obj"
+ 	-@erase "$(INTDIR)\rfc1413.obj"
+ 	-@erase "$(INTDIR)\service.obj"
+@@ -372,6 +375,7 @@
+ 	"$(INTDIR)\modules.obj" \
+ 	"$(INTDIR)\multithread.obj" \
+ 	"$(INTDIR)\readdir.obj" \
++	"$(INTDIR)\mmap.obj" \
+ 	"$(INTDIR)\registry.obj" \
+ 	"$(INTDIR)\rfc1413.obj" \
+ 	"$(INTDIR)\service.obj" \
+@@ -1274,6 +1278,15 @@
+ 	
+ 
+ "$(INTDIR)\readdir.obj" : $(SOURCE) $(DEP_CPP_READD) "$(INTDIR)"
++	$(CPP) $(CPP_PROJ) $(SOURCE)
++
++
++SOURCE=.\os\win32\mmap.c
++DEP_CPP_MMAP=\
++	".\os\win32\sys\mman.h"\
++	
++
++"$(INTDIR)\mmap.obj" : $(SOURCE) $(DEP_CPP_MMAP) "$(INTDIR)"
+ 	$(CPP) $(CPP_PROJ) $(SOURCE)
+ 
+ 
+diff -u -r -N apache_1.3.22/src/os/win32/mmap.c apache_1.3.22.mmap/src/os/win32/mmap.c
+--- apache_1.3.22/src/os/win32/mmap.c	Thu Jan  1 09:00:00 1970
++++ apache_1.3.22.mmap/src/os/win32/mmap.c	Fri Oct 19 10:47:52 2001
+@@ -0,0 +1,220 @@
++/*
++
++    mmap functions for Windows
++
++    this functionality only for Apache 1.3.x
++
++    bero@bekkoame.ne.jp
++
++*/
++
++#include <windows.h>
++#include <io.h>
++#include <errno.h>
++#include <stdlib.h> /* for malloc */
++#include <sys/mman.h>
++
++#define HIDWORD(off)    (0)
++#define LODWORD(off)    (off)
++#define set_errno(no)   errno = no
++
++
++/*
++    address -> memory mapping object 
++*/
++
++struct mmap_list_t {
++    HANDLE hMap;
++    caddr_t addr;
++    struct mmap_list_t *next;
++};
++
++static struct mmap_list_t *top = NULL;
++static HANDLE mmap_list_mutex = NULL;
++
++static int mmap_add(HANDLE hMap,caddr_t addr)
++{
++    struct mmap_list_t *cur;
++
++    /* first */
++    if (mmap_list_mutex==NULL) {
++        /* this mutex is automaticaly closed by OS when process end */
++        mmap_list_mutex = CreateMutex(NULL,FALSE,NULL);
++        if (mmap_list_mutex == NULL) return -1;
++    }
++
++    cur = malloc(sizeof(struct mmap_list_t));
++
++    WaitForSingleObject(mmap_list_mutex,INFINITE);
++
++    cur->hMap = hMap;
++    cur->addr = addr;
++    cur->next = top;
++    top = cur;
++
++    ReleaseMutex(mmap_list_mutex);
++
++    return 0;
++}
++
++static HANDLE mmap_search_delete(caddr_t addr)
++{
++    struct mmap_list_t *cur,*prev;
++    HANDLE ret;
++
++    WaitForSingleObject(mmap_list_mutex,INFINITE);
++
++    for(prev=NULL,cur = top;cur && cur->addr!=addr;prev=cur,cur=cur->next) ;
++
++    if (cur==NULL) {
++        ret = NULL;
++    } else {
++        ret = cur->hMap;
++        if (prev) {
++            prev->next = cur->next;
++        } else {
++            top = cur->next;
++        }
++        free(cur);
++    }
++
++    ReleaseMutex(mmap_list_mutex);
++
++    return ret;
++}
++
++
++/*
++    main
++*/
++
++caddr_t mmap (caddr_t addr, size_t len, int prot, int flags, int fd, off_t off)
++{
++    HANDLE hFile;
++    HANDLE hMap;
++    DWORD access,protect;
++    size_t maxsize = len; /* 0 means filesize */
++    caddr_t ret;
++
++    static DWORD granularity,pagesize;
++
++    /* get pagesize */
++    if (!granularity) {
++        SYSTEM_INFO si;
++        GetSystemInfo (&si);
++        granularity = si.dwAllocationGranularity;
++        pagesize = si.dwPageSize;
++    }
++
++    /* check param */
++    if (off % pagesize
++    || (!(flags & MAP_SHARED) && !(flags & MAP_PRIVATE))
++    || ((flags & MAP_SHARED) && (flags & MAP_PRIVATE))
++    || ((flags & MAP_FIXED) && ((DWORD)addr % granularity))
++    || len==0
++    || prot&PROT_EXEC)
++    {
++        set_errno (EINVAL);
++        return MAP_FAILED;
++    }
++
++    /* convert mmap param to windows param */
++    if (prot&(PROT_READ|PROT_WRITE)==PROT_READ) {
++        access = FILE_MAP_READ;
++        protect = PAGE_READONLY;
++    } else if (prot&(PROT_READ|PROT_WRITE)==(PROT_READ|PROT_WRITE)) {
++        if (flags&MAP_PRIVATE) {
++            access = FILE_MAP_COPY;
++            protect = PAGE_WRITECOPY;
++        } else {
++            access = FILE_MAP_WRITE;
++            protect = PAGE_READWRITE;
++        }
++    }
++
++    if (flags & MAP_ANONYMOUS) fd = -1;
++
++    if (fd==-1) {
++        hFile = INVALID_HANDLE_VALUE;
++    } else {
++        hFile = (HANDLE)_get_osfhandle(fd);
++    }
++
++    hMap = CreateFileMapping(hFile,NULL,protect,HIDWORD(maxsize),LODWORD(maxsize),NULL /* no name*/);
++
++    if (hMap!=NULL) {
++        ret = (caddr_t)MapViewOfFileEx(hMap,access,HIDWORD(off),LODWORD(off),len,addr);
++        if (ret!=NULL) {
++            if (!(flags&MAP_FIXED) || ret==addr) {
++                if (mmap_add(hMap,ret)==0)
++                    return ret; /* success */
++            }
++            UnmapViewOfFile(ret);
++        }
++        CloseHandle(hMap);
++    }
++    return MAP_FAILED;
++
++}
++
++int munmap (caddr_t addr, size_t len)
++{
++    HANDLE hMap;
++
++    if (UnmapViewOfFile(addr)!=0) {
++        hMap = mmap_search_delete(addr);
++        if (hMap!=NULL) {;
++            if (CloseHandle(hMap)!=0) {
++                return 0;   /* success */
++            }
++        }
++    }
++    return -1;
++}
++
++#if 0
++int mprotect (caddr_t addr, size_t len, int prot)
++{
++    DWORD old_prot,new_prot;
++
++    switch (prot) {
++    case PROT_NONE:
++        new_prot = PAGE_NOACCESS;
++        break;
++    case PROT_READ | PROT_WRITE | PROT_EXEC:
++        new_prot = PAGE_EXECUTE_READWRITE;
++        break;
++    case PROT_READ | PROT_WRITE:
++        new_prot = PAGE_READWRITE;
++        break;
++    case PROT_READ | PROT_EXEC:
++        new_prot = PAGE_EXECUTE_READ;
++        break;
++    case PROT_READ:
++        new_prot = PAGE_READONLY;
++        break;
++    case PROT_EXEC:
++        new_prot = PAGE_EXECUTE;
++        break;
++    default:
++        set_errno (EINVAL);
++        return -1;
++    }
++
++    if (VirtualProtect(addr,len,new_prot,&old_prot)==0) {
++        set_errno(EACCES);
++        return -1;
++    }
++    return 0;
++}
++
++
++int msync (caddr_t addr, size_t len, int flags)
++{
++    if (FlushViewOfFile(addr,len)==0) {
++        set_errno(EINVAL);
++        return -1;
++    }
++    return 0;
++}
++#endif
+diff -u -r -N apache_1.3.22/src/os/win32/os.h apache_1.3.22.mmap/src/os/win32/os.h
+--- apache_1.3.22/src/os/win32/os.h	Wed Sep 26 23:40:13 2001
++++ apache_1.3.22.mmap/src/os/win32/os.h	Thu Oct 18 09:05:42 2001
+@@ -112,8 +112,9 @@
+ #define NO_TIMES
+ #define NO_GETTIMEOFDAY
+ #define USE_LONGJMP
+-#define HAVE_MMAP
++#define HAVE_MMAP 1
+ #define USE_MMAP_SCOREBOARD
++#define USE_MMAP_FILES
+ #define MULTITHREAD
+ #define HAVE_CANONICAL_FILENAME
+ #define HAVE_DRIVE_LETTERS
+diff -u -r -N apache_1.3.22/src/os/win32/sys/mman.h apache_1.3.22.mmap/src/os/win32/sys/mman.h
+--- apache_1.3.22/src/os/win32/sys/mman.h	Thu Jan  1 09:00:00 1970
++++ apache_1.3.22.mmap/src/os/win32/sys/mman.h	Thu Oct 18 15:14:58 2001
+@@ -0,0 +1,54 @@
++/* sys/mman.h
++
++   Copyright 1996, 1997, 1998, 2000, 2001 Red Hat, Inc.
++
++This file is part of Cygwin.
++
++This software is a copyrighted work licensed under the terms of the
++Cygwin license.  Please consult the file "CYGWIN_LICENSE" for
++details. */
++
++#ifndef _SYS_MMAN_H_
++#define _SYS_MMAN_H_
++
++#ifdef __cplusplus
++extern "C" {
++#endif /* __cplusplus */
++
++#include <stddef.h>
++#include <sys/types.h>
++
++typedef char* caddr_t;
++
++#define PROT_NONE 0
++#define PROT_READ 1
++#define PROT_WRITE 2
++#define PROT_EXEC 4
++
++//#define MAP_FILE 0
++#define MAP_SHARED 1
++#define MAP_PRIVATE 2
++//#define MAP_TYPE 0xF
++#define MAP_FIXED 0x10
++#define MAP_ANONYMOUS 0x20
++#define MAP_ANON MAP_ANONYMOUS
++
++#define MAP_FAILED ((caddr_t)-1)
++
++/*
++ * Flags for msync.
++ */
++#define MS_ASYNC 1
++#define MS_SYNC 2
++#define MS_INVALIDATE 4
++
++extern caddr_t mmap (caddr_t __addr, size_t __len, int __prot, int __flags, int __fd, off_t __off);
++extern int munmap (caddr_t __addr, size_t __len);
++extern int mprotect (caddr_t __addr, size_t __len, int __prot);
++extern int msync (caddr_t __addr, size_t __len, int __flags);
++
++#ifdef __cplusplus
++};
++#endif /* __cplusplus */
++
++#endif /*  _SYS_MMAN_H_ */
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

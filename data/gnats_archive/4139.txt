@@ -1,0 +1,130 @@
+Received: (qmail 27198 invoked by uid 2012); 26 Mar 1999 06:19:19 -0000
+Message-Id: <19990326061919.27197.qmail@hyperreal.org>
+Date: 26 Mar 1999 06:19:19 -0000
+From: Michael Friedel <mfriedel@lbell.slctnet.com>
+Reply-To: mfriedel@lbell.slctnet.com
+To: apbugs@hyperreal.org
+Subject: Garbage collection fails
+X-Send-Pr-Version: 3.2
+
+>Number:         4139
+>Category:       mod_proxy
+>Synopsis:       Garbage collection fails
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Mar 25 22:20:01 PST 1999
+>Closed-Date:    Wed Jul 12 10:36:26 PDT 2000
+>Last-Modified:  Wed Jul 12 10:36:26 PDT 2000
+>Originator:     mfriedel@lbell.slctnet.com
+>Release:        1.3.6
+>Organization:
+>Environment:
+WIN32/NT4.0 SP4
+>Description:
+Garbage collection fails becaus on the WIN32 platform the open() function does not work with directories.
+>How-To-Repeat:
+Turn on garbage collection
+>Fix:
+The solution is to use stat instead of open/fstat to differentiate between files/directories.
+
+Here is the patch:
+
+--- ..\..\..\org\proxy_cache.c	Sun Feb 07 12:48:32 1999
++++ proxy_cache.c	Thu Mar 25 22:21:42 1999
+@@ -56,7 +56,6 @@
+  */
+ 
+ /* Cache and garbage collection routines for Apache proxy */
+-
+ #include "mod_proxy.h"
+ #include "http_conf_globals.h"
+ #include "http_log.h"
+@@ -448,6 +447,16 @@
+ #endif
+ 
+ /* read the file */
++#if defined(WIN32)
++    /* On WIN32 open does not work for directories, so we us stat instead
++	of fstat to determine if the file is a directory */
++	if (stat(filename, &buf) == -1) {
++	    ap_log_error(APLOG_MARK, APLOG_ERR, r->server,
++			 "proxy gc: stat(%s)", filename);
++	    continue;
++	}
++	fd = -1;
++#else
+ 	fd = open(filename, O_RDONLY | O_BINARY);
+ 	if (fd == -1) {
+ 	    if (errno != ENOENT)
+@@ -461,12 +470,15 @@
+ 	    close(fd);
+ 	    continue;
+ 	}
++#endif
+ 
+ /* In OS/2 this has already been done above */
+ #ifndef OS2
+ 	if (S_ISDIR(buf.st_mode)) {
+ 	    char newcachedir[HUGE_STRING_LEN];
++#if !defined(WIN32)
+ 	    close(fd);
++#endif
+ 	    ap_snprintf(newcachedir, sizeof(newcachedir),
+ 			"%s%s/", cachesubdir, ent->d_name);
+ 	    if (!sub_garbage_coll(r, files, cachebasedir, newcachedir)) {
+@@ -484,6 +496,21 @@
+ 	    }
+ 	    continue;
+ 	}
++#endif
++
++#if defined(WIN32)
++	/* 
++	   Since we have determined that the file is not a directory,
++	   we shouldbe able to open it now 
++	*/
++	fd = open(filename, O_RDONLY | O_BINARY);
++	if (fd == -1) {
++	    if (errno != ENOENT)
++		ap_log_error(APLOG_MARK, APLOG_ERR, r->server,
++			     "proxy gc: open(%s) = %d", filename, errno);
++	    continue;
++	}
++
+ #endif
+ 
+ 	i = read(fd, line, 26);
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rederpj@raleigh.ibm.com
+State-Changed-When: Wed Jul 12 10:36:21 PDT 2000
+State-Changed-Why:
+wrowe applied this (with credit) in the patch to proxy_cache.c:
+Revision 1.67 / Thu Jun 1 17:51:26 2000 UTC
+
+He typoed the pr number from 4139 to 1439.
+
+This fix will be available in the next release of Apache
+(after 1.3.12).
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

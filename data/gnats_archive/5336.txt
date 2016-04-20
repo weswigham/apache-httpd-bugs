@@ -1,0 +1,535 @@
+Received: (qmail 21177 invoked by uid 2012); 18 Nov 1999 19:31:13 -0000
+Message-Id: <19991118193113.21176.qmail@hyperreal.org>
+Date: 18 Nov 1999 19:31:13 -0000
+From: Eric Fisher <fisher@osiriscomm.com>
+Reply-To: fisher@osiriscomm.com
+To: apbugs@hyperreal.org
+Subject: Apache process hangs, and parent will not die.
+X-Send-Pr-Version: 3.2
+
+>Number:         5336
+>Category:       general
+>Synopsis:       Apache process hangs, and parent will not die.
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Nov 18 11:40:01 PST 1999
+>Closed-Date:    Mon Oct 30 19:27:47 PST 2000
+>Last-Modified:  Mon Oct 30 19:27:47 PST 2000
+>Originator:     fisher@osiriscomm.com
+>Release:        1.3.9
+>Organization:
+>Environment:
+Linux sobek.osiriscomm.com 2.2.13 #3 SMP Sat Nov 6 01:04:50 PST 1999 i686 unknown
+
+This is a RedHat 6.1 box with a custom build of apache.
+512 MB RAM on a dual Pentium III
+
+Apache is built as:    Server Version: Apache/1.3.9 (Unix) mod_perl/1.21 PHP/3.0.12
+               and     Server Version: Apache/1.3.9 (Unix) PHP/3.0.12 mod_ssl/2.4.6 OpenSSL/0.9.4
+>Description:
+We have a failry large web server with 9 separate instances and versions of apache
+running.  We have named them the following: httpd-d1, httpd-d2, httpd-d3, httpd-d4,
+httpd-d5, httpd-h1, httpd-ssl, httpd-fp, and httpd-sava.
+
+About once a day, now, we notice that the machine's load rises to about 1 and stays
+there.  At this time, we try to restart the the web servers (using kill -HUP `cat /home/logs/<servername>.pid`)
+and all but (usually) one server restarts.  A typical amount of traffic for one of
+these servers is about 125000 connections and 1GB per day.  There are rarely any
+messages in the error log for that server.  Sometimes we will see something like this, but
+not always:
+
+[Thu Nov 18 08:48:40 1999] [warn] child process 24339 still did not exit, sending a SIGTERM
+[Thu Nov 18 08:48:44 1999] [error] child process 24339 still did not exit, sending a SIGKILL
+[Thu Nov 18 08:49:00 1999] [notice] caught SIGTERM, shutting down
+
+strace -p <pid> on the parent process returns nothing for the dead server.  The web
+server still serves up pages through the children, but as the children die, or are killed,
+they are not respawning.  So, I guess it looks like the parent is dead.  The only way 
+to get that instance of apache running again is to restart the machine.
+
+If we neglect to watch the load, then eventually the whole linux box locks up.  The
+load gradually gets higher and higher after several hours of the parent being
+unresponsive.
+
+The following is a typical httpd.conf file with some cuts made in the VirtualHost section:
+
+ServerType standalone
+ServerRoot "/var/lib/httpd"
+PidFile /var/lib/httpd/logs/d1.pid
+ScoreBoardFile /home/logs/d1.scoreboard
+ResourceConfig /dev/null
+AccessConfig /dev/null
+Timeout 300
+KeepAlive On
+MaxKeepAliveRequests 256
+KeepAliveTimeout 15
+MinSpareServers 5
+MaxSpareServers 15
+StartServers 10
+MaxClients 256
+MaxRequestsPerChild 100000
+ExtendedStatus On
+#Port 80
+User nobody
+Group www
+ServerAdmin support@osiriscomm.com
+ServerName domain1.osiriscomm.com
+DocumentRoot "/var/lib/httpd/htdocs"
+
+<Directory />
+    Options All
+#    AllowOverride None
+</Directory>
+
+<Directory "/var/lib/httpd/conf/htdocs">
+    Options All
+    AllowOverride None
+    Order allow,deny
+    Allow from all
+</Directory>
+
+<Location /server-status>
+        SetHandler server-status
+        Order deny,allow
+        Deny from all
+        Allow from 216.200.46.18
+        Allow from 209.249.213.154
+        Allow from 216.102.105.20
+</Location>
+
+<Location /server-info>
+        SetHandler server-info
+        Order deny,allow
+        Deny from all
+        Allow from 216.200.46.18
+        Allow from 209.249.213.154
+        Allow from 216.102.105.20
+</Location>
+
+#UserDir public_html
+
+DirectoryIndex index.html index.htm index.shtml index.php3 index.cgi
+
+AccessFileName .htaccess
+
+<Files ~ "^\.ht">
+    Order allow,deny
+    Deny from all
+</Files>
+UseCanonicalName On
+TypesConfig /etc/httpd/conf/mime.types
+DefaultType text/plain
+HostnameLookups On
+ErrorLog /home/logs/server/d1_error_log
+LogLevel warn
+LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
+LogFormat "%h %l %u %t \"%r\" %>s %b" common
+LogFormat "%{Referer}i -> %U" referer
+LogFormat "%{User-agent}i" agent
+CustomLog /home/logs/server/d1_access_log common
+ServerSignature On
+
+
+Alias /icons/ "/var/lib/httpd/icons/"
+Alias /img-osiris/ "/var/lib/httpd/htdocs/images/"
+<Directory "/var/lib/httpd/icons">
+    Options Indexes MultiViews
+    AllowOverride None
+    Order allow,deny
+    Allow from all
+</Directory>
+
+ScriptAlias /cgi-bin/ /var/lib/httpd/cgi-bin/
+ScriptAlias /cgi-osiris/ /var/lib/httpd/cgi-bin/
+
+#
+# "/var/lib/httpd/conf/cgi-bin" should be changed to whatever your ScriptAliased
+# CGI directory exists, if you have that configured.
+#
+<Directory "/var/lib/httpd/cgi-bin">
+    AllowOverride None
+    Options None
+    Order allow,deny
+    Allow from all
+</Directory>
+
+IndexOptions FancyIndexing
+AddIconByEncoding (CMP,/icons/compressed.gif) x-compress x-gzip
+
+AddIconByType (TXT,/icons/text.gif) text/*
+AddIconByType (IMG,/icons/image2.gif) image/*
+AddIconByType (SND,/icons/sound2.gif) audio/*
+AddIconByType (VID,/icons/movie.gif) video/*
+
+AddIcon /icons/binary.gif .bin .exe
+AddIcon /icons/binhex.gif .hqx
+AddIcon /icons/tar.gif .tar
+AddIcon /icons/world2.gif .wrl .wrl.gz .vrml .vrm .iv
+AddIcon /icons/compressed.gif .Z .z .tgz .gz .zip
+AddIcon /icons/a.gif .ps .ai .eps
+AddIcon /icons/layout.gif .html .shtml .htm .pdf
+AddIcon /icons/text.gif .txt
+AddIcon /icons/c.gif .c
+AddIcon /icons/p.gif .pl .py
+AddIcon /icons/f.gif .for
+AddIcon /icons/dvi.gif .dvi
+AddIcon /icons/uuencoded.gif .uu
+AddIcon /icons/script.gif .conf .sh .shar .csh .ksh .tcl
+AddIcon /icons/tex.gif .tex
+AddIcon /icons/bomb.gif core
+
+AddIcon /icons/back.gif ..
+AddIcon /icons/hand.right.gif README
+AddIcon /icons/folder.gif ^^DIRECTORY^^
+AddIcon /icons/blank.gif ^^BLANKICON^^
+
+DefaultIcon /icons/unknown.gif
+
+ReadmeName README
+HeaderName HEADER
+
+#
+# IndexIgnore is a set of filenames which directory indexing should ignore
+# and not include in the listing.  Shell-style wildcarding is permitted.
+#
+IndexIgnore .??* *~ *# HEADER* README* RCS CVS *,v *,t
+
+#
+# AddEncoding allows you to have certain browsers (Mosaic/X 2.1+) uncompress
+# information on the fly. Note: Not all browsers support this.
+# Despite the name similarity, the following Add* directives have nothing
+# to do with the FancyIndexing customization directives above.
+#
+AddEncoding x-compress Z
+AddEncoding x-gzip gz tgz
+
+#
+# AddLanguage allows you to specify the language of a document. You can
+# then use content negotiation to give a browser a file in a language
+# it can understand.  Note that the suffix does not have to be the same
+# as the language keyword --- those with documents in Polish (whose
+# net-standard language code is pl) may wish to use "AddLanguage pl .po"
+# to avoid the ambiguity with the common suffix for perl scripts.
+#
+AddLanguage en .en
+AddLanguage fr .fr
+AddLanguage de .de
+AddLanguage da .da
+AddLanguage el .el
+AddLanguage it .it
+
+#
+# LanguagePriority allows you to give precedence to some languages
+# in case of a tie during content negotiation.
+# Just list the languages in decreasing order of preference.
+#
+LanguagePriority en fr de
+
+#
+# AddType allows you to tweak mime.types without actually editing it, or to
+# make certain files to be certain types.
+#
+# For example, the PHP3 module (not part of the Apache distribution - see
+# http://www.php.net) will typically use:
+#
+AddType application/x-httpd-php3 .php3
+AddType application/x-httpd-php3-source .phps
+
+AddType application/x-tar .tgz
+
+#
+# AddHandler allows you to map certain file extensions to "handlers",
+# actions unrelated to filetype. These can be either built into the server
+# or added with the Action command (see below)
+#
+# If you want to use server side includes, or CGI outside
+# ScriptAliased directories, uncomment the following lines.
+#
+# To use CGI scripts:
+#
+AddHandler cgi-script .cgi
+AddHandler cgi-script .pl
+
+#
+# To use server-parsed HTML files
+#
+AddType text/html .shtml
+AddHandler server-parsed .shtml
+
+#
+# Uncomment the following line to enable Apache's send-asis HTTP file
+# feature
+#
+#AddHandler send-as-is asis
+
+#
+# If you wish to use server-parsed imagemap files, use
+#
+AddHandler imap-file map
+
+#
+# To enable type maps, you might want to use
+#
+#AddHandler type-map var
+
+BrowserMatch "Mozilla/2" nokeepalive
+BrowserMatch "MSIE 4\.0b2;" nokeepalive downgrade-1.0 force-response-1.0
+BrowserMatch "RealPlayer 4\.0" force-response-1.0
+BrowserMatch "Java/1\.0" force-response-1.0
+BrowserMatch "JDK/1\.0" force-response-1.0
+
+#
+# Enable/disable the handling of HTTP/1.1 "Via:" headers.
+# ("Full" adds the server version; "Block" removes all outgoing Via: headers)
+# Set to one of: Off | On | Full | Block
+#
+#ProxyVia On
+
+### Section 3: Virtual Hosts
+
+##==cut==##
+>How-To-Repeat:
+The problem seems to be the cause.  It typically happens every 24 hours or so.
+If we increase the MaxRequestsPerChild then it will last longer, if we decrease
+it then the server dies sooner.  Would happen once a week when it was set to 0...
+once every 10 hours when it was 10000
+>Fix:
+For now we restart the servers regularly and monitor the load.  We really need a
+fix, though.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Thu Nov 18 12:28:42 PST 1999
+State-Changed-Why:
+Try running an older, more stable kernel.  We have had lots
+of reports of similar things from people, with the common
+factor being that thay are using 2.2.13 or something similar.
+
+There may well be some problem in the kernel you are running
+that causes this.
+
+If you have to restart the machine (and I presume you mean
+reboot) to fix it, then there is no way that this can be
+entirely an Apache problem.
+
+From: Marc Slemko <marcs@znep.com>
+To: Eric Fisher <fisher@osiriscomm.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: general/5336: Apache process hangs, and parent will not die.
+Date: Thu, 18 Nov 1999 14:07:05 -0700 (MST)
+
+ On Thu, 18 Nov 1999, Eric Fisher wrote:
+ 
+ > I think I was a little mistaken.  Actually, it seems that in most cases
+ > the parent dies.  Its the children that won't die.
+ 
+ Are you using NFS?
+ 
+ So are you saying you can't kill the children, even with a kill -9?
+ 
+ > 
+ > Also, we've already tried this same configureation using linux 2.2.12.
+ > We originally had this problem with 2.2.12, thats why we upgraded.
+ 
+ Interesting.  You may want to try going back further.
+ 
+ > 
+ > Have you heard of any similar problems like this with people trying to use
+ > the 2.2.x kernel?
+ 
+ Many.
+ 
+ I have seen a half dozen reports over the past two months of behaviour
+ similar to yours.  While there have been cases in the past when such
+ things have been tracked down to problems in Apache, they have been
+ rare.  This sudden splurge of bug reports has also only started very
+ recently, and they all have the common denominator of running a recent
+ 2.2.x kernel.
+ 
+ I don't know how flexible you are or what other factors you have to take
+ into consideration, but I would strongly suggest trying moving to a
+ different kernel.  What different kernel?  Good question.  Maybe an early
+ 2.2 one, maybe a 2.1 one, maybe all the way back to the current 2.0 one.  
+ Unfortunately I can't really make much in the way of recommendations
+ there.
+ 
+ You could, just for something to do, try disabling SMP.  
+ 
+ > 
+ > 
+ > On 18 Nov 1999 marc@apache.org wrote:
+ > 
+ > > [In order for any reply to be added to the PR database, ]
+ > > [you need to include <apbugs@Apache.Org> in the Cc line ]
+ > > [and leave the subject line UNCHANGED.  This is not done]
+ > > [automatically because of the potential for mail loops. ]
+ > > [If you do not include this Cc, your reply may be ig-   ]
+ > > [nored unless you are responding to an explicit request ]
+ > > [from a developer.                                      ]
+ > > [Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+ > > 
+ > > 
+ > > Synopsis: Apache process hangs, and parent will not die.
+ > > 
+ > > State-Changed-From-To: open-feedback
+ > > State-Changed-By: marc
+ > > State-Changed-When: Thu Nov 18 12:28:42 PST 1999
+ > > State-Changed-Why:
+ > > Try running an older, more stable kernel.  We have had lots
+ > > of reports of similar things from people, with the common
+ > > factor being that thay are using 2.2.13 or something similar.
+ > > 
+ > > There may well be some problem in the kernel you are running
+ > > that causes this.
+ > > 
+ > > If you have to restart the machine (and I presume you mean
+ > > reboot) to fix it, then there is no way that this can be
+ > > entirely an Apache problem.
+ > > 
+ > 
+ 
+
+From: Eric Fisher <fisher@osiriscomm.com>
+To: Marc Slemko <marcs@znep.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: general/5336: Apache process hangs, and parent will not die.
+Date: Thu, 18 Nov 1999 13:14:00 -0800 (PST)
+
+ On Thu, 18 Nov 1999, Marc Slemko wrote:
+ 
+ > On Thu, 18 Nov 1999, Eric Fisher wrote:
+ > 
+ > > I think I was a little mistaken.  Actually, it seems that in most cases
+ > > the parent dies.  Its the children that won't die.
+ > 
+ > Are you using NFS?
+ 
+ Yes, but we are only serving NFS, there are no NFS mounts on this server
+ 
+ > 
+ > So are you saying you can't kill the children, even with a kill -9?
+ 
+ Correct, kill -9 does nothing to the children.  They just hang there until
+ a reboot.
+ 
+ > 
+ > > 
+ > > Also, we've already tried this same configureation using linux 2.2.12.
+ > > We originally had this problem with 2.2.12, thats why we upgraded.
+ > 
+ > Interesting.  You may want to try going back further.
+ 
+ hmm...possibly.
+ 
+ > 
+ > > 
+ > > Have you heard of any similar problems like this with people trying to use
+ > > the 2.2.x kernel?
+ > 
+ > Many.
+ > 
+ > I have seen a half dozen reports over the past two months of behaviour
+ > similar to yours.  While there have been cases in the past when such
+ > things have been tracked down to problems in Apache, they have been
+ > rare.  This sudden splurge of bug reports has also only started very
+ > recently, and they all have the common denominator of running a recent
+ > 2.2.x kernel.
+ > 
+ > I don't know how flexible you are or what other factors you have to take
+ > into consideration, but I would strongly suggest trying moving to a
+ > different kernel.  What different kernel?  Good question.  Maybe an early
+ > 2.2 one, maybe a 2.1 one, maybe all the way back to the current 2.0 one.  
+ > Unfortunately I can't really make much in the way of recommendations
+ > there.
+ 
+ Ouch...I'd hope that we would have to go back to a pre 2.2 kernel.
+ 
+ > 
+ > You could, just for something to do, try disabling SMP.  
+ 
+ If it does seem to be a problem in the kernel, do you have any ideas as
+ who to contact next?  We'll give the SMP thing a try.  Maybe it'll work.
+ I'll let you know.
+ 
+ -Eric
+ 
+ > 
+ > > 
+ > > 
+ > > On 18 Nov 1999 marc@apache.org wrote:
+ > > 
+ > > > [In order for any reply to be added to the PR database, ]
+ > > > [you need to include <apbugs@Apache.Org> in the Cc line ]
+ > > > [and leave the subject line UNCHANGED.  This is not done]
+ > > > [automatically because of the potential for mail loops. ]
+ > > > [If you do not include this Cc, your reply may be ig-   ]
+ > > > [nored unless you are responding to an explicit request ]
+ > > > [from a developer.                                      ]
+ > > > [Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+ > > > 
+ > > > 
+ > > > Synopsis: Apache process hangs, and parent will not die.
+ > > > 
+ > > > State-Changed-From-To: open-feedback
+ > > > State-Changed-By: marc
+ > > > State-Changed-When: Thu Nov 18 12:28:42 PST 1999
+ > > > State-Changed-Why:
+ > > > Try running an older, more stable kernel.  We have had lots
+ > > > of reports of similar things from people, with the common
+ > > > factor being that thay are using 2.2.13 or something similar.
+ > > > 
+ > > > There may well be some problem in the kernel you are running
+ > > > that causes this.
+ > > > 
+ > > > If you have to restart the machine (and I presume you mean
+ > > > reboot) to fix it, then there is no way that this can be
+ > > > entirely an Apache problem.
+ > > > 
+ > > 
+ > 
+ 
+Comment-Added-By: coar
+Comment-Added-When: Thu May 25 15:13:53 PDT 2000
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: slive
+State-Changed-When: Mon Oct 30 19:27:46 PST 2000
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

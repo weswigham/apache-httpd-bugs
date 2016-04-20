@@ -1,0 +1,144 @@
+Received: (qmail 17196 invoked by uid 2012); 26 Jul 1999 07:11:13 -0000
+Message-Id: <19990726071113.17194.qmail@hyperreal.org>
+Date: 26 Jul 1999 07:11:13 -0000
+From: Cliff Woolley <jwoolley@wlu.edu>
+Reply-To: jwoolley@wlu.edu
+To: apbugs@hyperreal.org
+Subject: RewriteRule behaves unexpectedly when URL contains an ampersand
+X-Send-Pr-Version: 3.2
+
+>Number:         4766
+>Category:       mod_rewrite
+>Synopsis:       RewriteRule behaves unexpectedly when URL contains an ampersand
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jul 26 00:20:03 PDT 1999
+>Last-Modified:  Mon Nov 29 13:50:00 PST 1999
+>Originator:     jwoolley@wlu.edu
+>Organization:
+>Release:        1.3.6
+>Environment:
+Slackware 4.0, Linux 2.2.9, gcc egcs-2.91.66 19990314, i686
+>Description:
+In a URL containing an ampersand (%26), the & is magically translated (under a
+certain set of conditions) to the results of the last RewriteMap lookup, which
+is wrong as far as I know.
+>How-To-Repeat:
+# lookup a ~username in a custom way using a rewritemap, return
+# filesystem path and append to it the rest of the URL
+RewriteMap   homedir          prg:/usr/local/bin/homedirlookup.pl
+RewriteCond  ${homedir:$1}    (.+)
+RewriteRule  ^/~([^/]+)(.*)$  %1$2
+
+If the (.*) part of the URL (ie, the part that becomes $2) contains an
+ampersand (as in /~bob/this&that.gif ), the & in $2 will be
+mysteriously translated to a duplicate of the results of the last RewriteMap
+(which in this case are also located in %1).  Therefore, if the results of
+the map lookup had been /home/server/bob, the URL would be rewritten to
+/home/server/bob/this/home/server/bobthat.gif  rather than the
+/home/server/bob/this&that.gif that is expected.
+>Fix:
+My temporary work-around is to backslash the ampersands with a stupid set of
+perl scripts that just look for ampersands and backslash them if they exist
+prior to the above set of rules and un-backslash them if they still exist
+after the above rules.  It's not a good solution, as it involves a lot of
+overhead that shouldn't be necessary.  I'm also using the int:escape and
+int:unescape RewriteMap functions for other reasons... those might provide
+another workaround on their own.
+
+I'm looking through the code for mod_rewrite to try and find possible culprits
+here, but I haven't had the time to really concentrate on it yet.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rse
+State-Changed-When: Wed Oct 27 02:21:04 PDT 1999
+State-Changed-Why:
+Fixed for Apache 1.3.10.
+Thanks for your feedback.
+
+From: "Cliff Woolley" <jwoolley@wlu.edu>
+To: <apbugs@Apache.Org>, <rse@Apache.Org>
+Cc:  Subject: Re: mod_rewrite/4766: RewriteRule behaves unexpectedly when
+	URL contains an ampersand
+Date: Mon, 22 Nov 1999 15:37:11 -0500
+
+ >Fixed for Apache 1.3.10.
+ >Thanks for your feedback.
+ 
+ Ralf:
+ 
+   Thanks for the patch... but I think I've found a problem with it (I'm
+ using mod_rewrite.c version 1.150 from the CVS tree).  Given the
+ following rule:
+ 
+ RewriteRule   ^(.*)\.whtml$       $1.wlu
+ [T=text/x-server-parsed-html,PT]
+ 
+ and given the URI "/error/missing.whtml", I'd expect the rule to
+ rewrite the URI into "/error/missing.wlu".  Instead, it gets rewritten
+ into ".wlu" (the $1 is not dereferenced... it's just deleted entirely). 
+ Here are the relevant parts of the relevant lines from the rewrite
+ engine log:
+ 
+ ...initial] (2) init rewrite engine with requested uri
+ /error/missing.whtml
+ ...initial] (3) applying pattern '^(.*)\.whtml$' to uri
+ '/error/missing.whtml'
+ ...initial] (2) rewrite /error/missing.whtml -> .wlu
+ ...initial] (2) remember .wlu to have MIME-type
+ 'text/x-server-parsed-html'
+ ...initial] (2) forcing '.wlu' to get passed through to next API
+ URI-to-filename handler
+ 
+ 
+ Note the third line in particular.  Thanks...
+ 
+ --Cliff
+ 
+ Cliff Woolley
+ Central Systems Software Administrator
+ Washington and Lee University
+ http://www.wlu.edu/~jwoolley/
+ 
+ Work: (540) 463-8089
+ Pager: (540) 462-2303
+
+From: "Cliff Woolley" <jwoolley@wlu.edu>
+To: <apbugs@Apache.Org>, <rse@Apache.Org>
+Cc:  Subject: Re: mod_rewrite/4766: RewriteRule behaves unexpectedly when
+	URL contains an ampersand
+Date: Mon, 29 Nov 1999 16:47:21 -0500
+
+ >  Thanks for the patch... but I think I've found a problem with it.
+ 
+ I found & patched the problem.  I'm submitting the patch as another
+ bugdb entry so that it doesn't get overlooked and because it's really a
+ separate issue.
+ 
+ Cliff Woolley
+ Central Systems Software Administrator
+ Washington and Lee University
+ http://www.wlu.edu/~jwoolley/
+ 
+ Work: (540) 463-8089
+ Pager: (540) 462-2303
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

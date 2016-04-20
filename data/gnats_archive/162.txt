@@ -1,0 +1,127 @@
+From nobody@hyperreal.com  Wed Feb  5 14:55:17 1997
+Received: by taz.hyperreal.com (8.8.4/V2.0) id OAA11504; Wed, 5 Feb 1997 14:55:17 -0800 (PST)
+Message-Id: <199702052255.OAA11504@taz.hyperreal.com>
+Date: Wed, 5 Feb 1997 14:55:17 -0800 (PST)
+From: Petr Lampa <lampa@fee.vutbr.cz>
+Reply-To: lampa@fee.vutbr.cz
+To: apbugs@hyperreal.com
+Subject: core dump in sub_req_lookup_file() if invalid directive in .htaccess
+X-Send-Pr-Version: 3.2
+
+>Number:         162
+>Category:       general
+>Synopsis:       core dump in sub_req_lookup_file() if invalid directive in .htaccess
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Feb  5 15:00:01 1997
+>Last-Modified:  Mon Feb 10 02:34:37 PST 1997
+>Originator:     lampa@fee.vutbr.cz
+>Organization:
+>Release:        1.1*, 1.2b*
+>Environment:
+FreeBSD-2.2BETA
+>Description:
+Bug reported for 1.1, 1.2b4, not resolved yet.
+
+If a bad directive occurs in .htaccess, and sub_request() goes
+first to this directory, then log_reason() will dump,
+because it doesn't have initialized r->per_dir_config.
+
+Program received signal SIGSEGV, Segmentation fault.
+0x90ee in get_module_config (conf_vector=0x0, m=0x38a20) at http_config.c:112
+112        return confv[m->module_index];
+(gdb) where
+#0  0x90ee in get_module_config (conf_vector=0x0, m=0x38a20)
+    at http_config.c:112
+#1  0x6138 in get_remote_host (conn=0x5401c, dir_config=0x0, type=1)
+    at http_core.c:316
+#2  0xdccf in log_reason (reason=0x5a77c "Invalid command LanguageChacha",
+    file=0x5a6fc "/home2/WWW/root/BRNO/.htaccess", r=0x5a034) at http_log.c:191
+#3  0xaad8 in parse_htaccess (result=0xefbf1a94, r=0x5a034, override=6,
+    d=0x5a6e4 "/home2/WWW/root/BRNO/",
+    filename=0x5a6fc "/home2/WWW/root/BRNO/.htaccess") at http_config.c:813
+#4  0xbff6 in directory_walk (r=0x5a034) at http_request.c:388
+#5  0xcad3 in sub_req_lookup_file (new_file=0xefbf3b00 "BRNO/brno.html",
+    r=0x54084) at http_request.c:707
+#6  0x236c4 in handle_include (in=0x80d3b6c, r=0x54084,
+    error=0xefbf9b30 "[an error occurred while processing this directive]",
+    noexec=0) at mod_include.c:470
+#7  0x2657d in send_parsed_content (f=0x80d3b6c, r=0x54084)
+    at mod_include.c:1616
+#8  0x26a0e in send_parsed_file (r=0x54084) at mod_include.c:1724
+#9  0x26a49 in send_shtml_file (r=0x54084) at mod_include.c:1733
+>How-To-Repeat:
+
+>Fix:
+
+Initialize r->per_dir_config for sub_request exactly as in regular request!
+Or initialize it at least at the beginning of directory_walk():
+
+*** http_request.c.old  Mon Jan 20 11:45:46 1997
+--- http_request.c      Mon Jan 20 11:40:47 1997
+***************
+*** 226,231 ****
+--- 226,232 ----
+ * fake one. But don't run through the directory entries.
+ */
+
++     r->per_dir_config = per_dir_defaults;
+      if (test_filename == NULL) {
+      r->filename = pstrdup(r->pool, r->uri);
+      r->finfo.st_mode = 0;   /* Not really a file... */
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: fielding
+State-Changed-When: Mon Feb 10 02:34:37 PST 1997
+State-Changed-Why:
+
+The following patch is believed to be a better fix for the
+problem and will be in the next release.  Thanks for the
+detailed report.
+
+*** http_request.c      Sun Feb  9 17:46:59 1997
+--- http_request.c      Sun Feb  9 17:48:11 1997
+***************
+*** 697,702 ****
+--- 697,703 ----
+      rnew->server = r->server;
+      rnew->request_config = create_request_config (rnew->pool);
+      rnew->htaccess = r->htaccess; /* copy htaccess cache */
++     rnew->per_dir_config = r->server->lookup_defaults;
+      set_sub_req_protocol (rnew, r);
+  
+      rnew->uri = "INTERNALLY GENERATED file-relative req";
+*** http_core.c 1997/02/03 02:42:57     1.64
+--- http_core.c 1997/02/08 21:57:28
+***************
+*** 313,321 ****
+      core_dir_config *dir_conf;
+  
+  /* If we haven't checked the host name, and we want to */
+!     dir_conf = (core_dir_config *)get_module_config(dir_config, &core_module);
+  
+!    if (type != REMOTE_NOLOOKUP && conn->remote_host == NULL && dir_conf->hostname_lookups)
+      {
+  #ifdef STATUS
+        int old_stat = update_child_status(conn->child_num,
+--- 313,322 ----
+      core_dir_config *dir_conf;
+  
+  /* If we haven't checked the host name, and we want to */
+!     if (dir_config) 
+!       dir_conf = (core_dir_config *)get_module_config(dir_config, &core_module);
+  
+!    if ((!dir_conf) || (type != REMOTE_NOLOOKUP && conn->remote_host == NULL && dir_conf->hostname_lookups))
+      {
+  #ifdef STATUS
+        int old_stat = update_child_status(conn->child_num,
+
+>Unformatted:
+
+

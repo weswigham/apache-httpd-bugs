@@ -1,0 +1,240 @@
+Received: (qmail 17851 invoked by uid 2012); 19 Sep 1998 00:49:46 -0000
+Message-Id: <19980919004946.17850.qmail@hyperreal.org>
+Date: 19 Sep 1998 00:49:46 -0000
+From: Steven E.Brenner <seb@akamail.com>
+Reply-To: seb@akamail.com
+To: apbugs@hyperreal.org
+Subject: NameVirtualHost and Port Numbers: One hosts captures all connections to other ports
+X-Send-Pr-Version: 3.2
+
+>Number:         3029
+>Category:       config
+>Synopsis:       NameVirtualHost and Port Numbers: One hosts captures all connections to other ports
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Sep 18 17:50:00 PDT 1998
+>Last-Modified:  Sat Nov 14 09:32:08 PST 1998
+>Originator:     seb@akamail.com
+>Organization:
+>Release:        1.3.1
+>Environment:
+Linux lw1.stanford.edu 2.0.30 #1 Wed Jun 4 15:02:33 EDT 1997 i686 unknown
+gcc version 2.7.2.1
+>Description:
+Greetings,
+
+I have a server which serves several Name-Based Virtual hosts, on
+several ports.  Behavior on the 'main' port (80) is fine.  However, 
+all accesses to the other 'Listen' ports go to the first VirtualHost listed 
+with that port.  The name of the host appears to be ignored.
+
+Following is the VirtualHosts section of my configuration.  Following 
+is where the server actually takes me.
+
+# Listen: Allows you to bind Apache to specific IP addresses and/or
+# ports, in addition to the default. See also the VirtualHost command
+
+# Pub server
+Listen 80
+# Tst server
+Listen 1234
+# Dev server 
+Listen 9876
+
+#Listen 12.34.56.78:80
+
+# VirtualHost: Allows the daemon to respond to requests for more than one
+# server address, if your server machine is configured to accept IP packets
+# for multiple addresses. This can be accomplished with the ifconfig 
+# alias flag, or through kernel patches like VIF.
+
+# Any httpd.conf or srm.conf directive may go into a VirtualHost command.
+# See also the BindAddress entry.
+
+
+NameVirtualHost 171.65.16.192
+ 
+<VirtualHost 171.65.16.192:80>
+#ServerAdmin brenner@hyper.stanford.edu
+DocumentRoot /maxa/usr/www/csb/pub
+ServerName   csb.stanford.edu
+ServerAlias  csb
+Port         80
+ErrorLog     logs/csb-pub-error_log
+TransferLog  logs/csb-pub-access_log
+</VirtualHost>
+
+<VirtualHost 171.65.16.192:80>
+#ServerAdmin brenner@hyper.stanford.edu
+DocumentRoot /maxa/usr/www/dd/pub
+ServerName   dd.stanford.edu
+ServerAlias  dd
+Port         80
+ErrorLog     logs/dd-pub-error_log
+TransferLog  logs/dd-pub-access_log
+</VirtualHost>
+
+<VirtualHost 171.65.16.192:80>
+#ServerAdmin brenner@hyper.stanford.edu
+DocumentRoot /maxa/usr/www/presage/pub
+ServerName   presage.stanford.edu
+ServerAlias  presage
+Port         80
+ErrorLog     logs/presage-pub-error_log
+TransferLog  logs/presage-pub-access_log
+</VirtualHost>
+
+<VirtualHost 171.65.16.192:1234>
+#ServerAdmin brenner@hyper.stanford.edu
+DocumentRoot /maxa/usr/www/presage/tst
+ServerName   presage.stanford.edu
+ServerAlias  presage
+Port         1234
+ErrorLog     logs/presage-tst-error_log
+TransferLog  logs/presage-tst-access_log
+</VirtualHost>
+
+<VirtualHost 171.65.16.192:9876>
+#ServerAdmin brenner@hyper.stanford.edu
+DocumentRoot /maxa/usr/www/presage/dev
+ServerName   presage.stanford.edu
+ServerAlias  presage
+Port         9876
+ErrorLog     logs/presage-dev-error_log
+TransferLog  logs/presage-dev-access_log
+</VirtualHost>
+
+<VirtualHost _default_:*>
+DocumentRoot /maxa/usr/www/default/pub
+ServerName   lw1.stanford.edu
+ErrorLog     logs/default-error_log
+TransferLog  logs/default-access_log
+</VirtualHost>
+
+<VirtualHost 171.65.16.192:1234>
+DocumentRoot /maxa/usr/www/default/pub
+ServerName   lw1.stanford.edu
+Port         1234
+ErrorLog     logs/default-error_log
+TransferLog  logs/default-access_log
+</VirtualHost>
+
+<VirtualHost 171.65.16.192:9876>
+DocumentRoot /maxa/usr/www/default/pub
+ServerName   lw1.stanford.edu
+Port         9876
+ErrorLog     logs/default-error_log
+TransferLog  logs/default-access_log
+</VirtualHost>
+
+
+
+When I access the following sites, I go to the correct locations:
+http://dd.stanford.edu/
+http://csb.stanford.edu/
+http://lw1.stanford.edu/
+http://presage.stanford.edu/
+http://presage.stanford.edu:1234/
+http://presage.stanford.edu:9876/
+
+I would expect (because of the _default_:*) entry, that 
+http://csb.stanford.edu:1234/ would take me to ...default/pub
+
+Further, I would expect that
+http://lw1.stanford.edu:1234/ (which has an explicit VirtualHost entry)
+would also take me to ...default/pub
+
+However, in both cases, I am taken to ...presage/tst.
+Indeed, access to ANY server name on port 1234 takes me to ..presage/tst
+    and access to ANY server name on port 9876 takes me to ..presage/dev
+
+Further, I have discovered that the location I am taken to for *:1234 and *:9876
+is dependent upon the orderng of entries in httpd.conf  If I move the
+VirtualHost for lw1.stanford.edu, Port 1234 to the top of the file, then
+*:1234 (including presage.stanford.edu:1234) takes me to default/pub
+>How-To-Repeat:
+See above
+>Fix:
+None obvious.  Thanks for your help.
+>Audit-Trail:
+Category-Changed-From-To: general-config
+Category-Changed-By: coar
+Category-Changed-When: Sun Sep 27 10:57:48 PDT 1998
+
+
+From: Manoj Kasichainula <manojk@raleigh.ibm.com>
+To: seb@akamail.com, apbugs@hyperreal.org
+Cc:  Subject: Re: general/3029: NameVirtualHost and Port Numbers: One hosts captures all connections to other ports
+Date: Thu, 1 Oct 1998 17:57:15 -0400
+
+ On Sat, Sep 19, 1998 at 12:49:46AM -0000, Steven E.Brenner wrote:
+ > I would expect (because of the _default_:*) entry, that 
+ > http://csb.stanford.edu:1234/ would take me to ...default/pub
+ 
+ Your problem with a _default_ VirtualHost is documented.
+ From http://idli.raleigh.ibm.com/manual/vhosts/examples.html#default
+ 
+ "Using such a default vhost with a wildcard port effectively prevents
+ any request going to the main server.  A default vhost never serves a
+ request that was sent to an address/port that is used for name-based
+ vhosts.  If the request contained an unknown or no Host: header it is
+ always served from the primary name-based vhost (the vhost for that
+ address/port appearing first in the configuration file)."
+ 
+ > Further, I would expect that http://lw1.stanford.edu:1234/ (which
+ > has an explicit VirtualHost entry) would also take me to
+ > ...default/pub
+ 
+ I tried to build a similar configuration to yours on my Linux box. I
+ couldn't recreate this problem. And your server seems to be down at
+ the moment so I can't test it. Please retry and confirm this bug with
+ 1.3.2 if possible.
+ 
+ Also try replacing your NameVirtualHost entry with:
+ 
+ NameVirtualHost 171.65.16.192:80
+ NameVirtualHost 171.65.16.192:1234
+ NameVirtualHost 171.65.16.192:9876
+ 
+ and see if your problem goes away.
+
+From: Manoj Kasichainula <manojk@raleigh.ibm.com>
+To: seb@akamail.com, apbugs@hyperreal.org
+Cc:  Subject: Re: general/3029: NameVirtualHost and Port Numbers: One hosts captures all connections to other ports
+Date: Fri, 2 Oct 1998 13:12:42 -0400
+
+ On Thu, Oct 01, 1998 at 05:57:15PM -0400, Me at IBM wrote:
+ > Your problem with a _default_ VirtualHost is documented.
+ > From http://idli.raleigh.ibm.com/manual/vhosts/examples.html#default
+ 
+ Stupid mistake. See:
+ http://www.apache.org/docs/vhosts/examples.html#default
+ instead.
+State-Changed-From-To: open-feedback
+State-Changed-By: manoj
+State-Changed-When: Mon Oct  5 15:40:26 PDT 1998
+State-Changed-Why:
+Waiting for feedback from submitter.
+State-Changed-From-To: feedback-closed
+State-Changed-By: lars
+State-Changed-When: Sat Nov 14 09:32:08 PST 1998
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

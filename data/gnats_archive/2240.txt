@@ -1,0 +1,144 @@
+Received: (qmail 28237 invoked by uid 2012); 17 May 1998 11:12:05 -0000
+Message-Id: <19980517111205.28236.qmail@hyperreal.org>
+Date: 17 May 1998 11:12:05 -0000
+From: Heiko Marschall <hm@garmisch.net>
+Reply-To: hm@garmisch.net
+To: apbugs@hyperreal.org
+Subject: CGI killed 3 seconds after loosing client
+X-Send-Pr-Version: 3.2
+
+>Number:         2240
+>Category:       mod_cgi
+>Synopsis:       CGI killed 3 seconds after loosing client
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          support
+>Submitter-Id:   apache
+>Arrival-Date:   Sun May 17 04:20:00 PDT 1998
+>Last-Modified:  Sun May 17 11:10:00 PDT 1998
+>Originator:     hm@garmisch.net
+>Organization:
+>Release:        1.3b6
+>Environment:
+linux 2.0.32 
+>Description:
+When loosing connection to the browser, my cgi-script gets a TERM-signal.
+But when I go on executing the script (e.g. by $SIG{TERM}=SIG_IGN) the script
+aborts after about 3 seconds. But I receive no more signal (maybe an KILL ?) to
+handle with.
+This behavior is independent from writing to the browser, even writing to disk
+after receiving the TERM-signal doesn´t help.
+As you see in my example i tried to catch all the known signals.
+Only KILL cannot be snatched. So i think Apache sends me an KILL signal ?
+>How-To-Repeat:
+#!/usr/bin/perl
+
+use Config;
+
+
+@sigs=(
+ZERO,HUP,INT,QUIT,ILL,ABRT,TRAP,IOT,BUS,FPE,KILL,USR1,SEGV,USR2,PIPE,ALRM,TERM,CHLD,
+CONT,STOP,TSTP,TTIN,TTOU,URG,XCPU,XFSZ,VTALRM,PROF,WINCH,IO,PWR,STKFLT,UNUSED,IOT,CLD,
+POLL);
+        
+sub handler
+        {
+        local ($sig) = @_;
+        
+        open STDOUT,">afterterm.txt";
+        for ($i=1; $i < 20; $i++)
+                {
+                print STDOUT "test $i\n";
+                sleep(1);
+                }
+# breaks after 3 seconds !!!
+        close STDOUT;
+        exit(0);
+        }
+
+foreach (@sigs)
+        {
+        $SIG{$_}=\&handler;
+        }
+
+$SIG{SEGV}=SIG_IGN;
+$SIG{PIPE}=SIG_IGN;
+$SIG{TERM}=\&handler;
+
+$|=1;
+
+open SIG, ">sig.test";
+select SIG; $|=1;
+select STDOUT;
+
+print "Content-type: text/html\n\n";
+print "<html><body>\n";
+for ($i=0; $i< 20; $i++)
+        {
+        print "zahl:$i<br>\n";  # writing to browser
+        print SIG "zahl:$i<br>\n";  # writing to disk
+        sleep (1);
+        }
+close SIG;
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Sun May 17 07:14:38 PDT 1998
+State-Changed-Why:
+Yes, that is what Apache does.  If you require a script
+that can run for longer after the client disconnects you need
+to fork a child process and have it do the work.
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: mod_cgi/2240: CGI killed 3 seconds after loosing client (fwd)
+Date: Sun, 17 May 1998 11:59:37 -0600 (MDT)
+
+ ---------- Forwarded message ----------
+ Date: Sun, 17 May 1998 18:44:42 +0200
+ From: Marschall Electronics <Heiko.Marschall@garmisch.net>
+ To: marc@hyperreal.org
+ Subject: Re: mod_cgi/2240: CGI killed 3 seconds after loosing client
+ 
+ marc@hyperreal.org wrote:
+ >=20
+ > Synopsis: CGI killed 3 seconds after loosing client
+ >=20
+ > State-Changed-From-To: open-closed
+ > State-Changed-By: marc
+ > State-Changed-When: Sun May 17 07:14:38 PDT 1998
+ > State-Changed-Why:
+ > Yes, that is what Apache does.  If you require a script
+ > that can run for longer after the client disconnects you need
+ > to fork a child process and have it do the work.
+ 
+ Apache 1.2 didn=B4t do that ... this version only sent a PIPE-signal.
+ I wanted to upgrade to 1.3 but this would mean I have to change all my
+ CGI-Scripts ... (many of my scripts require going on after
+ disconnection)
+ So I think the only way without changing my scripts is to change the
+ source-code of Apache ... ?
+ 
+ --=20
+ ----------------------------------------------------------------
+  Heiko Marschall               |          MARSCHALL ELECTRONICS
+                                |                              =20
+   email:  hm@garmisch.net      |  URL:  http://www.garmisch.net
+   Phone:  +49 8821 943910 - 0  |                     =20
+  Direct:  +49 8821 943910 - 11 |                   Postaddress:
+     Fax:  +49 8821 943910 - 99 |            Kreuzackerstrasse 2
+      D1:  +49 171 80 12 444    | D-82467 Garmisch-Partenkirchen
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

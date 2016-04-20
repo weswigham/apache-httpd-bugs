@@ -1,0 +1,131 @@
+Received: (qmail 64404 invoked by uid 501); 13 Dec 2000 04:02:15 -0000
+Message-Id: <20001213040215.64403.qmail@locus.apache.org>
+Date: 13 Dec 2000 04:02:15 -0000
+From: Ben Hitchcock <beh01@IHATESPAMuow.edu.au>
+Reply-To: beh01@IHATESPAMuow.edu.au
+To: submit@bugz.apache.org
+Subject: Executing system commands makes apache hang after a couple of k is written to STDOUT.
+X-Send-Pr-Version: 3.110
+
+>Number:         6969
+>Category:       os-windows
+>Synopsis:       Executing system commands makes apache hang after a couple of k is written to STDOUT.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          feedback
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Dec 12 20:10:01 PST 2000
+>Closed-Date:
+>Last-Modified:  Wed May 30 11:50:30 PDT 2001
+>Originator:     beh01@IHATESPAMuow.edu.au
+>Release:        1.3.14
+>Organization:
+>Environment:
+Windows NT 4.0 servicepack 6A and also Windows 2000.
+>Description:
+I have been trying to trace a problem with apache whereby executing a system
+command in a perl script will sometimes cause the server to hang, and then
+reset the connection to the client partway through the output.  The script in
+question runs fine under the Xitami web server, but fails under Apache.
+
+This problem seems to be related to the one described here:
+http://bugs.apache.org/index.cgi/full/5671
+except that maybe the person writing the error report wasn't aware that the
+problem could be encountered WITHOUT a large post to stdin.
+
+This problem is most apparent when the script makes the browser do an 
+autorefresh.
+>How-To-Repeat:
+Here is a trivial piece of code that recreates the problem.  I am using 
+ActivePerl 5.005_03 and Apache 1.3.14 under WinNT and Win 2000, browsing with Internet Explorer 5.00.2919.  Note that swapping the order of the two loops makes the output come through uninterrupted.
+
+
+#! C:\perl\bin\perl
+
+use CGI;			# CGI (forms, html and the like) module
+$query = new CGI;
+
+$|=1;				# autoflush the buffer.
+
+$program_name = $query->script_name();
+
+print CGI->header;	# Prints the content-type to the browser so IE doesn't get confused.
+
+print << "EndOfText";
+<head>
+<Title>
+Test script
+</title>
+   <META HTTP-EQUIV=REFRESH CONTENT=\"1;URL=$program_name\">
+</head>
+<body>
+<H2>
+Test script to mess with apache under NT.
+</h2>
+<br>
+<br>
+You should be able to see the words 'All is well' below.  Time is now:
+
+EndOfText
+$now_string = localtime(time);
+print $now_string;
+
+############# Swap the two loops below to make apache behave properly ###########
+
+##### Loop 1: #####
+$numLines = 0;
+while($numLines < 100) {
+   print "<!-- This is some text that should be ignored by your browser. -->\n";
+   $numLines ++;
+}
+
+##### Loop 2: #####
+$numLines = 0;
+while($numLines < 10) {
+   $output = `echo Simulating some system commands....`;
+   $numLines ++;
+}
+
+
+
+print "<br>\n";
+print "All is well.";
+
+exit;
+
+
+>Fix:
+I fixed the problem by doing all the system commands before writing the large amounts of data to the browser, but this seems to be a bit of a hack.  
+Perhaps the buffer sizes should be increased in the next Win32 release of apache?
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: wrowe
+State-Changed-When: Wed May 30 11:50:29 PDT 2001
+State-Changed-Why:
+Please try reproducing this problem under the more recent
+Apache 1.3.20 release, and a more current version of perl
+(5.6 or 5.7 generations.)
+
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

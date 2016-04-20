@@ -1,0 +1,155 @@
+Received: (qmail 5188 invoked by uid 2012); 15 Jan 1999 13:48:55 -0000
+Message-Id: <19990115134855.5187.qmail@hyperreal.org>
+Date: 15 Jan 1999 13:48:55 -0000
+From: Erik "Agsjö" <erik.agsjo@aktiedirekt.com>
+Reply-To: erik.agsjo@aktiedirekt.com
+To: apbugs@hyperreal.org
+Subject: New ErrorDocumentMatch directive
+X-Send-Pr-Version: 3.2
+
+>Number:         3677
+>Category:       general
+>Synopsis:       New ErrorDocumentMatch directive
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jan 15 05:50:01 PST 1999
+>Last-Modified:  Tue Apr 20 21:41:16 PDT 1999
+>Originator:     erik.agsjo@aktiedirekt.com
+>Organization:
+>Release:        1.3.4
+>Environment:
+n/a
+>Description:
+I am developing a generic error handler for our site that will handle all
+possible errors that the server generates using ErrorDocument.
+
+To simplify configuration I wanted to add something like:
+ErrorDocument 4XX /my/error400handler
+for handling all 400 type errors.
+
+At the same time, I wanted to add a static handler for some errors.
+So, I wrote a patch for a new ErrorDocumentMatch directive.
+
+Instead of writing a new generic parser for these requests I decided
+to use the regex library routines that all the other generic matching
+directives use. It might seem silly, but it is only done at config time,
+so there is no performance penalty.
+>How-To-Repeat:
+n/a
+>Fix:
+Example use:
+
+ErrorDocumentMatch ^5(.*) "Internal server error subtype $1
+ErrorDocumentMatch .* /bin/genericerror
+
+Patch:
+
+*** orig/http_core.c    Wed Jan 13 16:35:56 1999
+--- http_core.c Fri Jan 15 14:46:54 1999
+***************
+*** 861,866 ****
+--- 861,927 ----
+         ap_pstrdup(r->pool, string) : ap_pstrcat(r->pool, "\"", string, NULL);
+  }
+
++ static const char *set_error_document_re(cmd_parms *cmd, core_dir_config *conf,
++                                          char *line)
++ {
++   int error_number, idx500;
++   char *regex;
++   regex_t *re = NULL;
++   regmatch_t matches[5];
++   int match_count;
++   char *subst;
++
++   const char *err = ap_check_cmd_context(cmd, NOT_IN_LIMIT);
++   if (err != NULL) {
++     return err;
++   }
++
++   /* 1st parameter is the regular expression to match errorcodes */
++   regex = ap_getword_conf_nc(cmd->pool, &line);
++
++   re = ap_pregcomp(cmd->pool, regex, REG_EXTENDED);
++   if (re == NULL) return "Regular expression could not be compiled.";
++
++   idx500 = ap_index_of_response(HTTP_INTERNAL_SERVER_ERROR);
++
++   /* loop through all possible error codes, matching the
++    * regular expression for each one
++    */
++   for (error_number = 100; error_number < 600; error_number++) {
++     char num_str[4];
++     int error_index = ap_index_of_response(error_number);
++     /* skip invalid error codes */
++     if (error_index == idx500) continue;
++     sprintf(num_str, "%d", error_number);
++     if (!regexec(re, num_str, 5, matches, 0)) {
++       match_count = re->re_nsub + 1;
++       if (match_count > 5) match_count = 5;
++       subst = ap_pregsub(cmd->pool, line, num_str, match_count, matches);
++       if (subst) {
++         /* Ignore full URL documents for error number 401 */
++         if (error_number == 401 &&
++             subst[0] != '/' && subst[0] != '"') {
++           ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_NOTICE, NULL,
++                        "regular expression matching 401 cannot use a full URL "
++                        "in ErrorDocumentMatch directive --- ignoring!");
++         }
++         else {
++           if (conf->response_code_strings == NULL) {
++             conf->response_code_strings =
++               ap_pcalloc(cmd->pool,
++                          sizeof(*conf->response_code_strings) * RESPONSE_CODES);
++           }
++           conf->response_code_strings[error_index] = subst;
++         }
++       }
++       else {
++         return "Regular expression substitution failed.";
++       }
++     }
++   }
++   return NULL;
++ }
++
+  static const char *set_error_document(cmd_parms *cmd, core_dir_config *conf,
+                                      char *line)
+  {
+***************
+*** 2527,2532 ****
+--- 2588,2595 ----
+    "Root directory of the document tree"  },
+  { "ErrorDocument", set_error_document, NULL, OR_FILEINFO, RAW_ARGS,
+    "Change responses for HTTP errors" },
++ { "ErrorDocumentMatch", set_error_document_re, NULL, OR_FILEINFO, RAW_ARGS,
++   "Change responses for HTTP errors" },
+  { "AllowOverride", set_override, NULL, ACCESS_CONF, RAW_ARGS,
+    "Controls what groups of directives can be configured by per-directory "
+    "config files" },
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 21:41:16 PDT 1999
+State-Changed-Why:
+Um yeah it does seem kind of silly... but I suppose it
+has a purpose.  I'll leave it here for others.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

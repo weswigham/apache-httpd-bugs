@@ -1,0 +1,134 @@
+Received: (qmail 19078 invoked by uid 2012); 4 Feb 1999 21:46:33 -0000
+Message-Id: <19990204214633.19077.qmail@hyperreal.org>
+Date: 4 Feb 1999 21:46:33 -0000
+From: Tom May <tom@go2net.com>
+Reply-To: tom@go2net.com
+To: apbugs@hyperreal.org
+Subject: JServServletManager run() bugs
+X-Send-Pr-Version: 3.2
+
+>Number:         3837
+>Category:       mod_jserv
+>Synopsis:       JServServletManager run() bugs
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    jserv
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Feb  4 13:50:01 PST 1999
+>Closed-Date:    Tue Mar 26 06:30:20 PST 2002
+>Last-Modified:  Tue Mar 26 06:30:20 PST 2002
+>Originator:     tom@go2net.com
+>Release:        1.3.3
+>Organization:
+>Environment:
+This report is for a generic coding error applicable to all systems.
+>Description:
+The JServServletManager (cvs rev 1.28) housekeeping thread has a number
+of problems:
+ 
+    /**
+     * The housekeeping thread
+     * Checks for sessions that have not been used for a certain
+     * amount of time and invalidates them.
+     */
+    public void run() {
+        Enumeration sesses;
+        JServSession sess;
+        long sysMillis;
+ 
+        while(true) {
+            // sleep for 5 seconds.
+            // XXX: Make this configurable? (Vincent Partington)
+            try {
+                Thread.sleep(sessionCheckFrequency);
+            } catch(InterruptedException exc) { }
+ 
+            // walk through all sessions and invalidate old ones
+            // FIXME: Should this be surrounded by synchronized(this)
+            // to prevent race conditions? If there are a lot of sessions
+            // the locking may cost a significant amount of time.
+            sesses = sessions.elements();
+            sysMillis = System.currentTimeMillis();
+            while(sesses.hasMoreElements()) {
+                sess = (JServSession) sesses.nextElement();
+                if(sysMillis - sess.lastAccessTime > sessionTimeout) {
+                    sess.invalidate();
+                    break;
+                }
+            }
+        }
+    }
+ 
+1. You should synchronize accesses to sess.lastAccessTime to avoid seeing
+   a partial write to half of the 64-bit long value.  Synchronizing on
+   sess will also eliminate obscure errors that can occur when other
+   threads make modifications to sessions while you are enumerating it,
+   which could otherwise cause newly created sessions to be immediately
+   timed out and invalidated.
+ 
+2. If the session has been invalidated before this code calls
+   sess.invalidate() (which can happen as a race with some other thread
+   calling invalidate()) then invalidate() will throw IllegalStateException
+   which will cause the thread to exit since it isn't caught.
+ 
+3. You shouldn't break after invalidating a single session.
+ 
+>How-To-Repeat:
+
+>Fix:
+Try something like this:
+
+            while(sesses.hasMoreElements()) {
+                sess = (JServSession) sesses.nextElement();
+                synchronized (sess) {
+                    if(sysMillis - sess.lastAccessTime > sessionTimeout) {
+                        try {
+                            sess.invalidate();
+                        }
+                        catch (IllegalStateException ignored) {}
+                    }
+                }
+            }
+ 
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: jon@clearink.com
+State-Changed-When: Tue Mar 30 13:02:08 PST 1999
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: jim
+State-Changed-When: Tue Mar 26 06:30:19 PST 2002
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

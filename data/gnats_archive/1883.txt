@@ -1,0 +1,121 @@
+Received: (qmail 16723 invoked by uid 2012); 27 Feb 1998 14:53:36 -0000
+Message-Id: <19980227145336.16722.qmail@hyperreal.org>
+Date: 27 Feb 1998 14:53:36 -0000
+From: Paul Keck <pkeck@coe.uga.edu>
+Reply-To: pkeck@coe.uga.edu
+To: apbugs@hyperreal.org
+Subject: would like to use "dummy" passwd file for userdir determination
+X-Send-Pr-Version: 3.2
+
+>Number:         1883
+>Category:       mod_userdir
+>Synopsis:       would like to use "dummy" passwd file for userdir determination
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Feb 27 08:10:01 PST 1998
+>Last-Modified:  Tue May 19 19:51:21 PDT 1998
+>Originator:     pkeck@coe.uga.edu
+>Organization:
+>Release:        1.2.5
+>Environment:
+SunOS xxxxx 5.5 Generic_103093-14 sun4m sparc SUNW,SPARCstation-5
+>Description:
+I'm in the process of switching to Apache 1.2.5 from Netscape
+Enterprise 3 on a Solaris 2.5 box.  I like Apache more so far (and by far),
+but there was a nice thing about the NS server- it let you point at any
+passwd format file with users' home dir info in it.  We have a lot of home
+dirs NFS mounted from our primary "user" machine, and we would just put a
+passwd entry for them in the dummy passwd file pointing at the mountpoint,
+i.e.
+
+pkeck:**:102:102:Paul Keck:/mounteddir/pkeck:/usr/local/bin/false
+
+This still works okay, but I have to put the dummy passwd entries in my real
+passwd file.  Also, for people like me who actually log into the web server,
+my home dir is over on the other machine now.  Not a big deal, but I like
+how it was before.  :-)
+
+I peeked at the source code and apache is doing a getpwnam call to get the
+userdir, so it looks like I'm SOL unless I write my own getpwnam.  Has
+anyone patched apache to look at a passwd file other than /etc/passwd?  No
+use reinventing the wheel, and all that.
+>How-To-Repeat:
+
+>Fix:
+It looks like the only places in the source code that call a getpw* are:
+
+http_main.c:      if ((ent = getpwuid(uid)) == NULL) {
+http_main.c:     log_unixerr("getpwuid",NULL,"couldn't determine user name from uid", server_conf);
+mod_include.c:    pw = getpwuid(r->finfo.st_uid);
+mod_rewrite.c:        if ((pw = getpwnam(user)) != NULL) {
+mod_rewrite.c:            if ((pw = getpwuid(r->finfo.st_uid)) != NULL) { 
+mod_rewrite.c:                if ((pw = getpwuid(finfo.st_uid)) != NULL) { 
+mod_userdir.c:  if((pw=getpwnam(w)))
+util.c:    if(!(ent = getpwnam(name))) {
+util_script.c:      if ((pw = getpwnam(username)) == NULL) {
+util_script.c:          log_unixerr("getpwnam",username,"invalid username",r->server);
+util_script.c:      if ((pw = getpwuid (r->server->server_uid)) == NULL) {
+util_script.c:          log_unixerr("getpwuid", NULL, "invalid userid", r->server);
+
+and there's only one in mod_userdir.c.  I was thinking that you could have
+something like a_getpwnam called instead of getpwnam, a_getpwnam being a 
+routine that checked a compile-time flag to see whether you had another 
+passwd file defined.  If so, check it and return a struct passwd derived 
+from there, otherwise use getpwnam.  It would be good to integrate it
+with all the other code that calls getpw*, but I personally just need the 
+userdir support.  As far as I can see the big benefit with using the real 
+getpwnam is you can get info from NIS instead of a real file, but most
+people using Apache probably have a real passwd file anyway.
+
+Is anybody working on this?  My C abilities are pretty lame, so I don't 
+want to attempt it if there's any chance someone else is working on it.
+
+Thanks!
+Paul
+%0
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Paul Keck <pkeck@coe.uga.edu>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_userdir/1883: would like to use "dummy" passwd file for userdir determination
+Date: Fri, 27 Feb 1998 09:43:39 -0700 (MST)
+
+ On 27 Feb 1998, Paul Keck wrote:
+ 
+ > >Description:
+ > I'm in the process of switching to Apache 1.2.5 from Netscape
+ > Enterprise 3 on a Solaris 2.5 box.  I like Apache more so far (and by far),
+ > but there was a nice thing about the NS server- it let you point at any
+ > passwd format file with users' home dir info in it.  We have a lot of home
+ > dirs NFS mounted from our primary "user" machine, and we would just put a
+ > passwd entry for them in the dummy passwd file pointing at the mountpoint,
+ > i.e.
+ > 
+ > pkeck:**:102:102:Paul Keck:/mounteddir/pkeck:/usr/local/bin/false
+ 
+ Is it absolutely necessary to have them in passwd file format?  If not,
+ you could easily just use mod_rewrite to handle these.  Heck, you could
+ store them in a DBM file too to make it faster.  
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: brian
+State-Changed-When: Tue May 19 19:51:21 PDT 1998
+State-Changed-Why:
+There are a variety of authentication modules at
+modules.apache.org, one of which should provide you
+what you need with minimal (if any) hacking.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,541 @@
+Received: (qmail 81503 invoked by uid 501); 6 Aug 2000 10:21:03 -0000
+Message-Id: <20000806102103.81502.qmail@locus.apache.org>
+Date: 6 Aug 2000 10:21:03 -0000
+From: "Rüdiger" Kuhlmann <Tadu@gmx.de>
+Reply-To: Tadu@gmx.de
+To: submit@bugz.apache.org
+Subject: Prepare for cross-compiling and for autoconf 2.14a
+X-Send-Pr-Version: 3.110
+
+>Number:         6379
+>Category:       build
+>Synopsis:       Prepare for cross-compiling and for autoconf 2.14a
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Aug 06 03:30:01 PDT 2000
+>Closed-Date:    Wed Oct 04 21:42:45 PDT 2000
+>Last-Modified:  Wed Oct 04 21:42:45 PDT 2000
+>Originator:     Tadu@gmx.de
+>Release:        2.0a5
+>Organization:
+>Environment:
+autoconf 2.14a
+>Description:
+
+At first, I apologize for not using bugz, but a) http://bugz.apache.org/<all>.cgi
+just give internal server errors, b) http://www.apache.org/bugs/ give
+access denied and c) I don't know how to send it per mail instead. Somebody
+enlighten me?
+
+Prepare for autoconf 2.14a:
+
+  - fix quoting
+  - remove bigus dnl causing fi's to not be followes by newlines
+  - move AC_INIT() since nothing is output before it in 2.14a
+
+Warning: some patches are in aclocal.m4; you want to do the appropriate changes
+in the appropriate source.m4 files instead.
+
+Note: Those changes shouldn't do any harm for autoconf 2.13. (If you can live
+with a few more empty lines)
+
+Changes for cross-compiling:
+
+  - use AC_CANONICAL_SYSTEM (could be AC_CANONICAL_HOST only in 2.14a) instead
+    of calling config.guess directly (which yields the build, but not the
+    host system!)
+  - prefer CHECK_TOOL over CHECK_PROG
+  - cache MAXSEGSIZE
+
+Misc changes:
+
+  - fix layout name printing
+
+If the patch is mangled here, go to
+http://www.mathematik.uni-karlsruhe.de/~kuhlmann/Cross/apache2/apdiffs
+
+Thanks.
+
+
+>How-To-Repeat:
+Just use autoconf 2.14a to rebuild configure scripts and try to configure.
+>Fix:
+
+http://www.mathematik.uni-karlsruhe.de/~kuhlmann/cross/apache2/apdiffs
+
+diff -b -B -C 3 -r -N -XNOT apache_2.0a5_orig/src/aclocal.m4 apache_2.0a5_amiga/src/aclocal.m4
+*** apache_2.0a5_orig/src/aclocal.m4    Fri Aug  4 19:47:03 2000
+--- apache_2.0a5_amiga/src/aclocal.m4   Sat Aug  5 20:32:59 2000
+***************
+*** 317,323 ****
+ fi
+ shared="";;
+      esac
+!     ifelse($6,,:,$6)
+      APACHE_MODPATH_ADD($1, $shared, $3)
+    fi
+  ])dnl
+--- 317,323 ----
+ fi
+ shared="";;
+      esac
+!     ifelse([$6],,:,[$6])
+      APACHE_MODPATH_ADD($1, $shared, $3)
+    fi
+  ])dnl
+***************
+*** 333,339 ****
+ -e "s/[         ]*$/'/g" \
+ $1 > $pldconf
+    changequote([,])
+!   layout_name=$name
+    . $pldconf
+    rm $pldconf
+    for var in prefix exec_prefix bindir sbindir libexecdir mandir \
+--- 333,339 ----
+ -e "s/[         ]*$/'/g" \
+ $1 > $pldconf
+    changequote([,])
+!   layout_name=$2
+    . $pldconf
+    rm $pldconf
+    for var in prefix exec_prefix bindir sbindir libexecdir mandir \
+diff -b -B -C 3 -r -N -XNOT apache_2.0a5_orig/src/configure.in apache_2.0a5_amiga/src/configure.in
+*** apache_2.0a5_orig/src/configure.in  Sun Jul 23 14:32:17 2000
+--- apache_2.0a5_amiga/src/configure.in Sat Aug  5 15:35:13 2000
+***************
+*** 30,35 ****
+--- 30,37 ----
+    USE_VPATH=1
+  fi
+  
++ AC_CANONICAL_SYSTEM
++ 
+  dnl
+  dnl ## Preload our OS configuration
+  APR_PRELOAD
+diff -b -B -C 3 -r -N -XNOT apache_2.0a5_orig/src/lib/apr/configure.in apache_2.0a5_amiga/src/lib/apr/configure.in
+*** apache_2.0a5_orig/src/lib/apr/configure.in  Wed Aug  2 07:51:39 2000
+--- apache_2.0a5_amiga/src/lib/apr/configure.in Sat Aug  5 20:39:16 2000
+***************
+*** 7,16 ****
+  AC_CONFIG_HEADER(include/apr_private.h)
+  AC_CONFIG_AUX_DIR(helpers)
+  
+  echo "Configuring APR library"
+! OS=`$ac_config_guess`
+! OS=`$ac_config_sub $OS`
+! echo "Platform: ${OS}"
+  
+  dnl # Some initial steps for configuration.  We setup the default directory
+  dnl # and which files are to be configured.
+--- 7,17 ----
+  AC_CONFIG_HEADER(include/apr_private.h)
+  AC_CONFIG_AUX_DIR(helpers)
+  
++ AC_CANONICAL_SYSTEM
++ 
+  echo "Configuring APR library"
+! OS=$host
+! echo "Platform: $OS"
+  
+  dnl # Some initial steps for configuration.  We setup the default directory
+  dnl # and which files are to be configured.
+***************
+*** 45,51 ****
+  AC_PROG_RANLIB_NC
+  AC_PROG_MAKE_SET
+  AC_CHECK_PROG(RM, rm, rm)
+! AC_CHECK_PROG(AR, ar, ar)
+  
+  # This macro needs to be here in case we are on an AIX box.
+  AC_AIX
+--- 46,52 ----
+  AC_PROG_RANLIB_NC
+  AC_PROG_MAKE_SET
+  AC_CHECK_PROG(RM, rm, rm)
+! AC_CHECK_TOOL(AR, ar, ar)
+  
+  # This macro needs to be here in case we are on an AIX box.
+  AC_AIX
+diff -b -B -C 3 -r -N -XNOT apache_2.0a5_orig/src/lib/apr/hints.m4 apache_2.0a5_amiga/src/lib/apr/hints.m4
+*** apache_2.0a5_orig/src/lib/apr/hints.m4      Fri Jul 21 22:24:27 2000
+--- apache_2.0a5_amiga/src/lib/apr/hints.m4     Sat Aug  5 20:33:51 2000
+***************
+*** 57,67 ****
+  dnl  based on outside knowledge
+  dnl
+  AC_DEFUN(APR_PRELOAD, [
+! PLAT=`$ac_config_guess`
+! PLAT=`$ac_config_sub $PLAT`
+! echo "Applying hints file rules for $PLAT"
+  
+! case "$PLAT" in
+      *mint)
+ APR_SETIFNULL(CFLAGS, [-DMINT])
+ APR_SETIFNULL(LIBS, [-lportlib -lsocket])
+--- 57,65 ----
+  dnl  based on outside knowledge
+  dnl
+  AC_DEFUN(APR_PRELOAD, [
+! echo "Applying hints file rules for $host"
+  
+! case "$host" in
+      *mint)
+ APR_SETIFNULL(CFLAGS, [-DMINT])
+ APR_SETIFNULL(LIBS, [-lportlib -lsocket])
+diff -b -B -C 3 -r -N -XNOT apache_2.0a5_orig/src/lib/apr/shmem/unix/mm/aclocal.m4 apache_2.0a5_amiga/src/lib/apr/shmem/unix/mm/aclocal.m4
+*** apache_2.0a5_orig/src/lib/apr/shmem/unix/mm/aclocal.m4      Thu May 18 21:30:05 2000
+--- apache_2.0a5_amiga/src/lib/apr/shmem/unix/mm/aclocal.m4     Sun Aug  6 00:47:23 2000
+***************
+*** 43,55 ****
+  [  --enable-static         build static libraries (default=yes)],
+  enable_static="$enableval",
+  enable_static=yes
+! )dnl
+  AC_ARG_ENABLE(shared,dnl
+  [  --enable-shared         build shared libraries (default=yes)],
+  enable_shared="$enableval",
+  enable_shared=yes
+! )dnl
+  libtool_flags=''
+  test ".$silent"            = .yes && libtool_flags="$libtool_flags --silent"
+  test ".$enable_static"     = .no  && libtool_flags="$libtool_flags --disable-static"
+  test ".$enable_shared"     = .no  && libtool_flags="$libtool_flags --disable-shared"
+--- 43,56 ----
+  [  --enable-static         build static libraries (default=yes)],
+  enable_static="$enableval",
+  enable_static=yes
+! )
+  AC_ARG_ENABLE(shared,dnl
+  [  --enable-shared         build shared libraries (default=yes)],
+  enable_shared="$enableval",
+  enable_shared=yes
+! )
+  libtool_flags=''
++ echo "Calling ltconfig with PLATFORM=$PLATFORM"
+  test ".$silent"            = .yes && libtool_flags="$libtool_flags --silent"
+  test ".$enable_static"     = .no  && libtool_flags="$libtool_flags --disable-static"
+  test ".$enable_shared"     = .no  && libtool_flags="$libtool_flags --disable-shared"
+***************
+*** 61,67 ****
+  AC_MSG_ERROR([libtool configuration failed])
+  LIBTOOL="\$(TOP)/libtool"
+  AC_SUBST(LIBTOOL)
+! ])dnl
+  
+  define(AC_CHECK_DEBUGGING,[dnl
+  AC_MSG_CHECKING(for compilation debug mode)
+--- 62,68 ----
+  AC_MSG_ERROR([libtool configuration failed])
+  LIBTOOL="\$(TOP)/libtool"
+  AC_SUBST(LIBTOOL)
+! ])
+  
+  define(AC_CHECK_DEBUGGING,[dnl
+  AC_MSG_CHECKING(for compilation debug mode)
+***************
+*** 94,100 ****
+       sed -e 's/ -g / /g' -e 's/ -g$//' -e 's/^-g //g' -e 's/^-g$//'` ;;
+  esac
+  msg=disabled
+! ])dnl
+  AC_MSG_RESULT([$msg])
+  ])
+  
+--- 95,101 ----
+       sed -e 's/ -g / /g' -e 's/ -g$//' -e 's/^-g //g' -e 's/^-g$//'` ;;
+  esac
+  msg=disabled
+! ])
+  AC_MSG_RESULT([$msg])
+  ])
+  
+***************
+*** 242,253 ****
+  
+  define(AC_CHECK_MAXSEGSIZE,[dnl
+  AC_MSG_CHECKING(for shared memory maximum segment size)
+  OCFLAGS="$CFLAGS"
+  case "$1" in
+      MM_SHMT_MM*    ) CFLAGS="-DTEST_MMAP   $CFLAGS" ;;
+      MM_SHMT_IPCSHM ) CFLAGS="-DTEST_SHMGET $CFLAGS" ;;
+  esac
+- cross_compile=no
+  AC_TRY_RUN(
+  changequote(<<, >>)dnl
+  <<
+--- 243,255 ----
+  
+  define(AC_CHECK_MAXSEGSIZE,[dnl
+  AC_MSG_CHECKING(for shared memory maximum segment size)
++ AC_CACHE_VAL(ac_cv_maxsegsize,
++ [
+  OCFLAGS="$CFLAGS"
+  case "$1" in
+      MM_SHMT_MM*    ) CFLAGS="-DTEST_MMAP   $CFLAGS" ;;
+      MM_SHMT_IPCSHM ) CFLAGS="-DTEST_SHMGET $CFLAGS" ;;
+  esac
+  AC_TRY_RUN(
+  changequote(<<, >>)dnl
+  <<
+***************
+*** 371,379 ****
+  }
+  >>
+  changequote([, ])dnl
+! ,[
+! MM_SHM_MAXSEGSIZE="`cat conftestval`"
+! msg="$MM_SHM_MAXSEGSIZE"
+  if test $msg -eq 67108864; then
+      msg="64MB (soft limit)"
+  elif test $msg -gt 1048576; then
+--- 373,387 ----
+  }
+  >>
+  changequote([, ])dnl
+! ,[ac_cv_maxsegsize="`cat conftestval`"
+! ],
+! ac_cv_maxsegsize=0
+! ,
+! ac_cv_maxsegsize=0
+! )
+! CFLAGS="$OCFLAGS"
+! ])
+! msg="$ac_cv_maxsegsize"
+  if test $msg -eq 67108864; then
+      msg="64MB (soft limit)"
+  elif test $msg -gt 1048576; then
+***************
+*** 384,400 ****
+      msg="`expr $msg / 1024`"
+      msg="${msg}KB"
+  else
+!     MM_SHM_MAXSEGSIZE=0
+      msg=unknown
+  fi
+! ],
+! MM_SHM_MAXSEGSIZE=0
+! msg=unknown
+! ,
+! MM_SHM_MAXSEGSIZE=0
+! msg=unknown
+! )dnl
+! CFLAGS="$OCFLAGS"
+  test ".$msg" = .unknown && AC_MSG_ERROR([Unable to determine maximum shared memory segment size])
+  AC_MSG_RESULT([$msg])
+  AC_DEFINE_UNQUOTED(MM_SHM_MAXSEGSIZE, $MM_SHM_MAXSEGSIZE)
+--- 392,401 ----
+      msg="`expr $msg / 1024`"
+      msg="${msg}KB"
+  else
+!     ac_cv_maxsegsize=0
+      msg=unknown
+  fi
+! MM_SHM_SEGSIZE=$ac_cv_maxsegsize
+  test ".$msg" = .unknown && AC_MSG_ERROR([Unable to determine maximum shared memory segment size])
+  AC_MSG_RESULT([$msg])
+  AC_DEFINE_UNQUOTED(MM_SHM_MAXSEGSIZE, $MM_SHM_MAXSEGSIZE)
+diff -b -B -C 3 -r -N -XNOT apache_2.0a5_orig/src/lib/apr/shmem/unix/mm/configure.in apache_2.0a5_amiga/src/lib/apr/shmem/unix/mm/configure.in
+*** apache_2.0a5_orig/src/lib/apr/shmem/unix/mm/configure.in    Wed May  3 19:15:48 2000
+--- apache_2.0a5_amiga/src/lib/apr/shmem/unix/mm/configure.in   Sun Aug  6 00:02:30 2000
+***************
+*** 9,22 ****
+  AC_PREREQ(2.12)dnl
+  AC_REVISION($1.0$)dnl
+  
+  dnl #   shtool bootstrap
+  SHTOOL="\$(TOP)/shtool"
+  AC_SUBST(SHTOOL)
+  ac_shtool="./shtool"
+  T_MD=`$ac_shtool echo -n -e %B`
+  T_ME=`$ac_shtool echo -n -e %b`
+! PLATFORM=`${CONFIG_SHELL-/bin/sh} ./config.guess`
+! PLATFORM=`${CONFIG_SHELL-/bin/sh} ./config.sub $PLATFORM`
+  MM_VERSION_STR="`$ac_shtool version -l c -d long mm_vers.c`"
+  AC_SUBST(MM_VERSION_STR)
+  
+--- 9,33 ----
+  AC_PREREQ(2.12)dnl
+  AC_REVISION($1.0$)dnl
+  
++ dnl #   autoconf initialization
++ AC_INIT(README)
++ AC_CONFIG_HEADER(mm_conf.h)
++ AC_PREFIX_DEFAULT(/usr/local)
++ 
+  dnl #   shtool bootstrap
+  SHTOOL="\$(TOP)/shtool"
+  AC_SUBST(SHTOOL)
+  ac_shtool="./shtool"
+  T_MD=`$ac_shtool echo -n -e %B`
+  T_ME=`$ac_shtool echo -n -e %b`
+! 
+! 
+! AC_CANONICAL_SYSTEM
+! 
+! PLATFORM=$host
+! echo "Platform = $host"
+! 
+! 
+  MM_VERSION_STR="`$ac_shtool version -l c -d long mm_vers.c`"
+  AC_SUBST(MM_VERSION_STR)
+  
+***************
+*** 25,35 ****
+  echo "Copyright (c) 1999-2000 Ralf S. Engelschall, All Rights Reserved."
+  echo "Platform: ${T_MD}${PLATFORM}${T_ME}"
+  
+- dnl #   autoconf initialization
+- AC_INIT(README)
+- AC_CONFIG_HEADER(mm_conf.h)
+- AC_PREFIX_DEFAULT(/usr/local)
+- 
+  dnl #   determine build mode
+  AC_ARG_ENABLE(batch,dnl
+  [  --enable-batch          build in batch mode (default=no)],
+--- 36,41 ----
+***************
+*** 37,43 ****
+  if test ".$enable_batch" = .; then
+      enable_batch=no
+  fi
+! )dnl
+  
+  dnl #
+  dnl #   determine build tools and parameters
+--- 43,49 ----
+  if test ".$enable_batch" = .; then
+      enable_batch=no
+  fi
+! )
+  
+  dnl #
+  dnl #   determine build tools and parameters
+***************
+*** 145,151 ****
+  AC_ARG_WITH(shm,dnl
+  [  --with-shm=TYPE         force shared memory type: MMFILE MMZERO MMPOSX MMANON IPCSHM BEOS],
+  AC_DECISION_FORCE(MM_SHMT_$withval)
+! )dnl
+  AC_END_DECISION
+  AC_DEFINE_UNQUOTED($ac_decision)
+  
+--- 151,157 ----
+  AC_ARG_WITH(shm,dnl
+  [  --with-shm=TYPE         force shared memory type: MMFILE MMZERO MMPOSX MMANON IPCSHM BEOS],
+  AC_DECISION_FORCE(MM_SHMT_$withval)
+! )
+  AC_END_DECISION
+  AC_DEFINE_UNQUOTED($ac_decision)
+  
+***************
+*** 193,199 ****
+  AC_ARG_WITH(sem,dnl
+  [  --with-sem=TYPE         force semaphore type: FLOCK FCNTL IPCSEM BEOS],
+  AC_DECISION_FORCE(MM_SEMT_$withval)
+! )dnl
+  AC_END_DECISION
+  AC_DEFINE_UNQUOTED($ac_decision)
+  
+--- 199,205 ----
+  AC_ARG_WITH(sem,dnl
+  [  --with-sem=TYPE         force semaphore type: FLOCK FCNTL IPCSEM BEOS],
+  AC_DECISION_FORCE(MM_SEMT_$withval)
+! )
+  AC_END_DECISION
+  AC_DEFINE_UNQUOTED($ac_decision)
+  
+***************
+*** 208,214 ****
+  mm-config dnl
+  ,dnl
+  chmod a+x mm-config
+! )dnl
+  
+  if test ".$enable_batch" != .yes; then
+      echo ""
+--- 214,220 ----
+  mm-config dnl
+  ,dnl
+  chmod a+x mm-config
+! )
+  
+  if test ".$enable_batch" != .yes; then
+      echo ""
+diff -b -B -C 3 -r -N -XNOT apache_2.0a5_orig/src/lib/apr/shmem/unix/mm/libtool apache_2.0a5_amiga/src/lib/apr/shmem/unix/mm/libtool
+diff -b -B -C 3 -r -N -XNOT apache_2.0a5_orig/src/modules/standard/config.m4 apache_2.0a5_amiga/src/modules/standard/config.m4
+*** apache_2.0a5_orig/src/modules/standard/config.m4    Fri Aug  4 04:25:08 2000
+--- apache_2.0a5_amiga/src/modules/standard/config.m4   Sat Aug  5 20:35:25 2000
+***************
+*** 4,10 ****
+  dnl XXX - Need to allow --enable-module to fail if optional config fails
+  
+  AC_DEFUN(APACHE_CHECK_STANDARD_MODULE, [
+!   APACHE_MODULE($1,$2,,$3,$4,$5)
+  ])
+  
+  APACHE_MODPATH_INIT(standard)
+--- 4,10 ----
+  dnl XXX - Need to allow --enable-module to fail if optional config fails
+  
+  AC_DEFUN(APACHE_CHECK_STANDARD_MODULE, [
+!   APACHE_MODULE([$1],[$2],,[$3],[$4],[$5])
+  ])
+  
+  APACHE_MODPATH_INIT(standard)
+diff -b -B -C 3 -r -N -XNOT apache_2.0a5_orig/src/os/config.m4 apache_2.0a5_amiga/src/os/config.m4
+*** apache_2.0a5_orig/src/os/config.m4  Sun Apr 30 20:27:18 2000
+--- apache_2.0a5_amiga/src/os/config.m4 Sat Aug  5 22:07:44 2000
+***************
+*** 1,7 ****
+  AC_MSG_CHECKING(for target platform)
+  
+  #PLATFORM=`${CONFIG_SHELL-/bin/sh} $ac_config_guess`
+! PLATFORM=`$ac_config_guess`
+  LIBPRE=lib
+  
+  case "$PLATFORM" in
+--- 1,8 ----
+  AC_MSG_CHECKING(for target platform)
+  
+  #PLATFORM=`${CONFIG_SHELL-/bin/sh} $ac_config_guess`
+! #PLATFORM=`$ac_config_guess`
+! PLATFORM=$host
+  LIBPRE=lib
+  
+  case "$PLATFORM" in
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: abagchi
+State-Changed-When: Wed Oct  4 21:42:44 PDT 2000
+State-Changed-Why:
+This has been commited to the CVS repository, and it will
+be available in the next alpha of Apache 2.0
+
+Thank you for using Apache
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

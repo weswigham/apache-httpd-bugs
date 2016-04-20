@@ -1,0 +1,202 @@
+Received: (qmail 66565 invoked by uid 501); 28 Dec 2000 23:21:40 -0000
+Message-Id: <20001228232140.66564.qmail@locus.apache.org>
+Date: 28 Dec 2000 23:21:40 -0000
+From: Bill Bishop <william.bishop@oracle.com>
+Reply-To: william.bishop@oracle.com
+To: submit@bugz.apache.org
+Subject: SEGV core dump during startup
+X-Send-Pr-Version: 3.110
+
+>Number:         7016
+>Category:       os-solaris
+>Synopsis:       SEGV core dump during startup
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Dec 28 15:30:01 PST 2000
+>Closed-Date:    Wed Jan 03 19:43:56 PST 2001
+>Last-Modified:  Thu Jan  4 10:50:00 PST 2001
+>Originator:     william.bishop@oracle.com
+>Release:        1.3.14
+>Organization:
+>Environment:
+Solaris 2.6 with Sun patch 107733-03 or later.  Build it by any successful 
+means.  Install Oracle Application Server and configure Apache as the listener.
+Add the appropriate OAS module using the LoadModule directive in httpd.conf.  
+>Description:
+(/opt/SUNWspro/bin/../WS5.0/bin/sparcv9/dbx) where
+current thread: t@1
+  [1] _thrp_create(0xfefb0f28, 0x80, 0xdc, 0xfefb0fb0, 0x0, 0x4), at 0xfef90238
+  [2] _thr_create(0x0, 0x0, 0xff12fa80, 0x0, 0x0, 0xdc), at 0xfef8ffb4
+  [3] ndwfapaci_child_init(0x12cd90, 0x146cc0, 0x0, 0x0, 0x0, 0x0), at 0xff130ef8
+=>[4] ap_child_init_modules(p = 0x146cc0, s = 0x12cd90), line 1620 in "http_config.c"
+  [5] child_main(child_num_arg = 0), line 3877 in "http_main.c"
+  [6] make_child(s = 0x12cd90, slot = 0, now = 974165748), line 4307 in "http_main.c"
+  [7] startup_children(number_to_start = 5), line 4389 in "http_main.c"
+  [8] standalone_main(argc = 2, argv = 0xffbef334), line 4677 in "http_main.c"
+  [9] main(argc = 2, argv = 0xffbef334), line 5004 in "http_main.c"
+
+A SEGV is occurring at several customer sites using the Apache listener
+with the Oracle Application Server.  The OAS adapter is loaded by adding
+a LoadModule item in the httpd.conf to load our shared object that
+accesses our application server.  The SEGV is occurring during startup
+of httpd.
+Further investigation revealed that the problem was initially caused
+when Apache made the init call into our module the second time; it calls
+our init once at module load, and again during execution of the
+standalone() subroutine in the Apache code.  We have code in our init
+routine that sets a variable to tell our shared object whether this is
+the first or second call; if it is the first, we simply set the variable
+and return.  We are forced to do this because our code will not tolerate
+calling the init routine twice, and this is due to details of the
+multi-process integration within the server, so it cannot be changed
+without re-architecting our application server specifically for Apache.
+Please note that we support three other listeners besides Apache and
+modifying the architecture for this reason is therefore not possible, as
+it would break our behavior with those other listeners.
+After applying the patch for Solaris bug 4238071, the shared area is
+deleted when dlclose() is called.  Apache calls dlclose() on our shared
+object after module loading.  Because the shared area is deleted, the
+variable that we set to tell us whether this is the first or second call
+is re-initialized when the second call is made.  Therefore, the second
+call gets a new variable, and does not initialize the data structures
+required by our system, and due to this, we SEGV when we try to run our
+code due to a missing parameter.
+We have coded around this problem in os.c in the Apache source by adding
+the flag RTLD_NODELETE to the dlopen().  This causes the behavior in
+Solaris with regard to the shared area to revert to the pre-4238071
+state.  
+I have searched the bug database, and the closest bug I found was #6225;
+unfortunately, the cause of that problem has nothing to do with this
+one.  If anyone can suggest another solution that will allow our shared
+object to know whether it is being called the first time or not, I will
+investigate fixing our code rather than following up on this bug.
+>How-To-Repeat:
+You will need to install Apache and the Oracle Application Server on the same 
+system, with the above Sun patch installed.  Then, configure OAS to use Apache 
+as its listener, and add the indicated LoadModule directive in the httpd.conf.  
+When you try to start the listener, you will receive a core file that will show 
+the above trace.
+Now, this could be difficult for you, because you will not have access to the 
+Oracle Application server.  
+However, because considerable research has been done, we have a recommendation 
+as to how specifically to fix this problem, and we have actually made this 
+change and verified that it does indeed fix it.  We would like to request that
+this fix be added in future versions to avoid this problem.  We will happily 
+test the fix you provide to ensure that the problem is not seen.  In the absence
+of a fix, we will direct users of Apache with OAS to modify your source code as 
+required to avoid the problem, but our opinion is that it is possible that 
+others who provide back-end server software that uses your API will see the same 
+thing.  
+>Fix:
+The dlopen() call for the init routine should set the RTLD_NODELETE flag.  
+However, care should be taken to ensure that use of this flag will not break
+the behavior of Apache without the Sun patch, or else a check should be done
+at installation time and the use of the flag IFDEFed for Solaris with this 
+patch present.  
+If anyone can make a suggestion (other than the obvious and unpalatable "make
+a file and put your flag there") as to how to fix this in my code, I will 
+be happy to implement it.  
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: fanf
+State-Changed-When: Wed Jan  3 19:43:56 PST 2001
+State-Changed-Why:
+Sorry, we can't provide support for proprietary versions of Apache.
+Please contact your vendor for support.
+
+From: "Bill Bishop" <William.Bishop@oracle.com>
+To: <fanf@apache.org>
+Cc: <apbugs@apache.org>
+Subject: RE: os-solaris/7016: SEGV core dump during startup
+Date: Thu, 4 Jan 2001 10:24:46 -0800
+
+ Hate to tell you this, but not only is it not a proprietary version, but I
+ *am* the vendor!  This is a standard Apache, and I am trying to use your
+ API, and you have created a feature that doesn't work after a patch by Sun
+ (works fine before, though).  The problem is occurring because your software
+ calls my initialization routine twice, which most programmers would consider
+ excessive.  Could you please reconsider this response?
+ 
+ -Bill Bishop
+ Senior Member of the Technical Staff
+ OAS Sustaining Engineering
+ Oracle Corporation
+ 
+ > Synopsis: SEGV core dump during startup
+ >
+ > State-Changed-From-To: open-closed
+ > State-Changed-By: fanf
+ > State-Changed-When: Wed Jan  3 19:43:56 PST 2001
+ > State-Changed-Why:
+ > Sorry, we can't provide support for proprietary versions of Apache.
+ > Please contact your vendor for support.
+ >
+ >
+ 
+
+From: Tony Finch <fanf@apache.org>
+To: Bill Bishop <William.Bishop@oracle.com>
+Cc: apbugs@apache.org
+Subject: Re: os-solaris/7016: SEGV core dump during startup
+Date: Thu, 4 Jan 2001 18:30:21 +0000
+
+ Bill Bishop <William.Bishop@oracle.com> wrote:
+ >Hate to tell you this, but not only is it not a proprietary version, but I
+ >*am* the vendor!  This is a standard Apache, and I am trying to use your
+ >API, and you have created a feature that doesn't work after a patch by Sun
+ >(works fine before, though).  The problem is occurring because your software
+ >calls my initialization routine twice, which most programmers would consider
+ >excessive.  Could you please reconsider this response?
+ 
+ Oops, sorry! See mod_ssl for the standard way of working around this misfeature.
+ 
+ Tony (embarrassed).
+ -- 
+ f.a.n.finch    fanf@covalent.net    dot@dotat.at
+ "If I didn't see it with my own eyes I would never have believed it!"
+
+From: Tony Finch <fanf@apache.org>
+To: Bill Bishop <William.Bishop@oracle.com>
+Cc: apbugs@apache.org
+Subject: Re: os-solaris/7016: SEGV core dump during startup
+Date: Thu, 4 Jan 2001 18:42:12 +0000
+
+ An additional point: mod_ssl depends on EAPI for its mechanism, which
+ involves changes to the core of Apache. In the absence of EAPI you can
+ use an environment variable to store state across reinitializations.
+ 
+ In 2.0 there is a per-process pool that exists across
+ reinitializations to which you can attach arbitrary user data (better
+ than just the strings that EAPI and environment variables give you).
+ 
+ Sorry again for the hasty reply.
+ 
+ Tony.
+ -- 
+ f.a.n.finch    fanf@covalent.net    dot@dotat.at
+ "Perhaps on your way home you will pass someone in the dark,
+ and you will never know it, for they will be from outer space."
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

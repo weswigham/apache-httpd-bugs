@@ -1,0 +1,515 @@
+Received: (qmail 7836 invoked by uid 2012); 30 Jun 1998 21:23:43 -0000
+Message-Id: <19980630212343.7835.qmail@hyperreal.org>
+Date: 30 Jun 1998 21:23:43 -0000
+From: Ronald Record <rr@sco.com>
+Reply-To: rr@sco.com
+To: apbugs@hyperreal.org
+Subject: Apache 1.3.0 won't build with Dynamic Shared Object (DSO) support
+X-Send-Pr-Version: 3.2
+
+>Number:         2533
+>Category:       os-sco
+>Synopsis:       Apache 1.3.0 won't build with Dynamic Shared Object (DSO) support
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jun 30 14:30:01 PDT 1998
+>Last-Modified:  Sat Feb 20 17:21:55 PST 1999
+>Originator:     rr@sco.com
+>Organization:
+>Release:        1.3.0
+>Environment:
+SCO OpenServer 5.0.4 using gcc 2.7.2.3 and GNU make 3.76.1
+>Description:
+Dynamic Shared Object (DSO) support for the SCO OpenServer platform
+is missing. When given the --enable-shared=max the configure
+script tries to guess what shared flags to use by how Perl was
+built but gets it wrong as Perl was built with cc not gcc.
+Anyway, it shouldn't have to guess.
+
+I found i also needed to add some function prototype declarations
+to satisfy the compiler. None of the changes should impact builds
+on other platforms.
+
+If the copy/paste of the patch below got fudged, send e-mail to rr@sco.com
+and i will e-mail you the patches.
+>How-To-Repeat:
+Attempt to configure and build Apache 1.3.0 on OpenServer 5 using
+./configure --enable-module=most --enable-shared=max
+make
+>Fix:
+Apply the following with "patch -p 1 -c ..." :
+
+*** ./src/helpers/find-dbm-lib.00       Tue Jun 30 00:00:55 1998
+--- ./src/helpers/find-dbm-lib  Tue Jun 30 11:15:09 1998
+***************
+*** 23,28 ****
+--- 23,33 ----
+                    found_dbm=1
+                fi
+                ;;
++           *-sco5*)
++               DBM_LIB="-lndbm"
++               LIBS="$LIBS $DBM_LIB"
++               found_dbm=1
++               ;;
+            *)
+                if [ "X$DBM_LIB" != "X" ]; then
+                    oldLIBS="$LIBS"
+*** ./src/include/conf.h.00     Mon Jun 29 20:20:53 1998
+--- ./src/include/conf.h        Mon Jun 29 20:20:56 1998
+***************
+*** 432,438 ****
+  #elif defined(SCO5)
+
+  #define HAVE_SYS_SELECT_H 1
+! #define USE_FCNTL_SERIALIZED_ACCEPT
+  #define HAVE_MMAP 1
+  #define USE_MMAP_SCOREBOARD
+  #define USE_MMAP_FILES
+--- 432,441 ----
+  #elif defined(SCO5)
+
+  #define HAVE_SYS_SELECT_H 1
+! /*
+!  * No longer need this work-around old kernel bug
+!  * #define USE_FCNTL_SERIALIZED_ACCEPT
+!  */
+  #define HAVE_MMAP 1
+  #define USE_MMAP_SCOREBOARD
+  #define USE_MMAP_FILES
+*** ./src/main/http_main.c.00   Mon Jun 29 20:23:21 1998
+--- ./src/main/http_main.c      Mon Jun 29 20:23:24 1998
+***************
+*** 3228,3234 ****
+   * some of it is #ifdef'd but was duplicated before anyhow.  This stuff
+   * is still a mess.
+   */
+! static void common_init(void)
+  {
+      INIT_SIGLIST()
+  #ifdef AUX3
+--- 3228,3234 ----
+   * some of it is #ifdef'd but was duplicated before anyhow.  This stuff
+   * is still a mess.
+   */
+! static void common_init(int argc, char *argv[])
+  {
+      INIT_SIGLIST()
+  #ifdef AUX3
+***************
+*** 4211,4217 ****
+
+      MONCONTROL(0);
+
+!     common_init();
+
+      ap_server_argv0 = argv[0];
+      ap_cpystrn(ap_server_root, HTTPD_ROOT, sizeof(ap_server_root));
+--- 4211,4217 ----
+
+      MONCONTROL(0);
+
+!     common_init(argc, argv);
+
+      ap_server_argv0 = argv[0];
+      ap_cpystrn(ap_server_root, HTTPD_ROOT, sizeof(ap_server_root));
+***************
+*** 5350,5356 ****
+      int run_as_service = 1;
+      int install = 0;
+
+!     common_init();
+
+      ap_server_argv0 = argv[0];
+
+--- 5350,5356 ----
+      int run_as_service = 1;
+      int install = 0;
+
+!     common_init(argc, argv);
+
+      ap_server_argv0 = argv[0];
+
+*** ./src/os/unix/os.h.00       Tue Jun 30 00:23:36 1998
+--- ./src/os/unix/os.h  Tue Jun 30 00:23:38 1998
+***************
+*** 94,100 ****
+  #if defined(LINUX) || defined(__FreeBSD__) ||\
+      defined(__OpenBSD__) || defined(__NetBSD__) || \
+      defined(SOLARIS2) || defined(__bsdi__) || \
+!     defined(IRIX) || defined(SVR4) || defined(OSF1)
+  #define HAVE_DLFCN_H 1
+  #endif
+
+--- 94,100 ----
+  #if defined(LINUX) || defined(__FreeBSD__) ||\
+      defined(__OpenBSD__) || defined(__NetBSD__) || \
+      defined(SOLARIS2) || defined(__bsdi__) || \
+!     defined(IRIX) || defined(SVR4) || defined(OSF1) || defined(SCO5)
+  #define HAVE_DLFCN_H 1
+  #endif
+
+*** ./src/Configure.00  Tue Jun 30 13:41:39 1998
+--- ./src/Configure     Tue Jun 30 11:42:24 1998
+***************
+*** 523,529 ****
+      *-sco5*)
+        OS='SCO 5'
+        CFLAGS="$CFLAGS -DSCO5"
+!       LIBS="$LIBS -lsocket -lmalloc -lprot"
+        DEF_WANTHSREGEX=no
+        ;;
+      *-sco_sv*)
+--- 523,530 ----
+      *-sco5*)
+        OS='SCO 5'
+        CFLAGS="$CFLAGS -DSCO5"
+!       LIBS="$LIBS -lsocket -lmalloc -lprot -ltinfo -lx -lm"
+!       DBM_LIB="-lndbm"
+        DEF_WANTHSREGEX=no
+        ;;
+      *-sco_sv*)
+***************
+*** 828,833 ****
+--- 829,843 ----
+              LDFLAGS_SHLIB="-Bshareable"
+              LDFLAGS_SHLIB_EXPORT=""
+              SHLIB_SUFFIX_DEPTH=2
++             ;;
++         *-sco5*)
++             case $CC in
++                 */gcc*|gcc* ) CFLAGS_SHLIB="-fpic" ;;
++                 */cc*|cc*   ) CFLAGS_SHLIB="-KPIC" ;;
++             esac
++             LDFLAGS_SHLIB="-G"
++             LDFLAGS_SHLIB_EXPORT="-Wl,-Bexport"
++             SHLIB_SUFFIX_DEPTH=1
+              ;;
+          *-solaris2*)
+              case $CC in
+
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: rse
+State-Changed-When: Mon Jul  6 05:04:36 PDT 1998
+State-Changed-Why:
+Thanks for your patch. A few notes:
+
+1. The common_init problem is now already fixed
+   by having the SecureWare stuff in REALMAIN.
+   But nevertheless thanks for the hint.
+
+2. The DSO related patches are fine and are now
+   already comitted by me for Apache 1.3.1
+
+3. The FCNTL-related change I cannot review because
+   I don't have a SCO box available. Are you
+   really sure SCO5 doesn't need USE_FCNTL_SERIALIZED_ACCEPT?
+
+4. The DBM stuff is IMHO too much. Just a 
+   DBM_LIB="-lndbm" should be enough and working fine.
+   Can you please remove the find-dbm-lib patch
+   for you and try again without it and give feedback
+   if it still works? Thanks.
+
+5. I'm confused by three new libs -ltinfo -lx -lm.
+   Ok, libm is no problem, but what are libx and libtinfo?
+   libtinfo = terminfo library? Ops, for Apache?
+   Please give us more hints why these are actually 
+   needed. Thanks.
+
+From: Ronald Joe Record <rr@sco.COM>
+To: rse@apache.org
+Cc: apache-bugdb@apache.org, apbugs@apache.org
+Subject: Re: os-sco/2533: Apache 1.3.0 won't build with Dynamic Shared Object (DSO) support
+Date: Wed, 08 Jul 1998 13:51:59 -0700
+
+ Thanks for accepting the patches necessary to get Apache to
+ build with DSO support on SCO OpenServer. I'll try to explain
+ the need for additional patches.
+ 
+ First, a kernel bug in OpenServer 5.0.0 and 5.0.2 made it
+ necessary to build Apache with USE_FCNTL_SERIALIZED_ACCEPT.
+ That bug was fixed in 5.0.4 and a patch made available for
+ 5.0.0/5.0.2 systems. Further, i have created an installation
+ script which detects what release you are installing on and
+ whether you need to apply the "Network Maintenance Supplement".
+ Therefore, i can now build Apache without the
+ USE_FCNTL_SERIALIZED_ACCEPT which gets me much better performance.
+ So, as long as you get Apache for OpenServer from _me_ (that is,
+ the SCO Skunkware CD-ROM or web site), you're ok. If you build
+ it yourself, you'd better know whether you need to apply the
+ appropriate support supplement.
+ 
+ Second, you were right, i was able to remove the find-dbm-lib
+ patch and successfully build Apache 1.3.0. Forget that patch.
+ 
+ Third, i still find the addition of "-lx -ltinfo -lm" to be
+ necessary on OpenServer. It's no doubt a bug or at least
+ incorrectly documented, but any time -lprot is used you also
+ need -lx and -ltinfo to get nap(), cur_term(), setup_term()
+ and others. I've informed our development system guys and
+ this may be fixed in a later release but for now these libs
+ are necessary. FYI, libx is the SCO Xenix enhancements which
+ have been carried forward since time immemorial while libtinfo
+ is the terminfo library. It looks like libprot is supposed to
+ setup its own curses stuff but isn't built correctly.
+ 
+ To summarize, i believe the patches i submitted for src/Configure
+ and src/include/conf.h are appropriate.
+ 
+ Let me know if you need further details,
+ 
+ Ron Record
+ rr@sco.com
+ 
+ re:
+ 
+ rse@apache.org wrote:
+ > 
+ > Synopsis: Apache 1.3.0 won't build with Dynamic Shared Object (DSO) support
+ > 
+ > 
+ > 3. The FCNTL-related change I cannot review because
+ > 
+ >    I don't have a SCO box available. Are you
+ > 
+ >    really sure SCO5 doesn't need USE_FCNTL_SERIALIZED_ACCEPT?
+ > 
+ > 4. The DBM stuff is IMHO too much. Just a
+ > 
+ >    DBM_LIB="-lndbm" should be enough and working fine.
+ > 
+ >    Can you please remove the find-dbm-lib patch
+ > 
+ >    for you and try again without it and give feedback
+ > 
+ >    if it still works? Thanks.
+ > 
+ > 5. I'm confused by three new libs -ltinfo -lx -lm.
+ > 
+ >    Ok, libm is no problem, but what are libx and libtinfo?
+ > 
+ >    libtinfo = terminfo library? Ops, for Apache?
+ > 
+ >    Please give us more hints why these are actually
+ > 
+ >    needed. Thanks.
+Comment-Added-By: rse
+Comment-Added-When: Thu Sep 10 01:59:43 PDT 1998
+Comment-Added:
+Ok, the `-lx -ltinfo -lm' was now comitted for Apache
+1.3.2, but for the USE_FCNTL_SERIALIZED_ACCEPT: 
+The only correct solution would be to dispatch
+for 5.0.0 and 5.0.2 and avoid it only for >= 5.0.4.
+So what we need is a patch which does the following:
+1. Recognize SCO versions in src/helpers/GuessOS
+2. Set the SCO5 define not only to be defined, instead
+   it should be set to 500, 502 or 504, etc. according
+   to what GuessOS determined.
+3. The #define USE_FCNTL_SERIALIZED_ACCEPT should
+   be surrounded by a
+   #if defined(SCO5) && (SCO5 >= 500 && SCO5 < 504)
+Can you contribute this patch, because I've still
+no chance to work under a SCO box myself. I've
+no such platform available...
+
+From: rr@sco.com
+To: rse@apache.org, jkj@sco.com
+Cc: apbugs@apache.org
+Subject: Re: os-sco/2533: Apache 1.3.0 won't build with Dynamic Shared Object (DSO) support
+Date: Thu, 10 Sep 1998 14:11 PDT
+
+ Below are patches i've made to Apache 1.3.1 in order to detect which release
+ of SCO OpenServer 5 you are on and whether the appropriate supplements have
+ been installed. Install with "patch -p 0 -i /path/to/patchfile".
+ 
+ These patches (src/helpers/GuessOS, src/include/ap_config.h, and
+ src/Configure) obviate the need for the #define USE_FCNTL_SERIALIZED_ACCEPT
+ when building on OpenServer 5.0.4 or later, or when building on 5.0.0/5.0.2
+ with the appropriate supplements installed. If the supplements aren't installed,
+ we use #define USE_FCNTL_SERIALIZED_ACCEPT and tell the user where to download
+ the freely available supplements.
+ 
+ I realize these patches are non-trivial and may take some time to grok.
+ However, i believe they do not effect the configure/build of any other
+ platform and i have tested them successfully. When i build Apache for use
+ on OpenServer, i use something similar in the installation scripts to detect
+ the release and supplement state of the target platform prior to installing.
+ These installation scripts are still necessary as Apache built on one system
+ may be installed on another (unsuitable) system. Do you want my installation
+ scripts (useful only when packaging for an SCO Custom install on OpenServer).
+ 
+ If you have any questions of further requests, please feel free to contact me.
+ 
+ Ron Record
+ rr@sco.com
+ 
+ p.s. did you get the free OpenServer & UnixWare i requested for you ?
+ 
+ re: =====================cut here=====================================
+ 
+ *** ./src/helpers/GuessOS.00	Thu Sep 10 11:25:18 1998
+ --- ./src/helpers/GuessOS	Thu Sep 10 11:55:29 1998
+ ***************
+ *** 21,26 ****
+ --- 21,91 ----
+   
+   # Now test for ISC and SCO, since it is has a braindamaged uname.
+   #
+ + MSG_missPatch="WARNING: The following supplements(s) are STRONGLY recommended
+ +     for all systems running this software. You should install
+ +     these supplement(s) prior to configuring this software for
+ +     compilation. The supplement(s) are available via anonymous ftp
+ +     from ftp.sco.com in the /SLS directory (ftp://ftp.sco.com/SLS/).
+ +     In particular, the Network Maintenance Supplement can be downloaded from 
+ +     ftp://ftp.sco.com/SLS/oss449f/ ."
+ + 
+ + MSG_noDB="ERROR: Cannot locate component database for _cmpnt_ component."
+ + 
+ + #=============================================================================
+ + # check_patch <patchID> <patchDescription>
+ + #
+ + # Check that a given patch is applied to the component that we are
+ + # working on. We need to check for this in the *client* databases.
+ + #=============================================================================
+ + 
+ + check_patch() {
+ +     if [ -f $CLIENT_DB ] ; then
+ + 	pattern=`echo $1 | sed "s!\.!\\\\\.!g"`
+ + 	pattern="patches.*[= ]${pattern}"
+ + 
+ + 	grep -q "${pattern}" $CLIENT_DB
+ + 	if [ $? -ne 0 ] ; then
+ + 	    List="$List\n\t$2"
+ + 	fi
+ +     else
+ + 	List=`echo "\n$MSG_noDB" | sed "s!_cmpnt_!${CMPNT}!"`
+ +     fi
+ + }
+ + 
+ + check_if_patched()
+ + {
+ +     PATCHED=1
+ +     unixVer=`customquery ListComponents -p CONFIGURE SCO:Unix`
+ + 
+ +     case $unixVer in
+ +     SCO:Unix::5.0.0Cl)
+ +         CMPNT=Unix
+ +         CLIENT_DB=/var/opt/K/SCO/Unix/5.0.0Cl/.softmgmt/client.db
+ +         check_patch rs.Unix500.1 "SCO OpenServer Release 5 Release Supplement" 
+ +         check_patch rs.Unix500.2 "Networking Supplement Release 1.0"
+ +         check_patch rs.4.0 "SCO Internet Supplement for SCO OpenServer 5"
+ +         check_patch OSS449. "OSS449 Network Performance SLS"
+ +         [ "${List}" ] && {
+ + 	    echo "${List}"
+ + 	    PATCHED=
+ + 	}
+ +         break
+ +         ;;
+ +     SCO:Unix::5.0.2Dp)
+ +         CMPNT=Unix
+ +         CLIENT_DB=/var/opt/K/SCO/Unix/5.0.2Dp/.softmgmt/client.db
+ +         check_patch rs.4.0 "SCO Internet Supplement for SCO OpenServer 5"
+ +         check_patch OSS449. "OSS449 Network Performance SLS"
+ +         [ "${List}" ] && {
+ + 	    echo "${List}"
+ + 	    PATCHED=
+ + 	}
+ +         break
+ +         ;;
+ +     esac
+ + }
+ + 
+ + #
+   # We need to work around FreeBSD 1.1.5.1 
+   XREL=`uname -X 2>/dev/null | grep "^Release" | awk '{print $3}'`
+   if [ "x$XREL" != "x" ]; then
+ ***************
+ *** 34,39 ****
+ --- 99,113 ----
+   	case "$XREL" in
+   	    3.2v4.2)
+   		echo "whatever-whatever-sco3"; exit 0
+ + 		;;
+ + 	    3.2v5.0.0|3.2v5.0.2)
+ + 		check_if_patched
+ + 		if [ "$PATCHED" ]
+ + 		then
+ + 		    echo "whatever-whatever-sco5"; exit 0
+ + 		else
+ + 		    echo "whatever-whatever-sco5pre"; exit 0
+ + 		fi
+   		;;
+   	    3.2v5.0*)
+   		echo "whatever-whatever-sco5"; exit 0
+ *** ./src/include/ap_config.h.00	Thu Sep 10 11:36:16 1998
+ --- ./src/include/ap_config.h	Thu Sep 10 11:40:46 1998
+ ***************
+ *** 425,431 ****
+ --- 425,433 ----
+   
+   #elif defined(SCO5)
+   
+ + #if defined(PRE504)
+   #define USE_FCNTL_SERIALIZED_ACCEPT
+ + #endif
+   #define HAVE_MMAP 1
+   #define USE_MMAP_SCOREBOARD
+   #define USE_MMAP_FILES
+ *** ./src/Configure.00	Thu Sep 10 11:27:59 1998
+ --- ./src/Configure	Thu Sep 10 11:57:12 1998
+ ***************
+ *** 527,536 ****
+   	LIBS="$LIBS -lPW -lsocket -lmalloc -lcrypt_i"
+   	DEF_WANTHSREGEX=yes
+   	;;
+       *-sco5*)
+   	OS='SCO 5'
+   	CFLAGS="$CFLAGS -DSCO5"
+ ! 	LIBS="$LIBS -lsocket -lmalloc -lprot"
+   	DEF_WANTHSREGEX=no
+   	;;
+       *-sco_sv*)
+ --- 527,543 ----
+   	LIBS="$LIBS -lPW -lsocket -lmalloc -lcrypt_i"
+   	DEF_WANTHSREGEX=yes
+   	;;
+ +     *-sco5pre)
+ + 	OS='SCO 5'
+ + 	CFLAGS="$CFLAGS -DSCO5 -DPRE504"
+ + 	LIBS="$LIBS -lsocket -lmalloc -lprot -ltinfo -lx -lm"
+ + 	DBM_LIB="-lndbm"
+ + 	DEF_WANTHSREGEX=no
+ + 	;;
+       *-sco5*)
+   	OS='SCO 5'
+   	CFLAGS="$CFLAGS -DSCO5"
+ ! 	LIBS="$LIBS -lsocket -lmalloc -lprot -ltinfo -lx -lm"
+   	DEF_WANTHSREGEX=no
+   	;;
+       *-sco_sv*)
+State-Changed-From-To: feedback-open
+State-Changed-By: lars
+State-Changed-When: Sat Nov 14 09:04:25 PST 1998
+State-Changed-Why:
+issue is still open...
+
+State-Changed-From-To: open-closed
+State-Changed-By: lars
+State-Changed-When: Sat Feb 20 17:21:54 PST 1999
+State-Changed-Why:
+patch was already applied...
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

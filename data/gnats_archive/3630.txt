@@ -1,0 +1,143 @@
+Received: (qmail 391 invoked by uid 2012); 7 Jan 1999 05:16:16 -0000
+Message-Id: <19990107051616.390.qmail@hyperreal.org>
+Date: 7 Jan 1999 05:16:16 -0000
+From: Russell Van Tassell <russell@cscorp.com>
+Reply-To: russell@cscorp.com
+To: apbugs@hyperreal.org
+Subject: File list shows bomb icon for any file "*core"
+X-Send-Pr-Version: 3.2
+
+>Number:         3630
+>Category:       general
+>Synopsis:       File list shows bomb icon for any file "*core"
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan  6 21:20:01 PST 1999
+>Last-Modified:  Wed Jun  2 14:38:59 PDT 1999
+>Originator:     russell@cscorp.com
+>Organization:
+>Release:        1.2+?
+>Environment:
+Running Solaris 2.5.1 with current recommended patches.
+>Description:
+If you use Apache to automatically generate a fancy index, it will auto-
+matically give you icons for various files and types.  If the file ends
+with the string "core," apache assumes it is a core file and sends back
+the bomb icon be default; in my example, this "file" is actually a unix
+directory named "mscore."
+>How-To-Repeat:
+I have a directory that contains the two directories:
+
+  drwxr-xr-x   2 russell  staff       1024 Oct  7 23:01 mscore/
+  drwxr-xr-x   2 russell  staff       1024 Oct  7 23:01 mscores/
+
+Browsing this directory using the Apache web server (ie. fancy indexing),
+the first directory has a "bomb" as its icon while the second has a
+folder.
+
+In my srm.conf file, the following lines appear:
+
+  Line 56: AddIcon /icons/bomb.gif core
+  Line 60: AddIcon /icons/folder.gif ^^DIRECTORY^^
+
+
+Changing the order in which they appear in the config file does not
+fix the problem.
+>Fix:
+File types or magic numbers should override names in all cases.
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 22:02:24 PDT 1999
+State-Changed-Why:
+file this in the "mod_autoindex" sucks category for future
+consideration
+
+From: "Paul J. Reder" <rederpj@raleigh.ibm.com>
+To: Apache bug list <apbugs@Apache.Org>
+Cc:  Subject: Re:general/3630: File list shows bomb icon for any file "*core"
+Date: Tue, 25 May 1999 22:22:25 -0400
+
+ The long and short of the answer is that this is a side effect of the code working as designed.
+ There is good reason for it to work this way and the "core" file side effect cannot be eliminated
+ without putting special purpose "core" code into general purpose indexing code or removing otherwise
+ useful function.
+ 
+ The mod_autoindex code is written to allow a user to specify the use of an icon other than the
+ default folder icon for directories. If you wanted to create a special "folder" icon that showed a
+ folder with a movie frame on it to use for a folder of type *.movies containing all your quicktime
+ movies you can do that (AddIcon /icons/moviefolder.gif .movies). The code that causes the "problem"
+ that you describe is in the file apache/src/modules/standard/mod_autoindex.c in the function
+ make_autoindex_entry around line 940 (the "offending" lines follow):
+ 
+             if (S_ISDIR(rr->finfo.st_mode)) {
+                 if (!(p->icon = find_icon(d, rr, 1))) {
+                     p->icon = find_default_icon(d, "^^DIRECTORY^^");
+                 }
+                 if (!(p->alt = find_alt(d, rr, 1))) {
+                     p->alt = "DIR";
+                 }
+                 p->size = -1;
+                 p->name = ap_pstrcat(r->pool, name, "/", NULL);
+             }
+             else {
+                 p->icon = find_icon(d, rr, 0);
+                 p->alt = find_alt(d, rr, 0);
+                 p->size = rr->finfo.st_size;
+             }
+ 
+ This code will first check if the entry is a directory. If it is not, it follows the normal
+ find_icon lookup (find_icon then find_alt). If it is a directory, it first does a find_icon (where
+ it would find the ".movies" match or in this case the "core" match). If it doesn't find a specific
+ match then it loads the default directory folder icon. Regardless of the selected icon, the index
+ entry will still behave as a directory when clicked on.
+ 
+ You have stumbled on a side effect of the pre-specified "core" entry in the icon list. Since "core"
+ is the full file name (no extension to match) it does not contain a ".". This allows it to match any
+ text ending in "core" (i.e.. "mscore"). You won't normally run into this problem because all of the
+ other default values are specified as ".something" and most people don't specify directories with
+ ".XXX" extensions that match normal file types (like ".tar").
+ 
+ So I hope you can see that there really isn't anything that can be done about this.
+ 
+ Perhaps in the future the AddIcon entries can be changed to a regular expression that (in this case)
+ would say something like:
+ AddIcon /icon/bomb.gif (eq("core") && !(DIRECTORY))
+ but that isn't the way it works today.
+ 
+ -- 
+ Paul J. Reder
+ 
+ --------- from Red Hat Linux fortunes -----------------------------
+ ... Any resemblance between the above views and those of my employer,
+ my terminal, or the view out my window are purely coincidental.  Any
+ resemblance between the above and my own views is non-deterministic.  The
+ question of the existence of views in the absence of anyone to hold them
+ is left as an exercise for the reader.  The question of the existence of
+ the reader is left as an exercise for the second god coefficient.  (A
+ discussion of non-orthogonal, non-integral polytheism is beyond the scope
+ of this article.)
+State-Changed-From-To: suspended-closed
+State-Changed-By: rederpj@raleigh.ibm.com
+State-Changed-When: Wed Jun  2 14:38:58 PDT 1999
+State-Changed-Why:
+You have found a loophole in the code which is not "fixable"
+without losing existing useful function. Please see the 
+explanation above.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

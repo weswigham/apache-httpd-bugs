@@ -1,0 +1,187 @@
+Received: (qmail 83027 invoked by uid 501); 20 Nov 2001 20:39:29 -0000
+Message-Id: <20011120203929.83026.qmail@apache.org>
+Date: 20 Nov 2001 20:39:29 -0000
+From: Jason Kendall <coolacid@home.com>
+Reply-To: coolacid@home.com
+To: submit@bugz.apache.org
+Subject: Server just dies. No Core,  but strace shows SIGSEGV.
+X-Send-Pr-Version: 3.110
+
+>Number:         8818
+>Category:       general
+>Synopsis:       Server just dies. No Core,  but strace shows SIGSEGV.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Nov 20 12:40:00 PST 2001
+>Closed-Date:    
+>Last-Modified:  Thu Nov 22 19:50:00 PST 2001
+>Originator:     coolacid@home.com
+>Release:        1.3.22
+>Organization:
+apache
+>Environment:
+Linux coolacid.net 2.4.8 #1 Tue Nov 20 14:30:55 EST 2001 i586 unknown
+GLIB 2.2.3
+apache 1.3.22 + apache_ssl 1.44 + mod_gzip 1.3.19.1a + PHP 4.0.6
+>Description:
+I have a full strace available. Will include last few lines:
+
+------------------ CUT HERE ------------------
+
+open("/Server/http/logs/access_log", O_WRONLY|O_APPEND|O_CREAT, 0644) = 4       
+sendto(4, NULL, 15, MSG_DONTROUTE|0x40015d60, {...}, 3221223452) = 131          
+close(4)                                = 0                                     
+semget(IPC_PRIVATE, 1, IPC_CREAT|0x180|0600) = 1179684                          
+semctl(1179684, 0, SETVAL, 0xbffff86c)  = 0                                     
+SYS_199(0x4026fa58, 0x2, 0x834d4f4, 0x4026e1f0, 0xbffffa04) = 0                 
+SYS_199(0x4026fa58, 0x2, 0x834d4f4, 0x1, 0x4026e1f0) = 0                        
+semctl(1179684, 0, 0x101 /* SEM_??? */, 0xbffff86c) = 0                         
+shmget(IPC_PRIVATE, 46084, IPC_CREAT|0x180|0600) = 884737                       
+time(NULL)                              = 1006226991                            
+write(15, "[Mon Nov 19 22:29:51 2001] [info"..., 72) = 72                       
+shmat(884737, 0, 0)                     = 0x7263205d                            
+shmctl(884737, 0x102 /* SHM_??? */, 0xbffff8a4) = 0                             
+shmctl(884737, 0x101 /* SHM_??? */, 0xbffff8a4) = 0                             
+shmctl(884737, IPC_RMID, 0)             = 0                                     
+--- SIGSEGV (Segmentation fault) ---                                            
++++ killed by SIGSEGV +++                                                       
+
+------------------ CUT HERE ------------------
+
+write(15, "[Mon Nov 19 22:29:51 2001] [info"..., 72) = 72                       
+
+Shows this in the error_log file:
+
+[Tue Nov 20 15:25:37 2001] [info] created shared memory segment #163841         
+
+Recompiled everything twice and updated everything. 
+
+Feel free to contact me for more info.
+>How-To-Repeat:
+
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+
+From: "Jason Kendall" <coolacid@home.com>
+To: <apbugs@Apache.Org>
+Cc:  
+Subject: Re: general/8818: Server just dies. No Core,  but strace shows SIGSEGV.
+Date: Thu, 22 Nov 2001 20:56:05 -0500
+
+ Update:
+ 
+ I have tried compiling apache with no options (just a base path) and it
+ still dies, so it is not a module problem.
+ 
+ 
+ 
+
+From: "Jason Kendall" <coolacid@rogers.com>
+To: <apbugs@Apache.Org>
+Cc:  
+Subject: Re: general/8818: Server just dies. No Core,  but strace shows SIGSEGV.
+Date: Thu, 22 Nov 2001 22:24:46 -0500
+
+ Currently:
+ I added tags all over the http_main.c file, here is what I found:
+ 
+ it runs setup_shared_mem(p) fine. but dies somewhere between the end of
+ setup_shared_mem and the next line of the calling statement.
+ 
+ 
+ Read more indepth the Debugging guide and ran a gdb (V4.18) :
+ 
+ Single stepping until exit from function setup_shared_mem,
+ which has no line number information.
+ Cannot insert breakpoint 0:
+ Cannot access memory at address 0x53a9.
+ 
+ if I 'c' (continue):
+ 
+ Program received signal SIGSEGV, Segmentation fault.
+ 0x0 in ?? ()
+ 
+ --------------
+ 
+ 
+ Added more Log messages showing @ all MMAP calls in setup_shared_mem:
+ 
+ NONE was being called.
+ 
+
+From: "Jason Kendall" <coolacid@home.com>
+To: <apbugs@Apache.Org>
+Cc:  
+Subject: Re: general/8818: Server just dies. No Core,  but strace shows SIGSEGV.
+Date: Thu, 22 Nov 2001 22:25:21 -0500
+
+ Currently:
+ I added tags all over the http_main.c file, here is what I found:
+ 
+ it runs setup_shared_mem(p) fine. but dies somewhere between the end of
+ setup_shared_mem and the next line of the calling statement.
+ 
+ 
+ Read more indepth the Debugging guide and ran a gdb (V4.18) :
+ 
+ Single stepping until exit from function setup_shared_mem,
+ which has no line number information.
+ Cannot insert breakpoint 0:
+ Cannot access memory at address 0x53a9.
+ 
+ if I 'c' (continue):
+ 
+ Program received signal SIGSEGV, Segmentation fault.
+ 0x0 in ?? ()
+ 
+ --------------
+ 
+ 
+ Added more Log messages showing @ all MMAP calls in setup_shared_mem:
+ 
+ NONE was being called.
+ 
+ 
+
+From: "Jason Kendall" <coolacid@home.com>
+To: <apbugs@Apache.Org>
+Cc:  
+Subject: Re: general/8818: Server just dies. No Core,  but strace shows SIGSEGV.
+Date: Thu, 22 Nov 2001 22:46:01 -0500
+
+ FIX:
+ 
+ Wasn't using MMAP scoreboard but SHMGET. Changed to MMAP. Got error
+ referanced by:
+ 
+ http://www.geocrawler.com/archives/3/192/1998/1/100/2258099/
+ 
+ Fixed using recomended method in message.
+ 
+ 
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,77 @@
+From nobody@hyperreal.com  Fri Jun 20 08:02:39 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id IAA21800;
+	Fri, 20 Jun 1997 08:02:39 -0700 (PDT)
+Message-Id: <199706201502.IAA21800@hyperreal.com>
+Date: Fri, 20 Jun 1997 08:02:39 -0700 (PDT)
+From: Jay Nitikman <jay@cruzio.com>
+Reply-To: jay@cruzio.com
+To: apbugs@hyperreal.com
+Subject: apache 1.2 cannot handle a large number of virtual domains: "no data in doc"
+X-Send-Pr-Version: 3.2
+
+>Number:         760
+>Category:       os-bsdi
+>Synopsis:       apache 1.2 cannot handle a large number of virtual domains: "no data in doc"
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jun 20 08:10:01 1997
+>Last-Modified:  Fri Jun 20 10:03:30 PDT 1997
+>Originator:     jay@cruzio.com
+>Organization:
+>Release:        1.2.0
+>Environment:
+BSDI 3.0 with gcc 2.7.2.1
+>Description:
+We had apache 1.1.3 with 371 virtual domains configured.  When we upgraded to
+apache 1.2, the server could not deliver WWW pages.  A browser displays
+"Document contains no data".  The syslog file contains mentions of SIGSEV but
+the core file is for the parent process and contains nothing of interest.  Other interesting behavior:  Here is a typical
+definition of a virtual domain:
+
+<VirtualHost www.performanceds.com>
+ServerName www.performanceds.com
+ServerAdmin webmaster@cruzio.com
+DocumentRoot /cruzio/web/pages/cruzio/nopage
+TransferLog logs/domains/xfer/www.performanceds.com
+ErrorLog logs/domains/error/www.performanceds.com
+</VirtualHost>
+
+If I comment out either the TransferLog or the ErrorLog line then the server
+works, but if I enable both then the server fails.  I have confirmed that this
+is NOT a problem of running out of file descriptors.  Again, we do not have
+a problem with the 1.1.3 server, but why?
+>How-To-Repeat:
+Our httpd.conf has 371 virtual domains.  The virtual host definition that breaks
+the server is shown above.
+>Fix:
+Nope
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Fri Jun 20 08:51:38 PDT 1997
+State-Changed-Why:
+Yes it is almost certainly a problem with file descriptors.
+1.2 allocates them in a different order than 1.1 due
+to some changes.  Assuming you adjusted the number of
+file descriptors reported by ulimit, you are probably
+running into FD_SETSIZE, (probably in /usr/include/sys/)
+which limits the number of file descriptors select() can
+use.  I'm not sure how you increase that under BSDI 3.0;
+perhaps redefining it to something larger in EXTRA_CFLAGS
+in Configuration will work.  If not, you may have to
+rebuild your kernel with a different option.  Ask BSDI
+or a BSDI newsgroup/list for help.
+State-Changed-From-To: analyzed-closed
+State-Changed-By: marc
+State-Changed-When: Fri Jun 20 10:03:30 PDT 1997
+State-Changed-Why:
+User reports that increasing FD_SETSIZE fixed problem.
+>Unformatted:
+
+

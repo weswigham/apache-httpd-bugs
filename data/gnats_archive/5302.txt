@@ -1,0 +1,124 @@
+Received: (qmail 15851 invoked by uid 2012); 14 Nov 1999 02:57:18 -0000
+Message-Id: <19991114025718.15850.qmail@hyperreal.org>
+Date: 14 Nov 1999 02:57:18 -0000
+From: Richard Vermillion <rvermillion@cyberdialogue.com>
+Reply-To: rvermillion@cyberdialogue.com
+To: apbugs@hyperreal.org
+Subject: [PATCH] mod_log_config gmtime log hooks
+X-Send-Pr-Version: 3.2
+
+>Number:         5302
+>Category:       mod_log-any
+>Synopsis:       [PATCH] mod_log_config gmtime log hooks
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Nov 13 20:10:01 PST 1999
+>Last-Modified:
+>Originator:     rvermillion@cyberdialogue.com
+>Organization:
+apache
+>Release:        1.3.9
+>Environment:
+All
+>Description:
+When logging for servers which are geographically load-balanced, it is sometimes handy to have the UTC time of the request in the log file instead of the localtime.
+>How-To-Repeat:
+
+>Fix:
+Here's the patch to code and documentation:
+
+*** src/modules/standard/mod_log_config.c.orig  Sat Nov 13 20:43:20 1999
+--- src/modules/standard/mod_log_config.c       Sat Nov 13 21:35:26 1999
+***************
+*** 120,125 ****
+--- 120,130 ----
+   * %...b:  bytes sent, excluding HTTP headers.
+   * %...{FOOBAR}e:  The contents of the environment variable FOOBAR
+   * %...f:  filename
++  * %...g:  Coordinated Universal Time (UTC aka GMT) of the request in 
++  *         the common log format time format
++  * %...{format}g:  Coordinated Universal Time (UTC aka GMT) of the 
++  *                 request in the form given by format, which should be
++  *                 in strftime(3) format
+   * %...h:  remote host
+   * %...a:  remote IP-address
+   * %...A:  local IP-address
+***************
+*** 403,408 ****
+--- 408,433 ----
+      return ap_pstrdup(r->pool, tstr);
+  }
+  
++ static const char *log_request_gmtime(request_rec *r, char *a)
++ {
++     char tstr[MAX_STRING_LEN];
++     struct tm *t;
++ 
++     /* Use Greenwich Mean time and also optimize by using
++      * the previously stored request_time...
++      * We can do this since this isn't common log format
++      */
++     t = gmtime(&(r->request_time));
++     if (a && *a) {
++         strftime(tstr, MAX_STRING_LEN, a, t);
++     }
++     else {
++         strftime(tstr, MAX_STRING_LEN, "[%d/%b/%Y:%H:%M:%S +0000]", t);
++     }
++ 
++     return ap_pstrdup(r->pool, tstr);
++ }
++  
+  static const char *log_request_duration(request_rec *r, char *a)
+  {
+      return ap_psprintf(r->pool, "%ld", time(NULL) - r->request_time);
+***************
+*** 505,510 ****
+--- 530,538 ----
+      },
+      {
+          'P', log_child_pid, 0
++     },
++     {
++         'g', log_request_gmtime, 0
+      },
+      {
+          '\0'
+
+*** htdocs/manual/mod/mod_log_config.html.orig  Sat Nov 13 21:38:08 1999
+--- htdocs/manual/mod/mod_log_config.html       Sat Nov 13 21:36:19 1999
+***************
+*** 131,136 ****
+--- 131,140 ----
+  %...f:          Filename
+  %...{FOOBAR}e:  The contents of the environment variable FOOBAR
+  %...h:          Remote host
++ %...g:          Coordinated Universal Time (UTC aka GMT) of the request
++                 in common log format time format
++ %...{format}g:  Coordinated Universal Time (UTC aka GMT) of the request in the
++                 form given by format, which should be in strftime(3) format.
+  %...a:          Remote IP-address
+  %...A:          Local IP-address
+  %...{Foobar}i:  The contents of Foobar: header line(s) in the request
+
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

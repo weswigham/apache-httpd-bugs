@@ -1,0 +1,277 @@
+From Dirk.vanGulik@jrc.it  Mon Jun  2 11:48:48 1997
+Received: from mrelay.jrc.it (mrelay.jrc.it [139.191.1.65])
+	by hyperreal.com (8.8.5/8.8.5) with SMTP id LAA29482
+	for <apbugs@hyperreal.com>; Mon, 2 Jun 1997 11:48:47 -0700 (PDT)
+Message-Id: <3393152E.3566@jrc.it>
+Date: Mon, 02 Jun 1997 20:47:21 +0200
+From: Dirk-Willem van Gulik <Dirk.vanGulik@jrc.it>
+Sender: dirk.vangulik@jrc.it
+To: tenthumbs@cybernex.net
+Cc: apbugs@hyperreal.com
+Subject: One doc error and one clarification for mod_auth_anon
+
+>Number:         658
+>Category:       documentation
+>Synopsis:       One doc error and one clarification for mod_auth_anon
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          doc-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun  2 11:50:01 1997
+>Originator:     tenthumbs@cybernex.net
+>Organization:
+>Release:        
+>Environment:
+Linux 2.0.30
+>Description:
+1) The docs refer to both "Anonymous_NoUser" and "Anonymous_NoUserID".
+The second is correct.
+
+2) The docs do not mention that a password file must be specified with
+AuthUserFile. The example doesn't mention this at all. A zero-length
+file
+works just fine.
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From->To: open->feedback
+State-Changed-By: coar
+State-Changed-When: Mon Jun  2 12:22:10 PDT 1997
+State-Changed-Why:
+The first item (Anonymous_NoUserID) will be corrected
+shortly.  As for the second.. AuthUserFile isn't a
+directive supplied by mod_auth_anon.  Do you mean that
+mod_auth_anon's documentation needs to mention that an
+AuthUserFile must exist for the location in order for
+mod_auth_anon to work?
+
+#ken    :-)}
+State-Changed-From->To: feedback->closed
+State-Changed-By: coar
+State-Changed-When: Mon Jun  2 12:24:43 PDT 1997
+State-Changed-Why:
+Sorry, this is a duplicate of PR#626.  Closing..
+
+From: "Dirk.vanGulik" <Dirk.vanGulik@jrc.it>
+To: APBugs@apache.org, new-httpd@qmail.hyperreal.com
+Subject: Re: documentation/658:
+Date: Tue, 3 Jun 1997 10:35:18 +0200
+
+ 
+ 
+ > Synopsis: One doc error and one clarification for mod_auth_anon
+ > 
+ > State-Changed-From->To: open->feedback
+ > State-Changed-By: coar
+ > State-Changed-When: Mon Jun  2 12:22:10 PDT 1997
+ > State-Changed-Why:
+ > The first item (Anonymous_NoUserID) will be corrected
+ > shortly.  As for the second.. AuthUserFile isn't a
+ > directive supplied by mod_auth_anon.  Do you mean that
+ > mod_auth_anon's documentation needs to mention that an
+ > AuthUserFile must exist for the location in order for
+ > mod_auth_anon to work?
+ 
+ Nay, I think the trouble is this; as we now have the option
+ to make authorization modules pass the buck(et) around, by
+ making them non-authoritative, it is easily possible to
+ configure a server to pass down all the way to 
+ 
+ http_request.c:         decl_die (access_status, "check user.  No user file?", r);
+ 
+ Judging from the number of reports I get on mod_anon and mod_msql, I 
+ guess that about equal number of people uses these modules with fall-trhough
+ and without. The latter onces usually get confused by the error message.
+ 
+ I guess one could do a few things about it.
+ 
+ 	1. Mention it in the doc(s) that at least one
+ 	   correctly configured auth module needs to be authoritative
+ 	2. Make teh fall through error msg in http_request a bit more
+ 	   elaborate, see below.
+ 	3. Consider how we could change some of this into a 500/server error
+ 	4. Modify the config-checks to check that they have an auth configuration
+ 	   which always leads to at least one configured authoritative module.
+ 	   (But that implies adding a function to the API).
+ 
+ Just my early morning ramble.
+ 
+ Dw.
+ 
+ 
+ $diff -c3 http_request.c http_request.c.org
+ *** http_request.c      Tue Jun  3 10:30:14 1997
+ --- http_request.c.org  Tue Jun  3 10:25:22 1997
+ ***************
+ *** 871,886 ****
+       switch (satisfies(r)) {
+       case SATISFY_ALL:
+         if ((access_status = check_access (r)) != 0) {
+ !           decl_die (access_status, "Check configured Access Permissions. Credential specification might be missing.", r);
+             return;
+         }
+         if (some_auth_required (r)) {
+             if ((access_status = check_user_id (r)) != 0) {
+ !               decl_die (access_status, "Check Configured User Access.  No authoritative auth module or file? Credential specification for the UserID might be missing.", r);
+                 return;
+             }
+             if ((access_status = check_auth (r)) != 0) {
+ !               decl_die (access_status, "Check Configured Group Access.  No authoritative auth module or file? Credential specification for the Group(s) might be missing.", r);
+                 return;
+             }
+         }
+ --- 871,886 ----
+       switch (satisfies(r)) {
+       case SATISFY_ALL:
+         if ((access_status = check_access (r)) != 0) {
+ !           decl_die (access_status, "check access", r);
+             return;
+         }
+         if (some_auth_required (r)) {
+             if ((access_status = check_user_id (r)) != 0) {
+ !               decl_die (access_status, "check user.  No user file?", r);
+                 return;
+             }
+             if ((access_status = check_auth (r)) != 0) {
+ !               decl_die (access_status, "check access.  No groups file?", r);
+                 return;
+             }
+         }
+ ***************
+ *** 888,902 ****
+       case SATISFY_ANY:
+         if ((access_status = check_access (r)) != 0) {
+             if (!some_auth_required (r)) {
+ !               decl_die (access_status, "Check Configured Access Permissions, Credential specification might be missing.", r);
+                 return;
+             }
+             if ((access_status = check_user_id (r)) != 0) {
+ !               decl_die (access_status, "Check Configured User Access.  No authoritative auth module or file? Credential specification for the UserID might be missing.", r);
+                 return;
+             }
+             if ((access_status = check_auth (r)) != 0) {
+ !               decl_die (access_status, "Check Configured Group Access.  No authoritative auth module or file? Credential specification for the Group(s) might be missing.", r);
+                 return;
+             }
+         }
+ --- 888,902 ----
+       case SATISFY_ANY:
+         if ((access_status = check_access (r)) != 0) {
+             if (!some_auth_required (r)) {
+ !               decl_die (access_status, "check access", r);
+                 return;
+             }
+             if ((access_status = check_user_id (r)) != 0) {
+ !               decl_die (access_status, "check user.  No user file?", r);
+                 return;
+             }
+             if ((access_status = check_auth (r)) != 0) {
+ !               decl_die (access_status, "check access.  No groups file?", r);
+                 return;
+             }
+         }
+ dirkx.elect6:src $diff -c3 http_request.c http_request.c.org
+ *** http_request.c      Tue Jun  3 10:30:14 1997
+ --- http_request.c.org  Tue Jun  3 10:25:22 1997
+ ***************
+ *** 871,886 ****
+       switch (satisfies(r)) {
+       case SATISFY_ALL:
+         if ((access_status = check_access (r)) != 0) {
+ !           decl_die (access_status, "Check configured Access Permissions. Credential specification might be missing.", r);
+             return;
+         }
+         if (some_auth_required (r)) {
+             if ((access_status = check_user_id (r)) != 0) {
+ !               decl_die (access_status, "Check Configured User Access.  No authoritative auth module or file? Credential specification for the UserID might be missing.", r);
+                 return;
+             }
+             if ((access_status = check_auth (r)) != 0) {
+ !               decl_die (access_status, "Check Configured Group Access.  No authoritative auth module or file? Credential specification for the Group(s) might be missing.", r);
+                 return;
+             }
+         }
+ --- 871,886 ----
+       switch (satisfies(r)) {
+       case SATISFY_ALL:
+         if ((access_status = check_access (r)) != 0) {
+ !           decl_die (access_status, "check access", r);
+             return;
+         }
+         if (some_auth_required (r)) {
+             if ((access_status = check_user_id (r)) != 0) {
+ !               decl_die (access_status, "check user.  No user file?", r);
+                 return;
+             }
+             if ((access_status = check_auth (r)) != 0) {
+ !               decl_die (access_status, "check access.  No groups file?", r);
+                 return;
+             }
+         }
+ ***************
+ *** 888,902 ****
+       case SATISFY_ANY:
+         if ((access_status = check_access (r)) != 0) {
+             if (!some_auth_required (r)) {
+ !               decl_die (access_status, "Check Configured Access Permissions, Credential specification might be missing.", r);
+                 return;
+             }
+             if ((access_status = check_user_id (r)) != 0) {
+ !               decl_die (access_status, "Check Configured User Access.  No authoritative auth module or file? Credential specification for the UserID might be missing.", r);
+                 return;
+             }
+             if ((access_status = check_auth (r)) != 0) {
+ !               decl_die (access_status, "Check Configured Group Access.  No authoritative auth module or file? Credential specification for the Group(s) might be missing.", r);
+                 return;
+             }
+         }
+ --- 888,902 ----
+       case SATISFY_ANY:
+         if ((access_status = check_access (r)) != 0) {
+             if (!some_auth_required (r)) {
+ !               decl_die (access_status, "check access", r);
+                 return;
+             }
+             if ((access_status = check_user_id (r)) != 0) {
+ !               decl_die (access_status, "check user.  No user file?", r);
+                 return;
+             }
+             if ((access_status = check_auth (r)) != 0) {
+ !               decl_die (access_status, "check access.  No groups file?", r);
+                 return;
+             }
+         }
+>Unformatted:
+
+>Last-Modified:  Mon Jun  2 12:24:43 PDT 1997
+
+Hi,
+
+Sorry for the late reply, but it did not seem to have any urgency.
+
+Could you send me (part of) the access.conf you are using, and the
+modules.c file; because I have a feeling you should get things to work
+without that file; especially if you make the anonymous module
+authorative; so it does not pass control to modules like the
+normal mod_auth.c which wants that file.
+
+Dw.
+
+
+
+
+
+-- 
+
+http://ewse.ceo.org                         http://enrm.ceo.org
+DWvGulik@Dialis.xs4all.nl                  Dirk.vanGulik@jrc.it
++39 332 78 0014                                 +39 332 78 9549
+                                            fax +39 332 78 9185
+
+ISEI/ESBA;                     The Center For Earth Observation
+Joint Research Centre of the European Communities, Ispra, Italy

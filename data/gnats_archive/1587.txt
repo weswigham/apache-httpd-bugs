@@ -1,0 +1,168 @@
+Received: (qmail 14806 invoked by uid 2012); 21 Dec 1997 07:57:34 -0000
+Message-Id: <19971221075734.14805.qmail@hyperreal.org>
+Date: 21 Dec 1997 07:57:34 -0000
+From: David Deutsch <david@completehost.com>
+Reply-To: david@completehost.com
+To: apbugs@hyperreal.org
+Subject: Error in document being served from 1.3b3, that does not occur in 1.2.4 with MSIE 4.0.x client.
+X-Send-Pr-Version: 3.2
+
+>Number:         1587
+>Category:       general
+>Synopsis:       Error in document being served from 1.3b3, that does not occur in 1.2.4 with MSIE 4.0.x client.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Dec 21 00:00:00 PST 1997
+>Last-Modified:  Wed May 20 19:34:56 PDT 1998
+>Originator:     david@completehost.com
+>Organization:
+>Release:        1.3b3
+>Environment:
+Linux 2.0.32, i586, Apache 1.3b3.
+>Description:
+I just finished designing a web page, that when loaded using MSIE 4.0.x caused a client side error of "800c0008". I got in contact with MS, and after reinstalling MSIE the error continued. This error does not occur in MSIE 3.0.x or any version of NetScape for Win95. I had thought the problem to be a HTTP/1.1 error, but after disabling 1.1, the error continued.
+
+However this error does not occur when using Apache 1.2.4.
+>How-To-Repeat:
+Visit www.completehost.com/copyright.phtml, I will leave 1.3b3 running for the weekend, after that if I have not corrected the problem, I will revert to 1.2.4.
+>Fix:
+MS Tech said that the error was common to ASP pages, although I use PHP, it is just to include other document components, no special scripting, they said the error could be corrected by editing registry entries in NT for IIS servers, but MS would not release the full tech details on the problem
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: David Deutsch <david@completehost.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/1587: Error in document being served from 1.3b3, that does not occur in 1.2.4 with MSIE 4.0.x client.
+Date: Sun, 21 Dec 1997 04:28:48 -0800 (PST)
+
+ Try this patch. 
+ 
+ Dean
+ 
+ From dgaudet@arctic.org Sun Dec 21 04:28:13 1997
+ Date: Sat, 20 Dec 1997 14:36:12 -0800 (PST)
+ From: Dean Gaudet <dgaudet@arctic.org>
+ To: new-httpd@apache.org
+ Subject: [PATCH] fix Rasmus' chunking error
+ X-Comment: Visit http://www.arctic.org/~dgaudet/legal for information regarding copyright and disclaimer.
+ Organization: Transmeta Corp.
+ Reply-To: new-httpd@apache.org
+ 
+ On Tue, 16 Dec 1997, Roy T. Fielding wrote:
+ 
+ > >When I load up the port 81 page a dialog pops up which says:
+ > >
+ > >  "Internet Explorer cannot open the Internet Site http://www.ler....
+ > >   Could not complete operation due to error 800c0008"
+ > >
+ > >and it shows me about 3/4 of the page.  The port 80 URL comes up fine.
+ > >Both servers are set up with the same document root for the
+ > >www.lerdorf.on.ca host-header virtual host, so it is the exact same file
+ > >being served up in both cases.
+ > 
+ > The last chunk is screwed up....
+ > 
+ >    positive input during the initial development of the interpreter.
+ >    ^M
+ >    1^M
+ >    <^M
+ >    /font>
+ >    </body></html>
+ >    0^M
+ >    ^M
+ > 
+ > which means that the module is doing something screwy with the buff.c
+ > calls or there is some borderline case that is being tickled.  You
+ > could output the same contents as a CGI (without content-length)
+ > and see if that is the case, but I suspect it is a problem with
+ > mixing buffers.  Try a systrace (truss) to see if you can pick up on
+ > a weird call pattern, or try stepping through it with gdb.
+ > 
+ > This is definitely not a bug in IE4.
+ 
+ Right, it's our bug.  In fact there's two buglets happening.  The first is
+ that bputc() does not understand chunking... it's a macro defined in
+ buff.h and I guess I missed it.  When it fills the buffer it calls
+ bflsbuf() to flush and buffer a single character, but it doesn't call
+ start_chunk() before starting the new buffer. Rather than slow down/expand
+ the macro any I chose to fix this problem by doing a start_chunk() in the
+ bflsbuf() routine.  This bug exists in 1.2. 
+ 
+ The second buglet is that when using bputc(), it is way easy to trigger
+ the large_write() code.  What was happening above was that it would
+ trigger large_write(), do a 4 element writev() (the buffer, chunked, plus
+ a chunk header, the 1 byte to write, and a chunk footer).  A workaround is
+ to not consider 1 byte writes for large_write().  large_write isn't in 1.2
+ so this bug isn't either. 
+ 
+ Dean
+ 
+ Index: main/buff.c
+ ===================================================================
+ RCS file: /export/home/cvs/apachen/src/main/buff.c,v
+ retrieving revision 1.51
+ diff -u -r1.51 buff.c
+ --- buff.c	1997/11/13 20:37:57	1.51
+ +++ buff.c	1997/12/20 22:20:30
+ @@ -807,9 +807,16 @@
+  API_EXPORT(int) bflsbuf(int c, BUFF *fb)
+  {
+      char ss[1];
+ +    int rc;
+  
+      ss[0] = c;
+ -    return bwrite(fb, ss, 1);
+ +    rc = bwrite(fb, ss, 1);
+ +    /* We do start_chunk() here so that the bputc macro can be smaller
+ +     * and faster
+ +     */
+ +    if (rc == 1 && (fb->flags & B_CHUNK))
+ +	start_chunk(fb);
+ +    return rc;
+  }
+  
+  /*
+ @@ -1059,9 +1080,12 @@
+  #ifndef NO_WRITEV
+  /*
+   * Detect case where we're asked to write a large buffer, and combine our
+ - * current buffer with it in a single writev()
+ + * current buffer with it in a single writev().  Note we don't consider
+ + * the case nbyte == 1 because modules which use rputc() loops will cause
+ + * us to use writev() too frequently.  In those cases we really should just
+ + * start a new buffer.
+   */
+ -    if (fb->outcnt > 0 && nbyte + fb->outcnt >= fb->bufsiz) {
+ +    if (fb->outcnt > 0 && nbyte > 1 && nbyte + fb->outcnt >= fb->bufsiz) {
+  	return large_write(fb, buf, nbyte);
+      }
+  #endif
+ 
+ 
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Thu Dec 25 18:48:12 PST 1997
+State-Changed-Why:
+Waiting for feedback on patch I sent user.
+
+Dean
+State-Changed-From-To: feedback-closed
+State-Changed-By: brian
+State-Changed-When: Wed May 20 19:34:55 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

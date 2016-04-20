@@ -1,0 +1,144 @@
+Received: (qmail 52940 invoked by uid 501); 16 Oct 2001 17:09:22 -0000
+Message-Id: <20011016170922.52939.qmail@apache.org>
+Date: 16 Oct 2001 17:09:22 -0000
+From: R Samuel Klatchko <rsk@brightmail.com>
+Reply-To: rsk@brightmail.com
+To: submit@bugz.apache.org
+Subject: snprintf with precision implemented improperly
+X-Send-Pr-Version: 3.110
+
+>Number:         8554
+>Category:       general
+>Synopsis:       snprintf with precision implemented improperly
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 16 10:10:00 PDT 2001
+>Closed-Date:    Sat Aug 24 21:08:43 PDT 2002
+>Last-Modified:  Sat Aug 24 21:08:43 PDT 2002
+>Originator:     rsk@brightmail.com
+>Release:        1.3.x
+>Organization:
+>Environment:
+Solaris 2.6, gcc 2.95.2 (but it's not relevant)
+>Description:
+The version of snprintf shipped with Apache does not properly implement
+precision when used with strings.  According to the standard C library
+definition 7.9.6.1: 
+
+...if the precision is specified, no more then that many characters are
+written.  If the precision is not specified or is greater than the size
+of the array, the array shall contain a null character.
+
+My reading of that is if the precision is specified and is less then the
+size of the array, the array need not contain a null character.
+
+But the current implementation always does a strlen() which requires a
+null character.
+>How-To-Repeat:
+Run the following program.  If you have purify, you'll should get a UMR:
+
+#include <unistd.h>
+
+int main()
+{
+    char buffer[100];
+    char *p = (char *)malloc(10);
+    size_t s = 0;
+
+    p[s++] = 'S';
+    p[s++] = 'a';
+    p[s++] = 'm';
+    p[s++] = 'u';
+    p[s++] = 'e';
+    p[s++] = 'l';
+
+    snprintf(buffer, sizeof(buffer), "%.*s", 6, p);
+
+    free(p);
+    return 0;
+}
+>Fix:
+*** 1440,1448 ****
+  	    case 's':
+  		s = va_arg(ap, char *);
+  		if (s != NULL) {
+! 		    s_len = strlen(s);
+! 		    if (adjust_precision && precision < s_len)
+! 			s_len = precision;
+  		}
+  		else {
+  		    s = S_NULL;
+--- 1440,1482 ----
+  	    case 's':
+  		s = va_arg(ap, char *);
+  		if (s != NULL) {
+!                     if (!adjust_precision)
+!                     {
+!                         s_len = strlen(s);
+!                     }
+!                     else
+!                     {
+!                         const char *walk;
+! 
+!                         /* From the C library standard in section 7.9.6.1:
+!                          * ...if the precision is specified, no more then
+!                          * that many characters are written.  If the
+!                          * precision is not specified or is greater
+!                          * than the size of the array, the array shall
+!                          * contain a null character.
+!                          *
+!                          * My reading is is precision is specified and
+!                          * is less then or equal to the size of the
+!                          * array, no null character is required.  So
+!                          * we can't do a strlen.
+!                          *
+!                          * This figures out the length of the string
+!                          * up to the precision.  Once it's long enough
+!                          * for the specified precision, we don't care
+!                          * anymore.
+!                          *
+!                          * NOTE: you must do the length comparison
+!                          * before the check for the null character.
+!                          * Otherwise, you'll check one beyond the
+!                          * last valid character.
+!                          */
+!                         for (walk = s, s_len = 0;
+!                              (s_len < precision) && (*walk != '\0');
+!                              ++walk, ++s_len)
+!                         {
+!                             // do nothing
+!                         }
+!                     }
+  		}
+  		else {
+  		    s = S_NULL;
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rbb
+State-Changed-When: Sat Aug 24 21:08:43 PDT 2002
+State-Changed-Why:
+Fixed in CVS, this will be available in the next version of APR.  I made a couple of small changes to your patch to better fit the Apache style.  I am not fixing this in Apache 1.3, because that version of ap_snprintf really can't be used outside of Apache, and Apache doesn't suffer from this problem.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

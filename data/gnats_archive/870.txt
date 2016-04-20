@@ -1,0 +1,131 @@
+From nobody@hyperreal.org  Tue Jul 15 13:49:52 1997
+Received: (from nobody@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id NAA17045;
+	Tue, 15 Jul 1997 13:49:52 -0700 (PDT)
+Message-Id: <199707152049.NAA17045@hyperreal.org>
+Date: Tue, 15 Jul 1997 13:49:52 -0700 (PDT)
+From: Pedro R3 Junior <pr3j@stj.gov.br>
+Reply-To: pr3j@stj.gov.br
+To: apbugs@hyperreal.org
+Subject: mod-proxy runs like a redirect directive in a particular situation
+X-Send-Pr-Version: 3.2
+
+>Number:         870
+>Category:       mod_proxy
+>Synopsis:       ProxyPass is not handled if the local path is an existing path/directory
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jul 15 13:50:01 1997
+>Last-Modified:  Sat Nov  8 13:40:54 PST 1997
+>Originator:     pr3j@stj.gov.br
+>Organization:
+>Release:        1.2.0 and 1.2.1
+>Environment:
+FreeBSD 2.2.1
+>Description:
+The problem was first described as a support request in PR#858.
+Maybe there are some relations with PR#614 too.
+
+The problem occurs when you have three conditions:
+
+1. Proxy translation.
+AND
+2. Submit button in form page.
+AND
+3. IP URLs answers in the "real" server.
+
+  When you get a page throught the proxy, use a submit button in this page
+and this button returns a IP URL (like http://10.0.0.1/page2.html), the
+proxy don´t translate the IP address to the Proxy Server Name.
+  It works like a redirection. If the IP is a dummy, the client is unable
+to get the page pointed by the cgi in submit button.
+  The URLs in PR#858 shows the problem.
+>How-To-Repeat:
+1. Put a server (www1) with a form page with a submit button.
+   The submit button has a IP URL as answer (ex. http://10.0.0.1/page2.html)
+   www1 - 10.0.0.1
+   index.html and page2.html
+2. Put an Apache 1.2 (www2) with proxy module and a proxyPass directive:
+   www2 - 10.0.0.2
+   ProxyPass /teste http://www1
+3. Get one page in www1 throught the proxy www2
+   http://www2/teste/index.html
+4. Use the submit button.
+   The proxy will make a redirect (not a proxy) to www1.
+   It will return 10.0.0.1/... when the right was www2/...
+
+The problem occurs just when www1 returns an IP number in the URL.
+>Fix:
+I tested two ways:
+
+1. Make all redirected pages with named URLs (mainly the cgi ones).
+2. Use Apache 1.1.3 - The problem don´t occurs here
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: Lars.Eilebrecht@unix-ag.org
+State-Changed-When: Wed Aug  6 05:44:47 PDT 1997
+State-Changed-Why:
+
+mod_proxy is not designed to translate an IP address into
+a name.
+
+What URL do you use as ACTION in your FORM?
+
+I'm a bit puzzled about what do you want to achieve
+but are you sure about the ProxyPass arguments?
+Maybe you need to specify something like
+ProxyPass http://www1/teste ...
+
+Severity-Changed-From-To: serious-non-critical
+Severity-Changed-By: Lars.Eilebrecht@unix-ag.org
+Severity-Changed-When: Wed Aug  6 05:44:47 PDT 1997
+Comment-Added-By: Lars.Eilebrecht@unix-ag.org
+Comment-Added-When: Wed Aug  6 14:22:08 PDT 1997
+Comment-Added:
+
+After additional user input the problem appears to be
+a bug in mod_proxy (?).
+
+A directive like
+
+  ProxyPass /path/foobar  http://somewhere/anything
+
+does not work, when '/path/' is a path that exists
+on the local (proxy) server (eg. an existing directory).
+The local server tries to handle the requests locally
+and ignores the ProxyPass directive.
+
+If '/path/' does not exist on the server, the request
+is correctly forwarded as specified in the ProxyPass
+directive.
+
+Possible workarounds:
+
+  - use only path arguments with ProxyPass that are not
+    existing on the local server
+  - use mod_rewrite
+
+
+Synopsis-Changed-From: mod-proxy runs like a redirect directive in a particular situation
+Synopsis-Changed-To: ProxyPass is not handled if the local path is an existing path/directory
+Synopsis-Changed-By: Lars.Eilebrecht@unix-ag.org
+Synopsis-Changed-When: Wed Aug  6 14:22:08 PDT 1997
+Severity-Changed-From-To: non-critical-critical
+Severity-Changed-By: Lars.Eilebrecht@unix-ag.org
+Severity-Changed-When: Wed Aug  6 14:22:08 PDT 1997
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Nov  8 13:40:54 PST 1997
+State-Changed-Why:
+A fix has been applied to the 1.3 source tree, it will appear
+in 1.3b3.
+
+Dean
+>Unformatted:
+
+

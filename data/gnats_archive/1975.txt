@@ -1,0 +1,111 @@
+Received: (qmail 26595 invoked by uid 2012); 22 Mar 1998 09:03:48 -0000
+Message-Id: <19980322090348.26594.qmail@hyperreal.org>
+Date: 22 Mar 1998 09:03:48 -0000
+From: Mike RUshford <rushford@wenet.net>
+Reply-To: rushford@wenet.net
+To: apbugs@hyperreal.org
+Subject: From a html I call on a perl script that itself does system "hardware-write" and requires ioperm to give permission to use the hardware ports but it fails. I have been doing this for years under NCSA httpd and wanted to move over to apac
+X-Send-Pr-Version: 3.2
+
+>Number:         1975
+>Category:       os-linux
+>Synopsis:       From a html I call on a perl script that itself does system "hardware-write" and requires ioperm to give permission to use the hardware ports but it fails. I have been doing this for years under NCSA httpd and wanted to move over to apac
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          support
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Mar 22 01:10:00 PST 1998
+>Last-Modified:  Sun Mar 22 08:11:15 PST 1998
+>Originator:     rushford@wenet.net
+>Organization:
+>Release:        1.2 and 1.3
+>Environment:
+uname -a
+Linux japan-89.ppp.hooked.net 2.0.33 #2 Sun Jan 4 01:31:40 GMT 1998 i486
+
+I tried a binary version and compiled the latest 1.3 beta and both have the same issue.
+>Description:
+I have a test.html with this line in it;
+<img src="/cgi-bin/server-push-sun-jpeg"
+width="256" height="240" align=center color=green border=1
+alt="Animation!">
+
+# perl script named server-push-sun-jpeg has the next two lines in it
+#!/usr/bin/perl
+
+system "/usr/local/etc/httpd/cgi-bin/dt2859.e 5 > /usr/local/etc/httpd/cgi-bin/$
+
+the program dt2859.e uses ioperm and under apache it fails and under NCSA it works.
+The dt2859.c is
+#include <stdio.h>
+#include <unistd.h>
+#include <errno.h>
+#include <time.h>
+#include "port.h"
+
+int argc;
+char *argv[];
+
+
+
+void main(int argc, char *argv[])
+{
+   unsigned char chan=0;
+
+   if (ioperm(0x2E3,1,1)) {/* this fails under apache and work for NCSA httpd*/
+      fprintf(stderr,"dt2859 ioperm error.\n");
+      exit(1);
+   }
+   if (argv[1][0] == '1') chan = 0;
+   if (argv[1][0] == '2') chan = 1;
+   if (argv[1][0] == '3') chan = 2;
+   if (argv[1][0] == '4') chan = 3;
+   if (argv[1][0] == '5') chan = 4;
+   if (argv[1][0] == '6') chan = 5;
+   if (argv[1][0] == '7') chan = 6;
+   printf("chan: %d\n",chan);
+   printf("argv[1]: %s\n",argv[1]);
+   port_out(0x2E3, chan);
+
+}
+
+>How-To-Repeat:
+Get on a linux 2.0.33 machine
+creat  a web page that calls a perl script
+use the system command to call an executable  that is compiled c code that
+uses  the ioperm command.
+Use netscape version 4 to call your web page when running apache and then again using NCSA httpd
+and confirm that the error_log for apache says the ioperm is a problem and under
+NCSA it is happy.
+>Fix:
+Did Apache lock out the hardware address space I was using? Can apache give it back to me%3
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Sun Mar 22 08:11:15 PST 1998
+State-Changed-Why:
+Apache is doing nothing special related to this.  Check
+the ioperm man page and you should find it can only be
+called by root.  My only guess is that for some broken
+reason, you had NCSA configured to run as root.  This is
+a huge security hole and leaves your box wide open to
+root compromises.
+
+If you want it to work, you should do something to make
+the code run as root; making it setuid would work if you
+are sure it can't be used by someone to compromise security.
+
+This is not an Apache problem.
+>Unformatted:
+
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+he but I have this ioperm problem to solve.
+

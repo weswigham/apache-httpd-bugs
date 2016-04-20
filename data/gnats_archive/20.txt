@@ -1,0 +1,121 @@
+From nobody@hyperreal.com  Sun Dec  1 12:46:02 1996
+Received: by taz.hyperreal.com (8.8.3/V2.0) id MAA05108; Sun, 1 Dec 1996 12:46:02 -0800 (PST)
+Message-Id: <199612012046.MAA05108@taz.hyperreal.com>
+Date: Sun, 1 Dec 1996 12:46:02 -0800 (PST)
+From: Brian Behlendorf <brian@organic.com>
+Reply-To: brian@organic.com
+To: apbugs@hyperreal.com
+Subject: timeout values need better logic
+X-Send-Pr-Version: 3.2
+
+>Number:         20
+>Category:       protocol
+>Synopsis:       timeout values need better logic
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Dec  1 12:50:01 1996
+>Last-Modified:  Sun Sep 13 17:16:14 PDT 1998
+>Originator:     brian@organic.com
+>Organization:
+>Release:        1.2b0
+>Environment:
+Any
+>Description:
+On Wed, 23 Oct 1996, Ben Laurie wrote:
+> If a connection is kept alive, hard_timeout() uses the keepalive timeout,
+> instead of the server timeout. This surely isn't right, since the keepalive
+> timeout is for the gaps between requests, and hard_timeout() is used during
+> request processing?
+
+There's no distinction in the code between inter-request timeouts and
+during-request timeouts, apparently.  The hard_timeout seems to apply to to the
+entire length of time between first connection (or end of last connection), and
+end of request.  Try it out with a "Timeout" directive of 10 seconds.  With the
+default, then of 1200 seconds, the first request has 1200 seconds to complete
+its request - that's silly.  That could easily lead to a denial of service
+attack, too.  The "fix" here should be to have another internal value for the
+amount of time the server should wait for the complete request to take place,
+say 10 seconds, and the inter-request keepalive timeout should be what is
+configured via KeepAliveTimeout today.  In other words:
+
+X = # of seconds to complete request
+  (Right now the default is 1200 seconds, or the value of "Timeout")
+
+Y = # of seconds between keep-alive requests
+  (Right now the default is 10 seconds)
+
+client connects and begins request
+client has X seconds to complete request
+client gets a response
+connection kept alive
+client has Y seconds before it must begin its next request
+client begins request
+client has X seconds to complete request
+  (etc.)
+
+If we want to keep things relatively simple, we can simply have the heuristic
+around what Ben is noting (http_main.c, line 458 in current snapshot) as
+
+    if (r->connection->keptalive)
+       alarm (r->server->keep_alive_timeout + r->server->readtimeout);
+    else
+       alarm (r->server->readtimeout);
+
+...along with a new server variable "readtimeout", which should default to
+something like 20 seconds, and should probably be a configurable option.
+Right now the main problem is that the timeout to read input and the timeout
+for output is the same variable.  Dis es no good.
+
+Rob Hartill wrote:
+It might need something more sophisticated than this. LANL have some file
+upload forms that accept up to 1Mb of data from clients over the damp piece
+of string that passes for a network in many parts of the world.
+
+The timeout should at least be on blocks of data read and not on the
+complete time for the request, unless that can be added as well which would
+be nice.
+
+Paul@ukweb wrote:
+It would also be nice if a different 
+timeout could be applied depending on whether the request includes an
+entity body. I'd like to set the default request timeout low, and only
+extend it if a POST or PUT is being performed. I don't know how difficult
+this would be...
+
+For setting the timeout, I'd prefer to see TimeOut extended, rather than
+a new directive. E.g. "TimeOut read 20" or "TimeOut write 1200".
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: fielding
+State-Changed-When: Thu Jan 23 14:42:42 PST 1997
+State-Changed-Why:
+
+Improving the timeout code will require a significant
+change to the server core.  This will not be feasible
+until after 1.2 final is released.
+ 
+State-Changed-From-To: suspended-closed
+State-Changed-By: fielding
+State-Changed-When: Sun Sep 13 17:16:14 PDT 1998
+State-Changed-Why:
+
+The timeout logic was fixed a long time ago.  The inter-request
+timeout is different from the first-request timeout because
+the application round-trip is subject to more Internet
+rerouting sillyness than the later requests, and also because
+it makes it easer to debug using TELNET.  The timeout period
+is now reset to a full hard_timeout as soon as the request_line
+is read, which solved the problem originally reported.
+
+>Unformatted:
+
+

@@ -1,0 +1,167 @@
+Received: (qmail 75828 invoked by uid 501); 18 Jul 2001 23:24:48 -0000
+Message-Id: <20010718232448.75827.qmail@apache.org>
+Date: 18 Jul 2001 23:24:48 -0000
+From: Srikanth Sridhara <sridhasr@yahoo.com>
+Reply-To: sridhasr@yahoo.com
+To: submit@bugz.apache.org
+Subject: Cannot create threads from within apache modules
+X-Send-Pr-Version: 3.110
+
+>Number:         8049
+>Category:       os-linux
+>Synopsis:       Cannot create threads from within apache modules
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jul 18 16:30:00 PDT 2001
+>Closed-Date:    
+>Last-Modified:  Wed Jul 25 15:50:00 PDT 2001
+>Originator:     sridhasr@yahoo.com
+>Release:        1.3-20
+>Organization:
+apache
+>Environment:
+RH 7.1 kernel 2.4.2-2;
+gcc 2.96
+>Description:
+
+Hi
+
+I wrote a Apache initialization handler which initializes a bunch of data
+structures and calls pthread_create() in an attempt to spawn threads.  I see
+that the pthread_create () hangs.  I have seen this happen only on linux, both
+RH 6.2 and RH 7.1.  With apache on Solaris 7 everything is ok.
+
+Is this a known problem ? I searched all over and even posted to the infosystems* newsgroup but to no avail.  I really would appreciate it if you
+could provide any suggestions ?
+
+thanX
+-Srikanth
+
+
+>How-To-Repeat:
+#include <sys/types.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <pthread.h>
+
+#include <httpd.h>
+#include <http_config.h>
+#include <http_core.h>
+#include <http_main.h>
+
+void *testFnc(void * arg) {
+
+    return;
+}
+
+static void testUid (server_rec *s, pool *p) {
+
+    int childpid;
+    FILE *fp;
+    int i, errorCode;
+    pthread_t thId;
+
+    fp = fopen("/tmp/logfile", "w");
+    fprintf (fp, "UID = %d, EUID = %d, GUID = %d, EGUID = %d\n",
+            getuid(), geteuid(), getgid(), getegid());
+    fflush(fp);
+
+    for (i = 0; i < 10; i++) {
+        errorCode = pthread_create(&thId, (void *)NULL, &testFnc, (void *)NULL);
+        fprintf (fp, "errorCode = %d\n", errorCode);
+        fflush (fp);
+    }
+}
+
+module MODULE_VAR_EXPORT my_module =
+{
+    STANDARD_MODULE_STUFF,
+    testUid,                   /* module initializer */
+    NULL,                   /* per-directory config creator */
+    NULL,                   /* dir config merger */
+    NULL,                   /* server config creator */
+    NULL,                   /* server config merger */
+    NULL,                   /* command table */
+    NULL,                   /* [9] list of handlers */
+    NULL,                   /* [2] filename-to-URI translation */
+    NULL,                       /* [5] check/validate user_id */
+    NULL,                       /* [6] check user_id is valid *here* */
+    NULL,                       /* [4] check access by host address */
+    NULL,                       /* [7] MIME type checker/setter */
+    NULL,            /* [8] fixups */
+    NULL,                       /* [10] logger */
+#if MODULE_MAGIC_NUMBER >= 19970103
+    NULL,          /* [3] header parser */
+#endif
+#if MODULE_MAGIC_NUMBER >= 19970719
+    NULL,         /* process initializer */
+#endif
+#if MODULE_MAGIC_NUMBER >= 19970728
+    NULL,         /* process exit/cleanup */
+#endif
+#if MODULE_MAGIC_NUMBER >= 19970902
+    NULL          /* [1] post read_request handling */
+#endif
+};
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+
+From: Srikanth NS <sridhasr@yahoo.com>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc:  
+Subject: Re: os-linux/8049: Cannot create threads from within apache modules
+Date: Wed, 25 Jul 2001 15:41:13 -0700 (PDT)
+
+ I did some more digging on this one and found that
+ pthread_create() is in sigsuspend() waiting for a
+ signal (SIG number 32) that never arrives.
+ 
+ Either the pthread manager never sent it OR it was
+ blocked ????
+ 
+ How does apache deal with SIG number 32 ?
+ 
+ -Srikanth
+ 
+ --- submit@bugz.apache.org wrote:
+ > Thank you very much for your problem report.
+ > It has the internal identification `os-linux/8049'.
+ > The individual assigned to look at your
+ > report is: apache. 
+ > 
+ > >Category:       os-linux
+ > >Responsible:    apache
+ > >Synopsis:       Cannot create threads from within
+ > apache modules
+ > >Arrival-Date:   Wed Jul 18 16:30:00 PDT 2001
+ 
+ 
+ __________________________________________________
+ Do You Yahoo!?
+ Make international calls for as low as $.04/minute with Yahoo! Messenger
+ http://phonecard.yahoo.com/
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

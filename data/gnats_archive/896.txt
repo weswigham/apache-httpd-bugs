@@ -1,0 +1,180 @@
+From nobody@hyperreal.org  Tue Jul 22 03:48:32 1997
+Received: (from nobody@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id DAA12100;
+	Tue, 22 Jul 1997 03:48:32 -0700 (PDT)
+Message-Id: <199707221048.DAA12100@hyperreal.org>
+Date: Tue, 22 Jul 1997 03:48:32 -0700 (PDT)
+From: Marcel Knol <marcel@aware.nl>
+Reply-To: marcel@aware.nl
+To: apbugs@hyperreal.org
+Subject: Even with patch, HTTPd will not survive HUP or even start up
+X-Send-Pr-Version: 3.2
+
+>Number:         896
+>Category:       os-solaris
+>Synopsis:       Even with patch, HTTPd will not survive HUP or even start up
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jul 22 03:50:01 1997
+>Last-Modified:  Sat Aug  2 04:47:48 PDT 1997
+>Originator:     marcel@aware.nl
+>Organization:
+>Release:        1.2.1
+>Environment:
+Solaris 2.5.1, SUN Sparc Ultra 2, 2 processors, 512 MB memory.
+Apache 1.2.1 with Solaris HUP patch applied
+>Description:
+As also described in #888, the 1.2.1 with Solaris HUP patch applied does not
+solve the problem. When "netstat" still shows FIN_WAIT_2 and TIME_WAIT, the
+HTTPd will not cold-start until all connections "have left" the netstat output.
+Then the HTTPd will cold-start. Otherwise the error "Bind: Address already in 
+use, httpd: could not bind to port 80" is displayed.
+
+When HTTPd is in a running state and receiving a SIGHUP, the HTTPd dies 
+with "Bind: Address already in use, httpd: could not bind to port 80".
+
+It looks like the "bind()" is done before setting the option "REUSEADDR".
+
+>How-To-Repeat:
+I just applied the patch and recompiled. The problem only shows up at busy
+websites I think. Two of our Ultra-2 show the problem (they are heavily
+loaded). The third Ultra-2 is hardly loaded and does not show the problem.
+Probably because there are no active connections during the SIGHUP.
+>Fix:
+I looked at the code and there is a bind before setting the REUSEADDR. Maybe
+this is the problem. I am not an expert in this field
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Marcel Knol <marcel@aware.nl>
+Subject: Re: os-solaris/896: Even with patch, HTTPd will not survive HUP or even start up
+Date: Mon, 28 Jul 1997 03:39:53 -0700 (PDT)
+
+ 
+ Marcel, could you try compiling the program below.  Save it as
+ "test-bind.c" and then execute: 
+ 
+ cc -o test-bind test-bind.c -lsocket
+ 
+ When you run it "./test-bind" it should count from 0 to 19.  Tell me what
+ happens. 
+ 
+ Also could you please send me the output of "showrev -a" for your system. 
+ 
+ Thanks
+ Dean
+ 
+ #include <sys/types.h>
+ #include <sys/socket.h>
+ #include <stdio.h>
+ #include <unistd.h>
+ #include <errno.h>
+ #include <netinet/in.h>
+ #include <arpa/inet.h>
+ #include <netdb.h>
+ #include <signal.h>
+ #include <fcntl.h>
+ #include <string.h>
+ #include <stdlib.h>
+ 
+ void main (void)
+ {
+     int i, s, t;
+     struct sockaddr_in sa;
+ 
+     sa.sin_family = AF_INET;
+     sa.sin_addr.s_addr = htonl (INADDR_ANY);
+     sa.sin_port = htons (2718);
+ 
+     for (i = 0; i < 20; ++i) {
+         printf ("i = %d\n", i);
+ 	if ((s = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
+ 	    perror ("socket");
+ 	    exit (1);
+ 	}
+ 	if (bind (s, (struct sockaddr *)&sa, sizeof (sa)) == -1) {
+ 	    fprintf (stderr, "i = %d, bind: %s\n", i, strerror (errno));
+ 	    exit (1);
+ 	}
+ 	if ((t = fcntl (s, F_DUPFD, 16)) == -1) {
+ 	    perror ("dup");
+ 	    exit (1);
+ 	}
+ 	close (s);
+ 	close (t);
+     }
+     exit (0);
+ }
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: marcel@aware.nl
+Subject: Re: os-solaris/896: Even with patch, HTTPd will not survive HUP or even start up
+Date: Mon, 28 Jul 1997 11:41:45 -0700 (PDT)
+
+ 
+ Marcel,
+ 
+ Please reverse the old patch (use patch -R, or just unpack apache_1.2.1
+ and copy the original http_main.c out of it into your working directory)
+ and try applying the patch below.
+ 
+ As you'll see in the comment we discovered more accurately what the
+ problem is.
+ 
+ Dean
+ 
+ --- apache_1.2.1-dist/src/http_main.c	Sun Jun 29 11:08:37 1997
+ +++ apache_1.2.1/src/http_main.c	Mon Jul 28 11:35:36 1997
+ @@ -1982,7 +1982,27 @@
+          exit(1);
+      }
+  
+ +    /* Solaris, at least versions 2.4, 2.5 and 2.5.1, even with various
+ +     * levels of tcp/ip patches available as of July 28, 1997, completely
+ +     * botches up if you do any form of dup() on a socket.  If that dupped
+ +     * socket is then put into listen() and accept()s at least one
+ +     * connection, then Bad Things happen.  Things work fine until the
+ +     * socket is close()d.  At that point, no matter what SO_REUSEADDR was
+ +     * set to, nothing can rebind the same address/port, you'll get
+ +     * "Address in use" errors.  This takes about 5 minutes to timeout.
+ +     *
+ +     * So we do no slacking on solaris sockets.  If you can live with those
+ +     * restrictions (which essentially means you have to use SIGUSR1 and
+ +     * not SIGHUP to restart the server, and should you ever need to stop
+ +     * the server you'll have at least a 5 minute wait before you can
+ +     * restart it) then you can remove this #ifndef.  You'll get yourself
+ +     * another 120ish virtual hosts (assuming you're using Listen for each
+ +     * of them) before you run into another Solaris problem:  the 256
+ +     * FILE * limitation.
+ +     */
+ +#ifndef SOLARIS2
+      s = ap_slack(s, AP_SLACK_HIGH);
+ +#endif
+  
+      note_cleanups_for_fd(pconf, s); /* arrange to close on exec or restart */
+      
+ 
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Mon Jul 28 14:53:58 PDT 1997
+State-Changed-Why:
+[Actually awaiting feedback, no longer "open"]
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Aug  2 04:47:48 PDT 1997
+State-Changed-Why:
+I'll be tracking this problem in PR#832.
+
+Dean
+>Unformatted:
+
+
+
+

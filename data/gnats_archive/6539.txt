@@ -1,0 +1,106 @@
+Received: (qmail 67185 invoked by uid 501); 15 Sep 2000 12:59:42 -0000
+Message-Id: <20000915125942.67184.qmail@locus.apache.org>
+Date: 15 Sep 2000 12:59:42 -0000
+From: Ted Keller <keller@bfg.com>
+Reply-To: keller@bfg.com
+To: submit@bugz.apache.org
+Subject: Incomplete Response from some Secure Sites via proxy_connect.c
+X-Send-Pr-Version: 3.110
+
+>Number:         6539
+>Category:       mod_proxy
+>Synopsis:       Incomplete Response from some Secure Sites via proxy_connect.c
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Sep 15 06:00:01 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     keller@bfg.com
+>Release:        1.3.9 and later
+>Organization:
+apache
+>Environment:
+ns2.bfg.com% uname -a
+SunOS ns2.bfg.com 5.7 Generic_106541-05 sun4u sparc SUNW,Ultra-4
+ns2.bfg.com% gcc -v
+Reading specs from /usr/local/lib/gcc-lib/sparc-sun-solaris2.7/2.95.2/specs
+gcc version 2.95.2 19991024 (release)
+>Description:
+Some secure sites experience either no response of very slow response when operating through the Apache proxy server.  We often find that these sites are running the Netscape Web server (may or may not be important)
+>How-To-Repeat:
+These are government sites.  Cannot supply at this time.
+>Fix:
+It appears that the connections to and from the client/remote site are being dropped prior to all data being transferred to the client.  I've added the following patch which seemt to dramtically improve our success rate...
+
+ns2.bfg.com 7# more proxy_connect.c.patch
+*** proxy_connect.c.orig        Tue Sep 12 10:02:40 2000
+--- proxy_connect.c     Wed Sep 13 09:25:30 2000
+***************
+*** 129,134 ****
+--- 129,141 ----
+      (proxy_server_conf *) ap_get_module_config(sconf, &proxy_module);
+      struct noproxy_entry *npent = (struct noproxy_entry *) conf->noproxies->el
+ts;
+  
++ /*
++  * for so-linger support
++  */
++ 
++     struct linger ling;     /* for linger */
++     int length;             /* for linger */
++ 
+      memset(&server, '\0', sizeof(server));
+      server.sin_family = AF_INET;
+  
+***************
+*** 238,243 ****
+--- 245,265 ----
+        ap_bflush(r->connection->client);
+      }
+  
++ /*
++  * set the so-linger socket option
++  */
++ 
++     ling.l_onoff = 1;   /* turn it on */
++     ling.l_linger = 10;
++     length = sizeof(ling);
++     if (setsockopt(sock,  SOL_SOCKET, SO_LINGER, &ling, length) < 0)
++         ap_log_rerror(APLOG_MARK, APLOG_ERR, NULL,
++                     "proxy: error setting SO_LINGER");
++     if (setsockopt(r->connection->client->fd,  SOL_SOCKET, SO_LINGER, &ling, l
+ength) < 0)
++         ap_log_rerror(APLOG_MARK, APLOG_ERR, NULL,
++                     "proxy: error setting SO_LINGER");
++         
++ 
+      while (1) {                       /* Infinite loop until error (one side c
+loses the connection) */
+        FD_ZERO(&fds);
+        FD_SET(sock, &fds);
+ns2.bfg.com 8# 
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

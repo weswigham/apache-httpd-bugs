@@ -1,0 +1,179 @@
+From apwww@hyperreal.org  Thu Oct  2 10:16:15 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id KAA28342;
+	Thu, 2 Oct 1997 10:16:15 -0700 (PDT)
+Message-Id: <199710021716.KAA28342@hyperreal.org>
+Date: Thu, 2 Oct 1997 10:16:15 -0700 (PDT)
+From: Markus Stumpf <maex@Space.Net>
+Reply-To: maex@Space.Net
+To: apbugs@hyperreal.org
+Subject: setlogin() is not called, causing problems with e.g. identd
+X-Send-Pr-Version: 3.2
+
+>Number:         1191
+>Category:       general
+>Synopsis:       setlogin() is not called, causing problems with e.g. identd
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Oct  2 10:20:02 1997
+>Last-Modified:  Sun Feb  8 10:50:00 PST 1998
+>Originator:     maex@Space.Net
+>Organization:
+>Release:        1.3a1
+>Environment:
+FreeBSD 2.2.2-RELEASE #0
+gcc version 2.7.2.1
+>Description:
+If you access other services via TCP/IP from within an CGI-BIN and the
+other service calls identd, identd reports "root" instead of the logname
+of the uid apache is running with.
+>How-To-Repeat:
+
+>Fix:
+Easy, add a
+    setlogin((getpwuid(user_id))->pw_name);
+in src/http_main.c before calling setuid(user_id)
+This is around line 1699 in apache-1.2.4.
+Don't know whether this is also need in the MPE code.
+
+This problem probably also applies to the suexec.c program
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Thu Oct 23 02:38:11 PDT 1997
+State-Changed-Why:
+This would be nice, but isn't setlogin() a BSD4.4ism?  I don't
+see it on my linux or solaris boxes.  Doing this portably is a
+pain in the butt if setlogin() does what I think it does ...
+that is, it mucks with utmp right?
+
+If so, why the heck is identd even bothering with utmp?
+
+Dean
+State-Changed-From-To: feedback-suspended
+State-Changed-By: coar
+State-Changed-When: Thu Nov 13 09:07:39 PST 1997
+State-Changed-Why:
+This is almost certainly not going to be changed for
+1.3, since the setlogin() routine isn't available on
+all platforms.  However, I'm marking this as suspended
+so it can be revisited later.
+
+Thanks for the report, and for using Apache!
+Release-Changed-From-To: all releases up to 1.3a1-1.3a1
+Release-Changed-By: coar
+Release-Changed-When: Thu Nov 13 09:07:39 PST 1997
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: general/1191: setlogin() is not called, causing problems with e.g. identd
+Date: Sun, 8 Feb 1998 10:41:02 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ Date: Sun, 8 Feb 1998 14:26:55 +0000 (GMT)
+ From: Rob Hartill <robh@imdb.com>
+ To: Apache Group <new-httpd@hyperreal.org>
+ Subject: Re: followup to PR#1191, setlogin() is not called, causing problem=
+ s with e.g. identd (fwd)
+ Reply-To: new-httpd@apache.org
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: 06 Feb 1998 17:25:36 -0800
+ From: Matt Braithwaite <mab@alink.net>
+ To: apache-bugs@apache.org
+ Subject: Re: followup to PR#1191, setlogin() is not called, causing problem=
+ s with e.g. identd
+ 
+ >>>>> "mab" =3D=3D Matt Braithwaite <mab@alink.net> writes:
+ 
+     mab> in our environment, which is suexec under apache 1.2 on BSDI
+     mab> 3.1, if user `foo' su's (not su -'s) to root, fastmail when
+     mab> run by a CGI will get `foo' from getlogin.
+ 
+ boy, that was criminally unclear.  what i meant was, if `foo' su's to
+ root *and starts httpd*, CGIs run by suexec will get `foo' from
+ getlogin.  sorry.
+ 
+ --
+ Matthew Braithwaite <mab@alink.net>
+ A-Link Network Services, Inc.    408.720.6161    http://www.alink.net/
+ 
+ Alors, =F4 ma beaut=E9!  dites =E0 la vermine / Qui vous mangera de baisers=
+ ,
+ Qui j'ai gard=E9 la forme et l'essence divine / De mes amours d=E9compos=E9=
+ s!
+                                                ---Baudelaire
+ 
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Sun, 8 Feb 1998 14:26:25 +0000 (GMT)
+ From: Rob Hartill <robh@imdb.com>
+ To: Apache Group <new-httpd@hyperreal.org>
+ Subject: followup to PR#1191, setlogin() is not called, causing problems wi=
+ th e.g. identd (fwd)
+ Reply-To: new-httpd@apache.org
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: 06 Feb 1998 16:13:03 -0800
+ From: Matt Braithwaite <mab@alink.net>
+ To: apache-bugs@apache.org
+ Subject: followup to PR#1191, setlogin() is not called, causing problems wi=
+ th e.g. identd
+ 
+ i couldn't figure out how to *add* to an existing PR, so maybe
+ somebody can just paste this into 1191 for me. :-)
+ 
+ another context in which the setlogin problem occurs is this.
+ fastmail calls getlogin to determine the default envelope sender of
+ mail that it sends.  in our environment, which is suexec under apache
+ 1.2 on BSDI 3.1, if user `foo' su's (not su -'s) to root, fastmail
+ when run by a CGI will get `foo' from getlogin.  this is clearly
+ wrong; getlogin should return the name of the user that the CGI is
+ running as.
+ 
+ note that BSDI's getlogin does not operate via any of the numerous
+ hacks available, but by storing a string in a per-session data
+ structure (i'm assuming).  i infer this from the fact that i can
+ setlogin to a nonexistent username.
+ 
+ problems:
+ 
+ 1) httpd should setlogin to the name of the user, because it makes a
+ guarantee to run as a particular user.
+ 
+ 2) *especially*, suexec should setlogin to the name of the user owning
+ the CGI, because it absolutely should not permit any uncontrolled
+ aspects of the environment to leak through.
+ 
+ the PR comments:
+ 
+ > This is almost certainly not going to be changed for 1.3, since the
+ > setlogin() routine isn't available on all platforms.
+ 
+ i think this is ill-advised.  on the platforms where setlogin is
+ available, it defines an aspect of the environment that should be
+ controlled.
+ 
+ --
+ Matthew Braithwaite <mab@alink.net>
+ A-Link Network Services, Inc.    408.720.6161    http://www.alink.net/
+ 
+ Alors, =F4 ma beaut=E9!  dites =E0 la vermine / Qui vous mangera de baisers=
+ ,
+ Qui j'ai gard=E9 la forme et l'essence divine / De mes amours d=E9compos=E9=
+ s!
+                                                ---Baudelaire
+ 
+ 
+>Unformatted:
+
+

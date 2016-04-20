@@ -1,0 +1,109 @@
+From apwww@hyperreal.org  Wed Aug  6 20:42:09 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id UAA04027;
+	Wed, 6 Aug 1997 20:42:09 -0700 (PDT)
+Message-Id: <199708070342.UAA04027@hyperreal.org>
+Date: Wed, 6 Aug 1997 20:42:09 -0700 (PDT)
+From: Daniel OBrien <apache@expo.net>
+Reply-To: apache@expo.net
+To: apbugs@hyperreal.org
+Subject: Invalid request methods are processed by CGI module as GET
+X-Send-Pr-Version: 3.2
+
+>Number:         973
+>Category:       mod_cgi
+>Synopsis:       Invalid request methods are processed by CGI module as GET
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Aug  6 20:50:01 1997
+>Last-Modified:  Wed Aug  6 23:05:12 PDT 1997
+>Originator:     apache@expo.net
+>Organization:
+>Release:        1.2.1
+>Environment:
+FreeBSD 2.1.X (all levels including 0, 5, 7)
+built with gcc
+>Description:
+A user can use an invalid request method for a cgi script like
+
+  BLAH /index.cgi HTTP/1.0
+
+and it is processed by apache as if it were a GET.  These should return
+the appropriate Accept headers and log an error to the error log
+about "Invalid method in request" but do not.  This request currently runs
+the cgi and returns the output of the index.cgi script.  
+
+  A related problem, that made us first notice this, is that cgi scripts
+in directories protected with .htaccess that have 
+
+<Limit GET POST>
+require valid-user
+</Limit>
+
+  are still runable without authenticating the user if the request method
+is a non-supported one (such as BLAH above).  Trying to retrieve regular
+files with the invalid request method results in attempts to authenticate
+(which is the correct behaviour).
+>How-To-Repeat:
+Yes.  In the first case, just a 
+
+telnet server 80
+BLAH /index.cgi HTTP/1.0
+
+works fine when it should not.
+For the second part, just setup a directory which controls access through
+
+<Limit GET POST>
+require valid-user
+</Limit>
+
+Put a CGI script and a regular html file there.  Setup so that authentication
+is required to get either file and then use
+
+telnet server 80
+BLAH /index.cgi HTTP/1.0
+
+and you should be able to cause the script to be executed and return
+the output.  
+
+telnet server 80
+BLAH /index.html HTTP/1.0
+
+will give the appropriate invalid request method error and accept header.
+>Fix:
+This may be a problem with other types of files, but, at least for CGI
+scripts, modified the cgi_handler routine to check to see that the request
+is valid will properly handle the first situation.  I'm not sure about the
+second situation.
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Wed Aug  6 23:05:11 PDT 1997
+State-Changed-Why:
+No, Apache is not handling it like a GET request.  It
+is handling it like a BLAH request.  If your CGI script
+does not properly check its environment to see what method
+it is being called with it should.
+
+Also note that even if Apache rejected such requests, your
+configuration would still not be secure if your script
+didn't check the method it was being called with; eg.
+PUT would get past.  If you want access restrictions to
+apply to all methods, simply leave the limit section out
+entirely.  This horrible trend of putting needless limit
+statements in has no purpose but is unfortunately widespread.
+
+The method is properly set to an internal datatype of
+M_INVALID meaning an invalid method, but it is still
+processed by certain modules such as the CGI module because
+there is nothing stopping someone from implement and
+extension method which a CGI script does handle correctly.
+>Unformatted:
+
+

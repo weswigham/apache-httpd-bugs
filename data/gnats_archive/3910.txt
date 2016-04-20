@@ -1,0 +1,139 @@
+Received: (qmail 14843 invoked by uid 2012); 17 Feb 1999 21:05:26 -0000
+Message-Id: <19990217210526.14842.qmail@hyperreal.org>
+Date: 17 Feb 1999 21:05:26 -0000
+From: Jose KAHAN <kahan@w3.org>
+Reply-To: kahan@w3.org
+To: apbugs@hyperreal.org
+Subject: Missing 100-Continue while doing a PUT
+X-Send-Pr-Version: 3.2
+
+>Number:         3910
+>Category:       protocol
+>Synopsis:       Missing 100-Continue while doing a PUT
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Feb 17 13:10:01 PST 1999
+>Last-Modified:  Tue Apr 20 16:38:55 PDT 1999
+>Originator:     kahan@w3.org
+>Organization:
+>Release:        1.3.4
+>Environment:
+gcc
+SunOS tuvalu 5.5 Generic_103093-11 sun4m
+>Description:
+I had reported this bug before (PR#3575).
+
+The answer I got describes a new behavior that states when the 100-Continue
+shouldn't be sent. However, 100-Continue isn't being sent anymore while
+doing a PUT.
+
+I checked back with Henrik Frystyk and he agrees this is a bug in Apache.
+
+>How-To-Repeat:
+Install mod_put or a PUT script -- the bug doesn't depend on the PUT being
+implemented by a module or by a CGI script.
+Then try something like:
+
+================================
+PUT /test.html HTTP/1.1
+Accept: */*
+Accept-Encoding: deflate
+TE: trailers,deflate
+Expect: 100-continue
+Host: tuvalu:7990
+If-Match: "3f9f5-14aa-36add0b9"
+User-Agent: amaya/V1.4a libwww/5.2.1
+Connection: TE
+Date: Tue, 26 Jan 1999 14:28:23 GMT
+Allow: PUT
+Content-Length: 10
+Content-Type: text/html
+=========
+or even simpler like:
+
+=========
+PUT /test.html HTTP/1.1
+Expect: 100-continue
+Host: tuvalu:7990
+Content-Length: 10
+Content-Type: text/html
+==============
+
+You won't get any 100-Continue. In fact, Apache is already waiting for your data.
+If you type it in, it'll get PUT'ed.
+>Fix:
+Apache initiallty detects the Expect: 100-Continue header and sets up
+an internal flag (expecting_100) in a request_rec variable (let's say r).
+However, later on down the pipeline, there's a call  
+http_request.c:internal_internal_redirect() where a new request_rec
+variable is created (new_uri). Several fields of r are copied to new_uri,
+however this is not the case of expecting_100.
+
+Later on, there's a call to
+http_protocol.c:ap_should_client_block() where Apache decides
+whether it should send the 100-Continue answer. As
+r->expecting_100 (in fact, it's
+new_uri->expecting_100 which was initialized above)
+is always zero, the 100-Continue won't be sent.
+
+Note that the expecting_100 flag is correctly copied in
+http_protocol.c:ap_set_sub_req_protocol. My guess is that it was just
+missing on the internal_internal_redirect().
+
+SOLUTION
+
+I added a line to copy  the status of r->expecting_100 to
+new_uri->expecting_100.
+
+After applying my patch, I could get a 100-Continue answer while making a
+POST or a PUT. When trying to do so with a HEAD or GET request, I
+didn't get any 100-Continue, as Roy's overrode this header (as
+expected :)). 
+
+I didn't push the tests to see how it works while using a proxy.
+
+I hope that this modest contribution is helpful to the Apache team.
+
+Cheers,
+
+-Jose
+
+PATCH
+=====================
+
+*** http_request.c.new  Wed Jan 27 00:00:49 1999
+--- http_request.c      Tue Jan 26 23:42:44 1999
+*************** static request_rec *internal_internal_re
+*** 1298,1304 ****
+  
+      new->htaccess        = r->htaccess;
+      new->no_cache        = r->no_cache;
+-     new->expecting_100   = r->expecting_100;
+      new->no_local_copy   = r->no_local_copy;
+      new->read_length     = r->read_length;     /* We can only read it
+once */
+      new->vlist_validator = r->vlist_validator;
+--- 1298,1303 ----
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 16:38:55 PDT 1999
+State-Changed-Why:
+Thanks, it'll be in 1.3.7.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

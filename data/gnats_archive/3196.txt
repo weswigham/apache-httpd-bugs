@@ -1,0 +1,224 @@
+Received: (qmail 14317 invoked by uid 2012); 13 Oct 1998 11:39:54 -0000
+Message-Id: <19981013113954.14316.qmail@hyperreal.org>
+Date: 13 Oct 1998 11:39:54 -0000
+From: Richard Masters <richard.masters@bl.uk>
+Reply-To: richard.masters@bl.uk
+To: apbugs@hyperreal.org
+Subject: Continuing problems with root directories of other drives
+X-Send-Pr-Version: 3.2
+
+>Number:         3196
+>Category:       os-windows
+>Synopsis:       Continuing problems with root directories of other drives
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 13 04:40:01 PDT 1998
+>Last-Modified:  Tue Feb  2 10:59:07 PST 1999
+>Originator:     richard.masters@bl.uk
+>Organization:
+>Release:        1.3.3
+>Environment:
+Windows 95
+>Description:
+Server root is d:\apache. I want to provide access to other drives, using user authentication for security. This can not be set up and I believe it is due to continuing incorrect handling of root directories.
+
+This works
+----------
+Alias /cdir "C:/dir1/"
+<Directory "C:/dir1">
+AuthUserFile "users.acl"
+AuthType Basic
+AuthName RestrictedInformation
+require user fred
+</Directory>
+
+This does not work:
+-------------------
+Alias /cdir "C:/"
+<Directory "C:/">
+AuthUserFile users.acl
+AuthType Basic
+AuthName RestrictedInformation
+require user fred
+</Directory>
+
+Client message:
+   Not Found. The requested URL /cdir/ was not found on this server
+Error log entry:
+  [Tue Oct 13 12:06:57 1998] [error] [client 194.66.234.253] File does not exist: c://
+
+(Get the same error if Directory directive is to "C:")
+>How-To-Repeat:
+Behind firewall
+>Fix:
+Before v1.3.3 I could set the program start-up directory to the root directory of the drive from which apache was run. This work-around no longer works.
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Tue Oct 13 10:17:06 PDT 1998
+State-Changed-Why:
+
+In your nonworking example, try changing
+
+  Alias /cdir "C:/"
+
+to
+
+  Alias /cdir/ "C:/"
+
+and see if that makes any difference.
+
+
+From: Richard.Masters@mail.bl.uk (Richard Masters)
+To: coar@apache.org
+Cc: apbugs@apache.org
+Subject: RE: os-windows/3196: Continuing problems with root directori
+Date: Wed, 14 Oct 1998 11:06:25 +0100
+
+ Suggestion from coar@apache.org:
+ | Synopsis: Continuing problems with root directories of other drives
+ | 
+ | In your nonworking example, try changing
+ | 
+ |   Alias /cdir "C:/"
+ | to
+ |   Alias /cdir/ "C:/"
+ | 
+ | and see if that makes any difference.
+ | 
+ I changed the line in srm.conf to :
+ 
+ Alias /cdir/ "C:/"
+ 
+ with entry in access.conf still:
+ 
+ <Directory "C:/">
+ AuthUserFile users.acl
+ AuthType Basic
+ AuthName RestrictedInformation
+ require user fred
+ </Directory>
+ 
+ Used URL: http://ip.address/cdir/
+ 
+ Result: Provides index listing, but ignores user authentication.
+ 
+ Used URL: http://ip.address/cdir
+ 
+ Result: Provides index listing (shows trailing slash on client), but ignores
+ user authentication again.
+ 
+ Richard
+State-Changed-From-To: feedback-open
+State-Changed-By: lars
+State-Changed-When: Sat Nov 14 09:36:57 PST 1998
+State-Changed-Why:
+issue seems to be still open...
+
+State-Changed-From-To: open-feedback
+State-Changed-By: kparz@raleigh.ibm.com
+State-Changed-When: Thu Jan 28 07:37:48 PST 1999
+State-Changed-Why:
+Richard,
+
+I just tried this with Apache 1.3.5-dev 
+(a tarball from 1/27/99) on NT 4.0 SP3.
+(this setup is basically what you did
+in your last attempt)
+
+Alias /croot/ c:/
+
+<Directory "c:/">
+AuthUserFile "userauth.uaf"
+AuthType Basic
+AuthName RestrictedInformation
+require user foo
+</Directory>
+
+
+And this worked for me.  Maybe you can try this
+again with Apache 1.3.4?
+
+Couple of things to watch for:
+-Browsers (like IE) may add a trailing '/' to 
+your URL, so that is the reason the Alias needs the
+trailing '/'
+-Make sure you haven't already entered the userid and
+password for another restricted area, otherwise the
+browser caches that info and will not ask you again, and
+it may appear as though you got to the index without
+authorization.
+
+Let us know! 
+
+Thanks for using Apache.
+State-Changed-From-To: feedback-closed
+State-Changed-By: kparz@raleigh.ibm.com
+State-Changed-When: Tue Feb  2 10:59:07 PST 1999
+State-Changed-Why:
+>Unformatted:
+>I have just tried this. The authentication now seems
+>to work okay, but there is still an problem with
+>handling the root directory. If I request
+>
+>http://x.y.z/croot (without trailing slash)
+>
+>I am prompted for a username and password, then Apache
+>tells the browser that /croot was not found. This
+>strange behaviour is explained by the entry in the
+>error log:
+>
+>d:\Apache\Apache.exe: [Tue Feb 02 17:36:52 1999] [error]
+> [client 194.66.234.253] File does not exist:
+> d:/pub/wwwroot/croot
+>
+>So it still does not work properly for me.
+>
+>Richard
+
+When I request
+http://x.y.z/croot
+I do not get prompted for a password, but the 
+server does return file not found.  This is working as
+expected because you have an alias set up for /croot/
+but not /croot 
+
+Ken Coar and I were just talking about this, and here
+is his take:
+
+There needs to be parity wrt trailing slashes on the alias
+and the target.  And, if your target is a directory on
+your C drive, this causes no problem.  I.e., the following
+would (should) both work:
+
+Alias /cdir "C:/cdir"
+Alias /cdir/ "C:/cdir/"
+
+Unfortunately, due to Win32's concept of per-drive current
+directory, *all* references that mention drive letters must
+be absolute (i.e., must begin with "letter:/").  So if
+you want to alias a URI to the top of your C drive as
+mentioned here, you run into the slash parity problem: your
+alias needs to have it in order to match the required
+syntax of the target.
+
+This appears to be a Win32 restriction.  The only possible
+solution I see is to add a Redirect or Rewrite rule
+that converts "/cdir" into "/cdir/" and leave the
+'Alias /cdir/ "C:/"' in there.
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

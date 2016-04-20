@@ -1,0 +1,84 @@
+Received: (qmail 6872 invoked by uid 2012); 19 Oct 1999 19:02:13 -0000
+Message-Id: <19991019190213.6871.qmail@hyperreal.org>
+Date: 19 Oct 1999 19:02:13 -0000
+From: David C Ross <dcross@cryogen.com>
+Reply-To: dcross@cryogen.com
+To: apbugs@hyperreal.org
+Subject: apxs does not create DSO properly
+X-Send-Pr-Version: 3.2
+
+>Number:         5169
+>Category:       os-osf
+>Synopsis:       apxs does not create DSO properly
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          support
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 19 12:10:01 PDT 1999
+>Last-Modified:  Tue Oct 19 12:36:23 PDT 1999
+>Originator:     dcross@cryogen.com
+>Organization:
+>Release:        1.3.9
+>Environment:
+Digital UNIX 4.0D version 878.  gcc 2.95.1, gnu make 3.78.1, and default 
+version of sed (unknown version: 'sed -V' generates an error.)
+>Description:
+When trying to compile a shared module, apxs generates bad commands.  Here
+is a sample of the error:
+
+> /usr/local/bin/make APXS=/usr/local/apache/bin/apxs
+/usr/local/apache/bin/apxs  -o mod_ip_forwarding.so  -c mod_ip_forwarding.c
+gcc -DOSF1 -DUSE_HSREGEX -DUSE_EXPAT -I../lib/expat-lite -fpic -DSHARED_MODULE -I/usr/local/apache/include  -c mod_ip_forwarding.c
+ld -shared -expect_unresolved * -s -o mod_ip_forwarding.so mod_ip_forwarding.o 
+ld:
+Object file format error in: Makefile: read_cur_obj_info: bad file magic number(0x440a)
+apxs:Break: Command failed with rc=65536
+make: *** [mod_ip_forwarding.so] Error 1
+
+>How-To-Repeat:
+I built and installed apache_1.3.9 and apache-contrib-1.0.7 from ftp.apache.org
+on a DEC UNIX machine.  The problem occurs whenever I try to build any of the 
+modules in apache-contrib.
+>Fix:
+It looks like apxs is trying to issue the command 
+"ld -shared -expect_unresolved * -s -o mod_ip_forwarding.so mod_ip_forwarding.o".
+The man page for ld warns that any wildcards following -expect_unresolved should
+be shell-escaped.
+
+I was able to fix this by fixing the definition of $CFG_LDFLAGS_SHLIB in apxs.
+It should be:
+my $CFG_LDFLAGS_SHLIB = '-shared -expect_unresolved \* -s'; # substituted via Makefile.tmpl  
+instead of:
+my $CFG_LDFLAGS_SHLIB = '-shared -expect_unresolved * -s'; # substituted via Makefile.tmpl
+
+With this change I was able to build and link everything without troubles.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Tue Oct 19 12:36:23 PDT 1999
+State-Changed-Why:
+
+This was fixed after the release of 1.3.9, and should
+appear in the next release.    You can apply the patch at
+<http://www.apache.org/dist/patches/apply_to_1.3.9/apxs-osf-dso.patch>
+to fix it in the meantime.
+Thanks for the report and for using Apache!
+
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

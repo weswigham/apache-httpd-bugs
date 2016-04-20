@@ -1,0 +1,95 @@
+Received: (qmail 16758 invoked by uid 501); 1 Feb 2002 05:11:21 -0000
+Message-Id: <20020201051121.16757.qmail@apache.org>
+Date: 1 Feb 2002 05:11:21 -0000
+From: David MacKenzie <djm@pix.net>
+Reply-To: djm@pix.net
+To: submit@bugz.apache.org
+Subject: libtool needs patch for BSD/OS
+X-Send-Pr-Version: 3.110
+
+>Number:         9678
+>Category:       other
+>Synopsis:       libtool needs patch for BSD/OS
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          mistaken
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jan 31 21:20:00 PST 2002
+>Closed-Date:    Sun Feb 17 19:16:51 PST 2002
+>Last-Modified:  Sun Feb 17 19:16:51 PST 2002
+>Originator:     djm@pix.net
+>Release:        2.0.28 and CVS
+>Organization:
+>Environment:
+BSDI BSD/OS 4.3 x86
+gcc version 2.95.3 20010315 (release)
+>Description:
+I was trying to run a CGI program with Apache 2.0.28 on BSDI BSD/OS 4.3,
+and found that when read() on a nonblocking pipe returned -1, errno wasn't
+setting set (to EAGAIN); it was 0.  So apache didn't do its timeout call
+and the CGI request got a 500 Server Error (Premature end of script headers) after not reading anything from the CGI program many times in quick succession.
+  
+The problem turned out to be that when linking libapr.so, libtool was adding
+-lc.  Then, when libapr.so was linked into httpd, -lc gets linked in again,
+and there are now two copies of libc in apache's address space, each with its
+own thread-safe copy of errno.
+
+This problem also recently bit Steven Schultz <sms@to.gd-es.com> while
+porting some video software from Linux to BSD/OS.
+
+>How-To-Repeat:
+Try to run a CGI program on BSD/OS (4.3, at least).
+>Fix:
+The libtool ltmain.sh that comes with apache 2.0.28 should be patched as follows.  libtool 1.4 as distributed with Mandrake Linux 8.1 has netbsd in the case statement, so clearly it should be added to apache's older copy as well.
+
+--- ./srclib/apr/build/ltmain.sh        2002/02/01 03:03:30     1.1
++++ ./srclib/apr/build/ltmain.sh        2002/02/01 03:04:17
+@@ -1798,7 +1798,7 @@
+        *-*-cygwin* | *-*-mingw* | *-*-os2* | *-*-beos*)
+          # these systems don't actually have a c library (as such)!
+          ;;
+-       *-*-freebsd*)
++       *-*-netbsd* | *-*-freebsd* | *-*-bsdi4*)
+          # FreeBSD doesn't need this...
+          ;;
+        *)
+
+The same for the copy in
+./srclib/apr-util/xml/expat/conftools/ltmain.sh
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: jerenkrantz
+State-Changed-When: Sun Feb 17 19:16:50 PST 2002
+State-Changed-Why:
+[This is a standard response.]
+This problem report has nothing to do with the Apache
+software.
+Class-Changed-From-To: sw-bug-mistaken
+Class-Changed-By: jerenkrantz
+Class-Changed-When: Sun Feb 17 19:16:50 PST 2002
+Category-Changed-From-To: build-other
+Category-Changed-By: jerenkrantz
+Category-Changed-When: Sun Feb 17 19:16:50 PST 2002
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

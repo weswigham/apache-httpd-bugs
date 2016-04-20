@@ -1,0 +1,74 @@
+From apwww@hyperreal.org  Wed Aug 20 23:11:46 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id XAA26377;
+	Wed, 20 Aug 1997 23:11:46 -0700 (PDT)
+Message-Id: <199708210611.XAA26377@hyperreal.org>
+Date: Wed, 20 Aug 1997 23:11:46 -0700 (PDT)
+From: Dean Gaudet <dgaudet@apache.org>
+Reply-To: dgaudet@apache.org
+To: apbugs@hyperreal.org
+Subject: DoS attacks involving memory consumption
+X-Send-Pr-Version: 3.2
+
+>Number:         1028
+>Category:       other
+>Synopsis:       DoS attacks involving memory consumption
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Aug 20 23:20:01 1997
+>Last-Modified:  Sat Dec  6 15:24:12 PST 1997
+>Originator:     dgaudet@apache.org
+>Organization:
+>Release:        1.*
+>Environment:
+all
+>Description:
+Apache will accept an unlimited number of headers.  The child will consume
+arbitrary amounts of memory.  The child does not exit until its max#requests
+which means that swap space is consumed for possibly a long time.  If this
+is done to all children then it could consume all available swap.
+
+There are several issues here:
+
+We could possibly protect against such "obvious" DoS attacks, but we'll
+never catch all of them.  As was demonstrated with qmail recently the single
+best solution is OS-enforced resource limits.
+
+Apache might be able to do something more finegrained by tracking memory usage
+in pools.  There should still be a global resource limit for a child.  There
+could be some advantages to tracking pools... other than limiting the size of
+any particular pool.  For example, a child could actually return a server error
+rather than taking a SIGBUS and dying mysteriously.
+
+If the parent knew the memory size of its children it could favour killing off
+large children.  It would probably have to be stored in the scoreboard.  Doing
+a getrusage() on every hit is expensive, once per 10 or 100 hits is probably
+enough.  Given pool size tracking a child would know when it had exceeded,
+say 40% of its resource limit, and then willingly offer itself up for killing.
+
+We never free() any memory allocated.  This is unfortunate on unixes such as
+FreeBSD and Linux, and on NT and OS/2 which all have the ability to return
+memory from an application to the global pool.  Maybe there is a good scheme
+which can return "extra" blocks at the end of a request -- preferably the
+most recently malloc()d blocks because that probably improves fragmentation.
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: coar
+State-Changed-When: Sat Dec  6 15:24:12 PST 1997
+State-Changed-Why:
+TBD
+Release-Changed-From-To: 1.3a2-dev and earlier-1.*
+Release-Changed-By: coar
+Release-Changed-When: Sat Dec  6 15:24:12 PST 1997
+>Unformatted:
+
+

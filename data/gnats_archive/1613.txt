@@ -1,0 +1,354 @@
+Received: (qmail 23210 invoked by uid 2012); 2 Jan 1998 17:43:01 -0000
+Message-Id: <19980102174301.23209.qmail@hyperreal.org>
+Date: 2 Jan 1998 17:43:01 -0000
+From: Keith Severson <keith@sssd.navy.mil>
+Reply-To: keith@sssd.navy.mil
+To: apbugs@hyperreal.org
+Subject: can't compile
+X-Send-Pr-Version: 3.2
+
+>Number:         1613
+>Category:       os-next
+>Synopsis:       can't compile
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jan  2 09:50:02 PST 1998
+>Last-Modified:  Wed Jan 21 13:59:56 PST 1998
+>Originator:     keith@sssd.navy.mil
+>Organization:
+>Release:        1.3b3
+>Environment:
+NeXT Mach 4.2
+NeXT Software, Inc. version cc-744.13, gcc version 2.7.2.1
+>Description:
+keith@intrepid: ./Configure
+Using config file: Configuration
+Creating Makefile
+./helpers/GuessOS: uname: not found
+ + configured for NeXT platform
+ + setting C compiler to cc
+ + Adding selected modules
+ + doing sanity check on compiler and options
+Creating Makefile in support
+Creating Makefile in main
+Creating Makefile in ap
+Creating Makefile in regex
+Creating Makefile in os/unix
+Creating Makefile in modules/standard
+keith@intrepid: make
+for i in os/unix main ap modules regex; do  ( cd $i; make CC='cc' AUX_CFLAGS=' -DNEXT ' RANLIB='sleep 5; /bin/ranlib') || exit 1;  done
+cc -c  -I../../regex -I../../os/unix -I../../main    -DNEXT   os.c
+cc -c  -I../../regex -I../../os/unix -I../../main    -DNEXT   os-inline.c
+rm -f libos.a
+ar cr libos.a os.o os-inline.o
+sleep 5; /bin/ranlib libos.a
+/bin/ranlib: file: libos.a(os.o) has no symbols
+cc -c  -I../regex -I../os/unix -I../main    -DNEXT   alloc.c
+cc -c  -I../regex -I../os/unix -I../main    -DNEXT   http_main.c
+http_main.c:718: illegal external declaration, missing `;' after `)'
+http_main.c:718: illegal external declaration, missing `;' after `code'
+http_main.c:1616: illegal external declaration, missing `;' after `)'
+http_main.c:1616: illegal external declaration, missing `;' after `code'
+*** Exit 1
+Stop.
+*** Exit 1
+Stop.
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Keith Severson <keith@sssd.navy.mil>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-next/1613: can't compile
+Date: Fri, 2 Jan 1998 10:00:05 -0800 (PST)
+
+ Try setting CC=gcc.
+ 
+ Dean
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Severson_Keith_E@sssd.navy.mil
+Cc: apbugs@apache.org
+Subject: Re: os-next/1613: can't compile
+Date: Fri, 2 Jan 1998 10:25:19 -0800 (PST)
+
+ Oh interesting.
+ 
+ Well it looks like it's complaining about this:
+ 
+ static void __attribute__((noreturn)) clean_child_exit(int code)
+ 
+ Given that is valid gcc I'm not sure what to do.  Perhaps their default cc
+ insists on adding -pedantic or -ansi to the command lines, yet still
+ defines macros like __GNUC__.  In which case I would say it is broken.
+ You're going to have to do a little legwork I think to help figure this
+ one out.  The specific definitions in main/conf.h that check gcc look like
+ this:
+ 
+ /* So that we can use inline on some critical functions, and use
+  * GNUC attributes (such as to get -Wall warnings for printf-like
+  * functions).  Only do this in gcc 2.7 or later ... it may work
+  * on earlier stuff, but why chance it.
+  */
+ #if !defined(__GNUC__) || __GNUC__ < 2 || __GNUC_MINOR__ < 7
+ #define ap_inline
+ #define __attribute__(__x)
+ #else
+ #define ap_inline __inline__
+ #define USE_GNU_INLINE
+ #endif
+ 
+ Dean
+ 
+ On Fri, 2 Jan 1998 Severson_Keith_E@sssd.navy.mil wrote:
+ 
+ > NeXT doesn't have a gcc executable only cc
+ 
+
+From: Severson_Keith_E@sssd.navy.mil
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: os-next/1613: can't compile
+Date: Fri, 2 Jan 1998 11:10:51 -0800 (PST)
+
+ I modified conf.h
+ I got rid of the if/else and left
+ 
+ #define ap_inline
+ #define __attribute__(__x)
+ 
+ Now I'm just getting the same compile error as on NeXT Mach 3.3 (os-
+ next/1614)
+ 
+ Thanks
+ Keith
+ 
+ >#if !defined(__GNUC__) || __GNUC__ < 2 || __GNUC_MINOR__ < 7
+ >#define ap_inline
+ >#define __attribute__(__x)
+ >#else
+ >#define ap_inline __inline__
+ >#define USE_GNU_INLINE
+ >#endif
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Severson_Keith_E@sssd.navy.mil
+Cc: apbugs@apache.org
+Subject: Re: os-next/1613: can't compile
+Date: Fri, 2 Jan 1998 11:22:17 -0800 (PST)
+
+ Well that to me indicates that the gcc shipped in cc clothing on next is
+ completely broken.  Can you do this:
+ 
+ touch aaa.c
+ gcc -E -dM aaa.c
+ 
+ And send me the output?
+ 
+ And maybe also send me the contents of the specs file mentioned when you
+ run "gcc -v".
+ 
+ Thanks
+ Dean
+ 
+ 
+
+From: Severson_Keith_E@sssd.navy.mil
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@apache.org
+Subject: Re: os-next/1613: can't compile
+Date: Fri, 2 Jan 1998 11:30:05 -0800 (PST)
+
+ <fixed></fixed>keith@intrepid: touch aaa.c
+ 
+ keith@intrepid: cc -E -dM aaa.c
+ 
+ #1 "aaa.c"
+ 
+ keith@intrepid:
+ 
+ 
+ keith@intrepid: cat specs
+ 
+ *asm:
+ 
+ 
+ 
+ *asm_final:
+ 
+ 
+ 
+ *cpp:
+ 
+ %-D__STDC__}                              %}                           %}
+ %}                                 %}}                              %}
+ %}  %} %}                                %}         -
+ DNX_COMPILER_RELEASE_3_0=300                            -
+ DNX_COMPILER_RELEASE_3_1=310                           -
+ DNX_COMPILER_RELEASE_3_2=320                  -DNX_COMPILER_RELEASE_3_3=330
+ -DNX_CURRENT_COMPILER_RELEASE=410               -DNS_TARGET=41
+ -DNS_TARGET_MAJOR=4             -DNS_TARGET_MINOR=1             %}
+ %}                                %}}                   %}%}
+ %%M} %%M}
+ 
+ 
+ *cc1:
+ 
+ 
+ 
+ *cc1plus:
+ 
+ 
+ 
+ *endfile:
+ 
+ 
+ 
+ *link:
+ 
+ %} %} %} %} %} %} %} %} %} %} %} %} %} %} %} %} %} %} %}%} %} %} %} %} %} %}
+ %} %} %} %} %} %} %} %}
+ 
+ 
+ *lib:
+ 
+ %}%}}}       %System}%System,_profile}}
+ 
+ 
+ *libgcc:
+ 
+ %}}                               %}}
+ 
+ 
+ *startfile:
+ 
+ %}}    %}              %}                             %}
+ %}}}}      %}              %}     %}
+ %}}}}}}
+ 
+ 
+ *switches_need_spaces:
+ 
+ 
+ 
+ *signed_char:
+ 
+ %}
+ 
+ 
+ *predefines:
+ 
+ -Di386 -DNeXT -Dunix -D__MACH__ -D__LITTLE_ENDIAN__ -
+ D__ARCHITECTURE__="i386"
+ 
+ 
+ *cross_compile:
+ 
+ 0
+ 
+ 
+ *multilib:
+ 
+ . ;
+ 
+ 
+ keith@intrepid:
+ 
+ 
+ >Well that to me indicates that the gcc shipped in cc clothing on next is
+ 
+ >completely broken.  Can you do this:
+ 
+ >
+ 
+ >touch aaa.c
+ 
+ >gcc -E -dM aaa.c
+ 
+ >
+ 
+ >And send me the output?
+ 
+ >
+ 
+ >And maybe also send me the contents of the specs file mentioned when you
+ 
+ >run "gcc -v".
+ 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Severson_Keith_E@sssd.navy.mil
+Cc: apbugs@apache.org
+Subject: Re: os-next/1613: can't compile
+Date: Fri, 2 Jan 1998 11:39:10 -0800 (PST)
+
+ On Fri, 2 Jan 1998 Severson_Keith_E@sssd.navy.mil wrote:
+ 
+ > <fixed></fixed>keith@intrepid: touch aaa.c
+ > 
+ > keith@intrepid: cc -E -dM aaa.c
+ > 
+ > #1 "aaa.c"
+ > 
+ 
+ Wow, that's completely different from any gcc I've ever used, well at
+ least for all the 2.7 and later versions (on linux, solaris, and IRIX).  I
+ get stuff like this:
+ 
+ % gcc -E -dM aaa.c
+ #define __linux__ 1
+ #define linux 1
+ #define __i386__ 1
+ #define __i386 1
+ #define __GNUC_MINOR__ 7
+ #define i386 1
+ #define __unix 1
+ #define __unix__ 1
+ #define __GNUC__ 2
+ #define __linux 1
+ #define __ELF__ 1
+ #define unix 1
+ 
+ > keith@intrepid:
+ > 
+ > 
+ > keith@intrepid: cat specs
+ 
+ This looks like NeXT has really done a lot of crud to gcc to make it
+ behave like something else, I'm not sure what.  They've done it in a way
+ that I'm not sure how to detect -- in particular I'm concerned that if we
+ were to put a test for NEXT into that section of conf.h we'd screw the
+ people who have built their own gcc for next.  But I suppose we have to do
+ that. 
+ 
+ Hmm.
+ 
+ Dean
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Wed Jan 21 13:59:56 PST 1998
+State-Changed-Why:
+A tweak has been committed to 1.3b4-dev... hopefully NeXT will
+work out of the box in 1.3b4.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

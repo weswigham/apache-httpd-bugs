@@ -1,0 +1,363 @@
+Received: (qmail 6832 invoked by uid 2012); 31 Aug 1999 23:19:49 -0000
+Message-Id: <19990831231949.6831.qmail@hyperreal.org>
+Date: 31 Aug 1999 23:19:49 -0000
+From: Jan Gallo <gallo@viapvt.sk>
+Reply-To: gallo@viapvt.sk
+To: apbugs@hyperreal.org
+Subject: configure script fails, building of Apache fails during linking httpd daemon
+X-Send-Pr-Version: 3.2
+
+>Number:         4940
+>Category:       os-ultrix
+>Synopsis:       configure script fails, building of Apache fails during linking httpd daemon
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Aug 31 16:20:02 PDT 1999
+>Closed-Date:
+>Last-Modified:  Sat Feb  5 06:40:01 PST 2000
+>Originator:     gallo@viapvt.sk
+>Release:        1.3.9
+>Organization:
+apache
+>Environment:
+ULTRIX 4.5 0 RISC, native CC compiler
+ULTRIX 4.4 0 RISC, native CC compiler
+maybe older versions of Ultrix
+>Description:
+There is a small bug in the script "configure". The line
+
+test -f /bin/sh5 && exec /bin/sh5 $0 "$@"
+
+causes an infinite loop. Script configure repeatedly calls itself
+until forever. This problem will occur on every UNIX that has
+/bin/sh5 shell. Therefore the problematic line should be replaced
+for example by these lines:
+
+if test -f /bin/sh5 -a -z "$CONFIGURE_ALREADY_RUNNING"
+then
+    CONFIGURE_ALREADY_RUNNING=yes; export CONFIGURE_ALREADY_RUNNING
+    exec /bin/sh5 $0 "$@"
+fi
+ 
+Apache is successfully configured after this replacement.
+
+Unfortunately there is another problem under Ultrix with standard
+CC compiler. Building of Apache fails during linking httpd daemon.
+
+cc  -DULTRIX -std -DUSE_HSREGEX -DUSE_EXPAT -I./lib/expat-lite -O2
+ `./apaci`           -o httpd buildmark.o modules.o  modules/standard
+/libstandard.a  main/libmain.a  ./os/unix/libos.a  ap/libap.a regex/libregex.a
+lib/expat-lite/libexpat.a
+ld:
+Undefined:
+__ull_div
+__ll_mul
+*** Error code 1
+
+Stop.
+*** Error code 1
+
+Stop.
+*** Error code 1
+
+
+This problem is probably due to a bug in native CC compiler. Therefore
+it is necessary to modify code in functions conv10 and conv_10_quad
+in module ap_snprintf.c:
+
+*** ap_snprintf.c       Tue Aug 31 21:46:24 1999
+--- /apps/inst/ap_snprintf.c    Sat Aug  7 00:15:59 1999
+***************
+*** 390,398 ****
+       * We use a do-while loop so that we write at least 1 digit
+       */
+      do {
+!       register u_wide_int new_magnitude = (unsigned long)magnitude / 10;
+
+!       *--p = (char) (magnitude - (unsigned long)new_magnitude * 10 + '0');
+        magnitude = new_magnitude;
+      }
+      while (magnitude);
+--- 390,398 ----
+       * We use a do-while loop so that we write at least 1 digit
+       */
+      do {
+!       register u_wide_int new_magnitude = magnitude / 10;
+
+!       *--p = (char) (magnitude - new_magnitude * 10 + '0');
+        magnitude = new_magnitude;
+      }
+      while (magnitude);
+***************
+*** 445,453 ****
+       * We use a do-while loop so that we write at least 1 digit
+       */
+      do {
+!       register u_widest_int new_magnitude = (unsigned long)magnitude / 10;
+
+!       *--p = (char) (magnitude - (unsigned long)new_magnitude * 10 + '0');
+        magnitude = new_magnitude;
+      }
+      while (magnitude);
+--- 445,453 ----
+       * We use a do-while loop so that we write at least 1 digit
+       */
+      do {
+!       register u_widest_int new_magnitude = magnitude / 10;
+
+!       *--p = (char) (magnitude - new_magnitude * 10 + '0');
+        magnitude = new_magnitude;
+      }
+      while (magnitude);
+
+
+After applying this changes Apache will be successfully built and
+working OK.
+
+>How-To-Repeat:
+For example:
+
+CFLAGS=-O2 ./configure
+>Fix:
+Yes, I have mentioned about them in the section "Full Description"
+>Release-Note:
+>Audit-Trail:
+
+From: "Jan Gallo" <gallo@viapvt.sk>
+To: <apbugs@hyperreal.org>, <apache-bugdb@Apache.Org>
+Cc: <apbugs@Apache.Org>
+Subject: Re: os-ultrix/4940: configure script fails, building of Apache fails during linking httpd daemon
+Date: Thu, 2 Sep 1999 14:06:19 +0200
+
+ I would like to add some comments about standard CC compiler
+ under Ultrix 4.4, Ultrix 4.5 (and probably also under older versions of
+ Ultrix). The problem is due to types 'long long' and 'unsigned long long'.
+ Implementation of C language under Ultrix knows type 'long long' and
+ 'unsigned long long' however arithmetic operations with operands
+ of this type are problematic. For example, this code works
+ 
+ --- example1.c ---------
+ #include <stdio.h>
+ 
+ void main()
+ {
+     printf("size of type \"long long\" is %d\n", sizeof (long long));
+ }
+ --- end of example1.c -------
+ 
+ The program will generate output:
+ 
+ size of type "long long" is 8
+ 
+ Addition "+" and  subtraction "-" seem to work correctly. But multiplication
+ "*"
+ and division "/" (and also for example typecast) doesn't work.
+ 
+ --- example2.c ---------
+ void main()
+ {
+     long long i, j, k;
+     double f;
+ 
+     i = 0;
+     j = 0;
+     k = i+j;
+     k = i * 20;        /* compiler will generate call of internal function
+ __ll_mul */
+     j = i / 10;         /* compiler will generate call of internal function
+ __ll_div */
+     f = (double)k; /* compiler will generate call of internal function
+ __ll_to_d */
+ }
+ --- end of example2.c -------
+ 
+ This source code will be successfully compiled, but linker
+ will display error message:
+ 
+ ld:
+ Undefined:
+ __ll_mul
+ __ll_div
+ __ll_to_d
+ 
+ 
+ I checked all libraries *.a in directory /usr/lib with utility "nm" and
+ didn't
+ find any library that would contain code for internal functions
+ __ll_mul, __ll_div, __ll_to_d
+ 
+ Changing options for compiler didn't solve this problem. So it
+ is apparent that standard CC compiler has not completely implemented
+ all arithmetic operations with type 'long long' and 'unsigned long long'.
+ On the other side it may be convenient to use in script ./src/Configure
+ more sophisticated algorithm for determining the value of macro
+ AP_LONGEST_LONG because this problem may occur
+ on other platforms.
+ 
+ It follows from mentioned above that there is another solution of
+ compilation problem with Apache 1.3.9 under Ultrix with standard
+ CC compiler. Header file ./src/include/ap_config_auto.h should be
+ modified after configuration phase:
+ 
+ /* determine: longest possible integer type */
+ #ifndef AP_LONGEST_LONG
+ #define AP_LONGEST_LONG long
+ #endif
+ 
+ So there is no need to modify source code in function conv_10_quad.
+ By the way function conv_10 need not to be modified because
+ variables magnitude, new_magnitude used in this function are
+ type of u_wide_int  (that is unsigned long, which is OK).
+ 
+ 
+                                                                     J.
+ Gallo.
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+From: "Jan Gallo" <gallo@viapvt.sk>
+To: <apbugs@hyperreal.org>, <apache-bugdb@Apache.Org>
+Cc: <apbugs@Apache.Org>
+Subject: Re: os-ultrix/4940: configure script fails, building of Apache fails during linking httpd daemon
+Date: Thu, 2 Sep 1999 14:06:19 +0200
+
+ I would like to add some comments about standard CC compiler
+ under Ultrix 4.4, Ultrix 4.5 (and probably also under older versions of
+ Ultrix). The problem is due to types 'long long' and 'unsigned long long'.
+ Implementation of C language under Ultrix knows type 'long long' and
+ 'unsigned long long' however arithmetic operations with operands
+ of this type are problematic. For example, this code works
+ 
+ --- example1.c ---------
+ #include <stdio.h>
+ 
+ void main()
+ {
+     printf("size of type \"long long\" is %d\n", sizeof (long long));
+ }
+ --- end of example1.c -------
+ 
+ The program will generate output:
+ 
+ size of type "long long" is 8
+ 
+ Addition "+" and  subtraction "-" seem to work correctly. But multiplication
+ "*"
+ and division "/" (and also for example typecast) doesn't work.
+ 
+ --- example2.c ---------
+ void main()
+ {
+     long long i, j, k;
+     double f;
+ 
+     i = 0;
+     j = 0;
+     k = i+j;
+     k = i * 20;        /* compiler will generate call of internal function
+ __ll_mul */
+     j = i / 10;         /* compiler will generate call of internal function
+ __ll_div */
+     f = (double)k; /* compiler will generate call of internal function
+ __ll_to_d */
+ }
+ --- end of example2.c -------
+ 
+ This source code will be successfully compiled, but linker
+ will display error message:
+ 
+ ld:
+ Undefined:
+ __ll_mul
+ __ll_div
+ __ll_to_d
+ 
+ 
+ I checked all libraries *.a in directory /usr/lib with utility "nm" and
+ didn't
+ find any library that would contain code for internal functions
+ __ll_mul, __ll_div, __ll_to_d
+ 
+ Changing options for compiler didn't solve this problem. So it
+ is apparent that standard CC compiler has not completely implemented
+ all arithmetic operations with type 'long long' and 'unsigned long long'.
+ On the other side it may be convenient to use in script ./src/Configure
+ more sophisticated algorithm for determining the value of macro
+ AP_LONGEST_LONG because this problem may occur
+ on other platforms.
+ 
+ It follows from mentioned above that there is another solution of
+ compilation problem with Apache 1.3.9 under Ultrix with standard
+ CC compiler. Header file ./src/include/ap_config_auto.h should be
+ modified after configuration phase:
+ 
+ /* determine: longest possible integer type */
+ #ifndef AP_LONGEST_LONG
+ #define AP_LONGEST_LONG long
+ #endif
+ 
+ So there is no need to modify source code in function conv_10_quad.
+ By the way function conv_10 need not to be modified because
+ variables magnitude, new_magnitude used in this function are
+ type of u_wide_int  (that is unsigned long, which is OK).
+ 
+ 
+                                                                     J.
+ Gallo.
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+From: "Ralf S. Engelschall" <rse@engelschall.com>
+To: apbugs@apache.org
+Cc:  
+Subject: Re: os-ultrix/4940: configure script fails, building of Apache fails during linking httpd daemon
+Date: Sat, 5 Feb 2000 15:27:22 +0100
+
+ In article <19990831231949.6831.qmail@hyperreal.org> you wrote:
+ 
+ > [...]
+ >>Synopsis:       configure script fails, building of Apache fails during linking httpd daemon
+ > [...]
+ > test -f /bin/sh5 && exec /bin/sh5 $0 "$@"
+ > causes an infinite loop. Script configure repeatedly calls itself
+ > [...]
+ 
+ Fixed for Apache 1.3.12. Thanks for your feedback.
+ 
+                                        Ralf S. Engelschall
+                                        rse@engelschall.com
+                                        www.engelschall.com
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

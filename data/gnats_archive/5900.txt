@@ -1,0 +1,88 @@
+Received: (qmail 50595 invoked by uid 65534); 18 Mar 2000 05:58:49 -0000
+Message-Id: <20000318055849.50592.qmail@locus.apache.org>
+Date: 18 Mar 2000 05:58:49 -0000
+From: Ross Bonner <rbonner@swbell.net>
+Reply-To: rbonner@swbell.net
+To: submit@bugz.apache.org
+Subject: mod_rewrite does not handle per-directory rewrites correctly on Win NT
+X-Send-Pr-Version: 3.110
+
+>Number:         5900
+>Category:       mod_rewrite
+>Synopsis:       mod_rewrite does not handle per-directory rewrites correctly on Win NT
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Mar 17 22:00:00 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     rbonner@swbell.net
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Win NT 4.0 SP6
+>Description:
+This .htaccess file works fine on Linux running Apache 1.3.9 but fails using
+the 1.3.12 Win32 binary from the apache.org site:
+
+RewriteEngine On
+RewriteBase /test
+RewriteRule ^index2\.html$ index.html
+
+mod_rewrite appears to be adding the prefix twice.
+I get the following with the RewriteLogLevel set to 9 under NT:
+
+[per-dir e:/apache/htdocs/test/] strip per-dir prefix: e:/apache/htdocs/test/index2.html -> index2.html
+[per-dir e:/apache/htdocs/test/] applying pattern '^index2\.html$' to uri 'index2.html'
+[per-dir e:/apache/htdocs/test/] rewrite index2.html -> index.html
+[per-dir e:/apache/htdocs/test/] add per-dir prefix: index.html -> e:/apache/htdocs/test/index.html
+[per-dir e:/apache/htdocs/test/] add per-dir prefix: e:/apache/htdocs/test/index.html -> e:/apache/htdocs/test/e:/apache/htdocs/test/index.html
+>How-To-Repeat:
+
+>Fix:
+This section of code appears to be where the problem is since a 
+full win32 path would not begin with a '/'. I was unclear about 
+the reasons for implementing this logic so I went no further.
+
+/*
+ *   Again add the previously stripped per-directory location
+ *   prefix if the new URI is not a new one for this
+ *   location, i.e. if it's not starting with either a slash
+ *   or a fully qualified URL scheme.
+ */
+i = strlen(r->filename);
+if (   prefixstrip
+    && !(   r->filename[0] == '/'
+         || (   (i > 7 && strncasecmp(r->filename, "http://",   7) == 0)
+             || (i > 8 && strncasecmp(r->filename, "https://",  8) == 0)
+             || (i > 9 && strncasecmp(r->filename, "gopher://", 9) == 0)
+             || (i > 6 && strncasecmp(r->filename, "ftp://",    6) == 0)
+             || (i > 5 && strncasecmp(r->filename, "ldap:",     5) == 0)
+             || (i > 5 && strncasecmp(r->filename, "news:",     5) == 0)
+             || (i > 7 && strncasecmp(r->filename, "mailto:",   7) == 0)))) {
+    rewritelog(r, 3, "[per-dir %s] add per-dir prefix: %s -> %s%s",
+               perdir, r->filename, perdir, r->filename);
+    r->filename = ap_pstrcat(r->pool, perdir, r->filename, NULL);
+}
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

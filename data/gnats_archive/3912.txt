@@ -1,0 +1,185 @@
+Received: (qmail 2561 invoked by uid 2012); 17 Feb 1999 22:04:36 -0000
+Message-Id: <19990217220436.2560.qmail@hyperreal.org>
+Date: 17 Feb 1999 22:04:36 -0000
+From: Jarkko Saloranta <jjs@kpo.fi>
+Reply-To: jjs@kpo.fi
+To: apbugs@hyperreal.org
+Subject: Apache adds Content-Location with ProxyPass
+X-Send-Pr-Version: 3.2
+
+>Number:         3912
+>Category:       general
+>Synopsis:       Apache adds Content-Location with ProxyPass
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Feb 17 14:10:00 PST 1999
+>Last-Modified:  Sun Jun 13 05:15:05 PDT 1999
+>Originator:     jjs@kpo.fi
+>Organization:
+>Release:        1.3.3
+>Environment:
+RedHat Linux 5.2, apache 1.3.3 from RedHat rpm-package.
+apache-1.3.3-1, glibc-2.0.7-29
+>Description:
+We are using apache and ProxyPass to hide the thing that our (and our custommers) websites have been split to several servers. ProxyPass is fine for this, except that it does not work correctly on this architecture.
+Parts of site are on Microsoft IIS server (yuck), and other parts on apache server running on Linux
+When we are using ProxyPass on apache server (1.3.4 running solaris) without any virtual-hosts everything runs fine.
+But when I tried this same thing on RedHat Linux 5.2 (apache 1.3.3) problems exist.
+When client requests url from this site apache adds lots of headers to those what IIS has generated (apache running on solaris does not add these headers)
+These headers include Content-Location, which reveals information about servers (this address is from private address-space, so it does not work from outside world)
+Lynx uses this content-location header to generate URLs of links. So lynx-users are unable to browse those pages.
+This server has Name-based virtual hosts in use.
+>How-To-Repeat:
+http://kamera.kpo.fi/bmstest/
+>Fix:
+no.
+Header unset Content-Location does not fix this.
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: lars
+State-Changed-When: Sat Feb 20 16:40:35 PST 1999
+State-Changed-Why:
+
+Try using "UseCanonicalName Off" on your backend-servers.
+
+
+From: Jarkko Saloranta <jjs@kpo.fi>
+To: lars@apache.org
+Cc: apbugs@apache.org
+Subject: Re: general/3912: Apache adds Content-Location with ProxyPass
+Date: Fri, 19 Mar 1999 16:48:19 +0200 (EET)
+
+ On 21 Feb 1999 lars@apache.org wrote:
+ 
+ > Synopsis: Apache adds Content-Location with ProxyPass
+ > 
+ > State-Changed-From-To: open-feedback
+ > State-Changed-By: lars
+ > State-Changed-When: Sat Feb 20 16:40:35 PST 1999
+ > State-Changed-Why:
+ > 
+ > Try using "UseCanonicalName Off" on your backend-servers.
+ 
+ I investigted this more. And you are right that the backend server adds
+ that header.
+ It adds when requesting an URI like: http://www.somesite.com/something/
+ and it adds Content-Location: http://www.somesite.com/something/index.html
+ 
+ The problem here is that in many cases these backend servers are not very
+ configurable. I am unable to strip that Content-Location header with that
+ backend-servers that sends it.
+ 
+ Apache module mod_headers has the ability to unset http-headers, 
+ but it seems that it won't work with ProxyPass.
+ I added lines like this to my httpd.conf:
+ 
+ ProxyPass /somelocation http://somesite/someplace/
+ ProxyPassReverse /somelocation http://somesite/someplace/
+ Header unset Content-Location
+ 
+ Apache did not strip Content-Location header with this configuration
+ 
+ 
+ I also tried this:
+ 
+ <Location /somelocation>
+ Header unset Content-Location
+ </Location>
+ 
+ But apache still did not strip Content-Location headers.
+ 
+ 
+ So I would like to see mod_headers and ProxyPass working together
+ 
+ 
+ --
+ Jarkko Saloranta
+ Kajaanin Puhelinosuuskunta
+ jarkko.saloranta@kpo.fi			GSM:050-5990526
+ 
+ 
+
+From: Jarkko Saloranta <jjs@kpo.fi>
+To: lars@apache.org
+Cc: apbugs@apache.org
+Subject: general/3912: Apache adds Content-Location with ProxyPass
+Date: Sun, 28 Mar 1999 01:11:29 +0200 (EET)
+
+ On 21 Feb 1999 lars@apache.org wrote:
+ 
+ > Synopsis: Apache adds Content-Location with ProxyPass
+ > 
+ > State-Changed-From-To: open-feedback
+ > State-Changed-By: lars
+ > State-Changed-When: Sat Feb 20 16:40:35 PST 1999
+ > State-Changed-Why:
+ > 
+ > Try using "UseCanonicalName Off" on your backend-servers.
+ 
+ I investigted this more. And you are right that the backend server adds
+ that header.
+ It adds when requesting an URI like: http://www.somesite.com/something/
+ and it adds Content-Location: http://www.somesite.com/something/index.html
+ 
+ The problem here is that in many cases these backend servers are not very
+ configurable. I am unable to strip that Content-Location header with that
+ backend-servers that sends it.
+ 
+ Apache module mod_headers has the ability to unset http-headers, 
+ but it seems that it won't work with ProxyPass.
+ I added lines like this to my httpd.conf:
+ 
+ ProxyPass /somelocation http://somesite/someplace/
+ ProxyPassReverse /somelocation http://somesite/someplace/
+ Header unset Content-Location
+ 
+ Apache did not strip Content-Location header with this configuration
+ 
+ 
+ I also tried this:
+ 
+ <Location /somelocation>
+ Header unset Content-Location
+ </Location>
+ 
+ But apache still did not strip Content-Location headers.
+ 
+ 
+ So I would like to see mod_headers and ProxyPass working together
+ 
+ 
+ --
+ Jarkko Saloranta
+ Kajaani Telephone company
+ jarkko.saloranta@kpo.fi
+ 
+ 
+State-Changed-From-To: feedback-open
+State-Changed-By: lars
+State-Changed-When: Sun Jun 13 05:15:05 PDT 1999
+State-Changed-Why:
+
+
+Class-Changed-From-To: sw-bug-change-request
+Class-Changed-By: lars
+Class-Changed-When: Sun Jun 13 05:15:05 PDT 1999
+Severity-Changed-From-To: serious-non-critical
+Severity-Changed-By: lars
+Severity-Changed-When: Sun Jun 13 05:15:05 PDT 1999
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

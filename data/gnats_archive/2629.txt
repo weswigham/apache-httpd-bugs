@@ -1,0 +1,171 @@
+Received: (qmail 3106 invoked by uid 2012); 15 Jul 1998 14:40:15 -0000
+Message-Id: <19980715144015.3105.qmail@hyperreal.org>
+Date: 15 Jul 1998 14:40:15 -0000
+From: Richard Lloyd <rkl@connect.org.uk>
+Reply-To: rkl@connect.org.uk
+To: apbugs@hyperreal.org
+Subject: apachectl "fibs" about starting httpd
+X-Send-Pr-Version: 3.2
+
+>Number:         2629
+>Category:       general
+>Synopsis:       apachectl "fibs" about starting httpd
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jul 15 07:50:00 PDT 1998
+>Closed-Date:    Wed May 24 10:41:09 PDT 2000
+>Last-Modified:  Wed May 24 10:41:09 PDT 2000
+>Originator:     rkl@connect.org.uk
+>Release:        1.3.0
+>Organization:
+>Environment:
+All OS's (I'm using HP-UX 10.20)
+>Description:
+The installed sbin/apachectl script *always* says "httpd started", even if
+Apache falls over and dies spectacularly as it initialises !
+>How-To-Repeat:
+Mis-configure your Apache to deliberately crash out during initialisation.
+Run "apachectl start" and see the script say "httpd started", despite the
+httpd having fallen over during initialisation.
+>Fix:
+Add extra checks after starting the httpd into the apachectl script.
+For example, sleep a few seconds and then do the same check that you do
+to see if it's already running again (i.e. look for the PIDFILE, do a ps -p
+and so on) - that way you can truly report whether the httpd has properly
+inited. I'd also recommend that on a start failure, you tell the user
+to look in <apacheinstalltree>/var/log/error_log for the reason for the
+failure.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: lars
+State-Changed-When: Fri Jul 17 15:14:19 PDT 1998
+State-Changed-Why:
+
+I'm not able to reproduce your problem.
+
+If there is an error in your config file apachectl
+should display the error message from httpd and the message
+"apachectl start: httpd could not be started".
+
+Do you see any errors in your error_log?
+
+Are other apachectl options (status, restart, etc.)
+working properly?
+
+Severity-Changed-From-To: serious-non-critical
+Severity-Changed-By: lars
+Severity-Changed-When: Fri Jul 17 15:14:19 PDT 1998
+
+From: Lars Eilebrecht <lars@apache.org>
+To: (Apache GNATS) <apbugs@apache.org>
+Cc:  Subject: Re: general/2629: apachectl "fibs" about starting httpd
+Date: Sat, 18 Jul 1998 19:52:27 +0200 (CEST)
+
+ -----Forwarded message <199807172321.AAA16777@ness.csc.liv.ac.uk>-----
+ 
+ From: Richard Lloyd <rkl@csc.liv.ac.uk>
+ Subject: Re: general/2629: apachectl "fibs" about starting httpd
+ 
+ > If there is an error in your config file apachectl
+ > should display the error message from httpd and the message
+ > "apachectl start: httpd could not be started".
+ 
+ Under HP-UX, if you leave the Group setting in httpd.conf as #-1 (which
+ is what it's set to by default), you get "httpd started" output by
+ apachectl and yet the httpd dies immediately. The error_log says:
+ 
+ [Sat Jul 18 00:11:57 1998] [alert] Child 997 returned a Fatal error... 
+ Apache is exiting!
+ [Sat Jul 18 00:11:57 1998] [alert] (22)Invalid argument: setgid: unable to set
+ group id to Group 4294967295
+ 
+ Similarly giving a non-existent user ID (e.g. #29238 when that UID isn't
+ in the password field) for the User field in httpd.conf causes the same
+ problem - httpd exits, but apachectl reports "httpd started" - error_log
+ in that case says:
+ 
+ [Sat Jul 18 00:13:35 1998] [alert] (2)No such file or directory: getpwuid:
+ couldn't determine user name from uid 29238, you pro
+ bably need to modify the User directive
+ [Sat Jul 18 00:13:36 1998] [alert] Child 1014 returned a Fatal error... 
+ Apache is exiting!
+ 
+ > Severity-Changed-From-To: serious-non-critical
+ 
+ I would put it back to serious :-) Problem is that outputting "httpd started"
+ is a little misleading in the above cases (although "strictly true" because
+ the httpd process does actually start) because it dies during the
+ initialisation. A check that the process is still running after a couple of
+ seconds would make the message output by apachectl more believable.
+ 
+ I don't know if any other config changes other than User/Group would cause
+ httpd to die during initialisation (and after forking, hence the failure
+ of the original httpd to return an error status code), but it's something
+ apachectl doesn't pick up when it really should.
+ 
+ Richard K. Lloyd,           E-mail: rkl@csc.liv.ac.uk
+ Connect,                       WWW: http://www.csc.liv.ac.uk/~rkl/
+ 3, Brownlow Street,
+ Liverpool University,
+ Merseyside, UK. L69 3GL
+ 
+ --------------End of forwarded message-------------------------
+ 
+State-Changed-From-To: feedback-open
+State-Changed-By: lars
+State-Changed-When: Fri Nov  6 07:37:38 PST 1998
+State-Changed-Why:
+
+
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Wed May  5 14:05:08 PDT 1999
+State-Changed-Why:
+
+I'm not sure I agree.  Strictly speaking, the message is
+accurate; the server *did* get off the ground.  Dying
+immediately thereafter is different from never having
+lived at all.  Where is the threshold?  How does this
+differ from the server dying an hour later?  In either case
+the cause of its non-running state is in the error log,
+which may or may not be the case for an error during the
+actual startup.
+
+Comment-Added-By: lars
+Comment-Added-When: Sun Jun 13 04:52:40 PDT 1999
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Wed May 24 10:41:09 PDT 2000
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,148 @@
+From nobody@hyperreal.com  Wed May 14 12:57:11 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id MAA06549;
+	Wed, 14 May 1997 12:57:11 -0700 (PDT)
+Message-Id: <199705141957.MAA06549@hyperreal.com>
+Date: Wed, 14 May 1997 12:57:11 -0700 (PDT)
+From: Alexander Feldman <root@enet.ru>
+Reply-To: root@enet.ru
+To: apbugs@hyperreal.com
+Subject: "select: (listen): Bad address" quickly repeats to errors.log until disk full.
+X-Send-Pr-Version: 3.2
+
+>Number:         588
+>Category:       os-linux
+>Synopsis:       "select: (listen): Bad address" quickly repeats to errors.log until disk full.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu May 15 22:30:01 1997
+>Originator:     root@enet.ru
+>Organization:
+>Release:        1.2 BETA 10
+>Environment:
+PPro, 180MHz. Linux v2.0.25 Apache v1.2 beta 10 with only one 80 port listen configured. No virtual http servers. The apache itself runned at chrooted environment.
+>Description:
+errors.log begin too quickly (about hundreds lines per second) fill out by the following message):
+[Wed May 14 19:28:15 1997] select: (listen): Bad address
+
+This continues until disk full
+First time it was found at Apache v1.2 BETA 7. Now it repeated second time at Apach v1.2 BETA 10. I'm using different versions of Apache more then  1 year.
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sun Jun 22 21:15:28 PDT 1997
+State-Changed-Why:
+I've never run into this one on my linux servers.  However they're
+all running 2.0.30, which you should consider upgrading to (or
+at least go to 2.0.27).
+
+I walked through the linux kernel code and it's not clear to me
+where it would be returning EFAULT (Bad Address) in response to
+a listen() unless kernel memory corruption had occured.
+
+Sorry I can't be of more help...
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: root@enet.ru
+Subject: os-linux/588: "select: (listen): Bad address" quickly repeats to errors.log until disk full.
+Date: Wed, 24 Sep 1997 23:58:17 -0700 (PDT)
+
+ 
+ The following patch was committed to the code to work around this problem.
+ 
+ Dean
+ 
+ ---------- Forwarded message ----------
+ Date: Mon, 22 Sep 1997 14:55:32 -0700 (PDT)
+ From: Dean Gaudet <dgaudet@hyperreal.org>
+ Reply-To: new-httpd@apache.org
+ To: apache-cvs@hyperreal.org
+ Subject: cvs commit: apache/src CHANGES http_main.c
+ 
+ dgaudet     97/09/22 14:55:30
+ 
+   Modified:    src      Tag: APACHE_1_2_X CHANGES http_main.c
+   Log:
+   Defend against linux EFAULT infinite loop on select().
+   
+   PR:		1107
+   Submitted by:	Rick Franchuk <rickf@transpect.net>
+   Reviewed by:	Dean Gaudet, Marc Slemko, Roy Fielding
+   
+   Revision  Changes    Path
+   No                   revision
+   
+   
+   No                   revision
+   
+   
+   1.286.2.53 +5 -0      apache/src/CHANGES
+   
+   Index: CHANGES
+   ===================================================================
+   RCS file: /export/home/cvs/apache/src/CHANGES,v
+   retrieving revision 1.286.2.52
+   retrieving revision 1.286.2.53
+   diff -u -r1.286.2.52 -r1.286.2.53
+   --- CHANGES	1997/08/21 22:56:18	1.286.2.52
+   +++ CHANGES	1997/09/22 21:55:23	1.286.2.53
+   @@ -1,3 +1,8 @@
+   +Changes with Apache 1.2.5
+   +
+   +  *) Work around problem under Linux where a child will start looping
+   +     reporting a select error over and over.
+   +     [Rick Franchuk <rickf@transpect.net>] PR#1107
+    
+    Changes with Apache 1.2.4
+    
+   
+   
+   
+   1.149.2.9 +9 -1      apache/src/http_main.c
+   
+   Index: http_main.c
+   ===================================================================
+   RCS file: /export/home/cvs/apache/src/http_main.c,v
+   retrieving revision 1.149.2.8
+   retrieving revision 1.149.2.9
+   diff -u -r1.149.2.8 -r1.149.2.9
+   --- http_main.c	1997/08/15 17:29:50	1.149.2.8
+   +++ http_main.c	1997/09/22 21:55:25	1.149.2.9
+   @@ -1776,8 +1776,16 @@
+                    exit(0);
+    
+                errno = errsave;
+   -            if (srv < 0 && errno != EINTR)
+   +            if (srv < 0 && errno != EINTR) {
+   +#ifdef LINUX
+   +		if (errno == EFAULT) {
+   +		    log_unixerr("select", "(listen) fatal, exiting",
+   +				NULL, server_conf);
+   +		    exit(1);
+   +		}
+   +#endif
+                    log_unixerr("select", "(listen)", NULL, server_conf);
+   +	    }
+    
+                if (srv <= 0)
+                    continue;
+   
+   
+   
+ 
+>Unformatted:
+
+>Last-Modified:  Sun Jun 22 21:15:28 PDT 1997
+
+

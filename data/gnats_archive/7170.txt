@@ -1,0 +1,98 @@
+Received: (qmail 44834 invoked by uid 501); 31 Jan 2001 22:42:03 -0000
+Message-Id: <20010131224203.44833.qmail@apache.org>
+Date: 31 Jan 2001 22:42:03 -0000
+From: Danek Duvall <dduvall@eng.sun.com>
+Reply-To: dduvall@eng.sun.com
+To: submit@bugz.apache.org
+Subject: ap_get_local_host() fails to retrieve proper IP address
+X-Send-Pr-Version: 3.110
+
+>Number:         7170
+>Category:       general
+>Synopsis:       ap_get_local_host() fails to retrieve proper IP address
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan 31 14:50:01 PST 2001
+>Closed-Date:    Thu Feb 01 02:02:57 PST 2001
+>Last-Modified:  Thu Feb 01 02:02:57 PST 2001
+>Originator:     dduvall@eng.sun.com
+>Release:        1.3.17
+>Organization:
+>Environment:
+This is on Solaris 8.
+>Description:
+If I run apache (1.3.17, but earlier releases do this as well) on my Solaris
+box without specifying a ServerName, then I get a message saying that it's
+defaulting to 127.0.0.1 and to please set ServerName.  This happens despite the
+fact that while no FQDN is available, it's perfectly possible to get an IP
+address for the machine.  The code simply fails to extract it properly.
+
+The failing code is the clause that starts on line 2051 of main/util.c:
+
+    if (!str && p->h_addr_list[0]) {
+        ap_snprintf(str, sizeof(str), "%pA", p->h_addr_list[0]);
+        server_hostname = ap_pstrdup(a, str);
+        /* We will drop through to report the IP-named server */
+    }
+
+It's not clear to me why the test for !str exists.  If you've gotten to this
+point, then str won't be NULL.  Is it expected that gethostbyname() will clear
+it on failure?  If so, this doesn't happen on Solaris.
+
+Even if it were to execute the body of this if statement, it still won't work
+properly.  You need code something like the following:
+
+    struct in_addr in;
+    memcpy(&in.s_addr, p->h_addr_list[0], sizeof(in.s_addr));
+    snprintf(str, sizeof(str), "%s", inet_ntoa(in));
+    server_hostname = strdup(str);
+
+This properly gives me my IP address.  I don't understand how %pA is supposed to
+give a valid IP address.  It gives something you can telnet to under Linux (but
+not Solaris), but it's not the right machine ...
+>How-To-Repeat:
+The reason I'm seeing this is that my /etc/hosts file contains no entries for my
+IP address that contain dots, so the find_fqdn() function fails, and it tries to
+fall back on an IP address.  It's easy to patch the code to make it fail all the
+time (just to test the IP address retrieval).
+>Fix:
+That body of code should probably read something like this:
+
+    if (p->h_addr_list[0]) {
+        struct in_addr in;
+        memcpy(&in.s_addr, p->h_addr_list[0], sizeof(in.s_addr));
+        snprintf(str, sizeof(str), "%s", inet_ntoa(in));
+        server_hostname = strdup(str);
+    }
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: fanf
+State-Changed-When: Thu Feb  1 02:02:56 PST 2001
+State-Changed-Why:
+You are correct about the first problem, but you missed the
+fact that our snprintf has special magic for %pA. I've fixed
+the bug. Thanks for using Apache!
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

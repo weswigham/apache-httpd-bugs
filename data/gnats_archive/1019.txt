@@ -1,0 +1,532 @@
+From apwww@hyperreal.org  Tue Aug 19 16:19:43 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id QAA07528;
+	Tue, 19 Aug 1997 16:19:43 -0700 (PDT)
+Message-Id: <199708192319.QAA07528@hyperreal.org>
+Date: Tue, 19 Aug 1997 16:19:43 -0700 (PDT)
+From: Dean Karres <karres@southwind.net>
+Reply-To: karres@southwind.net
+To: apbugs@hyperreal.org
+Subject: possible followup to PR#145 / POST method to cgi routine sometimes not allowed
+X-Send-Pr-Version: 3.2
+
+>Number:         1019
+>Category:       config
+>Synopsis:       possible followup to PR#145 / POST method to cgi routine sometimes not allowed
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          support
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Aug 19 16:20:01 1997
+>Last-Modified:  Sun Aug 24 15:17:39 PDT 1997
+>Originator:     karres@southwind.net
+>Organization:
+>Release:        1.2.1
+>Environment:
+OS = BSD/OS 2.1
+compiler = gcc 2.7.2
+>Description:
+We have a set of cgi routines that customers dialing in through our modem pool
+*should* be able to access but no one else should.  The following in our
+access.conf file has worked in previous versions of Apache:
+
+<Directory /u/info/www/southwind>
+    <Limit POST GET>  
+        order deny,allow  
+        deny from all
+        allow from .southwind.net
+    </Limit>
+    ErrorDocument 403 /non-southwind-customer.html
+</Directory>
+
+Now, some browsers get the message:
+
+    The requested method POST is not allowed for the URL /southwind/cgi-bin/checkusage.
+
+Ok, I looked through the bug-report database and saw something similar in
+PR#145, and I probably managed to confuse issues initially by posting some
+jibberish in comp.infosystems.www.servers.unix a few days ago.  From all outside
+appearances it seems that some older browsers are having the trouble, however,
+based on the suggestion of telnet-ing to the server port and issuing the request
+I get the following from three seperate machines inside our network -- including
+the server machine:
+
+$ telnet 206.53.102.28 80  
+Trying 206.53.102.28...
+Connected to 206.53.102.28.
+Escape character is '^]'.
+POST /southwind/cgi-bin/checkusage HTTP/1.0
+
+
+HTTP/1.1 405 Method Not Allowed
+Date: Tue, 19 Aug 1997 22:49:32 GMT
+Server: Apache/1.2.1
+Allow: GET, HEAD, OPTIONS, TRACE
+Connection: close
+Content-Type: text/html
+
+<HTML><HEAD>
+<TITLE>405 Method Not Allowed</TITLE>
+</HEAD><BODY>
+<H1>Method Not Allowed</H1>
+The requested method POST is not allowed for the URL /southwind/cgi-bin/checkusage.<P>
+</BODY></HTML>
+Connection closed by foreign host.
+
+
+Therefore this does not necessarily appear to be a browser specific problem.  I
+have removed the <Limit> block from the aflicted directory as well as making
+sure that POST was in, and out, of the Limit block with no observable
+difference.
+
+No "errors" are reported in the error log.
+
+Am I mis-configuring the directory?
+
+Please note that this is NOT failing for all or even most customers.
+>How-To-Repeat:
+The <Directory> config is above.
+>Fix:
+n
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Tue Aug 19 16:30:13 PDT 1997
+State-Changed-Why:
+Can you narrow down the exact names and versions
+of browsers that are having trouble?
+
+What does your log show for the requests that are
+denied?
+
+What happens if you try telnetting to port 80 and
+doing a:
+
+    POST /southwind/cgi-bin/checkusage HTTP/1.0
+    Host: www.southwind.net
+
+(ie. add a Host: header to the request you tried before)
+
+If you can't figure anything out, if you can add an
+allow for alive.worldgate.com I can try it myself.
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Subject: Re: config/1019: possible followup to PR#145 / POST method to cgi routine sometimes not allowed (fwd)
+Date: Tue, 19 Aug 1997 18:02:21 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Tue, 19 Aug 1997 18:40:54 -0500 (CDT)
+ From: Dean Karres <karres@southwind.net>
+ To: Marc Slemko <marc@hyperreal.org>
+ Subject: Re: config/1019: possible followup to PR#145 / POST method to cgi routine sometimes not allowed
+ 
+ Author: Marc Slemko
+ > 
+ > Synopsis: possible followup to PR#145 / POST method to cgi routine sometimes not allowed
+ > 
+ > State-Changed-From-To: open-analyzed
+ > State-Changed-By: marc
+ > State-Changed-When: Tue Aug 19 16:30:13 PDT 1997
+ > State-Changed-Why:
+ > Can you narrow down the exact names and versions
+ > of browsers that are having trouble?
+ > 
+ > What does your log show for the requests that are
+ > denied?
+ 
+ Here is a recent succes and failure from the access-log.  Nothing shows
+ in the error-log:
+ 
+ ict1.southwind.net - - [19/Aug/1997:17:17:56 -0500] "POST /southwind/cgi-bin/checkusage HTTP/1.0" 200 524
+ 
+ jade.southwind.net - - [19/Aug/1997:17:18:35 -0500] "POST /southwind/cgi-bin/checkusage HTTP/1.0" 405 195
+ 
+ 
+ > What happens if you try telnetting to port 80 and
+ > doing a:
+ > 
+ >     POST /southwind/cgi-bin/checkusage HTTP/1.0
+ >     Host: www.southwind.net
+ 
+ Yea!!!  This works is every case that failed before.
+ 
+ Is "Host:" the id of the machine I am trying to reach or the id of the
+ machine I am coming from? if I change the value of "Host:" to be that of
+ the machine that I am coming from then it fails as before, ex: (from the
+ machine topaz):
+ 
+     $ telnet 206.53.102.28 80
+     Trying 206.53.102.28...
+     Connected to 206.53.102.28.
+     Escape character is '^]'.
+     POST /southwind/cgi-bin/checkusage HTTP/1.0
+     Host: topaz.southwind.net
+ 
+     HTTP/1.1 405 Method Not Allowed
+     Date: Tue, 19 Aug 1997 23:34:45 GMT
+     Server: Apache/1.2.1
+     Allow: GET, HEAD, OPTIONS, TRACE
+     Connection: close
+     Content-Type: text/html
+ 
+     <HTML><HEAD>
+     <TITLE>405 Method Not Allowed</TITLE>
+     </HEAD><BODY>
+     <H1>Method Not Allowed</H1>
+     The requested method POST is not allowed for the URL /southwind/cgi-bin/checkusage.<P>
+     </BODY></HTML>
+     Connection closed by foreign host.
+ 
+ 
+ Assuming that the "Host:" pragma is necessary, how can I force it?
+ 
+ 
+ -- 
+ Dean Karres               | http://www2.southwind.net/~karres
+      karres@southwind.net |
+ Southwind Internet Access | Programmer / Systems Administrator
+ Wichita, KS               | <Troll 2nd Class /w Clusters>
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Dean Karres <karres@southwind.net>
+Subject: Re: config/1019: possible followup to PR#145 / POST method to cgi ...
+Date: Wed, 20 Aug 1997 18:51:36 -0600 (MDT)
+
+ 
+ On Wed, 20 Aug 1997, Dean Karres wrote:
+ 
+ > To borrow from Monty Python, my brain hurts.
+ 
+ Some of the erm... "features" of the current virtual host code can do
+ that.
+ 
+ > 
+ > All of our virtual hosts are IP-based.  It would not suprise me to
+ > discover that I am not configuring everything correctly or efficiently.
+ > 
+ > At the moment we are still using the three "standard" conf files.  Is it
+ > best to pull all of the <Dir / <Loc /... definitions into the
+ > corresponding virtual host definition?  Another way to ask this might
+ > be, should I get rid of the access and srm.conf files by pulling all
+ > that stuff into the corresponding <Virtual defs in the httpd.conf file?
+ 
+ No, not generally.  You could give it a try though.  What you may want to
+ do is setup a test server on a different port and start with a base
+ config with no virtualhosts, which may work, then start adding things
+ until it breaks.
+ 
+ > 
+ > If this matters, the affected directory is part of our main server/host
+ > and is part of its DocumentRoot.
+ 
+ My best guess would be that you think it is a part of the main server, but
+ Apache thinks something different.   Go through each virtual host, and
+ verify that it has a unique IP address that is different from the main
+ server.  It may be easiest for you to send the appropriate (ie.
+ virtualhost, a bit of the main stuff) parts of your config files for us to
+ look at.
+ 
+ This is just a quick comment so that you can see if you can figure it out
+ before I get time to go into more depth.
+ 
+ > 
+ > Dean...K...
+ > 
+ > 
+ > 
+ > 
+ > Author: Marc Slemko
+ > > 
+ > > No, after your previous response it is no longer necessary.  I haven't got
+ > > around to making a full response though.
+ > > 
+ > > A quick hint is to check your virtual host setup.  Your server thinks that
+ > > something is a Host: (ie. non-IP based) virtual host when perhaps it
+ > > shouldn't be.  If you don't have an IP for each virtual host, older
+ > > clients won't work right.
+ > > 
+ > > On Wed, 20 Aug 1997, Dean Karres wrote:
+ > > 
+ > > > > If you can't figure anything out, if you can add an
+ > > > > allow for alive.worldgate.com I can try it myself.
+ > > > 
+ > > > Hmmmm, I added the allow and see one attempt to access the ill beast but
+ > > > from the machine "valis.worldgate.com".  Should I add this to the allow
+ > > > list as well?  I am somewhat leary of opening it up to all of
+ > > > worldgate.com.
+ > > > 
+ > > > Dean...K...
+ > > > 
+ > > > 	valis.worldgate.com - - [19/Aug/1997:18:27:10 -0500] "POST /southwind/cgi-bin/checkusage HTTP/1.0" 403 2081
+ > > > 
+ > > > 
+ > > > 
+ > > > -- 
+ > > > Dean Karres               | http://www2.southwind.net/~karres
+ > > >      karres@southwind.net |
+ > > > Southwind Internet Access | Programmer / Systems Administrator
+ > > > Wichita, KS               | <Troll 2nd Class /w Clusters>
+ > > > 
+ > > 
+ > 
+ > 
+ > -- 
+ > Dean Karres               | http://www2.southwind.net/~karres
+ >      karres@southwind.net |
+ > Southwind Internet Access | Programmer / Systems Administrator
+ > Wichita, KS               | <Troll 2nd Class /w Clusters>
+ > 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Marc Slemko <marcs@znep.com>
+Subject: Re: config/1019: possible followup to PR#145 / POST method to cgi ...
+Date: Wed, 20 Aug 1997 23:01:40 -0700 (PDT)
+
+ 
+ You could also try against 1.3a2-dev (go to
+ ftp://dev.apache.org/httpd/from-cvs/ and snarf a snapshot).  The vhost
+ code has been partially overhauled again ... at any rate it dumps a little
+ message to error_log at the beginning which tells you about the hash table
+ breakdown for the ip vhosts.  If you've got less than 256 and they're all
+ on the same class C then that'll tell you if you've got any overlaps. 
+ Crude, yes (it's not what I intended that message for). 
+ 
+ One argument for "localising" as many of your <Dir and <Loc directives
+ into only the vhosts they are valid for is that it saves CPU time. 
+ Especially in pre-1.3a2 where you pay O(N*M) time each hit where N is the
+ number of <Dir sections and M is the number of components of the filename
+ being served. 
+ 
+ Dean
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Subject: Re: config/1019: possible followup to PR#145 / POST method to cgi routine sometimes not allowed (fwd)
+Date: Fri, 22 Aug 1997 12:10:28 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Fri, 22 Aug 1997 12:53:57 -0500 (CDT)
+ From: Dean Karres <karres@southwind.net>
+ To: Marc Slemko <marcs@znep.com>
+ Subject: Re: config/1019: possible followup to PR#145 / POST method to cgi routine sometimes not allowed
+ 
+ Good afternoon Marc,
+ 
+ Ok, latest news.  I have checked all virtual hosts.  All are IP based
+ and all are unique.  I will send you all 3 config files if you want but
+ first...
+ 
+ We have various bits of config info spread between the standard three
+ config files (we have already discssed this).  I am starting to pull per
+ virt-host info into the virt-host deffinition but that leaves a bit of
+ unassociated stuff sitting around.  Should I assume that once I have
+ pulled the per virt stuff within their deffs that everything left over
+ is specific to the "default" host?
+ 
+ I have seen reference to the "_default_" virt host.  Should I define one
+ of these?
+ 
+ Am I moving too far afield in search for a simple solution to my initial
+ problem?
+ 
+ I may pull down the 1.2.4 server today for the heck of it.  One of your
+ collegues suggested that I may want to try the 1.3.a1 release since that
+ ahs some new virtual host code in it -- should I assume that this code
+ is in the 1.2.4 release?
+ 
+ Enquiring (if throbbing) minds want to know.
+ Dean...K...
+ 
+ 
+ 
+ 
+ Author: Marc Slemko
+ > 
+ > No, after your previous response it is no longer necessary.  I haven't got
+ > around to making a full response though.
+ > 
+ > A quick hint is to check your virtual host setup.  Your server thinks that
+ > something is a Host: (ie. non-IP based) virtual host when perhaps it
+ > shouldn't be.  If you don't have an IP for each virtual host, older
+ > clients won't work right.
+ 
+ 
+ -- 
+ Dean Karres               | http://www2.southwind.net/~karres
+      karres@southwind.net |
+ Southwind Internet Access | Programmer / Systems Administrator
+ Wichita, KS               | <Troll 2nd Class /w Clusters>
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Subject: Re: config/1019: possible followup to PR#145 / POST method to cgi (additional info) (fwd)
+Date: Sat, 23 Aug 1997 08:31:33 -0700 (PDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Sat, 23 Aug 1997 09:12:43 -0500 (CDT)
+ From: Dean Karres <karres@southwind.net>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Cc: marcs@znep.com
+ Subject: Re: config/1019: possible followup to PR#145 / POST method to cgi (additional info)
+ 
+ Yea!! Dean is great!  - actually Marc ain't too shabby either.
+ 
+ This looks like it does the trick.  All of the cases where it was
+ failing now work (well, I have not checked with our customers yet but
+ confidence level is high).
+ 
+ Thanks guys,
+ 
+ Dean...K...
+ 
+ 
+ 
+ 
+ Author: Dean Gaudet
+ > 
+ > That looks like it.
+ > 
+ > Try doing this:
+ > 
+ > On Fri, 22 Aug 1997, Dean Karres wrote:
+ > 
+ > > Ummm, ok.  Our config files are just sort-of slapped together from the
+ > > originals that have been added to ever since.  Could the following be
+ > > the problem?  In our httpd.conf file there is all the "normal"
+ > > parameters that have always been out side of the vhost defs including:
+ > > 
+ > > ServerType standalone
+ > > Port 80
+ > > HostnameLookups On     (yes, I know it would be faster set to Off -soon)
+ > > ServerName www.southwind.net
+ > 
+ > ServerName localhost
+ > 
+ > > ...
+ > > 
+ > > 
+ > > then down where I start the vhost defs I define our main "server" as:
+ > > 
+ > > <VirtualHost 206.53.102.28>
+ > 
+ > <VirtualHost _default_>
+ > 
+ > and leave the rest alone ...
+ > 
+ > Dean
+ > 
+ > >     ServerName www.southwind.net
+ > >     ...
+ > > 
+ > > 
+ > > Can you tell that I really have no firm idea how any of this *should*
+ > > be configured?  Should I get rid of all of the "default" server stuff
+ > > that is outside the vhost def -- or go the other way?
+ > > 
+ > > I will start doing the IP lookups asap.
+ > > 
+ > > thanks for your help,
+ > > Dean...k...
+ > > 
+ > > 
+ > > 
+ > > Author: Dean Gaudet
+ > > > 
+ > > > That means that you've got one vhost whose ip address(s) overlaps the main
+ > > > server's ip address(s).  My guess is that it's the same host causing you
+ > > > trouble ... 
+ > > > 
+ > > > If a vhost's address overlaps the main servers address (which is defined
+ > > > as the result of a dns lookup on the global ServerName, or a dns lookup on
+ > > > the machine's hostname) then it is considered to be a "name based vhosts"
+ > > > ... or HTTP/1.1-vhost.  It's almost always not the thing the user
+ > > > intended.  The config language sucks in this area. 
+ > > > 
+ > > > The only thing you can do is do DNS lookups on all your <VirtualHost
+ > > > foobar>s and see that they don't match the main server. 
+ > > > 
+ > > > Dean
+ > > > 
+ > > > On Fri, 22 Aug 1997, Dean Karres wrote:
+ > > > 
+ > > > > Hi guys,
+ > > > > 
+ > > > > One last bit of info before the weekend:
+ > > > > 
+ > > > > I have installed a snapshot of 1.3a as Dean suggested.  The POST problem
+ > > > > still exists.  Here is what was generated in the error_log file at 1.3a
+ > > > > startup
+ > > > > 
+ > > > > 
+ > > > > [Fri Aug 22 18:29:19 1997] mod_unique_id: using ip addr 206.53.103.2
+ > > > > [Fri Aug 22 18:29:20 1997] vhash: total hashed = 114, avg chain = 0, #default = 0, #name-vhost = 1, chain lengths (count x len): 114x1 142x0
+ > > > > [Fri Aug 22 18:29:20 1997] Server configured -- resuming normal operations
+ > > > > 
+ > > > > 
+ > > > > There are indeed 114 vhosts but I don't know what "name-vhost = 1"
+ > > > > means.  In my ignorance it seems to imply a named vhost but there are
+ > > > > none configured that way.
+ > > > > 
+ > > > > I probably will not have a chance to turn my hand to this again before
+ > > > > Monday afternoon.  Please let me know if I am can supply to with
+ > > > > additional info.
+ > > > > 
+ > > > > Have a good weekend,
+ > > > > Dean...K...
+ > > > > 
+ > > > > 
+ > > > > -- 
+ > > > > Dean Karres               | http://www2.southwind.net/~karres
+ > > > >      karres@southwind.net |
+ > > > > Southwind Internet Access | Programmer / Systems Administrator
+ > > > > Wichita, KS               | <Troll 2nd Class /w Clusters>
+ > > > > 
+ > > > 
+ > > 
+ > > 
+ > > -- 
+ > > Dean Karres               | http://www2.southwind.net/~karres
+ > >      karres@southwind.net |
+ > > Southwind Internet Access | Programmer / Systems Administrator
+ > > Wichita, KS               | <Troll 2nd Class /w Clusters>
+ > > 
+ > 
+ 
+ 
+ -- 
+ Dean Karres               | http://www2.southwind.net/~karres
+      karres@southwind.net |
+ Southwind Internet Access | Programmer / Systems Administrator
+ Wichita, KS               | <Troll 2nd Class /w Clusters>
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: marc
+State-Changed-When: Sun Aug 24 15:17:39 PDT 1997
+State-Changed-Why:
+Problem reported resolved.
+>Unformatted:
+
+
+
+
+
+
+

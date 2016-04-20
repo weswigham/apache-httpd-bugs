@@ -1,0 +1,79 @@
+Received: (qmail 21776 invoked by uid 2012); 26 Mar 1998 16:23:24 -0000
+Message-Id: <19980326162324.21775.qmail@hyperreal.org>
+Date: 26 Mar 1998 16:23:24 -0000
+From: "Jürgen" Keil <jk@tools.de>
+Reply-To: jk@tools.de
+To: apbugs@hyperreal.org
+Subject: Child processes inherit apache's listening sockets after a server restart & multiple listening adresses
+X-Send-Pr-Version: 3.2
+
+>Number:         2000
+>Category:       general
+>Synopsis:       Child processes inherit apache's listening sockets after a server restart & multiple listening adresses
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Mar 26 08:30:01 PST 1998
+>Last-Modified:  Thu Mar 26 11:00:28 PST 1998
+>Originator:     jk@tools.de
+>Organization:
+>Release:        1.2.6
+>Environment:
+SunOS 5.6, gcc, mod_jserv.c
+>Description:
+My configuration is using multiple Listen directives.  After a server restart
+(SIGHUP) I've noticed that the JVM started by mod_jserv.c inherits the listening
+sockets from the apache process.  This doesn't happen when apache is initially
+started, i.e. before the first SIGHUP.
+
+The problem should also be visible with other process forked by apache, for
+example cgi programms.
+>How-To-Repeat:
+
+>Fix:
+The problem is in http_main.c.  When multiple Listen directives are used, the
+listeners pointer is != NULL.  At the top of the do until loop in
+standalone_main, copy_listeners() is called which removes the fd cleanup for
+each listening socket via a call to kill_cleanup_for_fd().  Later in the do
+until loop, find_listener() is called which may return a valid socket >= 0 for
+reuse after the server re-start.  Note that these re-used sockets found by
+find_listener() do not get an fd_cleanup installed!
+
+The following diffs contain a fix:
+
+*** apache_1.2.6-orig/src/http_main.c   Tue Feb 17 02:45:58 1998
+--- apache_1.2.6/src/http_main.c        Thu Mar 26 16:58:21 1998
+***************
+*** 2255,2260 ****
+--- 2255,2263 ----
+                if (fd < 0) {
+                    fd = make_sock (pconf, &lr->local_addr);
+                }
++               else {
++                   note_cleanups_for_fd(pconf, fd);
++               }
+                FD_SET (fd, &listenfds);
+                if (fd > listenmaxfd) listenmaxfd = fd;
+                lr->fd = fd;
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Mar 26 11:00:28 PST 1998
+State-Changed-Why:
+Thanks for the patch.  I've applied it to 1.2.7-dev, and modified
+it for 1.3b6-dev as well.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

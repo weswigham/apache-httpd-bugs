@@ -1,0 +1,97 @@
+Received: (qmail 4984 invoked by uid 65534); 2 Apr 2000 04:48:31 -0000
+Message-Id: <20000402044831.4983.qmail@locus.apache.org>
+Date: 2 Apr 2000 04:48:31 -0000
+From: Jan Wolter <janc@wwnet.net>
+Reply-To: janc@wwnet.net
+To: submit@bugz.apache.org
+Subject: Header/Library Mismatch in mod_auth_dbm
+X-Send-Pr-Version: 3.110
+
+>Number:         5951
+>Category:       mod_auth-any
+>Synopsis:       Header/Library Mismatch in mod_auth_dbm
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Apr 01 20:50:00 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     janc@wwnet.net
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Redhat 6.1
+>Description:
+As far as I'm able to tell, Redhat 6.1 comes with 3 distinct implementations of
+the 'ndbm' library, each in a different .so library file,  each with a different
+header file.  I think Apache 1.3.12 uses a mismatched pair.
+
+The three installed dbm libraries are:
+
+  GDBM emulation of NDBM:
+    Library: -lgdbm
+    Header:
+      #include <gdbm/ndbm.h>
+
+  Berkeley DB Version 1 emulation of NDBM:
+    Library:  -ldb1
+    Header:
+      #include <db1/ndbm.h>
+
+  Berkeley DB Version 2 emulation of NDBM:
+    Library:  -ldb or -lndbm  (/usr/lib/libndbm.so is link to /usr/lib/libdb.so)
+    Header:
+      #define DB_DBM_HSEARCH 1
+      #include <db.h>
+    (See http://www.sleepycat.com/docs/api_c/dbm.html)
+
+Of course, none of these three agree with the traditional setup, in which
+the library is -ldbm and the header is just <ndbm.h>.
+
+When I use APACI to build Apache, it links the program with -lndbm (which is
+just an alias for Berkeley DB version 2), while the code in mod_auth_dbm.c
+appears to include the db1/ndbm.h header, which comes from Berkeley DB version
+1.
+>How-To-Repeat:
+I don't think this actually causes any problems either at run time or compile
+time, but I could be wrong.  It's potentially a source of subtle bugs.
+>Fix:
+Minimal fix would be to modify mod_auth_dbm.c by replacing
+  #include <db1/ndbm.h>
+with
+  #define DB_DBM_HSEARCH 1
+  #include <db.h>
+
+This would handle glibc 2.1, but probably there are lots of non-glibc systems
+that have Berkeley DB 2 or 3 installed.  The #if statement in mod_auth_dbm.c
+only tests for glibc 2.1.  The use of the name -lndbm instead of -ldb is also
+less standard (I think).
+
+Ideally, I think the logic that selects header files should be coupled to the
+logic that selects link libraries.  This is a bother.
+
+On the other hand, maybe none of the Berkeley DB versions should be supported
+by mod_auth_dbm, after all, mod_auth_db supports them all.  Just support GDBM
+and traditional NDBM with mod_auth_dbm.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

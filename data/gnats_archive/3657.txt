@@ -1,0 +1,233 @@
+Received: (qmail 14771 invoked by uid 2012); 13 Jan 1999 16:37:56 -0000
+Message-Id: <19990113163756.14770.qmail@hyperreal.org>
+Date: 13 Jan 1999 16:37:56 -0000
+From: Phil Dietz <pedietz@west.com>
+Reply-To: pedietz@west.com
+To: apbugs@hyperreal.org
+Subject: apache returning status 304 on images that are updated
+X-Send-Pr-Version: 3.2
+
+>Number:         3657
+>Category:       apache-api
+>Synopsis:       ETags being compared incorrectly
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan 13 08:40:01 PST 1999
+>Last-Modified:  Wed Jan 27 04:17:53 PST 1999
+>Originator:     pedietz@west.com
+>Organization:
+>Release:        1.3.4
+>Environment:
+AIX 4.3.2
+both cc and gcc
+browsers IE4.1, IE5.0 beta, (Netscape4.5 generally works right)
+
+>Description:
+A CGI script updates an image and displays it every so often.
+He ported his script from Netscape server to apache 1.3.3 yesterday.
+His graphics quit updating.  The graphic displayed is the initial graphic when he first opened his browser.  None of the updates come across.
+
+After snooping with a proxy and later apache source code, it appears the ap_find_token() command is not working correctly.
+
+Internet Explorer 4.1 and 5.0beta browser sends:
+                If-None-Match: W/"2f30-f20-369bbd06"
+apache returns  Etag: W/"2f30-11b3-369bd28d"
+
+The two are completely different which jives since the image was updated.
+
+Inside of ap_find_token() (which was called by ap_meets_conditions() in the If-None-Match" section), I put in some debugging code:
+
+/* find http tokens, see the definition of token from RFC2068 */
+API_EXPORT(int) ap_find_token(pool *p, const char *line, const char *tok)
+{
+    const unsigned char *start_token;
+    const unsigned char *s;
+
+    if (!line)
+        return 0;
+
+    s = (const unsigned char *)line;
+    for (;;) {
+        /* find start of token, skip all stop characters, note NUL
+         * isn't a token stop, so we don't need to test for it
+         */
+        while (TEST_CHAR(*s, T_HTTP_TOKEN_STOP)) {
+            ++s;
+        }
+        if (!*s) {
+            return 0;
+        }
+        start_token = s;
+        /* find end of the token */
+        while (*s && !TEST_CHAR(*s, T_HTTP_TOKEN_STOP)) {
+            ++s;
+        }
+
+        DEBUG(123456, "debug: %s, %s, %d\n", start_token, tok, s - start_token);
+
+        if (!strncasecmp((const char *)start_token, (const char *)tok, s - start_token)) {
+            return 1;
+        }
+        if (!*s) {
+            return 0;
+        }
+    }
+}
+
+A result is:
+debug: W/"2f2d-1299-369cbbd9", W/"2f2d-12a5-369cbf5e", 1
+
+Notice the strncasecmp length of 1.  That means only the leading W's are being compared, which do match.
+
+Shouldn't the entire string be compared ?
+
+Because the leading W's match, ap_meets_conditions() is sending back a HTTP_NOT_MODIFIED status for my images -- when they have updated.
+
+Any help ?
+>How-To-Repeat:
+I tested this on both apache1.3.3 and apache1.3.4.
+
+>Fix:
+Should the entire ETag: be compared to If-None-Match: or just the leading char ?
+>Audit-Trail:
+
+From: "Dietz, Phil E." <PEDietz@West.com>
+To: "'apbugs@hyperreal.org'" <apbugs@hyperreal.org>,
+        "'apache-bugdb@apache.org'" <apache-bugdb@apache.org>
+Cc:  Subject: RE: apache-api/3657: apache returning status 304 on images that a
+	re updated
+Date: Wed, 13 Jan 1999 11:14:26 -0600
+
+ It appears that the fix is even simpler.  After looking at the 1.2.6 code,
+ find-token is supposed to loop for each token it matches, and if the whole
+ thing matches, to return 0.
+ 
+ Simply replace 
+ if (!strncasecmp((const char *)start_token, (const char *)tok, s -
+ start_token)) {
+             return 1;
+         }
+ 
+ with
+ if (!strncasecmp((const char *)start_token, (const char *)tok, s -
+ start_token)) {
+             continue;
+         }
+ 
+ in util.c ap_find_token()
+ 
+ 	-----Original Message-----
+ 	From:	apbugs@hyperreal.org [SMTP:apbugs@hyperreal.org]
+ 	Sent:	Wednesday, January 13, 1999 10:40 AM
+ 	To:	pedietz@west.com
+ 	Subject:	Re: apache-api/3657: apache returning status 304 on
+ images that are updated
+ 
+ 	Thank you very much for your problem report.
+ 	It has the internal identification `apache-api/3657'.
+ 	The individual assigned to look at your
+ 	report is: apache. 
+ 
+ 	>Category:       apache-api
+ 	>Responsible:    apache
+ 	>Synopsis:       apache returning status 304 on images that are
+ updated
+ 	>Arrival-Date:   Wed Jan 13 08:40:01 PST 1999
+
+From: "Dietz, Phil E." <PEDietz@West.com>
+To: "'apbugs@hyperreal.org'" <apbugs@hyperreal.org>,
+        "'apache-bugdb@apache.org'" <apache-bugdb@apache.org>,
+        pedietz@West.com
+Cc:  Subject: RE: apache-api/3657: apache returning status 304 on images that a
+	re updated
+Date: Wed, 13 Jan 1999 12:02:39 -0600
+
+ heh even easier:
+ 
+ if (!strncasecmp((const char *)start_token, (const char *)tok, s -
+ start_token)) {
+             return 1;
+ }
+ 
+ to 
+ if (strncasecmp((const char *)start_token, (const char *)tok, s -
+ start_token)) {
+             return 1;
+ }
+ 
+ One character....
+ 
+ 	-----Original Message-----
+ 	From:	apbugs@hyperreal.org [SMTP:apbugs@hyperreal.org]
+ 	Sent:	Wednesday, January 13, 1999 10:40 AM
+ 	To:	pedietz@west.com
+ 	Subject:	Re: apache-api/3657: apache returning status 304 on
+ images that are updated
+ 
+ 	Thank you very much for your problem report.
+ 	It has the internal identification `apache-api/3657'.
+ 	The individual assigned to look at your
+ 	report is: apache. 
+ 
+ 	>Category:       apache-api
+ 	>Responsible:    apache
+ 	>Synopsis:       apache returning status 304 on images that are
+ updated
+ 	>Arrival-Date:   Wed Jan 13 08:40:01 PST 1999
+
+From: "Dietz, Phil E." <PEDietz@West.com>
+To: "'apbugs@hyperreal.org'" <apbugs@hyperreal.org>,
+        "'apache-bugdb@apache.org'" <apache-bugdb@apache.org>
+Cc:  Subject: RE: apache-api/3657: apache returning status 304 on images that a
+	re updated
+Date: Mon, 18 Jan 1999 15:40:42 -0600
+
+ The changes I've given were not fully tested -- and now I realize they do
+ not work.
+ 
+ Please wait for the Apache group to fix the problem with an official patch.
+ :-)
+ 
+ Phil Dietz
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Tue Jan 26 08:44:01 PST 1999
+State-Changed-Why:
+
+Patch sent separately for user to test.
+
+Synopsis-Changed-From: apache returning status 304 on images that are updated
+Synopsis-Changed-To: ETags being compared incorrectly
+Synopsis-Changed-By: coar
+Synopsis-Changed-When: Tue Jan 26 08:44:01 PST 1999
+Release-Changed-From-To: 1.3.3 1.3.4-1.3.4
+Release-Changed-By: coar
+Release-Changed-When: Tue Jan 26 08:44:01 PST 1999
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Wed Jan 27 04:17:53 PST 1999
+State-Changed-Why:
+
+An updated patch was developed and thoroughly tested, and
+now has been committed to the development tree.  It should
+be available in the next release after 1.3.4; I'll send you
+the final patch in a separate message.  Thanks for your
+detailed analysis!
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

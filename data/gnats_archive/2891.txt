@@ -1,0 +1,161 @@
+Received: (qmail 10804 invoked by uid 2012); 22 Aug 1998 22:29:07 -0000
+Message-Id: <19980822222907.10803.qmail@hyperreal.org>
+Date: 22 Aug 1998 22:29:07 -0000
+From: Gerd Knops <gerti@BITart.com>
+Reply-To: gerti@BITart.com
+To: apbugs@hyperreal.org
+Subject: Problems reading .htaccess in symlinked directory
+X-Send-Pr-Version: 3.2
+
+>Number:         2891
+>Category:       config
+>Synopsis:       Problems reading .htaccess in symlinked directory
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Aug 22 15:30:00 PDT 1998
+>Last-Modified:  Sat Aug 22 16:20:00 PDT 1998
+>Originator:     gerti@BITart.com
+>Organization:
+>Release:        1.3.1
+>Environment:
+Nextstep 3.3/GCC
+>Description:
+This error message:
+
+[Sat Aug 22 17:06:15 1998] [crit] (63)File name too long: /theUsers/gerti/www/devel_root/Photos/floppy/.htaccess pcfg_openfile: unable to check htaccess file, ensure it is readable
+
+Photos in this case is a symlinked directory (permissions wide open).
+
+Worked fine with 1.2x apache.
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Sat Aug 22 15:43:29 PDT 1998
+State-Changed-Why:
+Your OS is saying that the filename for the htaccess file
+is too long.  This is a limitation of your OS; there is nothing
+Apache can do about it.  The only reason it worked before
+is that Apache silently ignored such errors.  That isn't correct
+behaviour, so it doesn't ignore them any more.
+
+You can disable reading htaccess files by setting
+"AllowOverride none" for that directory, but since the OS
+is saying the path is too long, you probably won't be able to access
+any files with names longer than ".htaccess" in that directory.
+Release-Changed-From-To: 1.31-1.3.1
+Release-Changed-By: marc
+Release-Changed-When: Sat Aug 22 15:43:29 PDT 1998
+
+From: Marc Slemko <marcs@znep.com>
+To: Gerd Knops <gerti@bitart.com>
+Cc: apbugs@apache.org
+Subject: Re: config/2891: Problems reading .htaccess in symlinked directory
+Date: Sat, 22 Aug 1998 15:54:56 -0700 (PDT)
+
+ On Sat, 22 Aug 1998, Gerd Knops wrote:
+ 
+ > > is too long.  This is a limitation of your OS; there is nothing
+ > > Apache can do about it.
+ > >
+ > No, this is not the case. If I copy the directory instead of making a  
+ > symlink, it works fine. Also note that the directory doesn not even contain a  
+ > .htaccess file.
+ 
+ But the point is that your OS is telling Apache very clearly that the path
+ is too long.  Apache does not do _ANYTHING_ special here; it just tries to
+ open a file called .htaccess in the given directory.  If your OS says it
+ isn't there, it is happy and goes on.
+ 
+ If your OS returns some unusual error, it has to reject access to be safe.
+ Your OS is saying that the pathname is too long; for whatever reason, that
+ is your OS's fault.
+ 
+ > 
+ > So, to recap:
+ > 
+ > If '/theUsers/gerti/www/devel_root/Photos/floppy' is a symlink (in my case  
+ > to /noname, a mounted floppy disk), I get the error message.
+ > 
+ > If I copy /noname to /theUsers/gerti/www/devel_root/Photos and rename it to  
+ > floppy, it works fine.
+ > 
+ > Looks like a bug to me...
+ 
+ Sure, but it is almost certainly not a bug in Apache, but a bug in your
+ OS.  Your os is telling Apache that the path is too long.  Perhaps
+ whatever filesystem your floppy is on can't support filenames like
+ ".htaccess".  
+ 
+ As I said, you can work around this by having Apache not look for htaccess
+ files, but the problem isn't in Apache.
+ 
+ > 
+ > I'll be glad to give you any info about my system you need.
+ > 
+ > Gerd
+ > 
+ > 
+ > 
+ > > The only reason it worked before
+ > > is that Apache silently ignored such errors.  That isn't correct
+ > > behaviour, so it doesn't ignore them any more.
+ > >
+ > 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Gerd Knops <gerti@bitart.com>
+Cc: apbugs@apache.org
+Subject: Re: config/2891: Problems reading .htaccess in symlinked directory
+Date: Sat, 22 Aug 1998 16:15:12 -0700 (PDT)
+
+ On Sat, 22 Aug 1998, Gerd Knops wrote:
+ 
+ > >
+ > That is true (it's a dos floppy), but fact is that something changed between  
+ 
+ Then that is your problem.  
+ 
+ > 1.2x and 1.31. 1.31 doesn't let me access anything in that directory, with  
+ 
+ Note that is 1.2.x and 1.3.1; there is no 1.31.
+ 
+ > 1.2x it works just fine. I'll be digging through the apache code to see what  
+ > exactly happens and why.
+ 
+ Yes, as I already said this was changed on purpose.  Ignoring the htaccess
+ file if we get an error opening it isn't correct.  The code is in
+ http_config.c; look for the error message to see where.
+ 
+ > 
+ > 
+ > > As I said, you can work around this by having Apache not look for htaccess
+ > > files, but the problem isn't in Apache.
+ > >
+ > The parent directory needs it's own .htaccess file, and 'AllowOverride' is  
+ > not valid in .htaccess files.
+ 
+ There is nothing stopping you from setting it in your *.conf files inside
+ an appropriate Directory section.
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

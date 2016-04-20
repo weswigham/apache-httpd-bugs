@@ -1,0 +1,1053 @@
+From apwww@hyperreal.org  Fri Oct  3 19:05:53 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id TAA16978;
+	Fri, 3 Oct 1997 19:05:53 -0700 (PDT)
+Message-Id: <199710040205.TAA16978@hyperreal.org>
+Date: Fri, 3 Oct 1997 19:05:53 -0700 (PDT)
+From: Erik Brandsberg <ebrandsb@the-link.net>
+Reply-To: ebrandsb@the-link.net
+To: apbugs@hyperreal.org
+Subject: VirtualHost directives don't respond to all the IP's that a name might resolve to.
+X-Send-Pr-Version: 3.2
+
+>Number:         1197
+>Category:       general
+>Synopsis:       VirtualHost directives don't respond to all the IP's that a name might resolve to.
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Oct  3 19:10:01 1997
+>Last-Modified:  Sat Oct  4 19:39:46 PDT 1997
+>Originator:     ebrandsb@the-link.net
+>Organization:
+>Release:        1.2.1
+>Environment:
+Linux 1.2.30, using GCC
+>Description:
+The VirtHost directive does not respond properly when a name given in the virtual
+host field resolves out to more than one IP address.  For the second or more IP,
+it will use the default setting instead of the VirtualHost settings.  This is bad
+for environments where for redundancy or other reasons, each virtual host has
+more than one IP address.  I demonstrated it with the IP address both being on
+the same server, and the server only handled the first IP properly.
+>How-To-Repeat:
+put more than one A record for a domain in the DNS and then force it to use both.
+A recent version of Lynx makes this easy to demonstrate--to to the referenced
+URL with Lynx, exit, then do it again.  The second time it should show up as
+the default for the server or that IP.
+>Fix:
+For each virthost, allow more than one Ip address to be handled
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Erik Brandsberg <ebrandsb@the-link.net>
+Subject: Re: general/1197: VirtualHost directives don't respond to all the IP's that a name might resolve to.
+Date: Fri, 3 Oct 1997 19:29:22 -0700 (PDT)
+
+ 
+ This sounds like a local configuration problem, Apache does respond to all
+ addresses for each domain name used, at least it does for me. 
+ 
+ One guess is that you have the hostname in /etc/hosts and you're receiving
+ the /etc/hosts response rather than the DNS response -- and /etc/hosts
+ responses only return a single address. 
+ 
+ The next guess is that the DNS name you're using has one address which
+ matches the global ServerName, and another address which doesn't. 
+ Addresses matching the global ServerName (i.e. overlapping ip addresses) 
+ are treated quite differently. 
+ 
+ You should also read the file htdocs/manual/dns-caveats.html since it
+ explains why you probably don't want to use DNS names in <VirtualHost>
+ statements, especially if reliability is an issue. 
+ 
+ BTW, linux 1.2.30 doesn't exist ... do you mean 2.0.30? 
+ 
+ Dean
+ 
+ 
+
+From: "Erik T. Brandsberg" <ebrandsb@shell.the-link.net>
+To: Dean Gaudet <dgaudet@arctic.org>
+Subject: Re: general/1197: VirtualHost directives don't respond to all the IP's that a name might resolve to.
+Date: Sat, 4 Oct 1997 19:39:04 -0500 (CDT)
+
+ 
+ 
+ 
+ Erik Brandsberg
+ CIO, The Link
+ On Fri, 3 Oct 1997, Dean Gaudet wrote:
+ 
+ > This sounds like a local configuration problem, Apache does respond to all
+ > addresses for each domain name used, at least it does for me. 
+ > 
+ > One guess is that you have the hostname in /etc/hosts and you're receiving
+ > the /etc/hosts response rather than the DNS response -- and /etc/hosts
+ > responses only return a single address. 
+ Checked that, only one name is in the hosts (asside from localhost) and
+ that is different than the names I'm using in the virtualhost directive.
+ Good idea to check though.
+ 
+ > 
+ > The next guess is that the DNS name you're using has one address which
+ > matches the global ServerName, and another address which doesn't. 
+ > Addresses matching the global ServerName (i.e. overlapping ip addresses) 
+ > are treated quite differently. 
+ > 
+ The global servername is www.the-link.net with an IP address of
+ 209.12.240.129.  The virtual hosts are on various names, all of which
+ resolve out to 209.12.240.131 and 206.25.198.4.  The server's primary IP
+ address is 206.25.198.4.  Any ideas with this config?
+ 
+ > You should also read the file htdocs/manual/dns-caveats.html since it
+ > explains why you probably don't want to use DNS names in <VirtualHost>
+ > statements, especially if reliability is an issue. 
+ > 
+ The DNS servers are on the same local network and are backed up, and I
+ have control of all the domains I host for DNS...
+ 
+ > BTW, linux 1.2.30 doesn't exist ... do you mean 2.0.30? 
+ yep, my mistake.  :)  Work with too many OS's and revisions...
+ > 
+ > Dean
+ > 
+ > 
+ > 
+ 
+ Thanks for the help on this, but I don't think we've hit it yet...
+ 
+ Erik
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: "Erik T. Brandsberg" <ebrandsb@shell.the-link.net>
+Subject: Re: general/1197: VirtualHost directives don't respond to all the IP's that a name might resolve to.
+Date: Sat, 4 Oct 1997 17:49:28 -0700 (PDT)
+
+ 
+ 
+ 
+ On Sat, 4 Oct 1997, Erik T. Brandsberg wrote:
+ 
+ > The global servername is www.the-link.net with an IP address of
+ > 209.12.240.129.  The virtual hosts are on various names, all of which
+ > resolve out to 209.12.240.131 and 206.25.198.4.  The server's primary IP
+ > address is 206.25.198.4.  Any ideas with this config?
+ 
+ When you say the server's primary IP address is 206.25.198.4 do you mean
+ that the ip address of the result of the 'hostname' command is
+ 206.25.198.4? 
+ 
+ And also just to be sure we're speaking the same terminology here, when I
+ asked about the "global servername" I was referring to any ServerName
+ directive appearing outside all VirtualHost directives.  The situation
+ you're describing is exactly what would happen if you had no global
+ ServerName directive.
+ 
+ How about sending me your config files? 
+ 
+ Dean
+ 
+ 
+
+From: "Erik T. Brandsberg" <ebrandsb@shell.the-link.net>
+To: Dean Gaudet <dgaudet@arctic.org>
+Subject: Re: general/1197: VirtualHost directives don't respond to all the IP's that a name might resolve to.
+Date: Sat, 4 Oct 1997 19:56:40 -0500 (CDT)
+
+ 
+ 
+ 
+ Erik Brandsberg
+ CIO, The Link
+ On Sat, 4 Oct 1997, Dean Gaudet wrote:
+ 
+ > 
+ > 
+ > On Sat, 4 Oct 1997, Erik T. Brandsberg wrote:
+ > 
+ > > The global servername is www.the-link.net with an IP address of
+ > > 209.12.240.129.  The virtual hosts are on various names, all of which
+ > > resolve out to 209.12.240.131 and 206.25.198.4.  The server's primary IP
+ > > address is 206.25.198.4.  Any ideas with this config?
+ > 
+ > When you say the server's primary IP address is 206.25.198.4 do you mean
+ > that the ip address of the result of the 'hostname' command is
+ > 206.25.198.4? 
+ when I type hostname, I get shell.the-link.net which is 206.25.198.4 when
+ resolved (and 206.25.198.4 resolves back to shell.the-link.net).
+ 
+ > 
+ > And also just to be sure we're speaking the same terminology here, when I
+ > asked about the "global servername" I was referring to any ServerName
+ > directive appearing outside all VirtualHost directives.  The situation
+ > you're describing is exactly what would happen if you had no global
+ > ServerName directive.
+ The primary ServerName directive is vhost.the-link.net which has the same
+ IP's as what the virtual hosts are using.  Might this be the problem?
+ 
+ > 
+ > How about sending me your config files? 
+ 
+ here is the http.conf file, I'll send the others if you need them, but I
+ doubt they would be of any use in this situation.  I changed
+ vhost.the-link.net to map to one IP for the moment, but it was two...
+ 
+ # This is the main server configuration file. See URL http://www.apache.org/
+ # for instructions.
+ 
+ # Do NOT simply read the instructions in here without understanding
+ # what they do, if you are unsure consult the online docs. You have been
+ # warned.  
+ 
+ # Originally by Rob McCool
+ 
+ # ServerType is either inetd, or standalone.
+ 
+ ServerType standalone
+ 
+ # If you are running from inetd, go to "ServerAdmin".
+ 
+ # Port: The port the standalone listens to. For ports < 1023, you will
+ # need httpd to be run as root initially.
+ 
+ Port 80
+ 
+ # HostnameLookups: Log the names of clients or just their IP numbers
+ #   e.g.   www.apache.org (on) or 204.62.129.132 (off)
+ HostnameLookups on
+ 
+ # If you wish httpd to run as a different user or group, you must run
+ # httpd as root initially and it will switch.  
+ 
+ # User/Group: The name (or #number) of the user/group to run httpd as.
+ #  On SCO (ODT 3) use User nouser and Group nogroup
+ User nobody
+ Group nobody
+ 
+ # ServerAdmin: Your address, where problems with the server should be
+ # e-mailed.
+ 
+ ServerAdmin webmaster@the-link.net
+ 
+ # ServerRoot: The directory the server's config, error, and log files
+ # are kept in
+ 
+ ServerRoot /home/httpd/conf
+ 
+ # BindAddress: You can support virtual hosts with this option. This option
+ # is used to tell the server which IP address to listen to. It can either
+ # contain "*", an IP address, or a fully qualified Internet domain name.
+ # See also the VirtualHost directive.
+ 
+ BindAddress *
+ 
+ # ErrorLog: The location of the error log file. If this does not start
+ # with /, ServerRoot is prepended to it.
+ 
+ ErrorLog logs/error_log
+ 
+ # TransferLog: The location of the transfer log file. If this does not
+ # start with /, ServerRoot is prepended to it.
+ 
+ TransferLog logs/access_log
+ 
+ # PidFile: The file the server should log its pid to
+ PidFile /tmp/httpd.pid
+ 
+ # ScoreBoardFile: File used to store internal server process information
+ ScoreBoardFile /var/log/httpd/apache_status
+ 
+ # ServerName allows you to set a host name which is sent back to clients for
+ # your server if it's different than the one the program would get (i.e. use
+ # "www" instead of the host's real name).
+ #
+ # Note: You cannot just invent host names and hope they work. The name you 
+ # define here must be a valid DNS name for your host. If you don't understand
+ # this, ask your network administrator.
+ #CookieLog logs/cookies
+ 
+ ServerName vhost.the-link.net
+ 
+ # CacheNegotiatedDocs: By default, Apache sends Pragma: no-cache with each
+ # document that was negotiated on the basis of content. This asks proxy
+ # servers not to cache the document. Uncommenting the following line disables
+ # this behavior, and proxies will be allowed to cache the documents.
+ 
+ #CacheNegotiatedDocs
+ 
+ # Timeout: The number of seconds before receives and sends time out
+ #  n.b. the compiled default is 1200 (20 minutes !)
+ 
+ Timeout 300
+ 
+ # KeepAlive: The number of Keep-Alive persistent requests to accept
+ # per connection. Set to 0 to deactivate Keep-Alive support
+ 
+ KeepAlive 5
+ 
+ # KeepAliveTimeout: Number of seconds to wait for the next request
+ 
+ KeepAliveTimeout 30
+ 
+ # Server-pool size regulation.  Rather than making you guess how many
+ # server processes you need, Apache dynamically adapts to the load it
+ # sees --- that is, it tries to maintain enough server processes to
+ # handle the current load, plus a few spare servers to handle transient
+ # load spikes (e.g., multiple simultaneous requests from a single
+ # Netscape browser).
+ 
+ # It does this by periodically checking how many servers are waiting
+ # for a request.  If there are fewer than MinSpareServers, it creates
+ # a new spare.  If there are more than MaxSpareServers, some of the
+ # spares die off.  These values are probably OK for most sites ---
+ 
+ MinSpareServers 5
+ MaxSpareServers 10
+ 
+ # Number of servers to start --- should be a reasonable ballpark figure.
+ 
+ StartServers 5
+ 
+ # Limit on total number of servers running, i.e., limit on the number
+ # of clients who can simultaneously connect --- if this limit is ever
+ # reached, clients will be LOCKED OUT, so it should NOT BE SET TOO LOW.
+ # It is intended mainly as a brake to keep a runaway server from taking
+ # Unix with it as it spirals down...
+ 
+ MaxClients 150
+ 
+ # MaxRequestsPerChild: the number of requests each child process is
+ #  allowed to process before the child dies.
+ #  The child will exit so as to avoid problems after prolonged use when
+ #  Apache (and maybe the libraries it uses) leak.  On most systems, this
+ #  isn't really needed, but a few (such as Solaris) do have notable leaks
+ #  in the libraries.
+ 
+ MaxRequestsPerChild 30
+ 
+ # Proxy Server directives. Uncomment the following line to
+ # enable the proxy server:
+ 
+ #ProxyRequests On
+ 
+ # To enable the cache as well, edit and uncomment the following lines:
+ 
+ #CacheRoot /tmp/apache_proxy
+ #CacheSize 300
+ #CacheGcInterval 24
+ #CacheMaxExpire 128
+ #CacheLastModifiedFactor 2
+ #CacheDefaultExpire 24
+ # NoCache www.the-link.net
+ 
+ # Listen: Allows you to bind Apache to specific IP addresses and/or
+ # ports, in addition to the default. See also the VirtualHost command
+ 
+ #Listen 3000
+ #Listen 12.34.56.78:80
+ 
+ # VirtualHost: Allows the daemon to respond to requests for more than one
+ # server address, if your server machine is configured to accept IP packets
+ # for multiple addresses. This can be accomplished with the ifconfig 
+ # alias flag, or through kernel patches like VIF.
+ 
+ # Any httpd.conf or srm.conf directive may go into a VirtualHost command.
+ # See alto the BindAddress entry.
+ 
+ <VirtualHost www.the-link.net the-link.net>
+ ServerAdmin webmaster@the-link.net
+ DocumentRoot /home/httpd/html
+ ServerName www.the-link.net
+ ErrorLog /home/httpd/logs/error_log
+ TransferLog /home/httpd/logs/access_log
+ ScriptAlias /cgi-bin/ /home/httpd/html/cgi-bin/
+ AddHandler cgi-script .cgi
+ </virtualhost>
+ 
+ <VirtualHost users.the-link.net>
+ ServerAdmin webmaster@the-link.net
+ DocumentRoot /home/httpd/users
+ ServerName users.the-link.net
+ ErrorLog /home/httpd/users/error_log
+ TransferLog /home/httpd/users/access_log
+ ScriptAlias /cgi-bin/ /home/httpd/users/cgi-bin/
+ ScriptAlias /bandit/cgi-bin/ /home/httpd/users/bandit/cgi-bin/
+ ScriptAlias /bandit/controlled/cgi-bin/ /home/httpd/users/bandit/controlled/cgi-bin/
+ 
+ <Directory /home/httpd/users/acidsexy>
+ AllowOverride AuthConfig
+ </Directory>
+ 
+ <Directory /home/httpd/users/tigger/secure>
+ AllowOverride AuthConfig
+ </Directory>
+ 
+ <Directory /home/httpd/users/bandit/controlled>
+ AllowOverride AuthConfig
+ </Directory>
+ 
+ </VirtualHost>
+ 
+ <VirtualHost vhost.the-link.net>
+ ServerAdmin webmaster@the-link.net
+ DocumentRoot /home/httpd/vhost
+ ServerName vhost.the-link.net
+ ErrorLog /home/httpd/vhost/error_log
+ TransferLog /home/httpd/vhost/access_log
+ </VirtualHost>
+ 
+ <VirtualHost www.chappys.com chappys.com>
+ ServerAdmin webmaster@the-link.net
+ DocumentRoot /home/httpd/users/chappys
+ ServerName www.chappys.com
+ ErrorLog /home/httpd/users/chappys/error_log
+ TransferLog /home/httpd/users/chappys/access_log
+ </VirtualHost>
+ 
+ <VirtualHost www.handhinc.com handhinc.com>
+ ServerAdmin webmaster@the-link.net
+ DocumentRoot /home/httpd/users/brineman
+ ServerName www.handhinc.com
+ ErrorLog /home/httpd/users/brineman/error_log
+ TransferLog /home/httpd/users/brineman/access_log
+ </VirtualHost>
+ 
+ <VirtualHost www.lynchburgva.com lynchburgva.com>
+ ServerAdmin webmaster@the-link.net
+ DocumentRoot /home/httpd/users/tbrandsb
+ ServerName www.lynchburgva.com
+ ErrorLog /home/httpd/users/tbrandsb/error_log
+ TransferLog /home/httpd/users/tbrandsb/access_log
+ ScriptAlias /cgi-bin/ /home/httpd/users/tbrandsb/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.proweh.com proweh.com>
+ ServerAdmin webmaster@the-link.net
+ DocumentRoot /home/httpd/users/proweh
+ ServerName www.proweh.com
+ ErrorLog /home/httpd/users/proweh/error_log
+ TransferLog /home/httpd/users/proweh/access_log
+ </VirtualHost>
+ 
+ <VirtualHost churches.the-link.net>
+ ServerAdmin webmaster@the-link.net
+ DocumentRoot /home/httpd/users/churches
+ ServerName churches.the-link.net
+ ErrorLog /home/httpd/users/churches/error_log.users
+ TransferLog /home/httpd/users/churches/access_log.users
+ </VirtualHost>
+ 
+ <VirtualHost www.wilsonprice.com wilsonprice.com>
+ ServerAdmin webmaster@the-link.net
+ DocumentRoot /home/httpd/users/wilsonprice
+ ServerName www.wilsonprice.com
+ ErrorLog /home/httpd/users/wilsonprice/error_log.users
+ TransferLog /home/httpd/users/wilsonprice/access_log.users
+ </VirtualHost>
+ 
+ #<VirtualHost www.mlbscout.com mlbscout.com>
+ #ServerAdmin webmaster@the-link.net
+ #DocumentRoot /home/httpd/users/mlbscout
+ #ServerName www.mlbscout.com
+ #ErrorLog /home/httpd/users/mlbscout/error_log.users
+ #TransferLog /home/httpd/users/mlbscout/access_log.users
+ #</VirtualHost>
+ 
+ #<VirtualHost www.footballscout.com footballscout.com>
+ #ServerAdmin webmaster@the-link.net
+ #DocumentRoot /home/httpd/users/footballscout
+ #ServerName www.footballscout.com
+ #ErrorLog /home/httpd/users/footballscout/error_log.users
+ #TransferLog /home/httpd/users/footballscout/access_log.users
+ #</VirtualHost>
+ 
+ #<VirtualHost www.softballscout.com softballscout.com>
+ #ServerAdmin webmaster@the-link.net
+ #DocumentRoot /home/httpd/users/softballscout
+ #ServerName www.softballscout.com
+ #ErrorLog /home/httpd/users/softballscout/error_log.users
+ #TransferLog /home/httpd/users/softballscout/access_log.users
+ #</VirtualHost>
+ 
+ #<VirtualHost www.coolfire.net coolfire.net>
+ #ServerAdmin webmaster@the-link.net
+ #DocumentRoot /home/httpd/users/ulysses/coolfire
+ #ServerName www.coolfire.net
+ #ErrorLog /home/httpd/users/ulysses/coolfire/error_log.users
+ #TransferLog /home/httpd/users/ulysses/coolfire/access_log.users
+ #</VirtualHost>
+ 
+ <VirtualHost www.msgtech.com msgtech.com>
+ ServerAdmin webmaster@the-link.net
+ DocumentRoot /home/httpd/users/morganc
+ ServerName www.msgtech.com
+ ErrorLog /home/httpd/users/morganc/error_log.users
+ TransferLog /home/httpd/users/morganc/access_log.users
+ 
+ <Directory /home/httpd/users/morganc/secure>
+ AllowOverride AuthConfig
+ </Directory>
+ 
+ </VirtualHost>
+ 
+ <VirtualHost test.the-link.net>
+ ServerAdmin webmaster@the-link.net
+ DocumentRoot /home/httpd/test
+ ServerName test.the-link.net
+ ErrorLog /home/httpd/test/error.log
+ TransferLog /home/httpd/test/access_log
+ ScriptAlias /cgi-bin/ /home/httpd/test/cgi-bin/
+ </VirtualHost>
+ 
+ #<VirtualHost admin.the-link.net>
+ #ServerAdmin webmaster@the-link.net
+ #DocumentRoot /home/httpd/admin
+ #ServerName admin.the-link.net
+ #ErrorLog /home/httpd/admin/error.log
+ #TransferLog /home/httpd/admin/access_log
+ #ScriptAlias /cgi-bin/ /home/httpd/admin/cgi-bin/
+ #</VirtualHost>
+ 
+ #<VirtualHost audio.the-link.net>
+ #ServerAdmin webmaster@the-link.net
+ #DocumentRoot /home/httpd/audio
+ #ServerName audio.the-link.net
+ #ErrorLog /home/httpd/audio/error.log
+ #TransferLog /home/httpd/audio/access_log
+ #ScriptAlias /cgi-bin/ /home/httpd/audio/cgi-bin/
+ #</VirtualHost>
+ 
+ #<VirtualHost secure.the-link.net>
+ #ServerAdmin webmaster@the-link.net
+ #DocumentRoot /home/httpd/secure
+ #ServerName secure.the-link.net
+ #ErrorLog /home/httpd/secure/error.log
+ #TransferLog /home/httpd/secure/access_log
+ #ScriptAlias /cgi-bin/ /home/httpd/secure/cgi-bin/
+ #</VirtualHost>
+ 
+ #<VirtualHost montgomery.al.us>
+ #ServerAdmin webmaster@the-link.net
+ #DocumentRoot /home/httpd/users/cyberhawk/montgomery.al.us
+ #ServerName montgomery.al.us
+ #ErrorLog /home/httpd/users/cyberhawk/montgomery.al.us.error_log
+ #TransferLog /home/httpd/users/cyberhawk/montgomery.al.us.access_log
+ #ScriptAlias /cgi-bin/ /home/httpd/users/cyberhawk/cgi-bin/
+ #</VirtualHost>
+ 
+ <VirtualHost bandit.the-link.net>
+ ServerAdmin bandit@the-link.net
+ DocumentRoot /home/httpd/users/bandit
+ ServerName bandit.the-link.net
+ ErrorLog /home/httpd/users/bandit/logs/error_log
+ TransferLog /home/httpd/users/bandit/logs/access_log
+ ScriptAlias /cgi-bin/ /home/httpd/users/bandit/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.prizmcomputers.com prizmcomputers.com>
+ ServerAdmin webmaster@the-link.net
+ DocumentRoot /home/httpd/users/prizm
+ ServerName www.prizmcomputers.com
+ ErrorLog /home/httpd/users/prizm/error_log.users
+ TransferLog /home/httpd/users/prizm/access_log.users
+ ScriptAlias /cgi-bin/ /home/httpd/users/prizm/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost nota.the-link.net>
+ ServerAdmin nota@the-link.net
+ DocumentRoot /home/httpd/users/nota
+ ServerName nota.the-link.net
+ ErrorLog /home/httpd/users/nota/error_log.users
+ TransferLog /home/httpd/users/nota/access_log.users
+ ScriptAlias /cgi-bin/ /home/httpd/users/nota/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.rrb.net rrb.net>
+ ServerAdmin rblair@the-link.net
+ DocumentRoot /home/httpd/users/rblair
+ ServerName www.rrb.net
+ ErrorLog /home/httpd/users/rblair/error_log.users
+ TransferLog /home/httpd/users/rblair/access_log.users
+ ScriptAlias /cgi-bin/ /home/httpd/users/rblair/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.bakerrealty.com bakerrealty.com>
+ ServerAdmin brealty@the-link.net
+ DocumentRoot /home/httpd/users/brealty
+ ServerName www.bakerrealty.com
+ ErrorLog /home/httpd/users/brealty/error_log.users
+ TransferLog /home/httpd/users/brealty/access_log.users
+ ScriptAlias /cgi-bin/ /home/httpd/users/brealty/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.pier2.com pier2.com>
+ ServerAdmin root@the-link.net
+ DocumentRoot /home/httpd/html/
+ ServerName www.the-link.net
+ ErrorLog /home/httpd/conf/logs/error_log
+ TransferLog /home/httpd/conf/logs/access_log
+ ScriptAlias /cgi-bin/ /home/httpd/html/cgi-bin/
+ </VirtualHost>
+ 
+ #<VirtualHost www.connerlawrence.com>
+ #ServerAdmin root@the-link.net
+ #DocumentRoot /home/httpd/users/temp/
+ #ServerName www.connerlawrence.com
+ #ErrorLog /home/httpd/users/temp/error_log.users
+ #TransferLog /home/httpd/users/temp/access_log.users
+ #ScriptAlias /cgi-bin/ /home/httpd/users/temp/cgi-bin/
+ #</VirtualHost>
+ 
+ <VirtualHost www.eufaulatribune.com eufaulatribune.com>
+ ServerAdmin jsmith@the-link.net
+ DocumentRoot /home/httpd/users/jsmith
+ ServerName www.eufaulatribune.com
+ ErrorLog /home/httpd/users/jsmith/error_log.users
+ TransferLog /home/httpd/users/jsmith/access_log.users
+ ScriptAlias /cgi-bin/ /home/httpd/users/jsmith/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.selmatj.com selmatj.com>
+ ServerAdmin jdavis@the-link.net
+ DocumentRoot /home/httpd/users/jdavis
+ ServerName www.selmatj.com
+ ErrorLog /home/httpd/users/jdavis/error_log.users
+ TransferLog /home/httpd/users/jdavis/access_log.users
+ ScriptAlias /cgi-bin/ /home/httpd/users/jdavis/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.cmbpc.com cmbpc.com>
+ ServerAdmin mccullar@the-link.net
+ DocumentRoot /home/httpd/users/mccullar/
+ ServerName www.cmbpc.com
+ ErrorLog /home/httpd/users/mccullar/error_log.users
+ TransferLog /home/httpd/users/mccullar/access_log.users
+ ScriptAlias /cgi-bin/ /home/httpd/users/mccular/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.mktdevgroup.com mktdevgroup.com>
+ ServerAdmin root@the-link.net
+ DocumentRoot /home/httpd/users/djoye/mktdevgroup/
+ ServerName www.mktdevgroup.com
+ ErrorLog /home/httpd/users/djoye/error_log.mktdevgroup
+ TransferLog /home/httpd/users/djoye/access_log.mktdevgroup
+ ScriptAlias /cgi-bin/ /home/httpd/users/djoye/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.thebulletinboard.com thebulletinboard.com>
+ ServerAdmin root@the-link.net
+ DocumentRoot /home/httpd/users/thebulletinboard/
+ ServerName www.thebulletinboard.com
+ ErrorLog /home/httpd/users/thebulletinboard/error_log
+ TransferLog /home/httpd/users/thebulletinboard/access_log
+ ScriptAlias /cgi-bin/ /home/httpd/users/thebulletinboard/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.dipstop.com dipstop.com>
+ ServerAdmin root@the-link.net
+ DocumentRoot /home/httpd/users/dipstop/
+ ServerName www.dipstop.com
+ ErrorLog /home/httpd/users/dipstop/error_log
+ TransferLog /home/httpd/users/dipstop/access_log
+ ScriptAlias /cgi-bin/ /home/httpd/users/dipstop/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.ostri-bob.com ostri-bob.com>
+ ServerAdmin root@the-link.net
+ DocumentRoot /home/httpd/users/ostri-bob
+ ServerName www.ostri-bob.com
+ ErrorLog /home/httpd/users/ostri-bob/error_log
+ TransferLog /home/httpd/users/ostri-bob/access_log
+ ScriptAlias /cgi-bin/ /home/httpd/users/ostri-bob/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.hawkrl.com hawkrl.com>
+ ServerAdmin root@the-link.net
+ DocumentRoot /home/httpd/users/hawkins
+ ServerName www.hawkrl.com
+ ErrorLog /home/httpd/users/hawkins/error_log
+ TransferLog /home/httpd/users/hawkins/access_log
+ ScriptAlias /cgi-bin/ /home/httpd/users/hawkins/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.hawkinshunting.com hawkinshunting.com>
+ ServerAdmin root@the-link.net
+ DocumentRoot /home/httpd/users/hawkinshunting
+ ServerName www.hawkinshunting.com
+ ErrorLog /home/httpd/users/hawkinshunting/error_log
+ TransferLog /home/httpd/users/hawkinshunting/access_log
+ ScriptAlias /cgi-bin/ /home/httpd/users/hawkinshunting/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.tmcnet.com tmcnet.com www.ctimag.com ctimag.com www.ctimagazine.com ctimagazine.com>
+ ServerAdmin root@the-link.net
+ DocumentRoot /home/httpd/users/tmc
+ ServerName www.tmcnet.com
+ ErrorLog /home/httpd/users/tmc/error_log
+ TransferLog /home/httpd/users/tmc/access_log
+ AddHandler cgi-script .cgi
+ AddHandler cgi-script .pl
+ ScriptAlias /cgi-bin/ /home/httpd/users/tmc/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.dimltd.com dimltd.com>
+ ServerAdmin slaf@the-link.net
+ DocumentRoot /home/httpd/users/slaf
+ ServerName www.dimltd.com
+ ErrorLog /home/httpd/users/slaf/error_log
+ TransferLog /home/httpd/users/slaf/access_log
+ AddHandler cgi-script .cgi
+ AddHandler cgi-script .pl
+ ScriptAlias /cgi-bin/ /home/httpd/users/slaf/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.tekrecon.com tekrecon.com>
+ ServerAdmin dan@the-link.net
+ DocumentRoot /home/httpd/users/dan
+ ServerName www.tekrecon.com
+ ErrorLog /home/httpd/users/dan/error_log
+ TransferLog /home/httpd/users/dan/access_log
+ AddHandler cgi-script .cgi
+ AddHandler cgi-script .pl
+ ScriptAlias /cgi-bin/ /home/httpd/users/dan/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost star98.9-fm.com www.star98.9-fm.com>
+ ServerAdmin trishc@the-link.net
+ DocumentRoot /home/httpd/users/star98-9
+ ServerName star98.9-fm.com
+ ErrorLog /home/httpd/users/star98-9/error_log
+ TransferLog /home/httpd/users/star98-9/access_log
+ AddHandler cgi-script .cgi
+ AddHandler cgi-script .pl
+ ScriptAlias /cgi-bin/ /home/httpd/users/star98-9/cgi-bin/
+ ScriptAlias /admin/ /home/httpd/users/star98-9/admin/
+ </VirtualHost>
+ 
+ <VirtualHost softrock96.1-fm.com www.softrock96.1-fm.com>
+ ServerAdmin trishc@the-link.net
+ DocumentRoot /home/httpd/users/softrock96-1
+ ServerName softrock96.1-fm.com
+ ErrorLog /home/httpd/users/softrock96-1/error_log
+ TransferLog /home/httpd/users/softrock96-1/access_log
+ AddHandler cgi-script .cgi
+ AddHandler cgi-script .pl
+ ScriptAlias /cgi-bin/ /home/httpd/users/softrock96-1/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.wrwo.com wrwo.com>
+ ServerAdmin trishc@the-link.net
+ DocumentRoot /home/httpd/users/softrock96-1
+ ServerName www.wrwo.com
+ ErrorLog /home/httpd/users/softrock96-1/error_log
+ TransferLog /home/httpd/users/softrock96-1/access_log
+ AddHandler cgi-script .cgi
+ AddHandler cgi-script .pl
+ ScriptAlias /cgi-bin/ /home/httpd/users/softrock96-1/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.wacvtalkradio.com wacvtalkradio.com>
+ ServerAdmin dmarkwell@the-link.net
+ DocumentRoot /home/httpd/users/1170wacv
+ ServerName www.wacvtalkradio.com
+ ErrorLog /home/httpd/users/1170wacv/error_log
+ TransferLog /home/httpd/users/1170wacv/access_log
+ AddHandler cgi-script .cgi
+ AddHandler cgi-script .pl
+ ScriptAlias /cgi-bin/ /home/httpd/users/1170wacv/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.wacv.com wacv.com>
+ ServerAdmin dmarkwell@the-link.net
+ DocumentRoot /home/httpd/users/1170wacv
+ ServerName www.wacv.com
+ ErrorLog /home/httpd/users/1170wacv/error_log
+ TransferLog /home/httpd/users/1170wacv/access_log
+ AddHandler cgi-script .cgi
+ AddHandler cgi-script .pl
+ ScriptAlias /cgi-bin/ /home/httpd/users/1170wacv/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.krlegal.com krlegal.com>
+ ServerAdmin krlegal@the-link.net
+ DocumentRoot /home/httpd/users/krlegal
+ ServerName www.krlegal.com
+ ErrorLog /home/httpd/users/krlegal/error_log
+ TransferLog /home/httpd/users/krlegal/access_log
+ AddHandler cgi-script .cgi
+ AddHandler cgi-script .pl
+ ScriptAlias /cgi-bin/ /home/httpd/users/krlegal/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.shineit.com shineit.com>
+ ServerAdmin brian@the-link.net
+ DocumentRoot /home/httpd/users/brian
+ ServerName www.shineit.com
+ ErrorLog /home/httpd/users/brian/error_log
+ TransferLog /home/httpd/users/brian/access_log
+ AddHandler cgi-script .cgi
+ AddHandler cgi-script .pl
+ ScriptAlias /cgi-bin/ /home/httpd/users/brian/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.mtci.com mtci.com>
+ ServerAdmin jpslap@the-link.net
+ DocumentRoot /home/httpd/users/jpslap
+ ServerName www.mtci.com
+ ErrorLog /home/httpd/users/jpslap/error_log
+ TransferLog /home/httpd/users/jpslap/access_log
+ AddHandler cgi-script .cgi
+ AddHandler cgi-script .pl
+ ScriptAlias /cgi-bin/ /home/httpd/users/jpslap/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.cyber-distributors.com cyber-distributors.com>
+ ServerAdmin johnr@the-link.net
+ DocumentRoot /home/httpd/users/johnr
+ ServerName www.cyber-distributors.com
+ ErrorLog /home/httpd/users/johnr/error_log
+ TransferLog /home/httpd/users/johnr/access_log
+ AddHandler cgi-script .cgi
+ AddHandler cgi-script .pl
+ ScriptAlias /cgi-bin/ /home/httpd/users/johnr/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost dfs.the-link.net>
+ ServerAdmin root@the-link.net
+ DocumentRoot /home/httpd/users/jughead/gator
+ ServerName dfs.the-link.net
+ ErrorLog /home/httpd/users/jughead/error_log
+ TransferLog /home/httpd/users/jughead/access_log
+ ScriptAlias /cgi-bin/ /home/httpd/jughead/cgi-bin/
+ </VirtualHost>
+ 
+ <VirtualHost www.defuniak.com defuniak.com>
+ ServerAdmin root@the-link.net
+ DocumentRoot /home/httpd/users/jughead/gator
+ ServerName www.defuniak.com
+ ErrorLog /home/httpd/users/jughead/error_log
+ TransferLog /home/httpd/users/jughead/access_log
+ ScriptAlias /cgi-bin/ /home/httpd/jughead/cgi-bin/
+ </VirtualHost>
+ 
+ 
+ > 
+ > Dean
+ > 
+ > 
+ > 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: "Erik T. Brandsberg" <ebrandsb@shell.the-link.net>
+Subject: Re: general/1197: VirtualHost directives don't respond to all the IP's that a name might resolve to.
+Date: Sat, 4 Oct 1997 18:02:11 -0700 (PDT)
+
+ 
+ 
+ 
+ On Sat, 4 Oct 1997, Erik T. Brandsberg wrote:
+ 
+ > The primary ServerName directive is vhost.the-link.net which has the same
+ > IP's as what the virtual hosts are using.  Might this be the problem?
+ 
+ Yup this is the problem.  Call it non-intuitive (I'll agree with you), but
+ the global ServerName dictates what ip addresses will be considered for
+ HTTP/1.1 Host: based vhosting... which is almost never what anyone wants. 
+ The standard workaround is this: 
+ 
+ # disable the global server
+ ServerName localhost
+ 
+ # define a vhost to match any otherwise unspecified ip address
+ <VirtualHost _default_>
+ ServerName whatever
+ ...
+ </VirtualHost>
+ 
+ Dean
+ 
+ 
+
+From: "Erik T. Brandsberg" <ebrandsb@shell.the-link.net>
+To: Dean Gaudet <dgaudet@arctic.org>
+Subject: Re: general/1197: VirtualHost directives don't respond to all the IP's that a name might resolve to.
+Date: Sat, 4 Oct 1997 20:14:11 -0500 (CDT)
+
+ 
+ 
+ 
+ Erik Brandsberg
+ CIO, The Link
+ On Sat, 4 Oct 1997, Dean Gaudet wrote:
+ 
+ > 
+ > 
+ > On Sat, 4 Oct 1997, Erik T. Brandsberg wrote:
+ > 
+ > > The primary ServerName directive is vhost.the-link.net which has the same
+ > > IP's as what the virtual hosts are using.  Might this be the problem?
+ > 
+ > Yup this is the problem.  Call it non-intuitive (I'll agree with you), but
+ > the global ServerName dictates what ip addresses will be considered for
+ > HTTP/1.1 Host: based vhosting... which is almost never what anyone wants. 
+ > The standard workaround is this: 
+ This doesn't quite make sense--the global ServerName directive was
+ pointing to BOTH IP's that I wanted, not just one.  The virtual hosts that
+ I had a problem with were on the same IP's (I used the same dns .hosts
+ file for vhost and every other domain to insure consistancy).  It seems
+ like it chose to respond to HTTP 1.1 requests only on one of the two IP's
+ that were specified in the global servername directive, which I would say
+ is wrong, even given the limitations described.
+ 
+ > 
+ > # disable the global server
+ > ServerName localhost
+ > 
+ > # define a vhost to match any otherwise unspecified ip address
+ > <VirtualHost _default_>
+ > ServerName whatever
+ > ...
+ > </VirtualHost>
+ > 
+ > Dean
+ > 
+ > 
+ > 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: "Erik T. Brandsberg" <ebrandsb@shell.the-link.net>
+Subject: Re: general/1197: VirtualHost directives don't respond to all the IP's that a name might resolve to.
+Date: Sat, 4 Oct 1997 18:46:55 -0700 (PDT)
+
+ 
+ 
+ 
+ On Sat, 4 Oct 1997, Erik T. Brandsberg wrote:
+ 
+ > > Yup this is the problem.  Call it non-intuitive (I'll agree with you), but
+ > > the global ServerName dictates what ip addresses will be considered for
+ > > HTTP/1.1 Host: based vhosting... which is almost never what anyone wants. 
+ > > The standard workaround is this: 
+ >
+ > This doesn't quite make sense--the global ServerName directive was
+ > pointing to BOTH IP's that I wanted, not just one.
+ > The virtual hosts that
+ > I had a problem with were on the same IP's (I used the same dns .hosts
+ > file for vhost and every other domain to insure consistancy).  It seems
+ > like it chose to respond to HTTP 1.1 requests only on one of the two IP's
+ > that were specified in the global servername directive, which I would say
+ > is wrong, even given the limitations described.
+ 
+ Oh you and I are talking about completely different things. 
+ 
+ You're trying to give name-based (i.e. HTTP/1.1) vhosts multiple IP
+ addresses right?  Well, that just isn't possible.  A vhost is either
+ name-based (which works on exactly those ip addresses matching the global
+ ServerName, i.e. 209.12.240.131) or ip-based, it can't be both.
+ 
+ Your global ServerName has exactly one ip address, so all your name based
+ hosts must also have exactly one ip address.
+ 
+ Have you read htdocs/manual/vhosts-in-depth.html ? 
+ 
+ Dean
+ 
+ 
+
+From: "Erik T. Brandsberg" <ebrandsb@shell.the-link.net>
+To: Dean Gaudet <dgaudet@arctic.org>
+Subject: Re: general/1197: VirtualHost directives don't respond to all the IP's that a name might resolve to.
+Date: Sat, 4 Oct 1997 21:06:32 -0500 (CDT)
+
+ 
+ 
+ 
+ Erik Brandsberg
+ CIO, The Link
+ On Sat, 4 Oct 1997, Dean Gaudet wrote:
+ 
+ > 
+ > 
+ > On Sat, 4 Oct 1997, Erik T. Brandsberg wrote:
+ > 
+ > > > Yup this is the problem.  Call it non-intuitive (I'll agree with you), but
+ > > > the global ServerName dictates what ip addresses will be considered for
+ > > > HTTP/1.1 Host: based vhosting... which is almost never what anyone wants. 
+ > > > The standard workaround is this: 
+ > >
+ > > This doesn't quite make sense--the global ServerName directive was
+ > > pointing to BOTH IP's that I wanted, not just one.
+ > > The virtual hosts that
+ > > I had a problem with were on the same IP's (I used the same dns .hosts
+ > > file for vhost and every other domain to insure consistancy).  It seems
+ > > like it chose to respond to HTTP 1.1 requests only on one of the two IP's
+ > > that were specified in the global servername directive, which I would say
+ > > is wrong, even given the limitations described.
+ > 
+ > Oh you and I are talking about completely different things. 
+ > 
+ > You're trying to give name-based (i.e. HTTP/1.1) vhosts multiple IP
+ > addresses right?  Well, that just isn't possible.  A vhost is either
+ > name-based (which works on exactly those ip addresses matching the global
+ > ServerName, i.e. 209.12.240.131) or ip-based, it can't be both.
+ But the name based vhosts had the exact same IP addresses (note plural) as
+ the global servername did.  As I had mentioned, the vhost.the-link.net did
+ have two IP addresses (changed due to this problem) and the vhosts were
+ overlayed on exactly the same IP addresses.  When it had two IP addresses
+ for vhost.the-link.net (the global name), it only handled the virtuals on
+ one of the IP's not both.
+ 
+ > 
+ > Your global ServerName has exactly one ip address, so all your name based
+ > hosts must also have exactly one ip address.
+ > 
+ > Have you read htdocs/manual/vhosts-in-depth.html ? 
+ > 
+ > Dean
+ > 
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Oct  4 19:39:45 PDT 1997
+State-Changed-Why:
+Now that I understand the entire problem ... this should work,
+but even if it is broken it won't be fixed in 1.2.  The vhost code
+has been changed again in 1.3 and it should support this ... maybe
+not in 1.3a1, but in 1.3b1 whenever we release it.
+
+Note that if redundancy is your concern there are other ways to
+achieve the same thing.  You only need one IP address, unless you're
+running two servers -- in that case you could use m4 or perl to
+generate two configs for them.  If you want to use just one server
+with two network interfaces then I suggest (and I suggest this for
+all servers, even with one network interface) that you put all the
+vhost ip addresses on the *loopback* interface rather than on
+the ethernet interface(s).  If you slap an entire net of addresses
+on your loopback then you only need to tell your router where
+to find that net ... and if one host should go down then you can
+move to another host by changing the route on the router.
+
+In any event, sorry for the hassle.  The vhost code sucks when
+it comes to HTTP/1.1-Host based hosts.
+
+Dean
+>Unformatted:
+
+
+
+
+
+
+
+
+
+

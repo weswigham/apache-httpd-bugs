@@ -1,0 +1,177 @@
+From apwww@hyperreal.org  Tue Aug 19 13:09:04 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id NAA12498;
+	Tue, 19 Aug 1997 13:09:04 -0700 (PDT)
+Message-Id: <199708192009.NAA12498@hyperreal.org>
+Date: Tue, 19 Aug 1997 13:09:04 -0700 (PDT)
+From: Sim Harbert <sim.harbert@gtri.gatech.edu>
+Reply-To: sim.harbert@gtri.gatech.edu
+To: apbugs@hyperreal.org
+Subject: Patch to change user directory URL specification
+X-Send-Pr-Version: 3.2
+
+>Number:         1018
+>Category:       mod_userdir
+>Synopsis:       Patch to change user directory URL specification
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Aug 19 13:10:01 1997
+>Last-Modified:  Tue Oct 21 14:34:30 PDT 1997
+>Originator:     sim.harbert@gtri.gatech.edu
+>Organization:
+>Release:        1.2.1
+>Environment:
+uname -a: Linux dragon 2.0.30 #1 Tue Apr 22 10:49:45 EDT 1997 i486 unknown
+>Description:
+This patch allows the specification of the user directories to
+use something other than ~ (tilde).  This allows user directories
+to be accessed by something like 
+
+  http://foo.bar.com/home/tony/index.html
+
+if the configuration line 
+
+  UserHomes home/
+
+is added, rather than 
+
+  http://foo.bar.com/~tony/index.html
+
+which would occur using the default setting or ~ for UserHomes.
+
+Here is the patch:
+
+--- apache_1.2.1/src/mod_userdir.c.orig	Fri Mar  7 09:15:44 1997
++++ apache_1.2.1/src/mod_userdir.c	Tue Aug 19 15:46:59 1997
+@@ -81,42 +81,75 @@
+ #include "httpd.h"
+ #include "http_config.h"
+ 
++#include <string.h>
++
+ module userdir_module;
+ 
+-/*
+- * Sever config for this module is a little unconventional...
+- * It's just one string anyway, so why pretend?
+- */
++/* the per-server or per-virtual-server configuration
++   statically generated once on startup for every server */
++
++typedef struct {
++  char         *userdirs;
++  char         *homes;
++} userdir_server_conf;
+ 
+-void *create_userdir_config (pool *dummy, server_rec *s) { 
+-    return (void*)DEFAULT_USER_DIR; 
++static void *config_server_create(pool *p, server_rec *s)
++{
++  userdir_server_conf *a;
++  
++  a = (userdir_server_conf *)pcalloc(p, sizeof(userdir_server_conf));
++  
++  a->userdirs  = NULL;
++  a->homes  = "~";
++  
++  return (void *)a;
+ }
+ 
+-const char *set_user_dir (cmd_parms *cmd, void *dummy, char *arg)
++static const char *cmd_userdirs(cmd_parms *cmd, void *dconf, char *str)
+ {
+-    void *server_conf = cmd->server->module_config;
+-    
+-    set_module_config (server_conf, &userdir_module, pstrdup (cmd->pool, arg));
+-    return NULL;
++  userdir_server_conf *sconf;
++  
++  sconf = (userdir_server_conf *)get_module_config(cmd->server->module_config,
++						   &userdir_module);
++  sconf->userdirs = pstrdup(cmd->pool, str);
++
++  return NULL;
++}
++
++static const char *cmd_userhomes(cmd_parms *cmd, void *dconf, char *a1)
++{
++  userdir_server_conf *sconf;
++  
++  sconf = (userdir_server_conf *)get_module_config(cmd->server->module_config,
++						   &userdir_module);
++  sconf->homes = a1;
++  
++  return NULL;
+ }
+ 
+ command_rec userdir_cmds[] = {
+-{ "UserDir", set_user_dir, NULL, RSRC_CONF, RAW_ARGS,
++  { "UserDir",   cmd_userdirs,  NULL, RSRC_CONF, RAW_ARGS,
+     "the public subdirectory in users' home directories, or 'disabled'" },
+-{ NULL }
++  { "UserHomes", cmd_userhomes, NULL, RSRC_CONF, TAKE1, 
++    "the prefix to use for users' home directories" },
++  { NULL }
+ };
+ 
+ int translate_userdir (request_rec *r)
+ {
+     void *server_conf = r->server->module_config;
+-    const char *userdirs = (char *)get_module_config(server_conf,
+-						     &userdir_module);
++    userdir_server_conf *sconf =
++      (userdir_server_conf *)get_module_config(server_conf,
++					       &userdir_module);
++    const char *userdirs = sconf->userdirs;
++    
+     char *name = r->uri;
+     const char *w, *dname, *redirect;
+     char *x = NULL;
+ 
+     if (userdirs == NULL || !strcasecmp(userdirs, "disabled") ||
+-        (name[0] != '/') || (name[1] != '~')) {
++        (name[0] != '/') || 
++	strncmp(name + 1, sconf->homes, strlen(sconf->homes))) {
+       return DECLINED;
+     }
+ 
+@@ -124,7 +157,7 @@
+       const char *userdir = getword_conf (r->pool, &userdirs);
+       char *filename = NULL;
+ 
+-      dname = name + 2;
++      dname = name + 1 + strlen(sconf->homes);
+       w = getword(r->pool, &dname, '/');
+ 
+       if (!strcmp(w, ""))
+@@ -196,7 +229,7 @@
+    NULL,			/* initializer */
+    NULL,			/* dir config creater */
+    NULL,			/* dir merger --- default is to override */
+-   create_userdir_config,	/* server config */
++   config_server_create,	/* server config */
+    NULL,			/* merge server config */
+    userdir_cmds,		/* command table */
+    NULL,			/* handlers */
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: Lars.Eilebrecht@unix-ag.org
+State-Changed-When: Tue Oct 21 14:34:29 PDT 1997
+State-Changed-Why:
+
+This can also be achieved via the RewriteRule directive
+(mod_rewrite). I think there is no need to add such a
+feature to the UserDir directive.
+
+>Unformatted:
+
+

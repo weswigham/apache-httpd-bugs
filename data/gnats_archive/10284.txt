@@ -1,0 +1,121 @@
+Received: (qmail 39203 invoked by uid 501); 22 Mar 2002 01:48:58 -0000
+Message-Id: <20020322014858.39202.qmail@apache.org>
+Date: 22 Mar 2002 01:48:58 -0000
+From: Pedro Melo <melo@prodigio.com>
+Reply-To: melo@prodigio.com
+To: submit@bugz.apache.org
+Subject: [PATCH] mod_proxy only keep's last Set-Cookie header
+X-Send-Pr-Version: 3.110
+
+>Number:         10284
+>Category:       mod_proxy
+>Synopsis:       [PATCH] mod_proxy only keep's last Set-Cookie header
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          duplicate
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Mar 21 17:50:00 PST 2002
+>Closed-Date:    Fri Mar 22 08:10:31 PST 2002
+>Last-Modified:  Fri Mar 22 08:10:31 PST 2002
+>Originator:     melo@prodigio.com
+>Release:        1.3.24
+>Organization:
+>Environment:
+Linux pepino.mail.pt 2.4.7-10enterprise #1 SMP Thu Sep 6 16:48:20 EDT 2001 i686 unknown
+Reading specs from /usr/lib/gcc-lib/i386-redhat-linux/2.96/specs
+gcc version 2.96 20000731 (Red Hat Linux 7.1 2.96-98)
+>Description:
+I'm using mod_proxy as a frontend to a bunch of mod_perl sites. My sites send multiple cookies, but mod_proxy only passes the last cookie.
+>How-To-Repeat:
+Any site that send's multiple cookies; put a mod_proxy in front of it with a ProxyPass directive; only the last cookie will appear on your browser.
+>Fix:
+It also seems to solve PR 6055...
+
+I c&p this patch from a xterm; if you can't apply it, please mail me; i can forward you the patch...
+
+Patch against HEAD of CVS:
+
+Index: proxy_http.c
+===================================================================
+RCS file: /home/cvspublic/apache-1.3/src/modules/proxy/proxy_http.c,v
+retrieving revision 1.88
+diff -u -r1.88 proxy_http.c
+--- proxy_http.c        21 Mar 2002 11:38:03 -0000      1.88
++++ proxy_http.c        22 Mar 2002 01:21:39 -0000
+@@ -136,6 +136,20 @@
+     return url;
+ }
+ 
++
++/* copies header key/value into table p if it's a cookie header.
++ * this is a callback function for a ap_table_do below.
++ */
++int ap_proxy_copy_cookie_headers(void *p, const char *key, const char *value)
++{
++    table *d = (table *)p;
++
++    if (!strcasecmp(key, "Set-Cookie") || !strcasecmp(key, "Set-Cookie2"))
++      ap_table_add(d, key, value);
++
++    return 1;
++}
++
+ /*
+  * This handles http:// URLs, and other URLs using a remote proxy over http
+  * If proxyhost is NULL, then contact the server directly, otherwise
+@@ -529,8 +543,20 @@
+         ap_proxy_write_headers(c, ap_pstrcat(p, "HTTP/1.1 ", r->status_line, NULL), resp_hdrs);
+     }
+
+-    /* Setup the headers for our client from upstreams response-headers */
++    /* Setup the headers for our client from upstreams response-headers.
++     * We use resp_hdrs to keep all the Set-Cookie and Set-Cookie2 headers,
++     * and then call ap_overlap_table, because it keep's only the last one.
++     * The we copy all the cookies back.
++                */
++    ap_table_do(ap_proxy_copy_cookie_headers, resp_hdrs, r->headers_out, NULL);
++        
+     ap_overlap_tables(r->headers_out, resp_hdrs, AP_OVERLAP_TABLES_SET);
++
++    ap_table_unset(r->headers_out, "Set-Cookie");
++    ap_table_unset(r->headers_out, "Set-Cookie2");
++
++    ap_table_do(ap_proxy_copy_cookie_headers, r->headers_out, resp_hdrs, NULL);
++
+     /* Add X-Cache header - be careful not to obliterate any upstream headers */
+     ap_table_mergen(r->headers_out, "X-Cache",
+                   ap_pstrcat(r->pool, "MISS from ",
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: slive
+State-Changed-When: Fri Mar 22 08:10:31 PST 2002
+State-Changed-Why:
+[This is a standard response.]
+This issue has been reported before;
+please search the FAQ and the bug database.
+Thanks for using Apache!
+Class-Changed-From-To: sw-bug-duplicate
+Class-Changed-By: slive
+Class-Changed-When: Fri Mar 22 08:10:31 PST 2002
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,177 @@
+Received: (qmail 68805 invoked by uid 501); 8 Jun 2000 18:58:40 -0000
+Message-Id: <20000608185840.68804.qmail@locus.apache.org>
+Date: 8 Jun 2000 18:58:40 -0000
+From: Byron Brummer <byron@omix.com>
+Reply-To: byron@omix.com
+To: submit@bugz.apache.org
+Subject: "echo var"'s new default of encoding the output severly and needlessly breaks compatiblity
+X-Send-Pr-Version: 3.110
+
+>Number:         6164
+>Category:       mod_include
+>Synopsis:       "echo var"'s new default of encoding the output severly and needlessly breaks compatiblity
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          analyzed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jun 08 12:00:00 PDT 2000
+>Closed-Date:    
+>Last-Modified:  Thu Jun  8 18:50:00 PDT 2000
+>Originator:     byron@omix.com
+>Release:        1.3.12
+>Organization:
+>Environment:
+All OS, all patch levels, all compilers.  Eg, this is a mis-feature/code bug,
+not a platform bug.
+>Description:
+From CHANGES:
+
+  *) mod_include now entity encodes output from "printenv" and "echo var"
+     by default.  The encoding for "echo var" can be set to URL encoding
+     or no encoding using the new "encoding" attribute to the echo tag.
+     [Marc Slemko]
+
+This is simply not acceptible.  We use echo var at times to dynamically inject
+small pieces of HTML code.  We've done this for years, and works quite well.  This
+new "feature" breaks this entirely, requiring every page that uses echo var to
+be manually changed to include "encoding=none", which of course doesn't work
+on older Apache versions at all, let alone across SSI implementations of other
+servers.
+
+There is no justification for this change.  At the very least, there should exist
+an httpd.conf directive to change this default globally or per directory/location.
+
+At this point, we can not use 1.3.12 without manually pulling this change out of
+mod_include.c as this affects thousands of pages, some which span differing
+web server venders.
+>How-To-Repeat:
+
+>Fix:
+
+The encoding options are a nice idea, implemented carelessly.  The following
+recommendations are thus made:
+
+1) Return the default encoding to "none".
+2) Add an httpd.conf directive to change the default encoding, perhaps even
+   offer a method to extend it, but again defaulting to "none".
+3) In the future, think about compatiblity before blindly implementing the new
+   wis-bang feature of the week.
+
+Thank you.
+
+-Byron Brummer, a highly disgruntled Apache user.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Thu Jun  8 17:33:19 PDT 2000
+State-Changed-Why:
+Please understand what you are talking about before saying
+there is "no justification for this change".  There is a great
+deal of justification, and a great deal of consideration was given to this.
+Please see http://www.apache.org/info/css-security/ for details.  While perhaps a way to change the default would be useful for those who think they have no such problems, the default must remain as it is.
+
+From: Marc Slemko <marcs@znep.com>
+To: Byron Brummer <byron@omix.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: mod_include/6164: "echo var"'s new default of encoding the output
+ severly and needlessly breaks compatiblity
+Date: Thu, 8 Jun 2000 19:46:53 -0600 (MDT)
+
+ On Thu, 8 Jun 2000, Byron Brummer wrote:
+ 
+ > marc@apache.org wrote:
+ > > Synopsis: "echo var"'s new default of encoding the output severly and
+ > > needlessly breaks compatiblity
+ > 	>snip<
+ > > Please understand what you are talking about before saying there is "no
+ > > justification for this change".  There is a great deal of justification,
+ > > and a great deal of consideration was given to this. Please see
+ > > http://www.apache.org/info/css-security/ for details.  While perhaps a way
+ > > to change the default would be useful for those who think they have no
+ > > such problems, the default must remain as it is.
+ > 
+ > 	Ok, just to confirm I understand this correctly.
+ > 
+ > 	This "fix" was somehow "required" to "protect" Apache server users
+ > 	who somehow managed to create an Apache module, CGI program, invalid
+ > 	httpd.conf, or similar application that allows random remote users
+ > 	to inject tainted content into the web server's own environment
+ > 	space.
+ > 
+ > 	Is this correct?
+ > 
+ > 	Are you trying to tell me that this is really nothing more then an
+ > 	attempt to somehow protect the lazy and the incompetent from them
+ > 	selfs?
+ > 
+ > 	I've read the CSS docs in length from CERT and Apache.  So far, I've
+ > 	seen absolutely nothing which would indicate a condition where a
+ > 	remote user could some how manage to change the content of a
+ > 	server's environment space.  Please show me such an example, for I
+ > 	have not seen a single one.  Not by you, not by CERT, not by Apache,
+ > 	not by anyone.
+ 
+ Create a document that says:
+ 
+ 	You are accessing <!--#echo var="DOCUMENT_URI" -->.
+ 
+ Suppose you want to do this.  Stuff like this one of the most 
+ significant uses, in general, of the "echo" directive.  With the
+ way Apache used to be, there is _NO_ way you can do this and properly
+ encode output to protect yourself.  
+ 
+ Based on knowledge of the demographics of the user base in terms of what
+ they use echo for, the majority of users use it in a way that requires
+ this.  So, by default, a behaviour that covers the most users possible and
+ where a user messing up results in an obvious problem is preferred.
+ 
+ > 	How far are you going to go?  What's next?  Are you planning on
+ > 	screwing up mod_cgi as well, encoding anything a CGI program spits
+ > 	out?  Because I can guarantee you there will be far, far more CSS
+ > 	conditions to be found in CGI programs then you'll ever find in
+ > 	SSI's echo var.  And what about "exec cgi|cmd"?  Should I be looking
+ > 	forward to adding, "encoding=none" to them in 1.3.13?  Neither you
+ > 	nore the references you provide show this change to have been
+ > 	anything but a case of shortsighted panic.
+ 
+ Please, before you go on your rant try to understand the situation.  All
+ of those are completely different situations.
+ 
+ > 
+ > 	Apache is the most powerful web server ever created, most
+ > 	particularly because of it's ability to handle dynamic content. 
+ > 	Please do not hobble it any further.
+ > 
+ > 	If this is just the start of problems we're to have with 1.3.12+,
+ > 	things do not bode well for Apache...
+ > 
+ > -- 
+ > -Zenin (zenin@archive.rhps.org)           From The Blue Camel we learn:
+ > BSD:  A psychoactive drug, popular in the 80s, probably developed at UC
+ > Berkeley or thereabouts.  Similar in many ways to the prescription-only
+ > medication called "System V", but infinitely more useful. (Or, at least,
+ > more fun.)  The full chemical name is "Berkeley Standard Distribution".
+ > 
+ 
+>Unformatted:
+ >Quarter:        
+ >Keywords:       
+ >Date-Required:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

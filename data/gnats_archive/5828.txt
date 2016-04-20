@@ -1,0 +1,131 @@
+Received: (qmail 2394 invoked by uid 65534); 1 Mar 2000 22:07:05 -0000
+Message-Id: <20000301220705.2393.qmail@locus.apache.org>
+Date: 1 Mar 2000 22:07:05 -0000
+From: Randall Britten <randall@is.co.za>
+Reply-To: randall@is.co.za
+To: submit@bugz.apache.org
+Subject: CGI does not support PATH_INFO and QUERY_STRING simultaneously
+X-Send-Pr-Version: 3.110
+
+>Number:         5828
+>Category:       mod_cgi
+>Synopsis:       CGI does not support PATH_INFO and QUERY_STRING simultaneously
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          feedback
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Mar 01 14:10:00 PST 2000
+>Closed-Date:
+>Last-Modified:  Wed May 24 10:27:29 PDT 2000
+>Originator:     randall@is.co.za
+>Release:        1.3.6
+>Organization:
+>Environment:
+Redhat x86 Linux 6.0, with Apache in distribution.
+>Description:
+The CGI script that I am running cannot access both the PATH_INFO and the QUERY_STRING at the same time.  This is an issue in the following simple proxy script.  If this is the URL: 
+http://visible.host.co.za/cgi-bin/nph-proxy1.cgi/path/on-hidden.asp?var1=val123
+
+Then the QUERY_STRING should be var1=val123 but it isn't set.
+
+Here is the script, which works on Netscape Enterprise Server 3.6.2
+
+#!/usr/bin/perl -w
+use strict;
+use Socket;
+my ($server, $sn, $sc, $rm, $ct, $cl, $rq, $qs, $buf, $dummy, @addrs, $remote,$port, $iaddr, $paddr, $proto, $line);
+my ($co, $len, $data);
+
+$server = "hidden.host.co.za";
+$port = 80;
+$proto   = getprotobyname('tcp');
+
+
+$sn = $ENV{"SERVER_NAME"};
+$sc = $ENV{"SCRIPT_NAME"};
+$rm = $ENV{"REQUEST_METHOD"};
+$ct = $ENV{"CONTENT_TYPE"};
+$cl = $ENV{"CONTENT_LENGTH"};
+$rq = $ENV{"PATH_INFO"};
+$qs = $ENV{"QUERY_STRING"};
+if (not $qs eq "") { $rq = "${rq}?${qs}"; }
+$buf = "${rm} $rq HTTP/1.0\r\n";
+$buf = "${buf}Host: ${sn}${sc}\r\n";
+if (not $ct eq "") { $buf = "${buf}Content-type: ${ct}\r\n"; }
+if (not $cl eq "") { $buf = "${buf}Content-length: ${cl}\r\n"; }
+$buf = "${buf}\r\n";
+if (not $cl eq "") { read(STDIN,$co,$cl); $buf = "${buf}${co}"; }
+if ($server =~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {
+   @addrs = pack('C4',split(/\./,$server));
+} else {
+   ($dummy,$dummy,$dummy,$dummy,@addrs) = gethostbyname($server);
+}
+
+$remote  = $server;
+if ($port =~ /\D/) { $port = getservbyname($port, 'tcp') }
+die "No port" unless $port;
+$iaddr   = inet_aton($remote)               || die "no host: $remote";
+$paddr   = sockaddr_in($port, $iaddr);
+
+$proto   = getprotobyname('tcp');
+socket(S, PF_INET, SOCK_STREAM, $proto)  || die "socket: $!";
+connect(S, $paddr)    || die "connect: $!";
+
+#socket(S,2,2,$proto) || die "socket: $!";
+#connect(S,pack("S n a4 x8",2,$port,$addrs[0])) || die "connect: $!";
+select(STDOUT) || die "select: $!"; $| = 1;
+select(S) || die "select: $!"; $| = 1;
+syswrite(S,$buf,length($buf)) || die "syswrite: $!";
+while ($len = sysread(S,$data,65536)) { syswrite(STDOUT,$data,$len); }
+close(S) || die "close: $!";
+>How-To-Repeat:
+The description above should give enough info to reproduce the problem.
+>Fix:
+Set both PATH_INFO and QUERY_STRING env variables.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Thu Apr 13 12:47:40 PDT 2000
+State-Changed-Why:
+
+Firstly, please upgrade to a current version of Apache and
+verify that the problem still exists.  Also, do you see
+the same behaviour when using a normal (not nph) script?
+
+Comment-Added-By: coar
+Comment-Added-When: Wed May 24 10:27:27 PDT 2000
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

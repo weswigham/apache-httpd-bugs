@@ -1,0 +1,168 @@
+From nobody@hyperreal.com  Mon Feb 17 17:20:16 1997
+Received: by taz.hyperreal.com (8.8.4/V2.0) id RAA24474; Mon, 17 Feb 1997 17:20:16 -0800 (PST)
+Message-Id: <199702180120.RAA24474@taz.hyperreal.com>
+Date: Mon, 17 Feb 1997 17:20:16 -0800 (PST)
+From: Keith Rautenbach <Keith.Rautenbach@isltd.insignia.com>
+Reply-To: Keith.Rautenbach@isltd.insignia.com
+To: apbugs@hyperreal.com
+Subject: Module with server_config but no per-dir config will seggy in set_flag_slot.
+X-Send-Pr-Version: 3.2
+
+>Number:         178
+>Category:       config
+>Synopsis:       Module with server_config but no per-dir config will seggy in set_flag_slot.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Feb 17 17:30:01 1997
+>Last-Modified:  Sun Mar 30 17:43:01 PST 1997
+>Originator:     Keith.Rautenbach@isltd.insignia.com
+>Organization:
+>Release:        1.2b6
+>Environment:
+n/a
+>Description:
+Server crashes in set_flag_slot()
+if module has server_config but no per-dir-config
+
+dbx httpd 
+Type 'help' for help.
+reading symbolic information ...
+(dbx) r  -X -d  /usr/local/httpd/ServerRoot
+
+Segmentation fault in set_flag_slot at line 709 in file "http_config.c"
+  709       *(int *)(struct_ptr + offset) = arg ? 1 : 0;
+(dbx) t
+set_flag_slot(cmd = 0x2ff22318, struct_ptr = (nil), arg = 0x1), line 709 in "http_config.c"
+invoke_cmd(cmd = 0x20001b88, parms = 0x2ff22318, mconfig = (nil), args = ""), line 603 in "http_config.c"
+unnamed block $b1, line 671 in "http_config.c"
+handle_command(parms = 0x2ff22318, config = 0x20007960, l = "EnableLockDeletion On"), line 671 in "http_config.c"
+unnamed block $b9, line 684 in "http_config.c"
+srm_command_loop(parms = 0x2ff22318, config = 0x20007960), line 684 in "http_config.c"
+process_resource_config(s = 0x20007030, fname = "/usr/local/httpd/ServerRoot/conf/access.conf", p = 0x20007008, ptemp = 0x20009028), line 764 in "http_config.c"
+read_config(p = 0x20007008, ptemp = 0x20009028, confname = "conf/httpd.conf"), line 1074 in "http_config.c"
+main(??, ??) at 0x100003b0
+>How-To-Repeat:
+Add following module:
+
+#include "httpd.h"
+#include "http_config.h"
+#include "http_core.h"
+#include "http_protocol.h"
+
+module insignia_module;
+
+typedef struct {
+	int	enable_lock_delete;
+} insignia_config_rec;
+
+
+static void* insignia_create_svr_config( pool* p, server_rec* d )
+{
+	/*
+	 * Set the defaults
+	 */
+	insignia_config_rec *rec = (insignia_config_rec*)
+		pcalloc(p, sizeof(insignia_config_rec));
+
+	rec->enable_lock_delete = 1;
+	return(rec);
+}
+
+
+static command_rec insignia_commands[] = {
+{ "EnableLockDeletion", set_flag_slot,
+    (void*)XtOffsetOf(insignia_config_rec,enable_lock_delete), RSRC_CONF, FLAG, 
+	" Deletion of lock; on/off"
+ },
+{ NULL }
+};
+
+module insignia_module = {
+   STANDARD_MODULE_STUFF,
+   NULL,			/* initializer */
+   NULL,			/* dir config creater */
+   NULL,			/* dir merger --- default is to override */
+   insignia_create_svr_config,	/* server config */
+   NULL,			/* merge server config */
+   insignia_commands,		/* command table */
+   NULL,			/* handlers */
+   NULL,			/* filename translation */
+   NULL,			/* check_user_id */
+   NULL,			/* check auth */
+   NULL,			/* check access */
+   NULL,			/* type_checker */
+   NULL,			/* fixups */
+   NULL				/* logger */
+};
+
+and add to access.conf
+
+	EnableLockDeletion On
+>Fix:
+I am using the following:
+
+diff -C 5 http_config.{c,fix.c} 
+*** http_config.c       Sun Jan 26 01:15:11 1997
+--- http_config.fix.c   Tue Feb 18 01:14:14 1997
+***************
+*** 666,676 ****
+                sconfig =
+                    (*mod->create_server_config)(parms->pool, parms->server);
+                set_module_config (parms->server->module_config, mod, sconfig);
+            }
+            
+!           retval = invoke_cmd (cmd, parms, mconfig, args);
+            mod = mod->next;    /* Next time around, skip this one */
+        }
+      } while (retval && !strcmp(retval, DECLINE_CMD));
+  
+      return retval;
+--- 666,676 ----
+                sconfig =
+                    (*mod->create_server_config)(parms->pool, parms->server);
+                set_module_config (parms->server->module_config, mod, sconfig);
+            }
+            
+!           retval = invoke_cmd (cmd, parms, mconfig ? mconfig: sconfig, args);
+            mod = mod->next;    /* Next time around, skip this one */
+        }
+      } while (retval && !strcmp(retval, DECLINE_CMD));
+  
+      return retval;%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Mar 22 15:29:47 PST 1997
+State-Changed-Why:
+The fix provided assumes that per_server configs and per_dir configs
+are the same structure.  However that is not required, and there
+are existing modules which have different per_server and per_dir
+configuration structures.  I can't see a clean solution to
+this problem except to not use set_flag_slot when a per_server
+change is desired...
+State-Changed-From-To: analyzed-closed
+State-Changed-By: coar@decus.org
+State-Changed-When: Sun Mar 30 17:43:01 PST 1997
+State-Changed-Why:
+It it not safe to safe to assume that all modules use
+identical structures for both per-directory and per-
+server configuration information; this is already false
+for some existing modules.  A directive handler can be
+called under either condition, and must be prepared
+to differentiate if the environments aren't identical.
+To work around the stated problem, the supported
+solutions are to either a) change the directive
+definition so it can only be used in environments the
+module is prepared to support, or b) provide a jacket
+routine within the module to set_*_slot() that only
+calls it with valid arguments.
+
+Thank you for using Apache.
+>Unformatted:
+
+

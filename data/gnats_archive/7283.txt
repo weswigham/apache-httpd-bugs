@@ -1,0 +1,123 @@
+Received: (qmail 86635 invoked by uid 501); 20 Feb 2001 10:56:16 -0000
+Message-Id: <20010220105616.86634.qmail@apache.org>
+Date: 20 Feb 2001 10:56:16 -0000
+From: Ken Allan <k.allan@au.darkbluesea.com>
+Reply-To: k.allan@au.darkbluesea.com
+To: submit@bugz.apache.org
+Subject: Vary header not understood correctly and completely by IE 5.5
+X-Send-Pr-Version: 3.110
+
+>Number:         7283
+>Category:       mod_rewrite
+>Synopsis:       Vary header not understood correctly and completely by IE 5.5
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Feb 20 03:00:01 PST 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     k.allan@au.darkbluesea.com
+>Release:        1.3.17
+>Organization:
+apache
+>Environment:
+Client: Windows 2000, Internet Explorer 5.5
+Server: FreeBSD 4.2, Apache 1.3.17
+>Description:
+Internet explorer for Win32 platforms does not seem to completely and correctly provide support for the Vary: header, returned in the HTTP/1.1 reply from Apache Web Server.
+
+When it recieves a "Vary: Host" header in the reply, it seems to automatically mark the item as uncacheable, not just mark it as uncacheable for other hosts.
+
+There is already a workaround for this issue (via the force-no-vary variable), but it also imlies a force-response-1.0, which is quite a nasty compromise to have to come to grips with.
+
+This problem has typically raised it's head in the situation where we are using mod_rewrite to accomplish mass virtual hosting.
+Typically if the HTTP/1.1 browser gets a request for a different "Host" it will not use the cashed copy it has anyhow, and this is proven in the case of the native apache virtual-hosts, in that they do not output a "Host" header, yet work quite well.
+This may be why the Internet Explorer browser has not implemented the Vary: Host support, (ie: it is ludicrous to suggest that a brower *will* use a cached copy of another host's pages...)
+
+I realize that mod rewrite may be doing everything correct by-the-book, but it still sits hard on the old conscience that 80% of the worlds browsers are not caching your pages properly, causing additional bandwidth, and stopping your pages from looking responsive (especially mouse-overs).
+
+It had been suggested previously that we could perhaps set a "[NV=variable]" flag in the optional flags section of the RewriteCond. (PR#1644)
+
+I have partially implemented a lesser version of this, in that the RewriteRule will accept a [NV] option and ignore any varies for that rule, or it's associated conditions.
+
+Potentially this means that if the rules conditions rely on other HTTP_* variables, the corresponding Vary will not be created, and will have to be set manually. However this was acceptible for me (and at the limit of my programming ability :).
+
+I am submitting my patches so that others who may be having the same problems with the mass virtual hosting, using mod_rewrite will be able to fix the issue.
+>How-To-Repeat:
+Setup mass virtual hosting using something like the following (note: in order to use the lowercase map function, you will also need to apply the mod-rewrite patch located at: http://httpd.apache.org/dist/apache_1.3.17-fix.diff):
+  RewriteEngine On
+  RewriteMap lowercase int:tolower
+  RewriteCond ${lowercase:%{HTTP_HOST}|NONE} ^(www\.)?([^\:\/]+)(\:.*)?$
+  RewriteRule ^/(.*)$ /%2/$1 [E=FNAME:$1,E=FPATH:/www/%2/$1]
+
+Start up IE 5, and try to use mouseovers or back into a previously loaded page in the virtual domain. Your documents will be reloaded even though they have not expired.
+>Fix:
+Application of the following patch (to apache_1.3.17 source tree) will allow a [NV] flag to be specified on the RewriteRule to ignore any varies that would be otherwise applied for that rule.
+
+EG:
+  RewriteEngine On
+  RewriteMap lowercase int:tolower
+  RewriteCond ${lowercase:%{HTTP_HOST}|NONE} ^(www\.)?([^\:\/]+)(\:.*)?$
+  RewriteRule ^/(.*)$ /%2/$1 [E=FNAME:$1,E=FPATH:/www/%2/$1,NV]
+
+Patch follows:
+--- src/modules/standard/mod_rewrite.c.orig     Wed Feb  7 08:03:27 2001
++++ src/modules/standard/mod_rewrite.c Mon Feb 19 23:50:25 2001
+@@ -866,6 +866,10 @@
+             cfg->forced_responsecode = status;
+         }
+     }
++    else if (   strcasecmp(key, "novary") == 0
++             || strcasecmp(key, "NV") == 0   ) {
++        cfg->flags |= RULEFLAG_NOVARY;
++    }
+     else if (   strcasecmp(key, "last") == 0
+              || strcasecmp(key, "L") == 0   ) {
+         cfg->flags |= RULEFLAG_LASTRULE;
+@@ -1876,8 +1880,10 @@
+      * to the Vary field of the response.
+      */
+     if ((vary = ap_table_get(r->notes, VARY_KEY)) != NULL) {
+-        ap_table_merge(r->headers_out, "Vary", vary);
+-        ap_table_unset(r->notes, VARY_KEY);
++        if (! (p->flags & RULEFLAG_NOVARY)) {
++            ap_table_merge(r->headers_out, "Vary", vary);
++            ap_table_unset(r->notes, VARY_KEY);
++        }
+     }
+ 
+     /*
+--- src/modules/standard/mod_rewrite.h.orig     Mon Feb 19 23:33:05 2001
++++ src/modules/standard/mod_rewrite.h Mon Feb 19 23:34:23 2001
+@@ -214,6 +214,7 @@
+ #define RULEFLAG_GONE               1<<10
+ #define RULEFLAG_QSAPPEND           1<<11
+ #define RULEFLAG_NOCASE             1<<12
++#define RULEFLAG_NOVARY             1<<15
+ 
+ #define MAPTYPE_TXT                 1<<0
+ #define MAPTYPE_DBM                 1<<1
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

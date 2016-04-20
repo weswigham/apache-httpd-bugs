@@ -1,0 +1,158 @@
+Received: (qmail 94772 invoked by uid 501); 28 Sep 2001 19:16:55 -0000
+Message-Id: <20010928191655.94771.qmail@apache.org>
+Date: 28 Sep 2001 19:16:55 -0000
+From: Peter H.Smith <Peter.H.Smith.84@Alum.Dartmouth.org>
+Reply-To: Peter.H.Smith.84@Alum.Dartmouth.org
+To: submit@bugz.apache.org
+Subject: Dangling Pointer Error in mod_ssl (pool freed too early)?
+X-Send-Pr-Version: 3.110
+
+>Number:         8425
+>Category:       general
+>Synopsis:       Dangling Pointer Error in mod_ssl (pool freed too early)?
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Sep 28 12:20:00 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     Peter.H.Smith.84@Alum.Dartmouth.org
+>Release:        1.3.19
+>Organization:
+apache
+>Environment:
+{Apache 1.3.19, OpenSSL 0.9.6, mod_ssl-2.8.2-1.3.19, JServ 1.1.2}
+Windows 2000, NT 4, XP RC2, '98, Me (various configurations).
+Built with Visual C++ SP 4, using the NMake driver.
+Also built manually with hand-generated project files similar to those shipped
+with the distribution, instrumented with BoundsChecker (defined ALLOC_USE_MALLOC before rebuilding).
+Appears to be a memory management glitch between mod_ssl and Apache/EAPI.
+>Description:
+Sorry to bother you since this appears to be a mod_ssl problem, but I'm having
+trouble figuring out how to debug.  If you want to tack on helpful advice
+before rejecting this as a foreign module issue, I'd be very pleased.  If
+other people are looking at this same issue, I'd like to get in touch with
+them.
+
+We are having stability problems with Apache on various Windows platforms.
+We get intermittent (low frequency) crashes of Apache when SSL is enabled.
+We are using JServ and mod_rewrite, but the crash seems to be reproducible
+with mod_rewrite removed from the module load list.  To reproduce, I aim
+two Internet Explorer browsers at the victim Apache, and pull up a
+simple Servlet page in each over SSL.  I then hold down F5 in one browser
+to flood the server with abortive closes, while flicking F5 at about .7s
+intervals (enough time for the page to display each time).  Usually get
+the crash within 5s.  We can't prove that the intermittent crashes are due
+to the same input conditions, but we have verified that the smoking ruins
+are always the same shape.  The crash is in ap_ctx_get, called by
+ssl_io_suck_read, called by SSL_recvwithtimeout, in this code fragment:
+
+    actx = (ap_ctx *)SSL_get_app_data2(ssl);
+    if (actx != NULL)
+        r = (request_rec *)ap_ctx_get(actx, "ssl::request_rec"); // r has been freed.
+
+    rv = -1;
+    if (r != NULL) {
+        ss = ap_ctx_get(r->ctx, "ssl::io::suck");  // r->ctx is garbage
+
+The comments reflect my perception of the situation, and also what BoundsChecker
+tells me if I step through in the debugger really slowly.
+
+I think somebody is clearing a parent pool that also contains the memory that
+is used by OpenSSL.  I'm not sure why.  I'd like to hit a breakpoint to find
+out more.  In writing this, it occurs to me that I should use pool free
+callbacks to provide myself with convenient places to set breakpoints.
+If there are other convenient tricks, I'd appreciate pointers (even books
+on the topic -- I have the O'Reilly and Sams books so far).
+
+Here's what BoundsChecker tells me:
+
+Expression uses dangling pointer
+PTR: 0x01B61AE0
+
+Location of Error
+ap_ctx_get	d:\apache\apache\src\ap\ap_ctx.c	127
+ssl_io_suck_read	D:\apache\apache\src\modules\ssl\ssl_engine_io.c	261
+SSL_recvwithtimeout	D:\apache\apache\src\modules\ssl\ssl_engine_io.c	567
+ssl_io_hook_recvwithtimeout	D:\apache\apache\src\modules\ssl\ssl_engine_io.c	460
+ap_hook_call_func	d:\apache\apache\src\ap\ap_hook.c	649
+ap_hook_call	d:\apache\apache\src\ap\ap_hook.c	382
+buff_read	d:\apache\apache\src\main\buff.c	299
+saferead_guts	d:\apache\apache\src\main\buff.c	702
+read_with_errors	d:\apache\apache\src\main\buff.c	753
+ap_bgets	d:\apache\apache\src\main\buff.c	906
+getline	d:\apache\apache\src\main\http_protocol.c	834
+read_request_line	d:\apache\apache\src\main\http_protocol.c	957
+ap_read_request	d:\apache\apache\src\main\http_protocol.c	1119
+child_sub_main	d:\apache\apache\src\main\http_main.c	5561
+child_main	d:\apache\apache\src\main\http_main.c	5638
+_threadstartex	threadex.c	212
+
+Point of Allocation
+ap_palloc	d:\apache\apache\src\main\alloc.c	901
+ap_pcalloc	d:\apache\apache\src\main\alloc.c	980
+ap_read_request	d:\apache\apache\src\main\http_protocol.c	1079
+child_sub_main	d:\apache\apache\src\main\http_main.c	5561
+child_main	d:\apache\apache\src\main\http_main.c	5638
+_threadstartex	threadex.c	212
+
+Point of De-allocation
+ap_clear_pool	d:\apache\apache\src\main\alloc.c	708
+ap_destroy_pool	d:\apache\apache\src\main\alloc.c	720
+child_sub_main	d:\apache\apache\src\main\http_main.c	5572
+child_main	d:\apache\apache\src\main\http_main.c	5638
+_threadstartex	threadex.c	212
+
+
+>How-To-Repeat:
+If you want, I can send you a zip of my debug build.  You'll have to give me
+an FTP server to push to; I don't have anything out on the Internet.  Takes
+about 8Mb.
+
+Configure Apache with both JServ and SSL.  Run it on Windows (I use 2000 Pro).  Here's my Loadmodule section (note .so's changed because I was sloppy when I
+redid the VC++ project from scratch):
+
+ClearModuleList
+AddModule mod_so.c mod_mime.c mod_access.c mod_auth.c mod_negotiation.c
+AddModule mod_include.c mod_dir.c mod_cgi.c
+AddModule mod_alias.c mod_env.c mod_log_config.c mod_asis.c mod_imap.c
+AddModule mod_actions.c mod_setenvif.c
+LoadModule ssl_module debug/mod_ssl.dll
+LoadModule jserv_module debug/ApacheModuleJServ.dll
+LoadModule idleapache_mon_module debug/mod_idleapache_mon.dll
+LoadModule rewrite_module debug/mod_rewrite.dll
+LoadModule expires_module debug/mod_expires.dll
+
+Point two IE browsers from other machines at a servlet page (can be any
+servlet).  Hold down F5 (refresh) on one browser, while punching F5
+periodically in the other browser.  You'll get a crash within a short
+while.
+>Fix:
+Still investigating (Apache and OpenSSL debug is new for me :-)
+I assume we have to convince whatever is freeing the pool to hold off,
+or change mod_ssl to save its data in a different pool.  If I get
+desperate I might use a TLS (hope it doesn't come to that...)
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,76 @@
+Received: (qmail 16379 invoked by uid 2012); 30 Oct 1997 22:33:44 -0000
+Message-Id: <19971030223344.16378.qmail@hyperreal.org>
+Date: 30 Oct 1997 22:33:44 -0000
+From: Jim Patterson <Jim.Patterson@Cognos.COM>
+Reply-To: Jim.Patterson@Cognos.COM
+To: apbugs@hyperreal.org
+Subject: Apache mistakes executable programs for scripts if they use non-standard extension
+X-Send-Pr-Version: 3.2
+
+>Number:         1340
+>Category:       os-windows
+>Synopsis:       Apache mistakes executable programs for scripts if they use non-standard extension
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Oct 30 14:40:00 PST 1997
+>Last-Modified:  Fri Dec 26 07:49:28 PST 1997
+>Originator:     Jim.Patterson@Cognos.COM
+>Organization:
+>Release:        1.3B2
+>Environment:
+Windows NT 5.0 Beta 1
+Visual C++ 5.0 Service Pack 2
+
+>Description:
+I have an executable program which, following local conventions, I have called
+printers.cgi . After using this successfully for a while with Apache, I added some 
+new code to it and unexpectedly got the following message in Netwcape when I invoked it:
+
+Internal Server Error
+     The server encountered an internal error or misconfiguration and was unable to complete your request.
+     Please contact the server administrator, PattersJ@Cognos.COM and inform them of the time the error occurred, and anything you might have done that may have caused the error.
+
+
+>How-To-Repeat:
+I will reply to the confirmation with the source text for the program I'm
+running. It seems that particular bit-patterns in the first 2K block of the
+program will cause it to be recognized as a script. If you have trouble reproducing
+it I will save the actual executable that triggers it.
+>Fix:
+All DOS and Win32 (Portable Executable format) executables have a magic number
+as their first two bytes. The next 16-bit word is a count of bytes on last page,
+which must be less than the page size (I'm reasonably certain that this is
+512 bytes; I'm still trying to confirm that information though). With this
+information I think the following check will prove more reliable than the
+current heuristic (I've placed this after line 738 of util_script.c):
+
+#include <winnt.h>
+...
+		if (!is_binary) {
+			/* Check to see if it's a executable */
+			IMAGE_DOS_HEADER *hdr = (IMAGE_DOS_HEADER*)interpreter;
+			if (hdr->e_magic == IMAGE_DOS_SIGNATURE && hdr->e_cblp < 512) {
+				is_binary = TRUE;
+			}
+		}
+
+Actually I would recommend replacing the current control-counting method
+with this one - the chances of having scripts that would be misrecognized are
+remote and easily avoided (i.e. don't start your script with the characters MZ).
+
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: ben
+State-Changed-When: Fri Dec 26 07:49:28 PST 1997
+State-Changed-Why:
+Thanks for the suggestion. This change has been added to
+1.3b4-dev.
+
+>Unformatted:
+

@@ -1,0 +1,798 @@
+Received: (qmail 15426 invoked by uid 501); 10 Feb 2002 11:53:39 -0000
+Message-Id: <20020210115339.15425.qmail@apache.org>
+Date: 10 Feb 2002 11:53:39 -0000
+From: Billy Halsey <Billy.Halsey@Sun.COM>
+Reply-To: Billy.Halsey@Sun.COM
+To: submit@bugz.apache.org
+Subject: When ap_extended_status == 1, parent process dies with SIGBUS
+X-Send-Pr-Version: 3.110
+
+>Number:         9785
+>Category:       os-solaris
+>Synopsis:       When ap_extended_status == 1, parent process dies with SIGBUS
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    aaron
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Feb 10 04:00:01 PST 2002
+>Closed-Date:    Wed Mar 13 10:42:16 PST 2002
+>Last-Modified:  Wed Mar 13 10:42:16 PST 2002
+>Originator:     Billy.Halsey@Sun.COM
+>Release:        2.0.32-dev
+>Organization:
+>Environment:
+uname -a: SunOS trinity 5.8 Generic_108528-12 sun4u sparc SUNW,Ultra-5_10
+compiler: gcc-2.95.3 (also exhibited with Sun Workshop 6 update 1 release 1)
+
+>Description:
+From error_log:
+[Sun Feb 10 02:22:57 2002] [notice] seg fault or similar nasty error detected in the parent process
+
+It appears that the 'ws' variable in ap_update_child_status_from_indexes() is getting initialized with a non-aligned value.
+
+Stack backtrace:
+
+[bhalsey@trinity 762]$ dbx httpd core.httpd.17675 
+Reading symbolic information for httpd
+core file header read successfully
+Reading symbolic information for rtld /usr/lib/ld.so.1
+dbx: program is not active
+Reading symbolic information for libaprutil.so.0
+Reading symbolic information for libapr.so.0
+Reading symbolic information for libsendfile.so.1
+Reading symbolic information for libm.so.1
+Reading symbolic information for libsocket.so.1
+Reading symbolic information for libnsl.so.1
+Reading symbolic information for libdl.so.1
+Reading symbolic information for libz.so.1
+Reading symbolic information for libexpat.so.0
+Reading symbolic information for libpthread.so.1
+Reading symbolic information for libc.so.1
+Reading symbolic information for libmp.so.2
+Reading symbolic information for libc_psr.so.1
+Reading symbolic information for libthread.so.1
+detected a multithreaded program
+dbx: program is not active
+t@1 (l@1) terminated by signal BUS (Bus Error)
+(dbx) where
+current thread: t@1
+=>[1] ap_update_child_status_from_indexes(0x0, 0x0, 0x1, 0x0, 0x10, 0xffbef8d0), at 0x77c38
+  [2] make_child(0x16c388, 0x0, 0x0, 0x0, 0x10, 0xc2308), at 0x69914
+  [3] startup_children(0x5, 0xb7c00, 0xb6400, 0x4, 0x1, 0x0), at 0x69a34
+  [4] ap_mpm_run(0x5, 0x10a428, 0x16c388, 0xb6800, 0xb6400, 0x0), at 0x69d48
+  [5] main(0xc0380, 0xc2308, 0x0, 0xb6800, 0xffbefa04, 0xb5800), at 0x6f620
+
+Looking at the disassembly around the area indicated:
+
+0x00077c18: ap_update_child_status_from_indexes+0x0094:	ld      [%o0 + 0x150], %o1
+0x00077c1c: ap_update_child_status_from_indexes+0x0098:	tst     %o1
+0x00077c20: ap_update_child_status_from_indexes+0x009c:	be,a    ap_update_child_status_from_indexes+0x1c0
+(dbx) dis
+0x00077c24: ap_update_child_status_from_indexes+0x00a0:	mov     %l4, %i0
+0x00077c28: ap_update_child_status_from_indexes+0x00a4:	call    0x000b3ff8 [PLT 63: apr_time_now]
+0x00077c2c: ap_update_child_status_from_indexes+0x00a8:	nop     
+0x00077c30: ap_update_child_status_from_indexes+0x00ac:	cmp     %i2, 0x2
+0x00077c34: ap_update_child_status_from_indexes+0x00b0:	be      ap_update_child_status_from_indexes+0xc4
+0x00077c38: ap_update_child_status_from_indexes+0x00b4:	std     %o0, [%l0 + 0x48]
+0x00077c3c: ap_update_child_status_from_indexes+0x00b8:	tst     %i2
+0x00077c40: ap_update_child_status_from_indexes+0x00bc:	bne     ap_update_child_status_from_indexes+0xe4
+0x00077c44: ap_update_child_status_from_indexes+0x00c0:	tst     %i3
+
+Looking at the C code in scoreboard.c, this appears to map to the code around the area of lines 397-422 (revision 1.55).
+
+Looking at global variables as they relate to this function:
+
+(dbx) display ap_extended_status
+ap_extended_status = 1
+
+And now, to look at the registers:
+
+(dbx) regs
+current thread: t@1
+current frame:  [1]
+g0-g3	 0x00000000 0x000c0000 0x0000fd9e 0x00000006
+g4-g7	 0x0000005c 0x00000000 0x00000000 0x000bae00
+o0-o3	 0x0003999f 0xceb6bfde 0x00000000 0x000b7400
+o4-o7	 0x00000000 0x00000000 0xffbef7a8 0x00077c28
+l0-l3	 0xfefc100c 0xfefc000c 0x00000000 0xfefc100c
+l4-l7	 0x00000000 0x00000000 0x00000000 0xff34cd14
+i0-i3	 0x00000000 0x00000000 0x00000001 0x00000000
+i4-i7	 0x00000010 0xffbef8d0 0xffbef820 0x00069914
+y	 0x00000000
+psr	 0xfe901002
+pc	 0x00077c38:ap_update_child_status_from_indexes+0xb4	std     %o0, [%l0 + 0x48]
+npc	 0x00077c3c:ap_update_child_status_from_indexes+0xb8	tst     %i2
+
+As you can see, the offending instruction is std %o0, [%l0 + 0x48] ... And if you look at the value for %o0, you'll see that it's set to 0x0003999f, obviously not aligned properly. Just guessing, perhaps the value is one less than what it should be? (Should be 0x40000?)
+
+As a sidenote, it's interesting that gcc is still using the std opcode, which has been deprecated in favor of stx.
+
+>How-To-Repeat:
+Here's the contents of config.nice. This faithfully reproduces the problem for me. I haven't tried it, but I imagine that disabling extended server status would be a viable workaround for this problem. I would be happy to provide httpd.conf, core, and/or executable if you desire.
+
+Contents of config.nice:
+========================
+
+#! /bin/sh
+#
+# Created by configure
+
+"./configure" \
+"--prefix=/mp3/httpd" \
+"--enable-auth-anon" \
+"--enable-file-cache" \
+"--enable-echo" \
+"--enable-cache" \
+"--enable-mem-cache" \
+"--enable-disk-cache" \
+"--enable-ext-filter" \
+"--enable-case-filter" \
+"--enable-case-filter-in" \
+"--enable-deflate" \
+"--enable-mime-magic" \
+"--enable-cern-meta" \
+"--enable-expires" \
+"--enable-headers" \
+"--enable-usertrack" \
+"--enable-unique-id" \
+"--enable-http" \
+"--enable-dav" \
+"--enable-info" \
+"--enable-cgi" \
+"--enable-cgid" \
+"--enable-dav-fs" \
+"--enable-speling" \
+"--enable-rewrite" \
+"--enable-so" \
+"--with-z=/usr/lib" \
+"--with-mpm=prefork" \
+"$@"
+
+
+Note that I tried this with both --with-mpm=prefork and --with-mpm=worker. Same results in both cases.
+>Fix:
+I would investigate struct scoreboard and any functions that modify ap_scoreboard_image to determine where there might be a problem.
+>Release-Note:
+>Audit-Trail:
+
+From: Billy S Halsey <Billy.Halsey@Sun.COM>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc:  
+Subject: Re: os-solaris/9785: When ap_extended_status == 1,
+ parent process dies with SIGBUS
+Date: Sun, 10 Feb 2002 04:20:43 -0800
+
+ To follow up, turning ExtendedStatus off does not exhibit the problem. 
+ The problem is seen only when ExtendedStatus is set to on.
+ 
+ submit@bugz.apache.org wrote:
+ 
+ >Thank you very much for your problem report.
+ >It has the internal identification `os-solaris/9785'.
+ >The individual assigned to look at your
+ >report is: apache. 
+ >
+ >>Category:       os-solaris
+ >>Responsible:    apache
+ >>Synopsis:       When ap_extended_status == 1, parent process dies with SIGBUS
+ >>Arrival-Date:   Sun Feb 10 04:00:01 PST 2002
+ >>
+ 
+ -- 
+ 
+ =======================================================================
+ Billy S Halsey                              Software Problem Resolution
+ Phone x55403/(858) 526-9403                        ESP Solaris Software
+ Email Billy.Halsey@Sun.COM                        Sun Microsystems, Inc
+                            -NO DAY BUT TODAY-
+ =======================================================================
+ 
+ 
+ 
+
+From: Aaron Bannert <aaron@clove.org>
+To: Billy Halsey <Billy.Halsey@Sun.COM>
+Cc: apbugs@Apache.Org
+Subject: Re: os-solaris/9785: When ap_extended_status == 1, parent process dies with SIGBUS
+Date: Thu, 14 Feb 2002 09:52:16 -0800
+
+ One more thing while I have your attention:
+ 
+ What is the output of 'grep SHMEM srclib/apr/include/apr.h'?
+ 
+ thanks,
+ -aaron
+
+From: Billy S Halsey <Billy.Halsey@Sun.COM>
+To: Aaron Bannert <aaron@clove.org>
+Cc: apbugs@Apache.Org
+Subject: Re: os-solaris/9785: When ap_extended_status == 1,
+ parent process dies with SIGBUS
+Date: Thu, 14 Feb 2002 10:51:05 -0800
+
+ Hi Aaron,
+ 
+ Thanks for the reply. I've quoted the contents of my httpd.conf file 
+ below. Additionally, there's the output from the grep SHMEM command you 
+ wanted me to run. Let me know if you need anything else. Thanks!
+ 
+ httpd.conf:
+ ===========
+ 
+ ServerRoot "/mp3/httpd"
+ 
+ <IfModule !mpm_winnt.c>
+ <IfModule !mpm_netware.c>
+ </IfModule>
+ </IfModule>
+ 
+ <IfModule !mpm_netware.c>
+ <IfModule !perchild.c>
+ ScoreBoardFile logs/apache_runtime_status
+ </IfModule>
+ </IfModule>
+ 
+ 
+ <IfModule !mpm_netware.c>
+ PidFile logs/httpd.pid
+ </IfModule>
+ 
+ Timeout 300
+ 
+ KeepAlive On
+ 
+ MaxKeepAliveRequests 100
+ 
+ KeepAliveTimeout 15
+ 
+ 
+ <IfModule prefork.c>
+ StartServers         5
+ MinSpareServers      5
+ MaxSpareServers     10
+ MaxClients         150
+ MaxRequestsPerChild  0
+ </IfModule>
+ 
+ <IfModule worker.c>
+ StartServers         2
+ MaxClients         150
+ MinSpareThreads     25
+ MaxSpareThreads     75
+ ThreadsPerChild     25
+ MaxRequestsPerChild  0
+ </IfModule>
+ 
+ <IfModule perchild.c>
+ NumServers           5
+ StartThreads         5
+ MinSpareThreads      5
+ MaxSpareThreads     10
+ MaxThreadsPerChild  20
+ MaxRequestsPerChild  0
+ </IfModule>
+ 
+ <IfModule mpm_winnt.c>
+ ThreadsPerChild 250
+ MaxRequestsPerChild  0
+ </IfModule>
+ 
+ <IfModule beos.c>
+ StartThreads               10
+ MaxClients                 50
+ MaxRequestsPerThread       10000
+ </IfModule>   
+ 
+ <IfModule mpm_netware.c>
+ ThreadStackSize      65536
+ StartThreads           250
+ MinSpareThreads         25
+ MaxSpareThreads        250
+ MaxThreads            1000
+ MaxRequestsPerChild      0
+ </IfModule>
+ 
+ Listen 81
+ 
+ 
+ ExtendedStatus On
+ 
+ 
+ <IfModule !mpm_winnt.c>
+ <IfModule !mpm_netware.c>
+ User web
+ Group web
+ </IfModule>
+ </IfModule>
+ 
+ ServerAdmin Billy.Halsey@Sun.COM
+ 
+ ServerName trinity.west.sun.com:81
+ 
+ DocumentRoot "/mp3/httpd/htdocs"
+ 
+ <Directory />
+     Options FollowSymLinks
+     AllowOverride None
+ </Directory>
+ 
+ 
+ 
+ <Directory "/mp3/httpd/htdocs">
+ 
+     Options Indexes FollowSymLinks
+ 
+     AllowOverride None
+ 
+     Order allow,deny
+     Allow from all
+ 
+ </Directory>
+ 
+ UserDir public_html
+ 
+ 
+ DirectoryIndex index.html index.html.var
+ 
+ AccessFileName .htaccess
+ 
+ <Files ~ "^\.ht">
+     Order allow,deny
+     Deny from all
+ </Files>
+ 
+ UseCanonicalName On
+ TypesConfig conf/mime.types
+ 
+ DefaultType text/plain
+ 
+ <IfModule mod_mime_magic.c>
+     MIMEMagicFile conf/magic
+ </IfModule>
+ 
+ HostnameLookups Off
+ 
+ ErrorLog logs/error_log
+ 
+ LogLevel warn
+ 
+ LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" 
+ combined
+ LogFormat "%h %l %u %t \"%r\" %>s %b" common
+ LogFormat "%{Referer}i -> %U" referer
+ LogFormat "%{User-agent}i" agent
+ 
+ CustomLog logs/access_log common
+ 
+ 
+ 
+ ServerSignature On
+ Alias /icons/ "/mp3/httpd/icons/"
+ 
+ <Directory "/mp3/httpd/icons">
+     Options Indexes MultiViews
+     AllowOverride None
+     Order allow,deny
+     Allow from all
+ </Directory>
+ 
+ Alias /manual "/mp3/httpd/manual"
+ 
+ <Directory "/mp3/httpd/manual">
+     Options Indexes FollowSymLinks MultiViews
+     AllowOverride None
+     Order allow,deny
+     Allow from all
+ </Directory>
+ 
+ ScriptAlias /cgi-bin/ "/mp3/httpd/cgi-bin/"
+ 
+ <IfModule mod_cgid.c>
+ Scriptsock            logs/cgisock
+ </IfModule>
+ 
+ <Directory "/mp3/httpd/cgi-bin">
+     AllowOverride None
+     Options None
+     Order allow,deny
+     Allow from all
+ </Directory>
+ 
+ 
+ 
+ IndexOptions FancyIndexing VersionSort
+ 
+ AddIconByEncoding (CMP,/icons/compressed.gif) x-compress x-gzip
+ 
+ AddIconByType (TXT,/icons/text.gif) text/*
+ AddIconByType (IMG,/icons/image2.gif) image/*
+ AddIconByType (SND,/icons/sound2.gif) audio/*
+ AddIconByType (VID,/icons/movie.gif) video/*
+ 
+ AddIcon /icons/binary.gif .bin .exe
+ AddIcon /icons/binhex.gif .hqx
+ AddIcon /icons/tar.gif .tar
+ AddIcon /icons/world2.gif .wrl .wrl.gz .vrml .vrm .iv
+ AddIcon /icons/compressed.gif .Z .z .tgz .gz .zip
+ AddIcon /icons/a.gif .ps .ai .eps
+ AddIcon /icons/layout.gif .html .shtml .htm .pdf
+ AddIcon /icons/text.gif .txt
+ AddIcon /icons/c.gif .c
+ AddIcon /icons/p.gif .pl .py
+ AddIcon /icons/f.gif .for
+ AddIcon /icons/dvi.gif .dvi
+ AddIcon /icons/uuencoded.gif .uu
+ AddIcon /icons/script.gif .conf .sh .shar .csh .ksh .tcl
+ AddIcon /icons/tex.gif .tex
+ AddIcon /icons/bomb.gif core
+ 
+ AddIcon /icons/back.gif ..
+ AddIcon /icons/hand.right.gif README
+ AddIcon /icons/folder.gif ^^DIRECTORY^^
+ AddIcon /icons/blank.gif ^^BLANKICON^^
+ 
+ DefaultIcon /icons/unknown.gif
+ 
+ 
+ ReadmeName README.html
+ HeaderName HEADER.html
+ 
+ 
+ AddEncoding x-compress Z
+ AddEncoding x-gzip gz tgz
+ AddLanguage da .dk
+ AddLanguage nl .nl
+ AddLanguage en .en
+ AddLanguage et .et
+ AddLanguage fr .fr
+ AddLanguage de .de
+ AddLanguage he .he
+ AddLanguage el .el
+ AddLanguage it .it
+ AddLanguage ja .ja
+ AddLanguage pl .po
+ AddLanguage kr .kr
+ AddLanguage pt .pt
+ AddLanguage nn .nn
+ AddLanguage no .no
+ AddLanguage pt-br .pt-br
+ AddLanguage ltz .ltz
+ AddLanguage ca .ca
+ AddLanguage es .es
+ AddLanguage sv .se
+ AddLanguage cz .cz
+ AddLanguage ru .ru
+ AddLanguage tw .tw
+ AddLanguage zh-tw .tw
+ AddLanguage hr .hr
+ 
+ LanguagePriority en da nl et fr de el it ja kr no pl pt pt-br ltz ca es 
+ sv tw
+ 
+ ForceLanguagePriority Prefer Fallback
+ 
+ AddDefaultCharset ISO-8859-1
+ 
+ AddCharset ISO-8859-1  .iso8859-1  .latin1
+ AddCharset ISO-8859-2  .iso8859-2  .latin2 .cen
+ AddCharset ISO-8859-3  .iso8859-3  .latin3
+ AddCharset ISO-8859-4  .iso8859-4  .latin4
+ AddCharset ISO-8859-5  .iso8859-5  .latin5 .cyr .iso-ru
+ AddCharset ISO-8859-6  .iso8859-6  .latin6 .arb
+ AddCharset ISO-8859-7  .iso8859-7  .latin7 .grk
+ AddCharset ISO-8859-8  .iso8859-8  .latin8 .heb
+ AddCharset ISO-8859-9  .iso8859-9  .latin9 .trk
+ AddCharset ISO-2022-JP .iso2022-jp .jis
+ AddCharset ISO-2022-KR .iso2022-kr .kis
+ AddCharset ISO-2022-CN .iso2022-cn .cis
+ AddCharset Big5        .Big5       .big5
+ AddCharset WINDOWS-1251 .cp-1251   .win-1251
+ AddCharset CP866       .cp866
+ AddCharset KOI8-r      .koi8-r .koi8-ru
+ AddCharset KOI8-ru     .koi8-uk .ua
+ AddCharset ISO-10646-UCS-2 .ucs2
+ AddCharset ISO-10646-UCS-4 .ucs4
+ AddCharset UTF-8       .utf8
+ 
+ AddCharset GB2312      .gb2312 .gb
+ AddCharset utf-7       .utf7
+ AddCharset utf-8       .utf8
+ AddCharset big5        .big5 .b5
+ AddCharset EUC-TW      .euc-tw
+ AddCharset EUC-JP      .euc-jp
+ AddCharset EUC-KR      .euc-kr
+ AddCharset shift_jis   .sjis
+ 
+ AddType application/x-tar .tgz
+ 
+ AddHandler cgi-script .cgi
+ 
+ AddHandler send-as-is asis
+ 
+ 
+ AddHandler type-map var
+ 
+ AddOutputFilter INCLUDES .shtml
+ 
+ 
+ 
+ 
+ 
+ <IfModule mod_negotiation.c>
+ <IfModule mod_include.c>
+     Alias /error/ "/mp3/httpd/error/"
+ 
+     <Directory "/mp3/httpd/error">
+         AllowOverride None
+         Options IncludesNoExec
+         AddOutputFilter Includes html
+         AddHandler type-map var
+         Order allow,deny
+         Allow from all
+         LanguagePriority en es de fr
+         ForceLanguagePriority Prefer Fallback
+     </Directory>
+ 
+     ErrorDocument 400 /error/HTTP_BAD_REQUEST.html.var
+     ErrorDocument 401 /error/HTTP_UNAUTHORIZED.html.var
+     ErrorDocument 403 /error/HTTP_FORBIDDEN.html.var
+     ErrorDocument 404 /error/HTTP_NOT_FOUND.html.var
+     ErrorDocument 405 /error/HTTP_METHOD_NOT_ALLOWED.html.var
+     ErrorDocument 408 /error/HTTP_REQUEST_TIME_OUT.html.var
+     ErrorDocument 410 /error/HTTP_GONE.html.var
+     ErrorDocument 411 /error/HTTP_LENGTH_REQUIRED.html.var
+     ErrorDocument 412 /error/HTTP_PRECONDITION_FAILED.html.var
+     ErrorDocument 413 /error/HTTP_REQUEST_ENTITY_TOO_LARGE.html.var
+     ErrorDocument 414 /error/HTTP_REQUEST_URI_TOO_LARGE.html.var
+     ErrorDocument 415 /error/HTTP_SERVICE_UNAVAILABLE.html.var
+     ErrorDocument 500 /error/HTTP_INTERNAL_SERVER_ERROR.html.var
+     ErrorDocument 501 /error/HTTP_NOT_IMPLEMENTED.html.var
+     ErrorDocument 502 /error/HTTP_BAD_GATEWAY.html.var
+     ErrorDocument 503 /error/HTTP_SERVICE_UNAVAILABLE.html.var
+     ErrorDocument 506 /error/HTTP_VARIANT_ALSO_VARIES.html.var
+ 
+ </IfModule>
+ </IfModule>
+ 
+ BrowserMatch "Mozilla/2" nokeepalive
+ BrowserMatch "MSIE 4\.0b2;" nokeepalive downgrade-1.0 force-response-1.0
+ BrowserMatch "RealPlayer 4\.0" force-response-1.0
+ BrowserMatch "Java/1\.0" force-response-1.0
+ BrowserMatch "JDK/1\.0" force-response-1.0
+ 
+ BrowserMatch "Microsoft Data Access Internet Publishing Provider" 
+ redirect-carefully
+ BrowserMatch "^WebDrive" redirect-carefully
+ 
+ <Location /server-status>
+     SetHandler server-status
+     Order deny,allow
+     Order deny,allow
+     Deny from all
+     Allow from .west .west.sun.com .sun.com localhost
+ </Location>
+ 
+ <Location /server-info>
+     SetHandler server-info
+     Order deny,allow
+     Deny from all
+     Allow from .west .west.sun.com .sun.com localhost
+ </Location>
+ 
+ 
+ 
+ 
+ 
+ <IfModule mod_ssl.c>
+     Include conf/ssl.conf
+ </IfModule>
+ 
+ 
+ I don't remember whether I sent you output from httpd -l before:
+ 
+ Compiled in modules:
+   core.c
+   mod_access.c
+   mod_auth.c
+   mod_auth_anon.c
+   mod_file_cache.c
+   mod_echo.c
+   mod_cache.c
+   mod_disk_cache.c
+   mod_mem_cache.c
+   mod_ext_filter.c
+   mod_case_filter.c
+   mod_case_filter_in.c
+   mod_deflate.c
+   mod_include.c
+   mod_log_config.c
+   mod_env.c
+   mod_mime_magic.c
+   mod_cern_meta.c
+   mod_expires.c
+   mod_headers.c
+   mod_usertrack.c
+   mod_unique_id.c
+   mod_setenvif.c
+   prefork.c
+   http_core.c
+   mod_mime.c
+   mod_dav.c
+   mod_status.c
+   mod_autoindex.c
+   mod_asis.c
+   mod_info.c
+   mod_cgi.c
+   mod_cgid.c
+   mod_dav_fs.c
+   mod_negotiation.c
+   mod_dir.c
+   mod_imap.c
+   mod_actions.c
+   mod_speling.c
+   mod_userdir.c
+   mod_alias.c
+   mod_rewrite.c
+   mod_so.c
+ 
+ 
+ 
+ 
+ 
+ (/depot/httpd-2.0)
+ [bhalsey@trinity 1234]$ grep SHMEM srclib/apr/include/apr.h
+ #define APR_HAVE_SHMEM_MMAP_TMP     1
+ #define APR_HAVE_SHMEM_MMAP_SHM     0
+ #define APR_HAVE_SHMEM_MMAP_ZERO    1
+ #define APR_HAVE_SHMEM_SHMGET_ANON  1
+ #define APR_HAVE_SHMEM_SHMGET       1
+ #define APR_HAVE_SHMEM_MMAP_ANON    1
+ #define APR_HAVE_SHMEM_BEOS         0
+ #define APR_USE_SHMEM_MMAP_TMP     0
+ #define APR_USE_SHMEM_MMAP_SHM     0
+ #define APR_USE_SHMEM_MMAP_ZERO    0
+ #define APR_USE_SHMEM_SHMGET_ANON  0
+ #define APR_USE_SHMEM_SHMGET       1
+ #define APR_USE_SHMEM_MMAP_ANON    1
+ #define APR_USE_SHMEM_BEOS         0
+ 
+ Aaron Bannert wrote:
+ 
+ >Hi Billy, thanks for the detailed bug report! I have a few questions
+ >(since I am unable to reproduce this from a slightly modified default
+ >config):
+ >
+ >- What is your ServerName (alternatively, is it possible that Apache
+ >  is getting something other than "trinity" from gethostname()?)
+ >- Would you please send all the vhost sections from your httpd.conf, if any?
+ >- Are there any other non-default config directives in your httpd.conf
+ >  other than enabling server-status and ExtendedStatus?
+ >- What is the full URL that you are requesting? (remote or local request?)
+ >
+ >You are most likely correct that it's a simple pointer misalignment
+ >problem. I'll try to get myself on a sparc box later today to see if
+ >I can reproduce it there.
+ >
+ >thanks,
+ >-aaron
+ >
+ >
+ >>> [In order for any reply to be added to the PR database, you need]
+ >>> [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ >>> [subject line starts with the report component and number, with ]
+ >>> [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ >>> ["Re: general/1098:").  If the subject doesn't match this       ]
+ >>> [pattern, your message will be misfiled and ignored.  The       ]
+ >>> ["apbugs" address is not added to the Cc line of messages from  ]
+ >>> [the database automatically because of the potential for mail   ]
+ >>> [loops.  If you do not include this Cc, your reply may be ig-   ]
+ >>> [nored unless you are responding to an explicit request from a  ]
+ >>> [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ >>>
+ 
+ -- 
+ 
+ =======================================================================
+ Billy S Halsey                              Software Problem Resolution
+ Phone x55403/(858) 526-9403                        ESP Solaris Software
+ Email Billy.Halsey@Sun.COM                        Sun Microsystems, Inc
+                            -NO DAY BUT TODAY-
+ =======================================================================
+ 
+ 
+ 
+
+From: Aaron Bannert <aaron@clove.org>
+To: Billy Halsey <Billy.Halsey@Sun.COM>
+Cc: apbugs@Apache.Org
+Subject: Re: os-solaris/9785: When ap_extended_status == 1, parent process dies with SIGBUS
+Date: Thu, 14 Feb 2002 09:43:51 -0800
+
+ Hi Billy, thanks for the detailed bug report! I have a few questions
+ (since I am unable to reproduce this from a slightly modified default
+ config):
+ 
+ - What is your ServerName (alternatively, is it possible that Apache
+   is getting something other than "trinity" from gethostname()?)
+ - Would you please send all the vhost sections from your httpd.conf, if any?
+ - Are there any other non-default config directives in your httpd.conf
+   other than enabling server-status and ExtendedStatus?
+ - What is the full URL that you are requesting? (remote or local request?)
+ 
+ You are most likely correct that it's a simple pointer misalignment
+ problem. I'll try to get myself on a sparc box later today to see if
+ I can reproduce it there.
+ 
+ thanks,
+ -aaron
+ 
+ 
+ > >  [In order for any reply to be added to the PR database, you need]
+ > >  [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ > >  [subject line starts with the report component and number, with ]
+ > >  [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ > >  ["Re: general/1098:").  If the subject doesn't match this       ]
+ > >  [pattern, your message will be misfiled and ignored.  The       ]
+ > >  ["apbugs" address is not added to the Cc line of messages from  ]
+ > >  [the database automatically because of the potential for mail   ]
+ > >  [loops.  If you do not include this Cc, your reply may be ig-   ]
+ > >  [nored unless you are responding to an explicit request from a  ]
+ > >  [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+Responsible-Changed-From-To: apache-aaron
+Responsible-Changed-By: aaron
+Responsible-Changed-When: Sun Feb 17 16:14:54 PST 2002
+Responsible-Changed-Why:
+I've been following this. I will try to reproduce on
+a sparc since it isn't reproduceable on an intel box
+at the moment.
+State-Changed-From-To: open-feedback
+State-Changed-By: aaron
+State-Changed-When: Mon Mar  4 10:41:01 PST 2002
+State-Changed-Why:
+A fix for this has been committed, please verify that this
+fixes the problem for you.
+
+(See apr/shmem/unix/shm.c rev. 1.15)
+State-Changed-From-To: feedback-closed
+State-Changed-By: trawick
+State-Changed-When: Wed Mar 13 10:42:16 PST 2002
+State-Changed-Why:
+I was able to reproduce this problem today on Sparc 
+with 2.0.32.  I have verified that that it is fixed in 
+the current code.
+
+I think that these three patches, committed after 2.0.32, are sufficient for solving the problem:
+
+http://cvs.apache.org/viewcvs.cgi/apr/shmem/unix/shm.c.diff?r1=1.14&r2=1.15
+
+http://cvs.apache.org/viewcvs.cgi/apr/include/apr_general.h.diff?r1=1.65&r2=1.66
+
+http://cvs.apache.org/viewcvs.cgi/apr/memory/unix/apr_pools.c.diff?r1=1.154&r2=1.155
+
+(I have not verified that they are the only post-2.0.32 fixes needed; it seems simpler/safer to me to grab CVS HEAD
+if you want to test the fix before the next release of
+Apache 2.0.)
+
+Thanks for using Apache!
+
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

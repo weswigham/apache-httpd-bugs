@@ -1,0 +1,103 @@
+Received: (qmail 36202 invoked by uid 501); 5 Jul 2001 19:34:03 -0000
+Message-Id: <20010705193403.36201.qmail@apache.org>
+Date: 5 Jul 2001 19:34:03 -0000
+From: Carl Stehle <webmaster@instantservers.com>
+Reply-To: webmaster@instantservers.com
+To: submit@bugz.apache.org
+Subject: Console screen flash on Apache start/stop/restart
+X-Send-Pr-Version: 3.110
+
+>Number:         7984
+>Category:       os-windows
+>Synopsis:       Console screen flash on Apache start/stop/restart
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jul 05 12:40:00 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     webmaster@instantservers.com
+>Release:        1.3.19
+>Organization:
+apache
+>Environment:
+Windows 9x
+Apache/1.3.19 (Win32) mod_perl/1.25
+Perl 5.00503
+>Description:
+An MS-DOS console briefly appears when Apache is started, stopped, or
+re-started. I believe this is due to the creation of a child process
+which frees its console, and allocates a new console, then hides the
+new console's window.
+>How-To-Repeat:
+Start Apache from an MS-DOS command prompt.
+>Fix:
+The console hook code is complex (and it works!), so the danger of introducing
+new bugs may outweigh removing this annoyance, but the following appears
+to work:
+
+In ../src/main/http_main.c: create_process(), set the 'dwCreationFlags' 
+argument of the Win32 CreateProcess() call to 'CREATE_NEW_CONSOLE' for the case
+of Win9x and not-a-service. Otherwise, use the existing value (of zero).
+
+Then, in ../src/os/win32/service.c: ap_start_child_console(), remove the block:
+   if (!is_child_of_service) {
+        FreeConsole();
+        AllocConsole();
+    }
+
+Here are the diffs for Apache 1.3.19:
+../src/main/http_main.c:
+6153a6154
+>     DWORD createFlags;
+6246a6248,6251
+>     createFlags = 0;
+>     if (!isWindowsNT() && !isProcessService())
+>       createFlags = CREATE_NEW_CONSOLE;
+> 
+6249c6254
+<                        0,         /* Creation flags */
+---
+>                        createFlags,         /* Creation flags */
+
+../src/os/win32/service.c:
+
+302,305d301
+<     if (!is_child_of_service) {
+<         FreeConsole();
+<         AllocConsole();
+<     }
+
+
+A new console will be created by Win32 during CreateProcess() but without
+the screen flash. If this causes problems, the screen flash can at least
+be reduced somewhat by placing:
+ if (console_wnd)
+  ShowWindow(console_wnd, SW_HIDE);
+before 
+  Sleep(100)
+
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

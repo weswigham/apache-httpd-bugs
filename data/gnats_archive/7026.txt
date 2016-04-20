@@ -1,0 +1,183 @@
+Received: (qmail 49161 invoked by uid 501); 4 Jan 2001 03:32:22 -0000
+Message-Id: <20010104033222.49160.qmail@apache.org>
+Date: 4 Jan 2001 03:32:22 -0000
+From: Youichirou Koga <y-koga@apache.or.jp>
+Reply-To: y-koga@apache.or.jp
+To: submit@bugz.apache.org
+Subject: ap_get_server_port doesn't return the real listening port number
+X-Send-Pr-Version: 3.110
+
+>Number:         7026
+>Category:       apache-api
+>Synopsis:       ap_get_server_port doesn't return the real listening port number
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan 03 19:40:00 PST 2001
+>Closed-Date:    Wed Jan 03 20:05:01 PST 2001
+>Last-Modified:  Thu Jan  4 10:20:00 PST 2001
+>Originator:     y-koga@apache.or.jp
+>Release:        1.3.15-dev and before
+>Organization:
+>Environment:
+FreeBSD 4.2-STABLE, etc.
+>Description:
+#I reported this problem on 30/Dec/2000 (PR#7022), but it has overwritten by the other PR.
+
+ap_get_server_port doesn't return the real listening port number.
+>How-To-Repeat:
+Listen 8080, and try to get /cgi-bin/printenv.
+
+>Fix:
+The following patch corrects this problem, but I'm afraid that this would cause some side effects.
+
+Index: http_core.c
+===================================================================
+RCS file: /home/y-koga/work/cvs/apache-1.3-cvs/src/main/http_core.c,v
+retrieving revision 1.292
+diff -u -r1.292 http_core.c
+--- http_core.c	2000/11/16 22:28:39	1.292
++++ http_core.c	2000/12/30 07:27:25
+@@ -740,6 +740,7 @@
+ 
+ API_EXPORT(unsigned) ap_get_server_port(const request_rec *r)
+ {
++#if 0
+     unsigned port;
+     core_dir_config *d =
+       (core_dir_config *)ap_get_module_config(r->per_dir_config, &core_module);
+@@ -753,6 +754,8 @@
+     }
+     /* default */
+     return port;
++#endif
++    return ntohs(r->connection->local_addr.sin_port);
+ }
+ 
+ API_EXPORT(char *) ap_construct_url(pool *p, const char *uri,
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: fanf
+State-Changed-When: Wed Jan  3 20:05:01 PST 2001
+State-Changed-Why:
+This is probably because you have a Port directive that
+disagrees with your Listen directive and you have
+UseCanonicalName On. Please review the documentation for
+those directives. Thanks for using Apache.
+
+(thanks for resubmitting your bugs too; I don't know how they
+got overwritten...)
+
+From: Koga Youichirou <y-koga@apache.or.jp>
+To: fanf@apache.org
+Cc: apbugs@Apache.Org, apache-bugdb@apache.org
+Subject: Re: apache-api/7026: ap_get_server_port doesn't return the real
+ listening port number
+Date: Thu, 04 Jan 2001 14:16:31 +0900 (JST)
+
+ #I'm sorry sending this mail again (but modified a little),
+ #but now I've included apbugs to the cc list.
+ 
+ fanf@apache.org:
+ > State-Changed-Why:
+ > This is probably because you have a Port directive that
+ > disagrees with your Listen directive and you have
+ > UseCanonicalName On. Please review the documentation for
+ > those directives. Thanks for using Apache.
+ 
+ I see, but your reply is about the result of some directives.
+ I've reported about the API function.
+ 
+ See the current document about this function:
+ 
+ > Routine ap_get_server_port
+ > 
+ > Definition: 
+ >        unsigned ap_get_server_port(const request_rec *r);
+ > 
+ > Usage example: 
+ >        const request_rec *r;
+ >        int port;
+ >        port = ap_get_server_port(r);
+ > 
+ > Returns the TCP port number where the server running Apache is
+ > listening.
+ > 
+ > The port passed in the client's headers is not trusted; the port of
+ > the actual socket is used.
+ 
+ This seems to say that the ap_get_server_port returns the *actual*
+ listening TCP port number, but it always doesn't do so. I think there
+ is a bug about documentation, implementation, or design.
+ 
+ I think that there should be a function that returns the actual
+ listening port number, but there are no such functions now.
+ 
+ Regards,
+ 
+ -- Koga, Youichirou
+
+From: Tony Finch <dot@dotat.at>
+To: apbugs@apache.org, Koga Youichirou <y-koga@apache.or.jp>
+Cc:  
+Subject: Re: apache-api/7026: ap_get_server_port doesn't return the real listening port number
+Date: Thu, 4 Jan 2001 18:14:21 +0000
+
+ Koga Youichirou <y-koga@apache.or.jp> wrote:
+ > fanf@apache.org:
+ > > State-Changed-Why:
+ > > This is probably because you have a Port directive that
+ > > disagrees with your Listen directive and you have
+ > > UseCanonicalName On. Please review the documentation for
+ > > those directives. Thanks for using Apache.
+ > 
+ > I see, but your reply is about the result of some directives.
+ > I've reported about the API function.
+ 
+ Yes, because these directioves control the behaviour of the API
+ function. Wherever Apache needs to know its own port number it calls
+ that function, so that the sysadmin can control what port number is
+ returned.
+ 
+ Think of situations where there is some load-balancing device in front
+ of the server that accepts connections on port 80 and forwards them to
+ the server running on port 8080. To the external world Apache appears
+ to be running on port 80, so when it creates self-referential URLs it
+ must use that port number, not the port 8080 that it gets from
+ getsockname().
+ 
+ > This seems to say that the ap_get_server_port returns the *actual*
+ > listening TCP port number, but it always doesn't do so. I think there
+ > is a bug about documentation, implementation, or design.
+ 
+ Documentation bug.
+ 
+ Tony.
+ -- 
+ f.a.n.finch    fanf@covalent.net    dot@dotat.at
+ " ``Well, let's go down and find out who's grave it is.''
+ ``How?''  ``By going down and finding out!'' "
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,127 @@
+Received: (qmail 73404 invoked by uid 501); 1 Apr 2001 20:14:55 -0000
+Message-Id: <20010401201455.73403.qmail@apache.org>
+Date: 1 Apr 2001 20:14:55 -0000
+From: Taketo Kabe <kabe@sra-tohoku.co.jp>
+Reply-To: kabe@sra-tohoku.co.jp
+To: submit@bugz.apache.org
+Subject: [PATCH] Do not canonicalize non-alnum HTTP headers to '_' in CGI environment variable
+X-Send-Pr-Version: 3.110
+
+>Number:         7500
+>Category:       mod_cgi
+>Synopsis:       Potential CGI variable exploit from header canonicalization
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Apr 01 13:20:00 PDT 2001
+>Closed-Date:
+>Last-Modified:  Thu Aug 30 12:07:08 PDT 2001
+>Originator:     kabe@sra-tohoku.co.jp
+>Release:        2.0.15
+>Organization:
+>Environment:
+SunOS 5.8 Generic_108528-05 sun4u sparc SUNW,Ultra-60
+gcc version 2.95.2 19991024 (release).1.9
+>Description:
+Apache (and majority of HTTP servers also I suppose) will squish down
+CGI-environment variable name's letters to '_' for non-[a-zA-Z_] letters.
+This will cause "X-Header:" and "X_Header:" (and "X%Header:") HTTP
+headers all canonicalized to HTTP_X_HEADER, which may be a problem
+if i.e malicious user could send both headers to circumvent access control.
+
+It is not standard comformant to send non-[a-zA-Z_]* HTTP headers,
+and CGI-spec says nothing about these kind of situation. 
+Handling of such HTTP headers are implementation-dependent.
+
+Most developers may not be aware of this, but also may not care about it.
+If they do, the following patch will expand non-[a-zA-Z_] HTTP header to 
+'x%02X' form when passing a CGI environment.
+>How-To-Repeat:
+* Prepare a CGI script which dumps CGI environment vars
+  (echo "Content-Type: text/html"; echo; exec printenv)
+* Invoke the CGI script via HTTP with HTTP headers like
+	GET /cgi-bin/printenv HTTP/1.0
+	X_Header: h1
+	X-Header: h2
+
+* The result will show only HTTP_X_HEADER=H2 
+  (or H1,depending on implementation).
+  This is NOT a bug; no standard cover this kind of situation and 
+  is an implementation dependent behaviour.
+>Fix:
+This patch will expand non-[a-zA-Z_]* HTTP headers to 'x%02X' when
+passing a CGI environment. These kind of handling should be OPTIONAL
+and those who only care should apply it.
+
+diff -u httpd-2_0_15/server/util_script.c.dist httpd-2_0_15/server/util_script.c
+--- httpd-2_0_15/server/util_script.c.dist	Fri Mar  9 20:30:34 2001
++++ httpd-2_0_15/server/util_script.c	Sun Apr  1 19:27:09 2001
+@@ -97,17 +97,25 @@
+ 
+ static char *http2env(apr_pool_t *a, char *w)
+ {
+-    char *res = apr_pstrcat(a, "HTTP_", w, NULL);
+-    char *cp = res;
++    char *res,*cp;
++    apr_size_t	olen = strlen(w);
++    /* the buffer can expand x3 if non-alnum is there */
++    cp = res = apr_palloc(a, 5 + olen*3);
++    strcpy(res, "HTTP_"); cp+=5;
+ 
+-    while (*++cp) {
+-	if (!apr_isalnum(*cp) && *cp != '_') {
+-	    *cp = '_';
++    for (w,cp; *w; w++) {
++	if (!apr_isalnum(*w)) {
++	    if (*w == '-') { *cp++ = '_'; }
++	    else {
++		/* don't squish it down unconditionally to '_' */
++		cp += sprintf(cp, "x%02X", *w & 255);
++	    }
+ 	}
+ 	else {
+-	    *cp = apr_toupper(*cp);
++	    *cp++ = apr_toupper(*w);
+ 	}
+     }
++    *cp = '\0';
+ 
+     return res;
+ }
+>Release-Note:
+>Audit-Trail:
+Synopsis-Changed-From: [PATCH] Do not canonicalize non-alnum HTTP headers to '_' in CGI environment variable
+Synopsis-Changed-To: Potential CGI variable exploit from header canonicalization
+Synopsis-Changed-By: wrowe
+Synopsis-Changed-When: Thu Aug 30 12:07:08 PDT 2001
+Release-Changed-From-To: 2_0_15-alpha-2.0.15
+Release-Changed-By: wrowe
+Release-Changed-When: Thu Aug 30 12:07:08 PDT 2001
+Class-Changed-From-To: change-request-sw-bug
+Class-Changed-By: wrowe
+Class-Changed-When: Thu Aug 30 12:07:08 PDT 2001
+Severity-Changed-From-To: non-critical-critical
+Severity-Changed-By: wrowe
+Severity-Changed-When: Thu Aug 30 12:07:08 PDT 2001
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

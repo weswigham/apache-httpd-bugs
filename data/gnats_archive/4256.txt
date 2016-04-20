@@ -1,0 +1,918 @@
+Received: (qmail 11393 invoked by uid 2012); 15 Apr 1999 20:46:59 -0000
+Message-Id: <19990415204659.11392.qmail@hyperreal.org>
+Date: 15 Apr 1999 20:46:59 -0000
+From: Raymond S Brand <rsbx@intnet.net>
+Reply-To: rsbx@intnet.net
+To: apbugs@hyperreal.org
+Subject: Patch to permit HeaderName and Readme files to be server parsed.
+X-Send-Pr-Version: 3.2
+
+>Number:         4256
+>Category:       mod_autoindex
+>Synopsis:       Patch to permit HeaderName and Readme files to be server parsed.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Apr 15 13:50:01 PDT 1999
+>Last-Modified:  Mon Jan  3 16:48:33 PST 2000
+>Originator:     rsbx@intnet.net
+>Organization:
+>Release:        1.3.6
+>Environment:
+Linux redhat52 2.0.36 #1 Sat Mar 27 13:08:43 EST 1999 i686 unknown
+>Description:
+See PR 1574. Also, correct HTML was not always emitted by mod_autoindex under
+exceptional conditions.
+>How-To-Repeat:
+See PR 1754.
+
+SuppressHTMLPreamble and an unreadable (chmod 000) Readme or Header file result
+in missing HTML tags.
+>Fix:
+It does appear to work; it's not pretty; I don't grok sub_reqs; some of the
+environment variables reflect the Readme or Header file instead of the
+directory in the server-parsed output.
+
+
+--- apache_1.3.6/src/modules/standard/mod_autoindex.c   Mon Jan  4 14:49:41 1999
++++ apache_1.3.6-rsbx/src/modules/standard/mod_autoindex.c      Thu Apr 15 16:27:59 1999
+@@ -178,8 +178,11 @@
+  * We include the DOCTYPE because we may be using features therefrom (i.e.,
+  * HEIGHT and WIDTH attributes on the icons if we're FancyIndexing).
+  */
+-static void emit_preamble(request_rec *r, char *title)
++static void emit_preamble(request_rec *r, char *title, int whichend)
+ {
++    if (FRONT_MATTER != whichend) {
++       return;
++    }
+     ap_rvputs(r, "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 3.2 Final//EN\">\n",
+              "<HTML>\n <HEAD>\n  <TITLE>Index of ", title,
+              "</TITLE>\n </HEAD>\n <BODY>\n", NULL);
+@@ -764,55 +767,78 @@
+ static int insert_readme(char *name, char *readme_fname, char *title,
+                         int hrule, int whichend, request_rec *r)
+ {
+-    char *fn;
+     FILE *f;
+     struct stat finfo;
+     int plaintext = 0;
+     request_rec *rr;
+     autoindex_config_rec *cfg;
+     int autoindex_opts;
++    char fn1[MAX_STRING_LEN];
+ 
+     cfg = (autoindex_config_rec *) ap_get_module_config(r->per_dir_config,
+                                                        &autoindex_module);
+     autoindex_opts = cfg->opts;
+     /* XXX: this is a load of crap, it needs to do a full sub_req_lookup_uri */
+-    fn = ap_make_full_path(r->pool, name, readme_fname);
+-    fn = ap_pstrcat(r->pool, fn, ".html", NULL);
+-    if (stat(fn, &finfo) == -1) {
+-       /* A brief fake multiviews search for README.html */
+-       fn[strlen(fn) - 5] = '\0';
+-       if (stat(fn, &finfo) == -1) {
++    ap_cpystrn(fn1, readme_fname, MAX_STRING_LEN-5);
++    strcat(fn1, ".html");
++
++    if (!(rr = ap_sub_req_lookup_file(fn1, r))) {
++       emit_preamble(r, title, whichend);
++       return 0;
++    }
++
++    if ((rr->status != HTTP_OK)
++           || (!(rr->filename))
++           || (!S_ISREG(rr->finfo.st_mode))) {
++       ap_destroy_sub_req(rr);
++
++       ap_cpystrn(fn1, readme_fname, MAX_STRING_LEN);
++
++       if (!(rr = ap_sub_req_lookup_file(fn1, r))) {
++           emit_preamble(r, title, whichend);
+            return 0;
+        }
++
++       if ((rr->status != HTTP_OK)
++               || (!(rr->filename))
++               || (!S_ISREG(rr->finfo.st_mode))) {
++           ap_destroy_sub_req(rr);
++           emit_preamble(r, title, whichend);
++           return 0;
++       }
++
+        plaintext = 1;
+-       if (hrule) {
+-           ap_rputs("<HR>\n", r);
++
++       if (!(f = ap_pfopen(r->pool, rr->filename, "r"))) {
++           ap_destroy_sub_req(rr);
++           emit_preamble(r, title, whichend);
++           return 0;
+        }
+-    }
+-    else if (hrule) {
+-       ap_rputs("<HR>\n", r);
+-    }
+-    /* XXX: when the above is rewritten properly, this necessary security
+-     * check will be redundant. -djg */
+-    rr = ap_sub_req_lookup_file(fn, r);
+-    if (rr->status != HTTP_OK) {
++
+        ap_destroy_sub_req(rr);
+-       return 0;
+     }
+-    ap_destroy_sub_req(rr);
+-    if (!(f = ap_pfopen(r->pool, fn, "r"))) {
+-        return 0;
+-    }
+-    if ((whichend == FRONT_MATTER)
+-       && (!(autoindex_opts & SUPPRESS_PREAMBLE))) {
+-       emit_preamble(r, title);
++
++    if (hrule) {
++       ap_rputs("<HR>\n", r);
+     }
++
+     if (!plaintext) {
+-       ap_send_fd(f, r);
++       if (!(autoindex_opts & SUPPRESS_PREAMBLE)) {
++           emit_preamble(r, title, whichend);
++       }
++       if (ap_run_sub_req(rr)) {
++           ap_destroy_sub_req(rr);
++           emit_preamble(r, title, whichend);
++           return 0;
++       }
++       ap_destroy_sub_req(rr);
++       return 1;
+     }
+     else {
+        char buf[IOBUFSIZE + 1];
+        int i, n, c, ch;
++
++       emit_preamble(r, title, whichend);
+        ap_rputs("<PRE>\n", r);
+        while (!feof(f)) {
+            do {
+@@ -845,12 +871,10 @@
+                c = i + 1;
+            }
+        }
+-    }
+-    ap_pfclose(r->pool, f);
+-    if (plaintext) {
++       ap_pfclose(r->pool, f);
+        ap_rputs("</PRE>\n", r);
+     }
+-    return 1;
++    return ((whichend == FRONT_MATTER) ? 1 : 0);
+ }
+ 
+ 
+@@ -1359,7 +1383,6 @@
+     if ((!(tmp = find_header(autoindex_conf, r)))
+        || (!(insert_readme(name, tmp, title_name, NO_HRULE, FRONT_MATTER, r)))
+        ) {
+-       emit_preamble(r, title_name);
+        ap_rvputs(r, "<H1>Index of ", title_name, "</H1>\n", NULL);
+     }
+ 
+@@ -1426,15 +1449,15 @@
+                       direction);
+     ap_pclosedir(r->pool, d);
+ 
+-    if ((tmp = find_readme(autoindex_conf, r))) {
+-       if (!insert_readme(name, tmp, "",
+-                          ((autoindex_opts & FANCY_INDEXING) ? HRULE
+-                                                             : NO_HRULE),
+-                          END_MATTER, r)) {
+-           ap_rputs(ap_psignature("<HR>\n", r), r);
+-       }
++    if ((!(tmp = find_readme(autoindex_conf, r)))
++           || (!(insert_readme(name, tmp, "",
++               ((autoindex_opts & FANCY_INDEXING)
++                   ? HRULE : NO_HRULE),
++               END_MATTER, r)))
++           || (!(autoindex_opts & SUPPRESS_PREAMBLE))) {
++       ap_rputs(ap_psignature("<HR>\n", r), r);
++       ap_rputs("</BODY></HTML>\n", r);
+     }
+-    ap_rputs("</BODY></HTML>\n", r);
+ 
+     ap_kill_timeout(r);
+     return 0;
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 10:41:39 PDT 1999
+State-Changed-Why:
+If you change it to use ap_sub_req_lookup_uri() it should
+go through all the negotiation stuff -- so if multiviews
+is enabled it will find the foo.html... and you don't have
+to append .html.  This would be a much cleaner solution.
+
+You should just be able to ap_run_subrequest... the default
+handler should take care of including plain text files...
+a good example of this is handle_include() in mod_include.
+
+Also, ap_cpystrn is generally evil.  Look at ap_pstrcat()
+which you could have used to catenate the two strings without
+fixed length limits.
+
+Dean
+
+From: RSBX <rsbx@IntNet.net>
+To: dgaudet@apache.org
+Cc: apbugs@Apache.Org
+Subject: Re: mod_autoindex/4256: Patch to permit HeaderName and Readme files to be server parsed.
+Date: Wed, 21 Apr 1999 03:04:02 +0000
+
+ dgaudet@apache.org wrote:
+ ...
+ > If you change it to use ap_sub_req_lookup_uri() it should
+ > go through all the negotiation stuff -- so if multiviews
+ > is enabled it will find the foo.html... and you don't have
+ > to append .html.  This would be a much cleaner solution.
+ > 
+ > You should just be able to ap_run_subrequest... the default
+ > handler should take care of including plain text files...
+ > a good example of this is handle_include() in mod_include.
+ > 
+ > Also, ap_cpystrn is generally evil.  Look at ap_pstrcat()
+ > which you could have used to catenate the two strings without
+ > fixed length limits.
+ > 
+ > Dean
+ 
+ OK, a new and improved patch follows. This one actually manages
+ to get the situation where no header or readme file names are
+ specified and multiviews appear to work.
+ 
+ --- apache_1.3.6/src/modules/standard/mod_autoindex.c   Mon Jan  4
+ 14:49:41 1999
+ +++ apache_1.3.6-rsbx/src/modules/standard/mod_autoindex.c      Tue Apr
+ 20 22:53:21 1999
+ @@ -178,8 +178,11 @@
+   * We include the DOCTYPE because we may be using features therefrom
+ (i.e.,
+   * HEIGHT and WIDTH attributes on the icons if we're FancyIndexing).
+   */
+ -static void emit_preamble(request_rec *r, char *title)
+ +static void emit_preamble(request_rec *r, char *title, int whichend)
+  {
+ +    if (FRONT_MATTER != whichend) {
+ +       return;
+ +    }
+      ap_rvputs(r, "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 3.2
+ Final//EN\">\n",
+               "<HTML>\n <HEAD>\n  <TITLE>Index of ", title,
+               "</TITLE>\n </HEAD>\n <BODY>\n", NULL);
+ @@ -764,10 +767,8 @@
+  static int insert_readme(char *name, char *readme_fname, char *title,
+                          int hrule, int whichend, request_rec *r)
+  {
+ -    char *fn;
+ -    FILE *f;
+ +    FILE *f = NULL;
+      struct stat finfo;
+ -    int plaintext = 0;
+      request_rec *rr;
+      autoindex_config_rec *cfg;
+      int autoindex_opts;
+ @@ -775,44 +776,56 @@
+      cfg = (autoindex_config_rec *)
+ ap_get_module_config(r->per_dir_config,
+                                                        
+ &autoindex_module);
+      autoindex_opts = cfg->opts;
+ -    /* XXX: this is a load of crap, it needs to do a full
+ sub_req_lookup_uri */
+ -    fn = ap_make_full_path(r->pool, name, readme_fname);
+ -    fn = ap_pstrcat(r->pool, fn, ".html", NULL);
+ -    if (stat(fn, &finfo) == -1) {
+ -       /* A brief fake multiviews search for README.html */
+ -       fn[strlen(fn) - 5] = '\0';
+ -       if (stat(fn, &finfo) == -1) {
+ +
+ +    if ((!readme_fname) || (!(rr = ap_sub_req_lookup_uri(readme_fname,
+ r)))) {
+ +       emit_preamble(r, title, whichend);
+ +       return 0;
+ +    }
+ +
+ +    if ((rr->status != HTTP_OK)
+ +           || (!(rr->filename))
+ +           || (!S_ISREG(rr->finfo.st_mode))) {
+ +       ap_destroy_sub_req(rr);
+ +       emit_preamble(r, title, whichend);
+ +       return 0;
+ +    }
+ +
+ +    if ((!(rr->content_type)) || strcmp("text/html", rr->content_type))
+ {
+ +       if (!(f = ap_pfopen(r->pool, rr->filename, "r"))) {
+ +           ap_destroy_sub_req(rr);
+ +           emit_preamble(r, title, whichend);
+             return 0;
+         }
+ -       plaintext = 1;
+ -       if (hrule) {
+ -           ap_rputs("<HR>\n", r);
+ -       }
+      }
+ -    else if (hrule) {
+ +
+ +    if (hrule) {
+ +       /* Not set for FRONT_MATTER */
+         ap_rputs("<HR>\n", r);
+      }
+ -    /* XXX: when the above is rewritten properly, this necessary
+ security
+ -     * check will be redundant. -djg */
+ -    rr = ap_sub_req_lookup_file(fn, r);
+ -    if (rr->status != HTTP_OK) {
+ +
+ +    if (!f) {
+ +       if (!(autoindex_opts & SUPPRESS_PREAMBLE)) {
+ +           emit_preamble(r, title, whichend);
+ +       }
+ +       if (ap_run_sub_req(rr)) {
+ +           ap_destroy_sub_req(rr);
+ +           if (autoindex_opts & SUPPRESS_PREAMBLE) {
+ +               emit_preamble(r, title, whichend);
+ +           }
+ +
+ +           /* if END_MATTER & hrule, an incorrect <HR> was put. */
+ +#if 0
+ +           ap_rputs("<!-- ap_run_sub_req failed -->\n", r);
+ +#endif
+ +           return 0;
+ +       }
+         ap_destroy_sub_req(rr);
+ -       return 0;
+ -    }
+ -    ap_destroy_sub_req(rr);
+ -    if (!(f = ap_pfopen(r->pool, fn, "r"))) {
+ -        return 0;
+ -    }
+ -    if ((whichend == FRONT_MATTER)
+ -       && (!(autoindex_opts & SUPPRESS_PREAMBLE))) {
+ -       emit_preamble(r, title);
+ -    }
+ -    if (!plaintext) {
+ -       ap_send_fd(f, r);
+      }
+      else {
+         char buf[IOBUFSIZE + 1];
+         int i, n, c, ch;
+ +
+ +       emit_preamble(r, title, whichend);
+         ap_rputs("<PRE>\n", r);
+         while (!feof(f)) {
+             do {
+ @@ -845,9 +858,7 @@
+                 c = i + 1;
+             }
+         }
+ -    }
+ -    ap_pfclose(r->pool, f);
+ -    if (plaintext) {
+ +       ap_pfclose(r->pool, f);
+         ap_rputs("</PRE>\n", r);
+      }
+      return 1;
+ @@ -1326,7 +1337,6 @@
+      int num_ent = 0, x;
+      struct ent *head, *p;
+      struct ent **ar = NULL;
+ -    char *tmp;
+      const char *qstring;
+      int autoindex_opts = autoindex_conf->opts;
+      char keyid;
+ @@ -1356,10 +1366,8 @@
+         *title_endp-- = '\0';
+      }
+  
+ -    if ((!(tmp = find_header(autoindex_conf, r)))
+ -       || (!(insert_readme(name, tmp, title_name, NO_HRULE,
+ FRONT_MATTER, r)))
+ -       ) {
+ -       emit_preamble(r, title_name);
+ +    if (!insert_readme(name, find_header(autoindex_conf, r),
+ +           title_name, NO_HRULE, FRONT_MATTER, r)) {
+         ap_rvputs(r, "<H1>Index of ", title_name, "</H1>\n", NULL);
+      }
+  
+ @@ -1426,15 +1434,17 @@
+                        direction);
+      ap_pclosedir(r->pool, d);
+  
+ -    if ((tmp = find_readme(autoindex_conf, r))) {
+ -       if (!insert_readme(name, tmp, "",
+ -                          ((autoindex_opts & FANCY_INDEXING) ? HRULE
+ -                                                             :
+ NO_HRULE),
+ -                          END_MATTER, r)) {
+ -           ap_rputs(ap_psignature("<HR>\n", r), r);
+ +    if (!insert_readme(name, find_readme(autoindex_conf, r), "",
+ +           ((autoindex_opts & FANCY_INDEXING) ? HRULE : NO_HRULE),
+ +           END_MATTER, r)) {
+ +       ap_rputs(ap_psignature("<HR>\n", r), r);
+ +       ap_rputs("</BODY></HTML>\n", r);
+ +    }
+ +    else {
+ +       if (!(autoindex_opts & SUPPRESS_PREAMBLE)) {
+ +           ap_rputs("</BODY></HTML>\n", r);
+         }
+      }
+ -    ap_rputs("</BODY></HTML>\n", r);
+  
+      ap_kill_timeout(r);
+      return 0;
+ 
+ 
+ Raymond S Brand
+
+From: RSBX <rsbx@IntNet.net>
+To: dgaudet@apache.org
+Cc: apbugs@Apache.Org
+Subject: Re: mod_autoindex/4256: Patch to permit HeaderName and Readme files to be server parsed.
+Date: Wed, 21 Apr 1999 16:47:35 +0000
+
+ The following patch changes the documentation for HeaderName and
+ ReadmeName
+ directive to reflect the new functionality from my previous patch.
+ 
+ NOTE: If this fuctionality does not make it into Apache 1.3.7, this
+ patch
+ 	will have to be changed.
+ 
+ Raymond S Brand
+ 
+ 
+ --- mod_autoindex.html.apache   Wed Apr 21 12:38:46 1999
+ +++ mod_autoindex.html  Wed Apr 21 12:37:00 1999
+ @@ -437,14 +437,15 @@
+  The HeaderName directive sets the name of the file that will be
+ inserted
+  at the top of the index listing. <EM>Filename</EM> is the name of the
+ file
+  to include, and is taken to be relative to the directory being indexed.
+ -The server first attempts to include
+ <EM>filename</EM><CODE>.html</CODE>
+ +<BLOCKQUOTE><STRONG>Note that in versions of Apache prior to
+ 1.3.7</STRONG>
+ +the server first attempts to include
+ <EM>filename</EM><CODE>.html</CODE>
+  as an HTML document, otherwise it will include <EM>filename</EM> as
+ plain
+  text. Example:
+  <BLOCKQUOTE><CODE>HeaderName HEADER</CODE></BLOCKQUOTE>
+  when indexing the directory <CODE>/web</CODE>, the server will first
+ look for
+  the HTML file <CODE>/web/HEADER.html</CODE> and include it if found,
+ otherwise
+  it will include the plain text file <CODE>/web/HEADER</CODE>, if it
+ exists.
+ -
+ +</BLOCKQUOTE>
+  <P>See also <A HREF="#readmename">ReadmeName</A>.<P><HR>
+  
+  <H2><A NAME="indexignore">IndexIgnore</A></H2>
+ @@ -764,14 +765,15 @@
+  The ReadmeName directive sets the name of the file that will be
+ appended
+  to the end of the index listing. <EM>Filename</EM> is the name of the
+ file
+  to include, and is taken to be relative to the directory being indexed.
+ -The server first attempts to include
+ <EM>filename</EM><CODE>.html</CODE>
+ +<BLOCKQUOTE><STRONG>Note that in versions of Apache prior to
+ 1.3.7</STRONG>
+ +the server first attempts to include
+ <EM>filename</EM><CODE>.html</CODE>
+  as an HTML document, otherwise it will include <EM>filename</EM> as
+ plain
+  text. Example:
+  <BLOCKQUOTE><CODE>ReadmeName README</CODE></BLOCKQUOTE>
+  when indexing the directory <CODE>/web</CODE>, the server will first
+ look for
+  the HTML file <CODE>/web/README.html</CODE> and include it if found,
+ otherwise
+  it will include the plain text file <CODE>/web/README</CODE>, if it
+ exists.
+ -
+ +</BLOCKQUOTE>
+  <P>See also <A HREF="#headername">HeaderName</A>.<P>
+
+From: Raymond S Brand <rsbx@rsbx.net>
+To: dgaudet@Apache.Org
+Cc: apbugs@Apache.Org, rbownes@neworks.com, rsbx@intnet.net
+Subject: Re: mod_autoindex/4256: Patch to permit HeaderName and Readme files to be server parsed.
+Date: Thu, 22 Apr 1999 10:58:39 -0400
+
+ OK, yet another patch to mod_autoindex. I promiss I'll stop now.
+ 
+ This one replaces insert_readme() because its logic and calling conventions
+ were getting very convoluted and were still wrong.
+ 
+ The server-parsed Header and Readme still have some of the environment variables
+ reflecting the Header or Readme file instead of the indexed directory. I don't
+ know how to solve that problem; how mod_include does it is not clear to me.
+ 
+ I would really like to see this make it into 1.3.7, if possible.
+ 
+ Raymond S Brand
+ 
+ P.S.	Please use rsbx@intnet.net for correspondence.
+ 
+ 
+ 
+ diff -ur apache_1.3.6-orig/htdocs/manual/mod/mod_autoindex.html apache_1.3.6-rsbx/htdocs/manual/mod/mod_autoindex.html
+ --- apache_1.3.6-orig/htdocs/manual/mod/mod_autoindex.html	Mon Mar 22 19:17:39 1999
+ +++ apache_1.3.6-rsbx/htdocs/manual/mod/mod_autoindex.html	Thu Apr 22 10:19:29 1999
+ @@ -437,14 +437,20 @@
+  The HeaderName directive sets the name of the file that will be inserted
+  at the top of the index listing. <EM>Filename</EM> is the name of the file
+  to include, and is taken to be relative to the directory being indexed.
+ -The server first attempts to include <EM>filename</EM><CODE>.html</CODE>
+ +<BLOCKQUOTE><STRONG>Apache 1.3.7 and later</STRONG>
+ +will "server-parse" <EM>filename</EM>, if enabled.
+ +<A HREF="../content-negotiation.html">Content negotiation</A>
+ +will be performed if MultiViews are allowed.
+ +</BLOCKQUOTE>
+ +<BLOCKQUOTE><STRONG>Apache prior to 1.3.7</STRONG>
+ +first attempts to include <EM>filename</EM><CODE>.html</CODE>
+  as an HTML document, otherwise it will include <EM>filename</EM> as plain
+  text. Example:
+  <BLOCKQUOTE><CODE>HeaderName HEADER</CODE></BLOCKQUOTE>
+  when indexing the directory <CODE>/web</CODE>, the server will first look for
+  the HTML file <CODE>/web/HEADER.html</CODE> and include it if found, otherwise
+  it will include the plain text file <CODE>/web/HEADER</CODE>, if it exists.
+ -
+ +</BLOCKQUOTE>
+  <P>See also <A HREF="#readmename">ReadmeName</A>.<P><HR>
+  
+  <H2><A NAME="indexignore">IndexIgnore</A></H2>
+ @@ -764,14 +770,20 @@
+  The ReadmeName directive sets the name of the file that will be appended
+  to the end of the index listing. <EM>Filename</EM> is the name of the file
+  to include, and is taken to be relative to the directory being indexed.
+ -The server first attempts to include <EM>filename</EM><CODE>.html</CODE>
+ +<BLOCKQUOTE><STRONG>Apache 1.3.7 and later</STRONG>
+ +will "server-parse" <EM>filename</EM>, if enabled.
+ +<A HREF="../content-negotiation.html">Content negotiation</A>
+ +will be performed if MultiViews are allowed.
+ +</BLOCKQUOTE>
+ +<BLOCKQUOTE><STRONG>Apache prior to 1.3.7</STRONG>
+ +first attempts to include <EM>filename</EM><CODE>.html</CODE>
+  as an HTML document, otherwise it will include <EM>filename</EM> as plain
+  text. Example:
+  <BLOCKQUOTE><CODE>ReadmeName README</CODE></BLOCKQUOTE>
+  when indexing the directory <CODE>/web</CODE>, the server will first look for
+  the HTML file <CODE>/web/README.html</CODE> and include it if found, otherwise
+  it will include the plain text file <CODE>/web/README</CODE>, if it exists.
+ -
+ +</BLOCKQUOTE>
+  <P>See also <A HREF="#headername">HeaderName</A>.<P>
+  
+  
+ diff -ur apache_1.3.6-orig/src/modules/standard/mod_autoindex.c apache_1.3.6-rsbx/src/modules/standard/mod_autoindex.c
+ --- apache_1.3.6-orig/src/modules/standard/mod_autoindex.c	Mon Jan  4 14:49:41 1999
+ +++ apache_1.3.6-rsbx/src/modules/standard/mod_autoindex.c	Wed Apr 21 23:20:10 1999
+ @@ -178,8 +178,11 @@
+   * We include the DOCTYPE because we may be using features therefrom (i.e.,
+   * HEIGHT and WIDTH attributes on the icons if we're FancyIndexing).
+   */
+ -static void emit_preamble(request_rec *r, char *title)
+ +static void emit_preamble(request_rec *r, char *title, int suppress)
+  {
+ +    if (suppress) {
+ +	return;
+ +    }
+      ap_rvputs(r, "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 3.2 Final//EN\">\n",
+  	      "<HTML>\n <HEAD>\n  <TITLE>Index of ", title,
+  	      "</TITLE>\n </HEAD>\n <BODY>\n", NULL);
+ @@ -757,101 +760,158 @@
+   * Actually generating output
+   */
+  
+ -/*
+ - * Look for the specified file, and pump it into the response stream if we
+ - * find it.
+ - */
+ -static int insert_readme(char *name, char *readme_fname, char *title,
+ -			 int hrule, int whichend, request_rec *r)
+ -{
+ -    char *fn;
+ -    FILE *f;
+ -    struct stat finfo;
+ -    int plaintext = 0;
+ -    request_rec *rr;
+ -    autoindex_config_rec *cfg;
+ -    int autoindex_opts;
+ -
+ -    cfg = (autoindex_config_rec *) ap_get_module_config(r->per_dir_config,
+ -							&autoindex_module);
+ -    autoindex_opts = cfg->opts;
+ -    /* XXX: this is a load of crap, it needs to do a full sub_req_lookup_uri */
+ -    fn = ap_make_full_path(r->pool, name, readme_fname);
+ -    fn = ap_pstrcat(r->pool, fn, ".html", NULL);
+ -    if (stat(fn, &finfo) == -1) {
+ -	/* A brief fake multiviews search for README.html */
+ -	fn[strlen(fn) - 5] = '\0';
+ -	if (stat(fn, &finfo) == -1) {
+ -	    return 0;
+ -	}
+ -	plaintext = 1;
+ -	if (hrule) {
+ -	    ap_rputs("<HR>\n", r);
+ -	}
+ -    }
+ -    else if (hrule) {
+ -	ap_rputs("<HR>\n", r);
+ -    }
+ -    /* XXX: when the above is rewritten properly, this necessary security
+ -     * check will be redundant. -djg */
+ -    rr = ap_sub_req_lookup_file(fn, r);
+ -    if (rr->status != HTTP_OK) {
+ -	ap_destroy_sub_req(rr);
+ -	return 0;
+ -    }
+ -    ap_destroy_sub_req(rr);
+ -    if (!(f = ap_pfopen(r->pool, fn, "r"))) {
+ -        return 0;
+ -    }
+ -    if ((whichend == FRONT_MATTER)
+ -	&& (!(autoindex_opts & SUPPRESS_PREAMBLE))) {
+ -	emit_preamble(r, title);
+ -    }
+ -    if (!plaintext) {
+ -	ap_send_fd(f, r);
+ -    }
+ -    else {
+ -	char buf[IOBUFSIZE + 1];
+ -	int i, n, c, ch;
+ -	ap_rputs("<PRE>\n", r);
+ -	while (!feof(f)) {
+ -	    do {
+ -		n = fread(buf, sizeof(char), IOBUFSIZE, f);
+ -	    }
+ -	    while (n == -1 && ferror(f) && errno == EINTR);
+ -	    if (n == -1 || n == 0) {
+ -		break;
+ -	    }
+ -	    buf[n] = '\0';
+ -	    c = 0;
+ -	    while (c < n) {
+ -	        for (i = c; i < n; i++) {
+ -		    if (buf[i] == '<' || buf[i] == '>' || buf[i] == '&') {
+ -			break;
+ -		    }
+ -		}
+ -		ch = buf[i];
+ -		buf[i] = '\0';
+ -		ap_rputs(&buf[c], r);
+ -		if (ch == '<') {
+ -		    ap_rputs("&lt;", r);
+ -		}
+ -		else if (ch == '>') {
+ -		    ap_rputs("&gt;", r);
+ -		}
+ -		else if (ch == '&') {
+ -		    ap_rputs("&amp;", r);
+ -		}
+ -		c = i + 1;
+ -	    }
+ -	}
+ -    }
+ -    ap_pfclose(r->pool, f);
+ -    if (plaintext) {
+ -	ap_rputs("</PRE>\n", r);
+ -    }
+ -    return 1;
+ -}
+ +/*
+ + * Elements of the emitted document:
+ + *	Preamble
+ + *		Emitted unless SUPPRESS_PREAMBLE is set AND ap_run_sub_req
+ + *		succeeds for the (content_type == text/html) header file.
+ + *	Header file
+ + *		Emitted if found (and able).
+ + *	H1 tag line
+ + *		Emitted if a header file is NOT emitted.
+ + *	Directory stuff
+ + *		Always emitted.
+ + *	HR
+ + *		Emitted if FANCY_INDEXING is set AND a readme file is
+ + *		emitted.
+ + *	Readme file
+ + *		Emitted if found (and able).
+ + *	ServerSig
+ + *		Emitted if ServerSignature is not Off AND a readme file
+ + *		is NOT emitted.
+ + *	Postamble
+ + *		Emitted unless SUPPRESS_PREAMBLE is set AND ap_run_sub_req
+ + *		succeeds for the (content_type == text/html) readme file.
+ + *
+ + * Problem:	The ap_run_sub_req could fail AFTER the HR is emitted.
+ + * Solution:	Make the HR only depend on FANCY_INDEXING.
+ + */
+ +
+ +
+ +/*
+ + * emit a plain text file
+ + */
+ +static void do_emit_plain(request_rec *r, FILE *f)
+ +{
+ +    char buf[IOBUFSIZE + 1];
+ +    int i, n, c, ch;
+ +
+ +    ap_rputs("<PRE>\n", r);
+ +    while (!feof(f)) {
+ +	do {
+ +	    n = fread(buf, sizeof(char), IOBUFSIZE, f);
+ +	}
+ +	while (n == -1 && ferror(f) && errno == EINTR);
+ +	if (n == -1 || n == 0) {
+ +	    break;
+ +	}
+ +	buf[n] = '\0';
+ +	c = 0;
+ +	while (c < n) {
+ +	    for (i = c; i < n; i++) {
+ +		if (buf[i] == '<' || buf[i] == '>' || buf[i] == '&') {
+ +		    break;
+ +		}
+ +	    }
+ +	    ch = buf[i];
+ +	    buf[i] = '\0';
+ +	    ap_rputs(&buf[c], r);
+ +	    if (ch == '<') {
+ +		ap_rputs("&lt;", r);
+ +	    }
+ +	    else if (ch == '>') {
+ +		ap_rputs("&gt;", r);
+ +	    }
+ +	    else if (ch == '&') {
+ +		ap_rputs("&amp;", r);
+ +	    }
+ +	    c = i + 1;
+ +	}
+ +    }
+ +    ap_rputs("</PRE>\n", r);
+ +}
+ +
+ +
+ +/*
+ + * Handle the preamble through the H1 tag line, inclusive.
+ + */
+ +static void emit_head(request_rec *r, char *header_fname, int suppress_amble,
+ +	char *title)
+ +    {
+ +    FILE *f;
+ +    request_rec *rr = NULL;
+ +    int emit_H1 = 0;
+ +
+ +    if (header_fname
+ +	    && (rr = ap_sub_req_lookup_uri(header_fname, r))
+ +	    && (rr->status == HTTP_OK)
+ +	    && (rr->filename)
+ +	    && S_ISREG(rr->finfo.st_mode)) {
+ +	if ((rr->content_type)
+ +		&& !strcmp("text/html", rr->content_type)) {
+ +	    emit_preamble(r, title, suppress_amble);
+ +	    if (ap_run_sub_req(rr)) {
+ +		emit_preamble(r, title, !suppress_amble);
+ +		emit_H1 = 1;
+ +		}
+ +	    }
+ +	else {
+ +	    emit_preamble(r, title, 0);
+ +	    if (f = ap_pfopen(r->pool, rr->filename, "r")) {
+ +		do_emit_plain(r, f);
+ +		ap_pfclose(r->pool, f);
+ +		}
+ +	    else {
+ +		emit_H1 = 1;
+ +		}
+ +	    }
+ +	}
+ +    else {
+ +	emit_preamble(r, title, 0);
+ +	emit_H1 = 1; 
+ +	}
+ +
+ +    if (emit_H1)    { ap_rvputs(r, "<H1>Index of ", title, "</H1>\n", NULL); }
+ +
+ +    if (rr)         { ap_destroy_sub_req(rr); }
+ +    }
+ +
+ +
+ +/*
+ + * Handle the Readme file through the postamble, inclusive.
+ + */
+ +static void emit_tail(request_rec *r, char *readme_fname, int suppress_amble)
+ +    {
+ +    FILE *f;
+ +    request_rec *rr = NULL;
+ +    int suppress_post = 0;
+ +    int suppress_sig = 0;
+ +
+ +    if (readme_fname
+ +	    && (rr = ap_sub_req_lookup_uri(readme_fname, r))
+ +	    && (rr->status == HTTP_OK)
+ +	    && (rr->filename)
+ +	    && S_ISREG(rr->finfo.st_mode)) {
+ +	if ((rr->content_type)
+ +		&& !strcmp("text/html", rr->content_type)) {
+ +	    if (!ap_run_sub_req(rr)) {
+ +		suppress_sig = 1;
+ +		suppress_post = suppress_amble;
+ +		}
+ +	    }
+ +	else {
+ +	    if (f = ap_pfopen(r->pool, rr->filename, "r")) {
+ +		do_emit_plain(r, f);
+ +		ap_pfclose(r->pool, f);
+ +		suppress_sig = 1;
+ +		}
+ +	    }
+ +	}
+ +
+ +    if (!suppress_sig)  { ap_rputs(ap_psignature("", r), r); }
+ +    if (!suppress_post) { ap_rputs("</BODY></HTML>\n", r); }
+ +    if (rr)             { ap_destroy_sub_req(rr); }
+ +    }
+  
+  
+  static char *find_title(request_rec *r)
+ @@ -1326,7 +1386,6 @@
+      int num_ent = 0, x;
+      struct ent *head, *p;
+      struct ent **ar = NULL;
+ -    char *tmp;
+      const char *qstring;
+      int autoindex_opts = autoindex_conf->opts;
+      char keyid;
+ @@ -1356,12 +1415,8 @@
+  	*title_endp-- = '\0';
+      }
+  
+ -    if ((!(tmp = find_header(autoindex_conf, r)))
+ -	|| (!(insert_readme(name, tmp, title_name, NO_HRULE, FRONT_MATTER, r)))
+ -	) {
+ -	emit_preamble(r, title_name);
+ -	ap_rvputs(r, "<H1>Index of ", title_name, "</H1>\n", NULL);
+ -    }
+ +    emit_head(r, find_header(autoindex_conf, r),
+ +	    autoindex_opts & SUPPRESS_PREAMBLE, title_name);
+  
+      /*
+       * Figure out what sort of indexing (if any) we're supposed to use.
+ @@ -1426,15 +1481,11 @@
+  		       direction);
+      ap_pclosedir(r->pool, d);
+  
+ -    if ((tmp = find_readme(autoindex_conf, r))) {
+ -	if (!insert_readme(name, tmp, "",
+ -			   ((autoindex_opts & FANCY_INDEXING) ? HRULE
+ -			                                      : NO_HRULE),
+ -			   END_MATTER, r)) {
+ -	    ap_rputs(ap_psignature("<HR>\n", r), r);
+ -	}
+ -    }
+ -    ap_rputs("</BODY></HTML>\n", r);
+ +    if (autoindex_opts & FANCY_INDEXING) {
+ +	ap_rputs("<HR>\n", r);
+ +    }
+ +    emit_tail(r, find_readme(autoindex_conf, r),
+ +	    autoindex_opts & SUPPRESS_PREAMBLE);
+  
+      ap_kill_timeout(r);
+      return 0;
+ 
+ 
+ --
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Mon Jan  3 16:48:33 PST 2000
+State-Changed-Why:
+raymond's patches have been applied.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

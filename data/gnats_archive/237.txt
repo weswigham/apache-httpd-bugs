@@ -1,0 +1,166 @@
+From nobody@hyperreal.com  Mon Mar 17 03:55:28 1997
+Received: by taz.hyperreal.com (8.8.4/V2.0) id DAA17965; Mon, 17 Mar 1997 03:55:28 -0800 (PST)
+Message-Id: <199703171155.DAA17965@taz.hyperreal.com>
+Date: Mon, 17 Mar 1997 03:55:28 -0800 (PST)
+From: Bram Kivenko <bram@xspace.com>
+Reply-To: bram@xspace.com
+To: apbugs@hyperreal.com
+Subject: Inappropriate bypass of suexec / Inappropriate usage of suexec
+X-Send-Pr-Version: 3.2
+
+>Number:         237
+>Category:       suexec
+>Synopsis:       Inappropriate bypass of suexec / Inappropriate usage of suexec
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Mar 17 04:00:02 1997
+>Last-Modified:  Tue Apr 22 09:02:15 PDT 1997
+>Originator:     bram@xspace.com
+>Organization:
+>Release:        1.2b7
+>Environment:
+UNIX (physically checked 1.2b6)
+>Description:
+(a) Bypass:
+     I believe, that it is possible to bypass suexec with the use of an "nph-*"
+     CGI.  This gives server permission state to the CGI, could be root, or
+     possibly allow a user to erase the web server!
+
+(b) Usage:
+     I have since replaced the suexec utility, finding it rather dangerous,
+     however, what prevents someone running the suexec command from a shell
+     possibly to take advantage of extra executables in public_html directory?
+ 
+>How-To-Repeat:
+(a) Create an nph- CGI!
+(b) Run suexec from a shell, substituting your own information and parameters!
+>Fix:
+(a)  have nph- CGI's also call SUEXEC.
+(b)  I have temporarily amended this problem by passing on a secret password
+     to suexec -- this is obviously a poor improvement.  This password is added
+     just before calling suexec and rests securely only if the source code is
+     unreadable!  A better suggestion would be to verify that the calling
+     process was the web-server...  Don't know how to do that
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: apbugs@apache.org
+Subject: Re: suexec/237: Inappropriate bypass of suexec / Inappropriate usage of suexec (fwd)
+Date: Mon, 7 Apr 1997 21:17:13 -0600 (MDT)
+
+ 
+ From everything I can make out, the reporter is confused about what suexec
+ is supposed to be used for.  I am trying to clarify exactly what they are
+ talking about.
+ 
+ ---------- Forwarded message ----------
+ Date: Mon, 7 Apr 1997 02:26:17 -0400 (EDT)
+ From: Bram Kivenko -- XSpace Staff <bram@xspace.com>
+ To: Marc Slemko <marcs@znep.com>
+ Subject: Re: suexec/237: Inappropriate bypass of suexec / Inappropriate usage of suexec
+ 
+ 
+ On Sun, 6 Apr 1997, Marc Slemko wrote:
+ 
+ > > Perhaps I was confusing.  If you run the server as root and use suexec to
+ > > execute CGI's, "nph-" cgi's *do not* execute through suexec, ie, they seem
+ > > to run as root (?)  Maybe newer versions have since corrected this
+ > > problem.
+ > 
+ > Do you mean _run_ the server as root or _start_ the server as root?  In
+ > the first, you specify "root" in the User directive.  DO NOT DO THIS.  It
+ > is not secure, even if you do use suexec and even if suexec does work
+ > 100%.  All CGI scripts that are not in a user directory and are on the
+ > main server will run as whatever user is specified in the User directive; 
+ > nothing special about nph scripts.  Scripts in users' home directories
+ > will run as them, and scripts in virtual hosts can be run as a user
+ > specified in the virtualhost config. 
+ 
+ Well, no, I run the server as nouser which owns nothing on the server.  I
+ was merely pointing out that nph CGI's are not subject to a user change. 
+ Ie, an nph CGI runs as whatever user the server child is running as.  This
+ is a very simple bug to fix.  Basically, someone either forgot or did not
+ bother to add in suexec calls for the nph exec's.  The suexec calls are
+ clearly missing.  I have added in the bug fixes myself, but obviously
+ would appreciate (and others as well would appreciate) it if it were
+ fixed:
+ 
+ near the end of util_script.c:
+ 
+         if (shellcmd) {
+ //          execle(SHELL_PATH, SHELL_PATH, "-c", argv0, NULL, env);   
+             execle(SUEXEC_BIN, SUEXEC_BIN, "a", "a", argv0,
+                         argv0, NULL, env);
+         }
+         else if((!r->args) || (!r->args[0]) || (ind(r->args,'=') >= 0)) {
+             execle(SUEXEC_BIN, SUEXEC_BIN, "a", "a", r->filename, 
+                         r->filename,NULL,
+                         env);
+ //          execle(r->filename, argv0, NULL, env);
+         }
+ 
+ I am using my own suexec, so, some of the arguments are not valid, but you
+ should get the idea.  The section immediately following the one I gave
+ (should be at the end util_script.c) also needs to be corrected.  I did it
+ in a half ass manner so I won't bother copying out the source code for it. 
+ 
+ Thanks, keep me updated,
+ Bram
+ _______________________________________________________________________________
+ 
+    Bram Kivenko  --  XSpace Staff  --  Systems Manager  --  bram@xspace.com
+     Let XSpace be your host  --  http://www.xspace.com  --  (416)-929-8663
+                              XSPACE COMMUNICATIONS
+ _______________________________________________________________________________
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Bram Kivenko <bram@xspace.com>
+Subject: Re: suexec/237: Inappropriate bypass of suexec / Inappropriate usage of suexec
+Date: Sun, 6 Apr 1997 17:53:40 -0600 (MDT)
+
+ 
+ > (a) Bypass:
+ >      I believe, that it is possible to bypass suexec with the use of an "nph-*"
+ >      CGI.  This gives server permission state to the CGI, could be root, or
+ >      possibly allow a user to erase the web server!
+ 
+ Regardless of if you use suexec, you should not set the User directive to
+ root or to anyone who can modify any of the config files, server binaries
+ or logs.
+ 
+ In any case, I have no problem using nph- CGI's with suexec.  Are you
+ perhaps calling it from somewhere other than a virtual host with a User
+ directive or a user directory?
+ 
+ > 
+ > (b) Usage:
+ >      I have since replaced the suexec utility, finding it rather dangerous,
+ >      however, what prevents someone running the suexec command from a shell
+ >      possibly to take advantage of extra executables in public_html directory?
+ 
+ There is an assumption made that any executables placed in what suexec
+ things to be "web space" are really executable.  This will be documented
+ better and we are thinking of better ways to verify that the process is
+ reall the server, but suexec is designed around the idea that even if
+ someone with evil intent calls it things are still safe provided that
+ users don't put silly executables in what suexec thinks is web space. 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Tue Apr 22 09:02:15 PDT 1997
+State-Changed-Why:
+Issues clarified in mail; user unable to provide any 
+way in which nph- scripts are treated differently from
+others and suexec appears to be working the way it is
+designed.
+>Unformatted:
+
+
+
+

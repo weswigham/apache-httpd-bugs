@@ -1,0 +1,189 @@
+Received: (qmail 83797 invoked by uid 65534); 14 Mar 2000 17:36:22 -0000
+Message-Id: <20000314173622.83796.qmail@locus.apache.org>
+Date: 14 Mar 2000 17:36:22 -0000
+From: Gerd Knorr <gknorr@berlinonline.de>
+Reply-To: gknorr@berlinonline.de
+To: submit@bugz.apache.org
+Subject: [patch] use both basic + digest authentification
+X-Send-Pr-Version: 3.110
+
+>Number:         5879
+>Category:       mod_digest
+>Synopsis:       [patch] use both basic + digest authentification
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Mar 14 09:40:01 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     gknorr@berlinonline.de
+>Release:        1.3.11
+>Organization:
+apache
+>Environment:
+linux
+>Description:
+The patch adds a new config option to the new digest auth module.  Default is
+off.  If enabled, the module sends two WWW-Authenticate headers: one for
+digest and one for basic.  It also checks Basic requests.
+
+Rationale:  This way digest auth can be used with browsers which already
+support it, others should keep using basic.  Smooth switchover to digest,
+as browsers should use the better auth scheme...
+
+mod_digest is'nt correct, the patch is against the experimental mod_auth_digest,
+but I hav'nt found this one in the list...
+>How-To-Repeat:
+test page: http://www.berlinonline.de/.bin/authtest.cgi
+user/pass: test/test
+>Fix:
+--- mod_auth_digest.c.11	Wed Jan 12 16:23:23 2000
++++ mod_auth_digest.c	Tue Mar 14 17:30:42 2000
+@@ -156,6 +156,7 @@
+     const char  *algorithm;
+     char        *uri_list;
+     const char  *ha1;
++    int          enable_basic;
+ } digest_config_rec;
+ 
+ 
+@@ -216,6 +217,8 @@
+     uri_components       *psd_request_uri;
+     int                   needed_auth;
+     client_entry         *client;
++    /* basic auth */
++    const char           *passwd;
+ } digest_header_rec;
+ 
+ 
+@@ -478,11 +481,18 @@
+ 	conf->nonce_lifetime = DFLT_NONCE_LIFE;
+ 	conf->dir_name       = ap_pstrdup(p, dir);
+ 	conf->algorithm      = DFLT_ALGORITHM;
++	conf->enable_basic   = 0;
+     }
+ 
+     return conf;
+ }
+ 
++static const char *enable_basic(cmd_parms *cmd, void *config, int arg)
++{
++    ((digest_config_rec *) config)->enable_basic = arg;
++    return NULL;
++}
++
+ static const char *set_realm(cmd_parms *cmd, void *config, const char *realm)
+ {
+     digest_config_rec *conf = (digest_config_rec *) config;
+@@ -629,6 +639,8 @@
+      "The algorithm used for the hash calculation"},
+     {"AuthDigestDomain", set_uri_list, NULL, OR_AUTHCFG, ITERATE,
+      "A list of URI's which belong to the same protection space as the current URI"},
++    {"AuthDigestBasic", enable_basic, NULL, OR_AUTHCFG, FLAG,
++     "allow both digest and basic authentification"},
+     {NULL}
+ };
+ 
+@@ -827,6 +839,7 @@
+ static int get_digest_rec(request_rec *r, digest_header_rec *resp)
+ {
+     const char *auth_line;
++    const char *t;
+     size_t l;
+     int vk = 0, vv = 0;
+     char *key, *value;
+@@ -840,6 +853,14 @@
+     }
+ 
+     resp->scheme = ap_getword_white(r->pool, &auth_line);
++    if (0 == strcasecmp(resp->scheme, "Basic")) {
++	while (ap_isspace(auth_line[0])) auth_line++;
++	t = ap_pbase64decode(r->pool, auth_line);
++	resp->username = ap_getword_nulls (r->connection->pool, &t, ':');
++	resp->passwd = t;
++	resp->auth_hdr_sts = VALID;
++	return OK;
++    }
+     if (strcasecmp(resp->scheme, "Digest")) {
+ 	resp->auth_hdr_sts = NOT_DIGEST;
+ 	return !OK;
+@@ -1293,6 +1314,12 @@
+ 				opaque_param ? opaque_param : "",
+ 				domain ? domain : "",
+ 				stale ? ", stale=true" : "", qop));
++    if (conf->enable_basic)
++	ap_table_add(r->err_headers_out,
++		     r->proxyreq == STD_PROXY ? "Proxy-Authenticate"
++		     : "WWW-Authenticate",
++		     ap_psprintf(r->pool, "Basic realm=\"%s\"",
++				 ap_auth_name(r)));
+ }
+ 
+ 
+@@ -1514,7 +1541,7 @@
+     digest_header_rec *resp;
+     request_rec       *mainreq;
+     conn_rec          *conn = r->connection;
+-    const char        *t;
++    const char        *t, *basic_ha1;
+     int                res;
+ 
+ 
+@@ -1561,6 +1588,36 @@
+ 	/* else (resp->auth_hdr_sts == NO_HEADER) */
+ 	note_digest_auth_failure(r, conf, resp, 0);
+ 	return AUTH_REQUIRED;
++    }
++
++    if (resp->passwd) {
++	/* got basic auth request */
++	if (!conf->enable_basic) {
++	    ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r,
++			  "Digest (basic): user %s: tried basic (which isn't enabled)",
++			  conn->user);
++	    return AUTH_REQUIRED;
++	}
++	r->connection->user = (char*) resp->username;
++	r->connection->ap_auth_type = (char *) "Basic";
++
++	if (!(conf->ha1 = get_hash(r, conn->user, conf->realm, conf->pwfile))) {
++	    ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r,
++			  "Digest (basic): user `%s' in realm `%s' not found: %s",
++			  conn->user, conf->realm, r->uri);
++	    note_digest_auth_failure(r, conf, resp, 0);
++	    return AUTH_REQUIRED;
++	}
++	basic_ha1 = ap_md5(r->pool, (unsigned char *) 
++			   ap_pstrcat(r->pool, conn->user, ":", conf->realm, ":",
++				      resp->passwd, NULL));
++	if (0 != strcmp(conf->ha1, basic_ha1)) {
++		ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r,
++			      "Digest (basic): user %s: password mismatch: %s", conn->user,
++			      r->uri);
++		return AUTH_REQUIRED;
++	}
++	return OK;
+     }
+ 
+     r->connection->user         = (char *) resp->username;
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,118 @@
+Received: (qmail 92878 invoked by uid 501); 23 Jul 2001 20:42:54 -0000
+Message-Id: <20010723204254.92877.qmail@apache.org>
+Date: 23 Jul 2001 20:42:54 -0000
+From: Steve Barber <sbarber@randomwalk.com>
+Reply-To: sbarber@randomwalk.com
+To: submit@bugz.apache.org
+Subject: proxy connection to server doesn't disconnect when client dies and proxy caching is turned off
+X-Send-Pr-Version: 3.110
+
+>Number:         8067
+>Category:       mod_proxy
+>Synopsis:       Fix from PR 8090 applied
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jul 23 13:50:00 PDT 2001
+>Closed-Date:    Mon Sep 24 13:22:29 PDT 2001
+>Last-Modified:  Mon Sep 24 13:22:29 PDT 2001
+>Originator:     sbarber@randomwalk.com
+>Release:        1.3.x
+>Organization:
+>Environment:
+Affects all OSs, but observed on Linux 2.2, Solaris 7, and Win2000 SR-1.
+Here's a sample uname -a:
+Linux smithers 2.2.16-22 #1 Tue Aug 22 16:16:55 EDT 2000 i586 unknown
+
+gcc -dumpversion
+2.96
+
+>Description:
+When an HTTP client program dies unexpectedly, Apache mod_proxy does not automatically close the proxy to server connection as it ought to. I've only observed this when proxy caching is turned off; looking at the code it appears to me that when proxy caching is on the connections will clean up.
+
+The problem is really only observable when the server keeps writing response data for as long as the connection to the client remains up. For "normal" Web pages, the server will usually drop the connection on its own when it is done serving the request. However, for tunnelling applications, it is pretty reasonable for the server to never want to close the connection on its own, and to keep sending data down the connection for so long as the client will accept it.
+
+What's happening is that Apache bit-buckets all the server writes after the client dies, fooling the server into thinking the client is still there. The server never drops the connection, the proxy never drops the connection, and resources are tied up forever.
+
+I've actually seen this behavior using Apache 1.3.12, 1.3.14, and 1.3.20, but looking at the source it looks like any 1.3.x release will have the same problem.
+
+It's a simple code bug; looks like the ok variable in proxy_util.c/ap_proxy_send_fb needs to be set to 0 any time a response proxy write to the client fails, not just when the proxy is caching. See fix below.
+>How-To-Repeat:
+Here's a PHP script that will reproduce the problem:
+
+<html><head><title>PHP Test</title></head>
+<body>
+<?php $i = 0;
+      while (true) {
+        print $i++;
+        for ($j = 1; $j <= 8000; $j++) {
+		    print "x";
+		}
+
+
+        flush();
+        sleep(2);
+      }
+ ?>
+</body></html>
+
+1) Install this script on a PHP-enabled server as, say, http://myserver/infinite.php
+2) Run Apache with mod_proxy with proxy cacheing off (make sure there is no CacheRoot directive defined) at http://proxy:8082
+3) Run your browser.
+4) Set your browser's HTTP proxy for http://proxy:8082
+5) Browse to http://server/infinite.php
+6) Watch netstat for ESTABLISHED connections to and from the proxy server. Now, kill the browser. I'd use something like:
+while true
+do
+   date
+   netstat -a | egrep "proxy|server"
+   sleep 5
+done
+
+7) Notice that the client/proxy connection goes into CLOSE_WAIT state or CLOSE pretty quickly. Notice that the proxy/server connection will stay
+up for as long as you care to watch.
+>Fix:
+--- src/modules/proxy/proxy_util-old.c  Mon Jul 23 14:18:31 2001
++++ src/modules/proxy/proxy_util.c      Mon Jul 23 14:21:40 2001
+@@ -605,6 +605,8 @@
+                         unlink(c->tempfile);
+                        c = NULL;
+                     }
++                } else {
++                    ok = 0;
+                 }
+                 con->aborted = 1;
+                 break;
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: chuck
+State-Changed-When: Mon Sep 24 13:22:29 PDT 2001
+State-Changed-Why:
+Fix from PR 8090 applied
+Synopsis-Changed-From: proxy connection to server doesn't disconnect when client dies and proxy caching is turned off
+Synopsis-Changed-To: Fix from PR 8090 applied
+Synopsis-Changed-By: chuck
+Synopsis-Changed-When: Mon Sep 24 13:22:29 PDT 2001
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

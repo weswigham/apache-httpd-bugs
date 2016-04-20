@@ -1,0 +1,201 @@
+Received: (qmail 28277 invoked by uid 2012); 8 Nov 1998 01:07:38 -0000
+Message-Id: <19981108010738.28276.qmail@hyperreal.org>
+Date: 8 Nov 1998 01:07:38 -0000
+From: Kenny Gardner <Kenny@gapdev.com>
+Reply-To: Kenny@gapdev.com
+To: apbugs@hyperreal.org
+Subject: Password File is not parsed correctly
+X-Send-Pr-Version: 3.2
+
+>Number:         3362
+>Category:       mod_auth-any
+>Synopsis:       Password File is not parsed correctly
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Nov  7 17:10:00 PST 1998
+>Last-Modified:  Sun Nov  8 03:00:01 PST 1998
+>Originator:     Kenny@gapdev.com
+>Organization:
+>Release:        1.2.6 and prior (and above?)
+>Environment:
+BSD/OS gapdev.com 3.1 BSDI BSD/OS 3.1 Virtual Kernel #12: Fri Jun 19 14:32:14 MDT 1998
+
+gcc version 2.7.2.1
+
+>Description:
+Password Files that are not in the format of:
+
+  userid:password
+
+are not parsed correctly.
+
+This:
+
+  userid:password:7100:100:Staranet Admin:/:ftp;mail
+
+returns a password of:
+
+  password:7100:100:Staranet Admin:/:ftp;mail
+
+Anything after the first ":" is considered to be the Password.
+>How-To-Repeat:
+Use your /etc/passwd file for authentication or any password file that contains extra information after the password field.
+
+
+>Fix:
+authenticate_basic_user() function in mod_auth.c:
+
+   Just before:
+
+   /* anyone know where the prototype for crypt is? */
+
+   if (strcmp(real_pw,(char *)crypt(sent_pw,real_pw)))
+
+
+   Add:
+
+   {
+   char *real_pwptr = real_pw;
+
+   while (*real_pwptr)
+      {
+      if (*real_pwptr == ':')
+         {
+         *real_pwptr = 0;
+         break;
+         }
+
+      ++real_pwptr;
+      }
+   } 
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Sat Nov  7 17:14:21 PST 1998
+State-Changed-Why:
+What part of "check to be sure the bug is in the current version"
+don't you understand?
+
+It is not a bug, since the htpasswd file was defined to be
+user:passwd, with no mention of any other :s in there or
+allowing any other data.  This was changed in 1.3a1 to allow
+for extra : seperated info at the end.
+
+Please, it is a waste of everyone's time if you don't follow
+instructions and insist on submitting bug reports for year
+old programs.
+
+From: Dirk-Willem van Gulik <dirk.vangulik@jrc.it>
+To: Kenny Gardner <Kenny@gapdev.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_auth-any/3362: Password File is not parsed correctly
+Date: Sun, 8 Nov 1998 11:50:52 +0100 (MET)
+
+ On 8 Nov 1998, Kenny Gardner wrote:
+ 
+ > >Number:         3362
+ > >Category:       mod_auth-any
+ > >Synopsis:       Password File is not parsed correctly
+ > >Confidential:   no
+ > >Severity:       serious
+ > >Priority:       medium
+ > >Responsible:    apache
+ > >State:          open
+ > >Class:          sw-bug
+ > >Submitter-Id:   apache
+ > >Arrival-Date:   Sat Nov  7 17:10:00 PST 1998
+ > >Last-Modified:
+ > >Originator:     Kenny@gapdev.com
+ > >Organization:
+ > apache
+ > >Release:        1.2.6 and prior (and above?)
+ > >Environment:
+ > BSD/OS gapdev.com 3.1 BSDI BSD/OS 3.1 Virtual Kernel #12: Fri Jun 19 14:32:14 MDT 1998
+ > 
+ > gcc version 2.7.2.1
+ > 
+ > >Description:
+ > Password Files that are not in the format of:
+ > 
+ >   userid:password
+ > 
+ > are not parsed correctly.
+ 
+ As you can see in the manual page; .../docs/mod/mod_auth.html password
+ files for 1.2.6 are to be in the above format.
+ 
+ Some later versions of apache accomodate the 'passwd(8)' format.
+ 
+ Dw.
+ 
+ > This:
+ > 
+ >   userid:password:7100:100:Staranet Admin:/:ftp;mail
+ > 
+ > returns a password of:
+ > 
+ >   password:7100:100:Staranet Admin:/:ftp;mail
+ > 
+ > Anything after the first ":" is considered to be the Password.
+ > >How-To-Repeat:
+ > Use your /etc/passwd file for authentication or any password file that contains extra information after the password field.
+ > 
+ > 
+ > >Fix:
+ > authenticate_basic_user() function in mod_auth.c:
+ > 
+ >    Just before:
+ > 
+ >    /* anyone know where the prototype for crypt is? */
+ > 
+ >    if (strcmp(real_pw,(char *)crypt(sent_pw,real_pw)))
+ > 
+ > 
+ >    Add:
+ > 
+ >    {
+ >    char *real_pwptr = real_pw;
+ > 
+ >    while (*real_pwptr)
+ >       {
+ >       if (*real_pwptr == ':')
+ >          {
+ >          *real_pwptr = 0;
+ >          break;
+ >          }
+ > 
+ >       ++real_pwptr;
+ >       }
+ >    } 
+ > >Audit-Trail:
+ > >Unformatted:
+ > [In order for any reply to be added to the PR database, ]
+ > [you need to include <apbugs@Apache.Org> in the Cc line ]
+ > [and leave the subject line UNCHANGED.  This is not done]
+ > [automatically because of the potential for mail loops. ]
+ > [If you do not include this Cc, your reply may be ig-   ]
+ > [nored unless you are responding to an explicit request ]
+ > [from a developer.                                      ]
+ > [Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+ > 
+ > 
+ > 
+ > 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

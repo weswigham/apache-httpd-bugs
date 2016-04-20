@@ -1,0 +1,109 @@
+From nobody@hyperreal.com  Mon Jan 27 13:39:44 1997
+Received: by taz.hyperreal.com (8.8.4/V2.0) id NAA11492; Mon, 27 Jan 1997 13:39:44 -0800 (PST)
+Message-Id: <199701272139.NAA11492@taz.hyperreal.com>
+Date: Mon, 27 Jan 1997 13:39:44 -0800 (PST)
+From: <>
+Reply-To:
+To: apbugs@hyperreal.com
+Subject: http_request.c: directory_walk() misses some <Directory ...> directives
+X-Send-Pr-Version: 3.2
+
+>Number:         131
+>Category:       config
+>Synopsis:       http_request.c: directory_walk() misses some <Directory ...> directives
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jan 27 13:40:01 1997
+>Last-Modified:  Mon Feb 17 03:51:33 PST 1997
+>Originator:     
+>Organization:
+apache
+>Release:        
+>Environment:
+N/a	
+>Description:
+I constructed a access.conf which had two <Directory> directives for the same
+path, http_request.c: directory_walk() silently ignores the first!
+
+This caused much confusion.
+>How-To-Repeat:
+<Directory /a/b/c>
+<Limit GET POST>
+require valid-user
+</Limit>
+</Directory>
+
+and later in access.conf
+
+
+<Directory /a/b/c>
+AllowOverride None
+Options None
+</Directory>
+>Fix:
+In directory_walk(), I think the 'this_conf' test in the second for loop should
+be inside the for loop.
+
+If there is some subtle reason why multiple <Directory> sections are not allowed
+please, please, can we have a warning message!
+diff -C 5 http_request.c /home1/mendel/Xjproxy/site/httpd/apache/src 
+*** http_request.c      Mon Jan 27 21:18:50 1997
+--- /home1/mendel/Xjproxy/site/httpd/apache/src/http_request.c  Tue Dec 24 18:06:16 1996
+***************
+*** 328,347 ****
+                sec[j] = NULL;
+                this_conf = entry_config;
+            }
+            else if (!strcmp (this_dir, entry_dir))
+                this_conf = entry_config;
+  
+!           if (this_conf)
+!           {
+!               per_dir_defaults =
+!                   merge_per_dir_configs (r->pool, per_dir_defaults, this_conf);
+!               core_dir =(core_dir_config *)get_module_config(per_dir_defaults,
+                                               &core_module);
+-           }
+        }
+- 
+        overrides_here = core_dir->override;
+  
+        /* If .htaccess files are enabled, check for one.
+         */
+  
+--- 328,346 ----
+                sec[j] = NULL;
+                this_conf = entry_config;
+            }
+            else if (!strcmp (this_dir, entry_dir))
+                this_conf = entry_config;
++       }
+  
+!       if (this_conf)
+!       {
+!           per_dir_defaults =
+!               merge_per_dir_configs (r->pool, per_dir_defaults, this_conf);
+!           core_dir =(core_dir_config *)get_module_config(per_dir_defaults,
+                                                           &core_module);
+        }
+        overrides_here = core_dir->override;
+  
+        /* If .htaccess files are enabled, check for one.
+         */
+  
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed 
+State-Changed-By: marc 
+State-Changed-When: Mon Feb 17 03:51:08 PST 1997 
+State-Changed-Why:  
+Suggested fix applied.  Will be available in the next  
+beta release.  Thanks for the report and patch. 
+>Unformatted:
+
+

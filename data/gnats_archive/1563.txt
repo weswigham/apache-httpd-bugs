@@ -1,0 +1,370 @@
+Received: (qmail 2107 invoked by uid 2012); 16 Dec 1997 20:17:29 -0000
+Message-Id: <19971216201729.2106.qmail@hyperreal.org>
+Date: 16 Dec 1997 20:17:29 -0000
+From: Alexandre Snarskii <snar@paranoia.ru>
+Reply-To: snar@paranoia.ru
+To: apbugs@hyperreal.org
+Subject: forgotten port of request.
+X-Send-Pr-Version: 3.2
+
+>Number:         1563
+>Category:       general
+>Synopsis:       forgotten port of request.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Dec 16 12:20:00 PST 1997
+>Last-Modified:  Tue Dec 16 14:50:00 PST 1997
+>Originator:     snar@paranoia.ru
+>Organization:
+>Release:        1.2.4
+>Environment:
+Apache 1.2.4, FreeBSD 2.1.5-2.2.5 (not related to OS, anyway)
+FreeBSD horse.nevalink.ru 2.2.2-RELEASE FreeBSD 2.2.2-RELEASE #0: Tue Oct 14 20:19:06 MSD 1997     root@horse.nevalink.ru:/usr/src/sys/compile/horse  i386
+>Description:
+let assume, that we have standard-installed apache 1.2.4,
+with one only change in config : will use
+Listen 80
+Listen 8010
+instead of usual Port 80. Let's make directory htdocs/foo, and then
+try to retrieve http://some.host:8010/foo (note, that there is no trailing slash!).
+The result will be "Moved Permanent", as it expected, but in Location
+field we found: Location: http://some.host/foo/ - the requested port is forgotten.
+>How-To-Repeat:
+See above. You can try to repeat it even on www.apache.org :)
+>Fix:
+fast and dirty hack: that patch is to mod_dir.c
+812,813d811
+<       r->server->port=ntohs(r->connection->local_addr.sin_port);
+%3
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Alexandre Snarskii <snar@paranoia.ru>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/1563: forgotten port of request.
+Date: Tue, 16 Dec 1997 12:24:05 -0800 (PST)
+
+ This is what the Port directive is intended for.  Apache only supports
+ servers with one canonical hostname:port.
+ 
+ <VirtualHost *:8010>
+ Port 8010
+ </VirtualHost>
+ 
+ is probably what you want. 
+ 
+ Dean
+ 
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Tue Dec 16 12:31:13 PST 1997
+State-Changed-Why:
+Do you still have a "Port" directive in your configuration
+files?  Because that specifies the default port to be used
+on redirects; they do *not* inherit the port of the original
+request.
+State-Changed-From-To: feedback-closed
+State-Changed-By: marc
+State-Changed-When: Tue Dec 16 13:27:02 PST 1997
+State-Changed-Why:
+User reports problem resolved.  No, the way Apache deals
+with ports is sometimes... unexpected.
+
+From: Alexandre Snarskii <snar@paranoia.ru>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: Alexandre Snarskii <snar@paranoia.ru>, apbugs@hyperreal.org
+Subject: Re: general/1563: forgotten port of request.
+Date: Tue, 16 Dec 1997 23:53:19 +0300
+
+ On Tue, Dec 16, 1997 at 12:24:05PM -0800, Dean Gaudet wrote:
+ > This is what the Port directive is intended for.  Apache only supports
+ > servers with one canonical hostname:port.
+ 
+ May be we are differs with the meaning of 'support', but, as for 
+ me, some Listen directives and using <VirtualHost hostname:*>
+ means that: apache supports 'main' servername:(some ports, on which
+ the connections are accepted) and some 'virtual' servers, each
+ configured with only one <VirtualHost hostname:*> directive means, 
+ that apache supports servers with multiple ports on each hostname. 
+ In all cases, but that :) 
+ 
+ > 
+ > <VirtualHost *:8010>
+ > Port 8010
+ > </VirtualHost>
+ > 
+ > is probably what you want. 
+ 
+ Well, now my httpd.conf looks like (the final part of, 
+ all the Listen directives are commented out) :
+ 
+ <VirtualHost *:8110>
+ ServerName localhost
+ Port 8110
+ </VirtualHost>
+ /usr/local/etc/httpd/conf/httpd.conf: 281 lines, 9425 characters.
+ bash# killall httpd
+ bash# /usr/local/etc/httpd/httpd
+ bash#       
+ 
+ but i can't see any listener of that port... 
+ 
+ bash# netstat -an | grep 8110
+ bash# telnet localhost 8110
+ Trying 127.0.0.1...
+ telnet: Unable to connect to remote host: Connection refused
+ bash#         
+ 
+ Anyway, thanks for your reply.
+ 
+ PS: the full netstat -an : there are squid, and some others, but.. 
+ Active Internet connections (including servers)
+ Proto Recv-Q Send-Q  Local Address          Foreign Address        (state)
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4872       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4870       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4861       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4859       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4855       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4851       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4849       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4848       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4847       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4846       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4845       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4843       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4840       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4838       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4837       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4836       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4835       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4834       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4833       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4832       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4831       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4830       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4827       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4826       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4824       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4823       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4822       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4821       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4820       TIME_WAIT
+ tcp        0      0  194.135.104.78.1801    194.220.188.71.24554   SYN_SENT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4812       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4811       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4810       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4804       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4796       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4785       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4783       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4782       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4775       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4768       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4767       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4766       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4764       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4763       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4761       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4760       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4759       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4757       TIME_WAIT
+ tcp        0      0  194.135.104.78.3128    195.5.145.1.4756       TIME_WAIT
+ tcp        0      0  *.80                   *.*                    LISTEN
+ tcp        0      0  194.135.104.78.1020    194.135.104.75.22      ESTABLISHED
+ tcp        0      0  194.135.104.78.1015    194.135.104.75.22      ESTABLISHED
+ tcp        0      0  194.135.104.78.1023    194.135.104.75.22      ESTABLISHED
+ tcp        0      0  127.0.0.1.3478         *.*                    LISTEN
+ tcp        0      0  *.3128                 *.*                    LISTEN
+ tcp        0      0  127.0.0.1.3476         127.0.0.1.3477         ESTABLISHED
+ tcp        0      0  127.0.0.1.3477         127.0.0.1.3476         ESTABLISHED
+ tcp        0      0  127.0.0.1.3474         127.0.0.1.3475         ESTABLISHED
+ tcp        0      0  127.0.0.1.3475         127.0.0.1.3474         ESTABLISHED
+ tcp        0      0  127.0.0.1.3472         127.0.0.1.3473         ESTABLISHED
+ tcp        0      0  127.0.0.1.3473         127.0.0.1.3472         ESTABLISHED
+ tcp        0      0  127.0.0.1.3470         127.0.0.1.3471         ESTABLISHED
+ tcp        0      0  127.0.0.1.3471         127.0.0.1.3470         ESTABLISHED
+ tcp        0      0  127.0.0.1.3468         127.0.0.1.3469         ESTABLISHED
+ tcp        0      0  127.0.0.1.3469         127.0.0.1.3468         ESTABLISHED
+ tcp        0      0  127.0.0.1.3466         127.0.0.1.3467         ESTABLISHED
+ tcp        0      0  127.0.0.1.3467         127.0.0.1.3466         ESTABLISHED
+ tcp        0      0  127.0.0.1.3464         127.0.0.1.3465         ESTABLISHED
+ tcp        0      0  127.0.0.1.3465         127.0.0.1.3464         ESTABLISHED
+ tcp        0      0  127.0.0.1.3462         127.0.0.1.3463         ESTABLISHED
+ tcp        0      0  127.0.0.1.3463         127.0.0.1.3462         ESTABLISHED
+ tcp        0      0  127.0.0.1.3460         127.0.0.1.3461         ESTABLISHED
+ tcp        0      0  127.0.0.1.3461         127.0.0.1.3460         ESTABLISHED
+ tcp        0      0  127.0.0.1.3458         127.0.0.1.3459         ESTABLISHED
+ tcp        0      0  127.0.0.1.3459         127.0.0.1.3458         ESTABLISHED
+ tcp        0      0  127.0.0.1.3456         127.0.0.1.3457         ESTABLISHED
+ tcp        0      0  127.0.0.1.3457         127.0.0.1.3456         ESTABLISHED
+ tcp        0      0  127.0.0.1.3454         127.0.0.1.3455         ESTABLISHED
+ tcp        0      0  127.0.0.1.3455         127.0.0.1.3454         ESTABLISHED
+ tcp        0      0  127.0.0.1.3452         127.0.0.1.3453         ESTABLISHED
+ tcp        0      0  127.0.0.1.3453         127.0.0.1.3452         ESTABLISHED
+ tcp        0      0  127.0.0.1.3450         127.0.0.1.3451         ESTABLISHED
+ tcp        0      0  127.0.0.1.3451         127.0.0.1.3450         ESTABLISHED
+ tcp        0      0  127.0.0.1.3448         127.0.0.1.3449         ESTABLISHED
+ tcp        0      0  127.0.0.1.3449         127.0.0.1.3448         ESTABLISHED
+ tcp        0      0  194.135.104.78.3436    194.135.104.75.444     ESTABLISHED
+ tcp        0      0  194.135.104.78.1011    194.135.104.105.22     ESTABLISHED
+ tcp        0      0  194.135.104.78.1013    194.135.104.74.22      ESTABLISHED
+ tcp        0      0  *.24554                *.*                    LISTEN
+ tcp        0      0  194.135.104.78.139     194.135.104.56.1043    ESTABLISHED
+ tcp        0      0  194.135.104.78.139     194.135.104.56.1033    ESTABLISHED
+ tcp        0      0  194.135.104.78.1022    194.135.104.93.22      ESTABLISHED
+ tcp        0      0  194.135.104.78.1018    194.135.104.74.22      ESTABLISHED
+ tcp        0      0  194.135.104.78.2553    194.186.52.253.80      FIN_WAIT_2
+ tcp        0      0  194.135.104.78.2550    194.186.52.253.80      FIN_WAIT_2
+ tcp        0      0  194.135.104.78.1016    194.135.104.93.22      ESTABLISHED
+ tcp        0      0  194.135.104.78.1017    193.124.94.65.22       ESTABLISHED
+ tcp        0      0  194.135.104.78.1019    194.135.104.105.22     ESTABLISHED
+ tcp        0      0  194.135.104.78.1021    194.135.104.82.22      ESTABLISHED
+ tcp        0      0  *.6000                 *.*                    LISTEN
+ tcp        0      0  *.22                   *.*                    LISTEN
+ tcp        0      0  *.139                  *.*                    LISTEN
+ tcp        0      0  *.110                  *.*                    LISTEN
+ tcp        0      0  *.21                   *.*                    LISTEN
+ udp        0      0  *.3130                 *.*                   
+ udp        0      0  *.4832                 *.*                   
+ udp        0      0  *.4827                 *.*                   
+ udp        0      0  *.4825                 *.*                   
+ udp        0      0  *.4823                 *.*                   
+ udp        0      0  *.4821                 *.*                   
+ udp        0      0  *.4819                 *.*                   
+ udp        0      0  *.4817                 *.*                   
+ udp        0      0  *.4815                 *.*                   
+ udp        0      0  *.3880                 *.*                   
+ udp        0      0  *.3878                 *.*                   
+ udp        0      0  *.3876                 *.*                   
+ udp        0      0  *.3874                 *.*                   
+ udp        0      0  *.3872                 *.*                   
+ udp        0      0  *.3870                 *.*                   
+ udp        0      0  *.3868                 *.*                   
+ udp        0      0  *.3866                 *.*                   
+ udp        0      0  *.138                  *.*                   
+ udp        0      0  *.137                  *.*                   
+ udp        0      0  *.518                  *.*                   
+ udp        0      0  *.513                  *.*                   
+ udp        0      0  127.0.0.1.123          *.*                   
+ udp        0      0  194.135.104.78.123     *.*                   
+ udp        0      0  *.123                  *.*                   
+ udp        0      0  *.514                  *.*                   
+ Active UNIX domain sockets
+ Address  Type   Recv-Q Send-Q    Inode     Conn     Refs  Nextref Addr
+ f0a44700 stream      0      0        0 f05e2114        0        0
+ f0842a00 stream      0      0        0 f05ab194        0        0
+ f0859e00 stream      0      0        0 f05a8a94        0        0
+ f08cdc00 stream      0      0        0 f05a8394        0        0
+ f09c7300 stream      0      0        0 f0641614        0        0
+ f096d400 stream      0      0        0 f05a9094        0        0
+ f091b900 stream      0      0        0 f05f3014        0        0
+ f0967700 stream      0      0        0 f05aae94        0        0
+ f0961000 stream      0      0        0 f05f3d94        0        0
+ f09f7200 stream      0      0        0 f05aa614        0        0
+ f09e4e00 stream      0      0        0 f05aa494        0        0
+ f09e4100 stream      0      0        0 f05a8014        0        0
+ f0833900 stream      0      0        0 f0603314        0        0
+ f0832b00 stream      0      0        0 f05a8914        0        0
+ f08c9c00 stream      0      0        0 f058be14        0        0
+ f091bb00 stream      0      0        0 f059a694        0        0
+ f0915800 stream      0      0        0 f0603914        0        0
+ f08c5100 stream      0      0        0 f058a314        0        0
+ f0844300 stream      0      0        0 f05e2294        0        0 /tmp/.X11-unix/X0
+ f0954900 stream      0      0        0 f05a9314        0        0 /tmp/.X11-unix/X0
+ f08e7100 stream      0      0        0 f0627114        0        0 /tmp/.X11-unix/X0
+ f0870300 stream      0      0        0 f0677814        0        0 /tmp/.X11-unix/X0
+ f0977100 stream      0      0        0 f05e2414        0        0 /tmp/.X11-unix/X0
+ f08ba000 stream      0      0        0 f058be94        0        0 /tmp/.X11-unix/X0
+ f08b7f00 stream      0      0        0 f0583694        0        0 /tmp/.X11-unix/X0
+ f09c5d00 stream      0      0        0 f0583914        0        0 /tmp/.X11-unix/X0
+ f0a49900 stream      0      0        0 f05a9b94        0        0 /tmp/.X11-unix/X0
+ f09cd300 stream      0      0        0 f0613b94        0        0 /tmp/.X11-unix/X0
+ f0985b00 stream      0      0        0 f05e2394        0        0 /tmp/.X11-unix/X0
+ f084a900 stream      0      0        0 f058b114        0        0 /tmp/.X11-unix/X0
+ f0908b00 stream      0      0        0 f05aa814        0        0 /tmp/.X11-unix/X0
+ f097bc00 stream      0      0        0 f05aa594        0        0 /tmp/.X11-unix/X0
+ f0915400 stream      0      0        0 f058a894        0        0 /tmp/.X11-unix/X0
+ f09b0e00 stream      0      0        0 f05abf14        0        0 /tmp/.X11-unix/X0
+ f0881d00 stream      0      0        0 f05a8194        0        0 /tmp/.X11-unix/X0
+ f0990f00 stream      0      0        0 f0603894        0        0 /tmp/.X11-unix/X0
+ f098e100 stream      0      0        0 f05e2f94        0        0 /tmp/.X11-unix/X0
+ f092e000 stream      0      0        0 f059a394        0        0 /tmp/.X11-unix/X0
+ f0967800 stream      0      0        0 f059ae14        0        0 /tmp/.X11-unix/X0
+ f0927000 stream      0      0        0 f0613294        0        0 /tmp/.X11-unix/X0
+ f0878c00 stream      0      0 f092ba00        0        0        0 /tmp/.X11-unix/X0
+ f0a56400 stream      0      0        0 f0603614        0        0
+ f098e900 stream      0      0        0 f0603814        0        0
+ f09a2e00 stream      0      0        0 f05a8d94        0        0
+ f0947a00 stream   1952      0        0 f0603994        0        0
+ f089d900 dgram       0      0        0 f0583e94        0 f0583c14
+ f089d000 dgram       0      0        0 f0583e94        0 f0585c94
+ f0885600 dgram       0      0        0 f0583e94        0 f0583d14
+ f083e300 dgram       0      0        0 f0583e94        0        0
+ f083b800 dgram       0      0 f083c580        0 f0583c94        0 /var/run/log
+ -- 
+ Alexandre Snarskii
+ the source code is included
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Alexandre Snarskii <snar@paranoia.ru>
+Cc: apbugs@apache.org
+Subject: Re: general/1563: forgotten port of request.
+Date: Tue, 16 Dec 1997 14:44:45 -0800 (PST)
+
+ On 16 Dec 1997, Alexandre Snarskii wrote:
+ 
+ >  May be we are differs with the meaning of 'support', but, as for 
+ >  me, some Listen directives and using <VirtualHost hostname:*>
+ >  means that: apache supports 'main' servername:(some ports, on which
+ >  the connections are accepted) and some 'virtual' servers, each
+ >  configured with only one <VirtualHost hostname:*> directive means, 
+ >  that apache supports servers with multiple ports on each hostname. 
+ >  In all cases, but that :) 
+ 
+ Listen just means "accept connections at this address:port".  The Port
+ directive in the main server is overloaded to support NCSA files (this is
+ documented in the port directive).  Port and ServerName together define
+ the canonical name for the main server or vhost.  And as I mentioned... 
+ apache only supports one canonical name... it wouldn't be "canonical"
+ otherwise ;)  It could do other things, it just doesn't for historical
+ reasons. 
+ 
+ >  > <VirtualHost *:8010>
+ >  > Port 8010
+ >  > </VirtualHost>
+ >  > 
+ >  > is probably what you want. 
+ >  
+ >  Well, now my httpd.conf looks like (the final part of, 
+ >  all the Listen directives are commented out) :
+ >  
+ >  <VirtualHost *:8110>
+ >  ServerName localhost
+ >  Port 8110
+ >  </VirtualHost>
+ >  /usr/local/etc/httpd/conf/httpd.conf: 281 lines, 9425 characters.
+ >  bash# killall httpd
+ >  bash# /usr/local/etc/httpd/httpd
+ >  bash#       
+ >  
+ >  but i can't see any listener of that port... 
+ 
+ You need to use Listen as well. 
+ 
+ Dean
+ 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

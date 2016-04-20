@@ -1,0 +1,110 @@
+Received: (qmail 8962 invoked by uid 2012); 12 Mar 1998 09:05:05 -0000
+Message-Id: <19980312090505.8961.qmail@hyperreal.org>
+Date: 12 Mar 1998 09:05:05 -0000
+From: Nobuyoshi Miyokawa <nmiyo@hic.co.jp>
+Reply-To: nmiyo@hic.co.jp
+To: apbugs@hyperreal.org
+Subject: Directory/Location match becomes fail if DocumentRoot has extra slash at end.
+X-Send-Pr-Version: 3.2
+
+>Number:         1938
+>Category:       config
+>Synopsis:       Directory/Location match becomes fail if DocumentRoot has extra slash at end.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Mar 12 01:10:00 PST 1998
+>Last-Modified:  Sun Sep 27 09:32:41 PDT 1998
+>Originator:     nmiyo@hic.co.jp
+>Organization:
+>Release:        1.2.5
+>Environment:
+OS: FreeBSD 2.2.5-RELEASE i386(No patch was applied)
+Compiler: gcc-2.7.2.1
+>Description:
+  If DocumentRoot directive is set a path which has extra slash at end,
+such as "/foo/bar/baz/", Directory/Location directive does not match correctly.
+For Example, if DocumentRoot directive is set to '/foo/bar/baz/' and we
+write,
+
+  <Directory /foo/bar/baz/quux/>
+    IndexIgnore foo
+  </Directory>
+
+to httpd.conf, IndexIgnore directive does not match to http://WebServer/quux/.
+It's work correctly if DocumentRoot directive is set to '/foo/bar/baz'(No
+last slash).  I think it may be specification, but, this behavior is not 
+fail safe.
+
+  Same thing is occurred if DOCUMENT_LOCATION is defined incorrectly.
+>How-To-Repeat:
+See above.
+>Fix:
+Short and Dirty(;-() patch is here:
+
+--- http_core.c.orig    Thu Mar 12 12:48:34 1998
++++ http_core.c Thu Mar 12 17:31:34 1998
+@@ -183,7 +183,18 @@
+     int is_virtual = s->is_virtual;
+   
+     conf->access_name = is_virtual ? NULL : DEFAULT_ACCESS_FNAME;
+-    conf->document_root = is_virtual ? NULL : DOCUMENT_LOCATION;
++    if (is_virtual) {
++      conf->document_root = NULL;
++    } else if (DOCUMENT_LOCATION[strlen(DOCUMENT_LOCATION)-1] == '/') {
++      int i;
++      for (i = strlen(DOCUMENT_LOCATION);
++          i > 1 && DOCUMENT_LOCATION[i-1] == '/';
++          i--) 
++       ;
++      conf->document_root = pstrndup(a, DOCUMENT_LOCATION, i);
++    } else {
++      conf->document_root = DOCUMENT_LOCATION;
++    }
+     conf->sec = make_array (a, 40, sizeof(void *));
+     conf->sec_url = make_array (a, 40, sizeof(void *));
+     
+@@ -432,7 +443,15 @@
+        else
+            return "DocumentRoot must be a directory";
+     
+-    conf->document_root = arg;
++    if (arg[strlen(arg)-1] == '/') {
++      int i;
++      for (i = strlen(arg); i > 1 && arg[i-1] == '/'; i--) 
++       ;
++      conf->document_root = pstrndup(cmd->pool, arg, i);
++    } else {
++      conf->document_root = arg;
++    }
++
+     return NULL;
+ }
+
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Sun Sep 27 09:32:41 PDT 1998
+State-Changed-Why:
+
+This is a documented restriction.  Don't include trailing
+slashes on the DocumentRoot and ServerRoot directive
+values.  Thanks for using Apache!
+
+Category-Changed-From-To: general-config
+Category-Changed-By: coar
+Category-Changed-When: Sun Sep 27 09:32:41 PDT 1998
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

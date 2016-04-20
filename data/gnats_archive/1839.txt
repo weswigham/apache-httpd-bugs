@@ -1,0 +1,191 @@
+Received: (qmail 2770 invoked by uid 2012); 19 Feb 1998 22:37:29 -0000
+Message-Id: <19980219223729.2769.qmail@hyperreal.org>
+Date: 19 Feb 1998 22:37:29 -0000
+From: David Sklar <sklar@student.net>
+Reply-To: sklar@student.net
+To: apbugs@hyperreal.org
+Subject: logresolve.c patch to handle ip addresses that aren't the first field in the access log
+X-Send-Pr-Version: 3.2
+
+>Number:         1839
+>Category:       other
+>Synopsis:       logresolve.c patch to handle ip addresses that aren't the first field in the access log
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          support
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Feb 19 14:40:00 PST 1998
+>Last-Modified:  Wed May 20 03:35:16 PDT 1998
+>Originator:     sklar@student.net
+>Organization:
+>Release:        1.3
+>Environment:
+all
+>Description:
+ip address isn't the first field in some of my logfiles (vhost is), and I wanted a way to resolve ip addresses in place. Here's a patch against src/support/logresolve.c that lets the user specify which field the ip address is in.
+
+--- logresolve.c.orig   Thu Feb 19 16:02:53 1998
++++ logresolve.c        Thu Feb 19 17:04:58 1998
+@@ -1,5 +1,9 @@
+ /*
+- * logresolve 1.1
++ * logresolve 1.2
++ *
++ * David Sklar - sklar@student.net - http://www.sklar.com/
++ * Allow ip address to be in user-specified space-delimited field
++ *
+  *
+  * Tom Rathborne - tomr@uunet.ca - http://www.uunet.ca/~tomr/
+  * UUNET Canada, April 16, 1995
+@@ -9,6 +13,7 @@
+  * Usage: logresolve [-s filename] [-c] < access_log > new_log
+  *
+  * Arguments:
++ *    -f field number which space-delimeted field ip address is in
+  *    -s filename     name of a file to record statistics
+  *    -c              check the DNS for a matching A record for the host.
+  *
+@@ -23,11 +28,9 @@
+  * file through this program (logresolve) and all of your IP numbers will
+  * be resolved into hostnames (where possible).
+  *
+- * logresolve takes an HTTPD access log (in the COMMON log file format,
+- * or any other format that has the IP number/domain name as the first
+- * field for that matter), and outputs the same file with all of the
+- * domain names looked up. Where no domain name can be found, the IP
+- * number is left in.
++ * logresolve takes an HTTPD access log and outputs the same file with
++ * all of the domain names looked up. Where no domain name can be
++ * found, the IP number is left in.
+  *
+  * To minimize impact on your nameserver, logresolve has its very own
+  * internal hash-table cache. This means that each IP number will only
+@@ -273,9 +276,10 @@
+ int main (int argc, char *argv[])
+ {
+     struct in_addr ipnum;
+-    char *bar, hoststring[MAXDNAME + 1], line[MAXLINE], *statfile;
+-    int i, check;
++    char *bar, *baz, hoststring[MAXDNAME + 1], line[MAXLINE], *statfile;
++    int i, check, ipfield;
+
++    ipfield = 1;
+     check = 0;
+     statfile = NULL;
+     for (i = 1; i < argc; i++) {
+@@ -289,9 +293,17 @@
+            i++;
+            statfile = argv[i];
+        }
++       else if (strcmp(argv[i], "-f") == 0) {
++         if (i == argc - 1) {
++           fprintf(stderr, "logresolve: missing field number to -f\n");
++           exit(2);
++         }
++         i++;
++         ipfield = atoi(argv[i]);
++       }
+        else {
+-           fprintf(stderr, "Usage: logresolve [-s statfile] [-c] < input > out\
+put");
+-           exit(0);
++         fprintf(stderr, "Usage: logresolve [-s statfile] [-f ipfield] [-c] < \
+input > output");
++         exit(0);
+        }
+     }
+
+@@ -305,30 +317,43 @@
+        if (line[0] == '\0')
+            continue;
+        entries++;
+-       if (!isdigit(line[0])) {        /* short cut */
+-           puts(line);
+-           withname++;
+-           continue;
+-       }
+-       bar = strchr(line, ' ');
++
++       bar = line;
++       baz = NULL;
++       for (i = 1; bar && (i < ipfield); i++)
++         if (bar = strchr(bar, ' '))
++           bar++;
++
++       /* now bar points to the beginning of the ip address */
+        if (bar != NULL)
+-           *bar = '\0';
+-       ipnum.s_addr = inet_addr(line);
+-       if (ipnum.s_addr == 0xffffffffu) {
+-           if (bar != NULL)
+-               *bar = ' ';
+-           puts(line);
+-           withname++;
+-           continue;
++         baz = strchr(bar,' ');
++       /* now baz points to the space after the ip address */
++       if (baz != NULL)
++         *baz = '\0';
++                                           /* reasons for no resolve: */
++       if ((bar == NULL) ||                /* no data */
++           (!isdigit(bar[0])) ||           /* non numeric address field */
++           (inet_aton(bar,&ipnum) == 0)) { /* badly formed address */
++         if (baz != NULL)
++           *baz = ' ';
++         puts(line);
++         withname++;
++         continue;
+        }
+-
++
+        resolves++;
+-
++
+        cgethost(ipnum, hoststring, check);
+-       if (bar != NULL)
+-           printf("%s %s\n", hoststring, bar + 1);
++       if (bar != NULL) {
++         *bar = '\0';
++         if (baz && baz++)
++           printf("%s%s %s\n", line, hoststring, baz);
++         else
++           printf("%s%s\n", line, hoststring);
++
++       }
+        else
+-           puts(hoststring);
++         puts(hoststring);
+     }
+
+     if (statfile != NULL) {
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: brian
+State-Changed-When: Wed May 20 03:35:16 PDT 1998
+State-Changed-Why:
+Hi Dave!
+
+Thanks for the patch - we'll keep it in the bug database for
+reference.  I'm not sure that it's worth it to apply this;
+there seems to be a slippery slope one can start falling
+down (I also don't use common logfile format, I separate all
+my fields with a '|') and my gut tells me that for anything
+more "interesting" than this Perl screams for attention.
+Anyways, your patch is now here for future reference.  Thanks!
+
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

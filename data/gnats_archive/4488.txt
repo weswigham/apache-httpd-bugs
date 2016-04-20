@@ -1,0 +1,253 @@
+Received: (qmail 26358 invoked by uid 2012); 28 May 1999 03:24:40 -0000
+Message-Id: <19990528032440.26357.qmail@hyperreal.org>
+Date: 28 May 1999 03:24:40 -0000
+From: Takao Azuma <ecd102@ecodacs.or.jp>
+Reply-To: ecd102@ecodacs.or.jp
+To: apbugs@hyperreal.org
+Subject: mod_perl breaks mod_proxy on self access
+X-Send-Pr-Version: 3.2
+
+>Number:         4488
+>Category:       mod_perl
+>Synopsis:       mod_perl breaks mod_proxy on self access
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          feedback
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu May 27 20:30:00 PDT 1999
+>Last-Modified:  Thu Jul  1 19:20:01 PDT 1999
+>Originator:     ecd102@ecodacs.or.jp
+>Organization:
+>Release:        1.3.6
+>Environment:
+mod_perl-1.19
+Apache is compiled with mod-proxy and mod-perl.
+>Description:
+When comiled with mod_perl,
+apache's http proxy cannot access correctly the host which name specified with "ServerName" directive.
+>How-To-Repeat:
+Let the server have two names: myhost and myalias (in /etc/hosts)
+Http server and http proxy are on the same port (80)
+sample httpd.conf:
+  Servername myhost
+  ProxyRequests On
+  (other settings are omitted)
+
+then request:
+  GET / HTTP/1.0                 : OK
+  GET http://myalias/ HTTP/1.0   : OK
+  GET http://myhost/ HTTP/1.0    : NG (error_log: "File does not exist: http://myhost/")
+>Fix:
+This patch can workaround this. (but I think not a "true fix")
+---------
+*** mod_proxy.c.orig    Sat Jan  2 04:05:02 1999
+--- mod_proxy.c Thu Feb 25 17:58:49 1999
+***************
+*** 149,163 ****
+--- 149,167 ----
+  
+      if (conf->req && r->parsed_uri.scheme) {
+        /* but it might be something vhosted */
++ /*
+         if (!(r->parsed_uri.hostname
+            && !strcasecmp(r->parsed_uri.scheme, ap_http_method(r))
+            && ap_matches_request_vhost(r, r->parsed_uri.hostname,
+                 r->parsed_uri.port_str ? r->parsed_uri.port : ap_default_port(r)))) {
++ */
+            r->proxyreq = 1;
+            r->uri = r->unparsed_uri;
+            r->filename = ap_pstrcat(r->pool, "proxy:", r->uri, NULL);
+            r->handler = "proxy-server";
++ /*
+          }
++ */
+      }
+      /* We need special treatment for CONNECT proxying: it has no scheme part */
+      else if (conf->req && r->method_number == M_CONNECT
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: ask
+State-Changed-When: Thu Jul  1 00:27:56 PDT 1999
+State-Changed-Why:
+Does the behavior change if you don't compile the apache with mod_perl and then compile with mod_perl but don't include anything in the configuration?
+
+What do you mean "the proxy server and the http server runs on the same port"? Do you only run one server?
+
+
+From: "Azuma,Takao" <ecd102@ecodacs.or.jp>
+To: ask@apache.org
+Cc: apache-bugdb@apache.org, apbugs@Apache.Org, ecd102@ecodacs.or.jp
+Subject: Re: mod_perl/4488: mod_perl breaks mod_proxy on self access
+Date: Fri, 02 Jul 1999 11:17:25 +0900
+
+ ask@apache.org wrote:
+ >Does the behavior change if you don't compile the apache with mod_perl and then compile with mod_perl but don't include anything in the configuration?
+ Yes. (Please see below)
+ 
+ >What do you mean "the proxy server and the http server runs on the same port"? Do you only run one server?
+ I'm sorry for my bad English.
+ It means that:
+   I run only one server on a "dual homed" machine.
+   It's main purpose is the www server for outside (=for the Internet).
+   Simultaneously, it serves proxy for our intra-net.
+ 
+ So, I configured the server like below, but it not runs the way what I aimed.
+ Today, I retried in whole on my linux-2.0.37 box:
+ 
+ Apache-1.3.6 vanilla:
+   tar -xzvf apache_1.3.6.tar.gz
+   cd apache_1.3.6
+   ./configure --prefix=/usr/local/apache.vanilla --enable-module=proxy
+   make && make install
+ 
+ Apache-1.3.6 with mod_perl-1.19:
+   tar -xzvf apache_1.3.6.tar.gz
+   tar -xzvf mod_perl-tar.gz
+   cd mod_perl-1.19
+   perl Makefile.PL DO_HTTPD=1 USE_APACI=1 EVERYTHING=1 \
+   APACI_ARGS='--prefix=/usr/local/apache.modperl --enable-module=proxy'
+   make && make install
+ 
+ Then, gave them same config.
+ I changed only these 3 lines from "httpd.conf.default":
+ 
+   Port 80
+   ServerName myhost
+   ProxyRequests On
+ 
+ Name "myhost" is defined as 192.168.0.1 in /etc/hosts, and
+ "mywww" is also defined as 192.168.0.1 in /etc/hosts.
+ 
+ And here is the result:
+ 
+ ===[[ Apache-1.3.6 vanilla ]]===========================================
+   myhost:/usr/local/apache.vanilla/conf# ../bin/apachectl start
+   ../bin/apachectl start: httpd started
+ 
+   myhost:/usr/local/apache.vanilla/conf# telnet localhost 80
+   Trying 127.0.0.1...
+   Connected to localhost.
+   Escape character is '^]'.
+   GET http://myhost/ HTTP/1.0                         <---- TRY "myhost"
+   
+   HTTP/1.1 200 OK                                     <---- OK!
+   Date: Fri, 02 Jul 1999 01:05:40 GMT
+   Server: Apache/1.3.6 (Unix)
+   Last-Modified: Wed, 20 May 1998 14:59:42 GMT
+   ETag: "2712f-656-3562efde"
+   Accept-Ranges: bytes
+   Content-Length: 1622
+   Connection: close
+   Content-Type: text/html
+   
+   <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+   <HTML>
+    <HEAD>
+     <TITLE>Test Page for Apache Installation on Web Site</TITLE>
+ *** snip ***
+   </HTML>
+   Connection closed by foreign host.
+ 
+   myhost:/usr/local/apache.vanilla/conf# telnet localhost 80
+   Trying 127.0.0.1...
+   Connected to localhost.
+   Escape character is '^]'.
+   GET http://mywww/ HTTP/1.0                          <---- TRY "mywww"
+   
+   HTTP/1.0 200 OK                                     <---- OK!
+   Date: Fri, 02 Jul 1999 01:17:19 GMT
+   Server: Apache/1.3.6 (Unix)
+   Last-Modified: Wed, 20 May 1998 14:59:42 GMT
+   ETag: "2712f-656-3562efde"
+   Accept-Ranges: bytes
+   Content-Length: 1622
+   Content-Type: text/html
+   
+   <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+   <HTML>
+    <HEAD>
+     <TITLE>Test Page for Apache Installation on Web Site</TITLE>
+ *** snip ***
+   </HTML>
+   Connection closed by foreign host.
+ ------------------------------------------------------------------------
+ 
+ ===[[ Apache-1.3.6 with mod_perl-1.19 ]]================================
+   myhost:/usr/local/apache.modperl/conf# ../bin/apachectl start
+   ../bin/apachectl start: httpd started
+ 
+   myhost:/usr/local/apache.modperl/conf# telnet localhost 80
+   Trying 127.0.0.1...
+   Connected to localhost.
+   Escape character is '^]'.
+   GET http://myhost/ HTTP/1.0                         <---- TRY "myhost"
+   
+   HTTP/1.0 404 Not Found                              <---- NG!!!
+   Date: Fri, 02 Jul 1999 01:22:13 GMT
+   Server: Apache/1.3.6 (Unix) mod_perl/1.19
+   Connection: close
+   Content-Type: text/html
+   
+   <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+   <HTML><HEAD>
+   <TITLE>404 Not Found</TITLE>
+   </HEAD><BODY>
+   <H1>Not Found</H1>
+   The requested URL http://myhost/ was not found on this server.<P>
+   <HR>
+   <ADDRESS>Apache/1.3.6 Server at myhost Port 80</ADDRESS>
+   </BODY></HTML>
+   Connection closed by foreign host.
+ 
+   myhost:/usr/local/apache.modperl/conf# telnet localhost 80
+   Trying 127.0.0.1...
+   Connected to localhost.
+   Escape character is '^]'.
+   GET http://mywww/ HTTP/1.0                         <---- TRY "mywww"
+   
+   HTTP/1.0 200 OK                                    <---- OK!
+   Date: Fri, 02 Jul 1999 01:23:35 GMT
+   Server: Apache/1.3.6 (Unix) mod_perl/1.19
+   Last-Modified: Wed, 20 May 1998 14:59:42 GMT
+   ETag: "2713a-656-3562efde"
+   Accept-Ranges: bytes
+   Content-Length: 1622
+   Content-Type: text/html
+   
+   <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+   <HTML>
+    <HEAD>
+     <TITLE>Test Page for Apache Installation on Web Site</TITLE>
+ *** snip ***
+   </HTML>
+   Connection closed by foreign host.
+ ------------------------------------------------------------------------
+ When returned "404 Not Found", the error_log shows this:
+ 
+   [Fri Jul  2 10:22:15 1999] [error] [client 127.0.0.1] File does not exist: http://myhost/
+ 
+ It seems that the server missed to select proper handler for the request.
+ 
+ Is this helps you?
+ 
+ -- 
+ Azuma, Takao
+ kaokun@ecodacs.or.jp
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

@@ -1,0 +1,108 @@
+Received: (qmail 34403 invoked by uid 501); 1 May 2001 01:43:18 -0000
+Message-Id: <20010501014318.34402.qmail@apache.org>
+Date: 1 May 2001 01:43:18 -0000
+From: kevin wang <kwang@nexprise.com>
+Reply-To: kwang@nexprise.com
+To: submit@bugz.apache.org
+Subject: multiviews expects all lowercase filenames!
+X-Send-Pr-Version: 3.110
+
+>Number:         7662
+>Category:       mod_negotiation
+>Synopsis:       multiviews expects all lowercase filenames!
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Apr 30 18:50:00 PDT 2001
+>Closed-Date:    
+>Last-Modified:  Tue Jul 24 18:50:00 PDT 2001
+>Originator:     kwang@nexprise.com
+>Release:        1.3.19
+>Organization:
+apache
+>Environment:
+NT 4.0 service pack ?
+>Description:
+when multiviews is used (i.e. zoom.gif.en) the filename must be in all lowercase.
+Yes, I know that nt is not case sensitive, but it IS in this case!  The
+URL is of mixed case, and so is the filesystem, but apache is requiring that
+the filesystem be lowercase.  See the example
+>How-To-Repeat:
+create tree:
+
+chdir ...\htdocs
+mkdir lang
+chdir lang
+echo "English" > Test.html.en
+
+point browser at "http://server/lang/Test.html" and it 404's
+
+del Test.html.en
+echo "english" > test.html.en
+
+reload page, and it now works.
+
+Looking through mod_negotiation, I can't figure out where it actually tests 
+for the file existance (when looking at the various extentions).
+>Fix:
+read_types_multi() gets a listing of the files using readdir().  This 
+appears to be the source of the lower case filenames that are being strcmp()'ed.
+
+I can't think of any clean way other than to #ifdef win32...stricmp()...
+which isn't terribly clean.
+
+Or find a readdir() that preserves case?
+
+oh wait, readdir() is in os/win32/readdir.c Hm...
+
+I'm downloading cygwin so I can debug this further, but I'll submit this now so that 
+if someone more knowledgeable knows an answer, I don' tneed to expend further energy
+
+   - Kevin kwang@nexprise.com
+>Release-Note:
+>Audit-Trail:
+
+From: Kevin Wang <kjw@rightsock.com>
+To: apbugs@apache.org
+Cc:  
+Subject: mod_negotiation/7662
+Date: Tue, 24 Jul 2001 19:42:01 -0700
+
+ This is definitely a bug in mod_negotiation.
+ 
+ readdir() should return mixed case, but does not.  since these wrappers
+ just call _findfirst and _findnext which are microsoft api's, there
+ should be a workaround in mod_negotiation to use stricmp instead of strcmp
+ on line 929:
+ 
+ -        if (strncmp (dir_entry->d_name, filp, prefix_len)) {
+ +        if (strnicmp(dir_entry->d_name, filp, prefix_len)) {
+ 
+ (space after 'strncmp' added for clarity)
+ 
+ cygwin works, but not everyone has it installed, unfortunately.  If I
+ use ms vc++ 5.0, that's the correct workaround.
+ 
+    - Kevin
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

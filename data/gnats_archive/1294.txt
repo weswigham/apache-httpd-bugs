@@ -1,0 +1,101 @@
+Received: (qmail 9880 invoked by uid 2012); 21 Oct 1997 22:22:57 -0000
+Message-Id: <19971021222257.9879.qmail@hyperreal.org>
+Date: 21 Oct 1997 22:22:57 -0000
+From: David Chambers <davidc@flosun.salk.edu>
+Reply-To: davidc@flosun.salk.edu
+To: apbugs@hyperreal.org
+Subject: Spurious mmap error messages?
+X-Send-Pr-Version: 3.2
+
+>Number:         1294
+>Category:       os-sunos
+>Synopsis:       Spurious mmap error messages?
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Oct 21 15:30:01 PDT 1997
+>Last-Modified:  Thu Nov 13 20:00:59 PST 1997
+>Originator:     davidc@flosun.salk.edu
+>Organization:
+>Release:        1.3b2
+>Environment:
+SunOS flosun 4.1.4 1 sun4c
+gcc 2.7.2.2
+>Description:
+The server logs a [Crit] error for every file smaller than MMAP_THRESHOLD
+ e.g. 
+	[Tue Oct 21 14:01:36 1997] [crit] (2)No such file or directory: mmap_handler: mmap failed: /u3/www/docs/images/bullets/dots/yl_dot.gif
+
+The client correctly displays the images or files, however.
+
+Assuming this really is a bug, it must be a coding omission in http_core.c
+around where the test if (mm==(caddr_t)-1) is made.  The code checks the
+file size and if less than MMAP_THRESHOLD (only nonzero for SunOS) it sets
+mm to (caddr_t) -1.  It then immediately checks mm to see if it's -1,
+which it is, so it issues an error message.  Perhaps it should check the
+file size again?
+
+>How-To-Repeat:
+It ought to occur on any SunOS platform
+>Fix:
+(see description) - I eliminated the messages by changing line 1686 of http_core.c
+to read:
+	if ((mm == (caddr_t)-1) && (r->finfo.st_size >= MMAP_THRESHOLD)) {
+
+... but I'm not sure whether this is completely correct (what does block_alarms()
+and unblock_alarms() do? :-%2
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Tue Oct 21 18:01:32 PDT 1997
+State-Changed-Why:
+Waiting to see if the patch I sent does the job.
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: David Chambers <davidc@flosun.salk.edu>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-sunos/1294: Spurious mmap error messages?
+Date: Tue, 21 Oct 1997 18:01:42 -0700 (PDT)
+
+ Yup this is a bug.  The block/unblock are important ... try this patch
+ instead of your patch: 
+ 
+ Dean
+ 
+ Index: http_core.c
+ ===================================================================
+ RCS file: /export/home/cvs/apachen/src/main/http_core.c,v
+ retrieving revision 1.125
+ diff -u -r1.125 http_core.c
+ --- http_core.c	1997/10/07 19:34:00	1.125
+ +++ http_core.c	1997/10/22 00:59:36
+ @@ -1686,8 +1686,10 @@
+      if (mm == (caddr_t)-1) {
+  	unblock_alarms();
+  
+ -	aplog_error(APLOG_MARK, APLOG_CRIT, r->server,
+ -		    "mmap_handler: mmap failed: %s", r->filename);
+ +	if (r->finfo.st_size >= MMAP_THRESHOLD) {
+ +	    aplog_error(APLOG_MARK, APLOG_CRIT, r->server,
+ +			"mmap_handler: mmap failed: %s", r->filename);
+ +	}
+  #endif
+  
+  	if (d->content_md5 & 1) {
+ 
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: marc
+State-Changed-When: Thu Nov 13 20:00:59 PST 1997
+State-Changed-Why:
+Patch applied to 1.3 development tree to fix the problem.
+
+Thanks for the report.
+>Unformatted:
+

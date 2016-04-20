@@ -1,0 +1,249 @@
+From nobody@hyperreal.com  Mon Apr 28 10:53:29 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id KAA22152;
+	Mon, 28 Apr 1997 10:53:29 -0700 (PDT)
+Message-Id: <199704281753.KAA22152@hyperreal.com>
+Date: Mon, 28 Apr 1997 10:53:29 -0700 (PDT)
+From: Steven Champeon <schampeo@hesketh.com>
+Reply-To: schampeo@hesketh.com
+To: apbugs@hyperreal.com
+Subject: AddType application/x-javascript .js breaks SSIs in IncludesNOEXEC dirs
+X-Send-Pr-Version: 3.2
+
+>Number:         495
+>Category:       config
+>Synopsis:       AddType application/x-javascript .js breaks SSIs in IncludesNOEXEC dirs
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Apr 28 11:00:07 1997
+>Last-Modified:  Fri May  2 15:32:11 PDT 1997
+>Originator:     schampeo@hesketh.com
+>Organization:
+>Release:        1.2b8
+>Environment:
+# uname -a
+SunOS da 5.5 Generic_103093-08 sun4c sparc SUNW,Sun_4_75
+# gcc -v
+Reading specs from /usr/local/lib/gcc-lib/sparc-sun-solaris2.5/2.7.2/specs
+gcc version 2.7.2
+>Description:
+I use SSIs to include JavaScripts (which have the ending .js on our system). 
+Another developer was using the AddType directive to add a MIME type for
+JavaScript, so he could do multipart-mixed responses, with the JavaScript in
+one section of the response, and the HTML in another (and thereby avoid sending
+back JavaScripts which could be seen via View Source). After he added the AddType,
+I started getting errors from my SSIs due to "unable to include potential exec"
+despite the fact that there is no Handler setup for .js files. Is this normal?
+If so, is it really correct? 
+
+I would think that a typed file without a handler or execute permissions could
+still be included from a directory even if IncludesNOEXEC was set. We're going to
+see more problems with this as more client-side scripting languages arrive.
+
+What do you guys think?
+>How-To-Repeat:
+Simple. 
+
+srm.conf:
+AddType application/x-javascript .js
+
+test.html: (in dir with IncludesNoExec config set)
+<!--#include virtual="/path/to/javascript.js" -->
+
+>Fix:
+If a file of type X has no handler associated, is not executable, and is in a
+dir which allows Includes but NoExec, allow the file to be included. If this is
+not cool, maybe we need an IncludesNoExecButScriptsMayBeIncluded :%2
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Steven Champeon <schampeo@hesketh.com>
+Subject: Re: config/495: AddType application/x-javascript .js breaks SSIs in IncludesNOEXEC dirs
+Date: Mon, 28 Apr 1997 11:41:35 -0700 (PDT)
+
+ 
+ The current behaviour sounds correct to me.  Don't name your SSIs with a
+ .js... if you want them to be called something other than .html you could
+ try .htmlf (html fragment) and "AddType text/html htmlf".  We open up lots
+ of potential problems by changing this.
+ 
+ Dean
+ 
+ On Mon, 28 Apr 1997, Steven Champeon wrote:
+ 
+ > 
+ > >Number:         495
+ > >Category:       config
+ > >Synopsis:       AddType application/x-javascript .js breaks SSIs in IncludesNOEXEC dirs
+ > >Confidential:   no
+ > >Severity:       serious
+ > >Priority:       medium
+ > >Responsible:    apache (Apache HTTP Project)
+ > >State:          open
+ > >Class:          sw-bug
+ > >Submitter-Id:   apache
+ > >Arrival-Date:   Mon Apr 28 11:00:07 1997
+ > >Originator:     schampeo@hesketh.com
+ > >Organization:
+ > apache
+ > >Release:        1.2b8
+ > >Environment:
+ > # uname -a
+ > SunOS da 5.5 Generic_103093-08 sun4c sparc SUNW,Sun_4_75
+ > # gcc -v
+ > Reading specs from /usr/local/lib/gcc-lib/sparc-sun-solaris2.5/2.7.2/specs
+ > gcc version 2.7.2
+ > >Description:
+ > I use SSIs to include JavaScripts (which have the ending .js on our system). 
+ > Another developer was using the AddType directive to add a MIME type for
+ > JavaScript, so he could do multipart-mixed responses, with the JavaScript in
+ > one section of the response, and the HTML in another (and thereby avoid sending
+ > back JavaScripts which could be seen via View Source). After he added the AddType,
+ > I started getting errors from my SSIs due to "unable to include potential exec"
+ > despite the fact that there is no Handler setup for .js files. Is this normal?
+ > If so, is it really correct? 
+ > 
+ > I would think that a typed file without a handler or execute permissions could
+ > still be included from a directory even if IncludesNOEXEC was set. We're going to
+ > see more problems with this as more client-side scripting languages arrive.
+ > 
+ > What do you guys think?
+ > >How-To-Repeat:
+ > Simple. 
+ > 
+ > srm.conf:
+ > AddType application/x-javascript .js
+ > 
+ > test.html: (in dir with IncludesNoExec config set)
+ > <!--#include virtual="/path/to/javascript.js" -->
+ > 
+ > >Fix:
+ > If a file of type X has no handler associated, is not executable, and is in a
+ > dir which allows Includes but NoExec, allow the file to be included. If this is
+ > not cool, maybe we need an IncludesNoExecButScriptsMayBeIncluded :%2
+ > >Audit-Trail:
+ > >Unformatted:
+ > 
+ > 
+ > 
+ 
+
+From: Steven Champeon <schampeo@hesketh.com>
+To: Dean Gaudet <dgaudet@arctic.org>
+Subject: Re: config/495: AddType application/x-javascript .js breaks
+  SSIs in IncludesNOEXEC dirs
+Date: Mon, 28 Apr 1997 15:27:40 -0400
+
+ 
+ At 11:41 AM 4/28/97 -0700, Dean Gaudet graced us with:
+ > The current behaviour sounds correct to me.  Don't name your SSIs with a
+ > .js... if you want them to be called something other than .html you could
+ > try .htmlf (html fragment) and "AddType text/html htmlf".  We open up lots
+ > of potential problems by changing this.
+ 
+ Normally, I use ".inc" for "INClude". That's what I had to go back to. 
+ I'm just sort of baffled as to why a file type without an appropriate
+ handler is being rejected for inclusion by an SSI due to the *potential*
+ for execution. I don't want to open up an asp. style hole in things,
+ I just want to be able to name my file fragments so I can distinguish
+ between them on disk. :) 
+ 
+ Besides, a file without a registered ext should default to whatever the
+ deafult MIME type is set to, right? So I shouldn't have to AddType for
+ some random file fragment.
+ 
+ Let me make sure I have the order right. 
+ 
+  1) check MIME type of "random.js" using mime.types or AddType configs
+  2) check server config
+  3) check per-dir config
+  4) reject due to potential for execution
+ 
+ Where would a handler check go in this sequence?
+ 
+ Steve
+ 
+ --
+ Steven Champeon                 |    Negative forces have value.
+ http://www.hesketh.com/schampeo |          - Henry Adams 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Steven Champeon <schampeo@hesketh.com>
+Subject: Re: config/495: AddType application/x-javascript .js breaks  SSIs in IncludesNOEXEC dirs
+Date: Mon, 28 Apr 1997 12:43:57 -0700 (PDT)
+
+ 
+ It's not just the potential of execution, it's the potential of displaying
+ the wrong type of content (like perhaps displaying the code to something
+ instead of executing it, or including a gif).  Of course you're free to
+ remove/modify the test for "text/" in mod_include.c.
+ 
+ There is also no way within the apache API to ask the question "if I run
+ this subrequest will it use the default_handler or some other handler?"
+ (you can get a partial answer depending on the server configuration, but
+ there's no way to get a full answer).  So IncludesNoExec really means "do
+ not run any subrequests that have content-type other than text/*". 
+ 
+ A file without a registered extension will have the default type, yep.  So
+ you're right, you don't need to "AddType text/html htmlf" in my example if
+ you DefaultType is something like text/plain.  However if you AddType it
+ now then you won't have problems if someone else in the future decides to
+ AddType it changing the content type. 
+ 
+ Dean
+ 
+ On Mon, 28 Apr 1997, Steven Champeon wrote:
+ 
+ > At 11:41 AM 4/28/97 -0700, Dean Gaudet graced us with:
+ > > The current behaviour sounds correct to me.  Don't name your SSIs with a
+ > > .js... if you want them to be called something other than .html you could
+ > > try .htmlf (html fragment) and "AddType text/html htmlf".  We open up lots
+ > > of potential problems by changing this.
+ > 
+ > Normally, I use ".inc" for "INClude". That's what I had to go back to. 
+ > I'm just sort of baffled as to why a file type without an appropriate
+ > handler is being rejected for inclusion by an SSI due to the *potential*
+ > for execution. I don't want to open up an asp. style hole in things,
+ > I just want to be able to name my file fragments so I can distinguish
+ > between them on disk. :) 
+ > 
+ > Besides, a file without a registered ext should default to whatever the
+ > deafult MIME type is set to, right? So I shouldn't have to AddType for
+ > some random file fragment.
+ > 
+ > Let me make sure I have the order right. 
+ > 
+ >  1) check MIME type of "random.js" using mime.types or AddType configs
+ >  2) check server config
+ >  3) check per-dir config
+ >  4) reject due to potential for execution
+ > 
+ > Where would a handler check go in this sequence?
+ > 
+ > Steve
+ > 
+ > --
+ > Steven Champeon                 |    Negative forces have value.
+ > http://www.hesketh.com/schampeo |          - Henry Adams 
+ > 
+ > 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Fri May  2 15:32:11 PDT 1997
+State-Changed-Why:
+Discussion with user came up with a workaround.
+
+Dean
+>Unformatted:
+
+
+
+
+

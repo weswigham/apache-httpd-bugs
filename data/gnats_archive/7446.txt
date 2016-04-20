@@ -1,0 +1,164 @@
+Received: (qmail 57788 invoked by uid 501); 21 Mar 2001 15:36:35 -0000
+Message-Id: <20010321153634.57777.qmail@apache.org>
+Date: 21 Mar 2001 15:36:34 -0000
+From: Peter Whiting <pete@whitings.org>
+Reply-To: pete@whitings.org
+To: submit@bugz.apache.org
+Subject: per image thumbnails for icons in autoindex
+X-Send-Pr-Version: 3.110
+
+>Number:         7446
+>Category:       mod_autoindex
+>Synopsis:       per image thumbnails for icons in autoindex
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Mar 21 07:40:04 PST 2001
+>Closed-Date:    Wed Mar 21 21:46:35 PST 2001
+>Last-Modified:  Thu Mar 22 05:50:00 PST 2001
+>Originator:     pete@whitings.org
+>Release:        1.3.19
+>Organization:
+>Environment:
+Linux tiny 2.2.14-5.0 #1 Tue Mar 7 20:53:41 EST 2000 i586 unknown
+>Description:
+I modified mod_autoindex to use, as icons, thumbnails of each image.
+
+demo at: http://fury.ittc.ukans.edu:8080/demo/
+
+The config for this looks like:
+AddIconByType (IMG,/cgi-bin/thumb?%s) image/*
+
+if you cgi script is cooler than mine:
+AddIconByType (IMG,/cgi-bin/coolthumb?file=%s&size=100x100) image/*
+
+Basically, if you put a %s in the icon name, it will be replaced with
+the filename.  Ugly hack - just use sprintf.
+
+*** mod_autoindex.c     Wed Mar 21 09:02:59 2001
+--- mod_autoindex.c.orig        Mon Jan 15 11:05:38 2001
+***************
+*** 763,774 ****
+                        if (content_type
+                            && !ap_strcasecmp_match(content_type,
+                                                    p->apply_to)) {
+-                             if(strstr(p->data,"%s")) {
+-                               int n=strlen(p->data)+strlen(r->uri)+2;
+-                               char *tn = (char *)ap_pcalloc(r->main->pool,n); 
+-                               ap_snprintf(tn,n-1,p->data,r->uri);
+-                               return tn;
+-                             }
+                            return p->data;
+                        }
+                    }
+--- 763,768 ----
+
+Here is my thumb cgi script.  Let me know if it has massive security flaws,
+as I expect it does...
+
+#!/usr/bin/perl
+$dir="/usr/local/apache/htdocs";
+$_=$ENV{QUERY_STRING};
+exit if /(\.\.)|\;|\&|\|/; # only should allow normal filenames
+s/(\/\/+)/\//g;
+$file="thumb_$_"; #cache this thing
+$file=~s/\//_/g;
+$file="/tmp/thumbnails/${file}.jpg";
+system("convert -geometry 100 \"$dir/$_\" \"$file\"") if not -f $file;
+print "Content-type: image/jpeg\n\n";
+print `cat $file`; 
+>How-To-Repeat:
+http://fury.ittc.ukans.edu:8080/demo/
+>Fix:
+see above
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: slive
+State-Changed-When: Wed Mar 21 21:46:35 PST 2001
+State-Changed-Why:
+
+Interesting modification.  We'll keep it on record
+here in the bug database for anyone else to use.
+I think it is a little too specific an application
+to be incorporated in the main server, but we 
+appreciate the contribution.
+
+Thanks for using Apache!
+
+From: Peter Whiting <pete@sprint.net>
+To: slive@apache.org
+Cc: apbugs@apache.org
+Subject: Re: mod_autoindex/7446: per image thumbnails for icons in autoindex
+Date: Thu, 22 Mar 2001 07:48:34 -0600
+
+ On Thu, Mar 22, 2001 at 05:46:36AM -0000, slive@apache.org wrote:
+ > Synopsis: per image thumbnails for icons in autoindex
+ > 
+ > Interesting modification.  We'll keep it on record
+ > here in the bug database for anyone else to use.
+ > I think it is a little too specific an application
+ > to be incorporated in the main server, but we 
+ > appreciate the contribution.
+ 
+ Thanks for providing apache.  One indicator of its good design
+ is that someone like me can pick up the code and quickly put
+ in a mod.  I had little trouble getting it to work.
+ 
+ Regarding the specificity of the application - I hope I made it 
+ clear that the feature is configurable, not default.  I asked 
+ a few people if there was such a mod and everyone I asked thought
+ there should be.  Keep it in mind (and perhaps do it right - I 
+ realize my version was a quick hack) as a future feature.
+ 
+ I am attaching the updated patch - this one handles spaces in
+ the filename correctly.  
+ 
+ cheers,
+ pete
+ 
+ *** mod_autoindex.c     Thu Mar 22 07:45:18 2001
+ --- mod_autoindex.c.orig        Mon Jan 15 11:05:38 2001
+ ***************
+ *** 763,775 ****
+                         if (content_type
+                             && !ap_strcasecmp_match(content_type,
+                                                     p->apply_to)) {
+ -                             if(strstr(p->data,"%s")) {
+ -                               char *file = ap_escape_html(r->pool,ap_os_escape_path(r->pool,r->uri,0));
+ -                               int n=strlen(p->data)+strlen(file)+2;
+ -                               char *tn = (char *)ap_pcalloc(r->main->pool,n);
+ -                               ap_snprintf(tn,n-1,p->data,file);
+ -                               return tn;
+ -                             }
+                             return p->data;
+                         }
+                     }
+ --- 763,768 ----
+ 
+ 
+ 
+ > 
+ > Thanks for using Apache!
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

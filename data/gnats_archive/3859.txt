@@ -1,0 +1,123 @@
+Received: (qmail 8156 invoked by uid 2012); 8 Feb 1999 19:12:05 -0000
+Message-Id: <19990208191205.8155.qmail@hyperreal.org>
+Date: 8 Feb 1999 19:12:05 -0000
+From: Dan Stephans <adept@mcs.com>
+Reply-To: adept@mcs.com
+To: apbugs@hyperreal.org
+Subject: cache problems
+X-Send-Pr-Version: 3.2
+
+>Number:         3859
+>Category:       mod_proxy
+>Synopsis:       cache problems
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    martin
+>State:          analyzed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Feb  8 11:20:01 PST 1999
+>Last-Modified:  Sun Jun 13 05:12:31 PDT 1999
+>Originator:     adept@mcs.com
+>Organization:
+>Release:        1.3.4
+>Environment:
+OS: Solaris 2.5.1
+PL: current
+COMP: gcc 2.7.2.1
+Apache V: 1.3.4 (however, we've had similar problems with previous releases)
+>Description:
+Problem 1)
+  This problem has been reported in PR687 and PR771 (minimally) and has still
+not been resolved.  The problem is that tmpXXX files are left in the top level
+cache directory.  As these files accumulate, performance starts to suffer.
+Errors such as:
+
+httpd: [Mon Feb  8 18:51:18 1999] [error] (16)Device busy: proxy: error deleting
+ temp file /cache/tmpa003oa
+
+Are reported in error_log
+
+Problem 2)
+
+  Cache cleanup does not seem to work on "large" drives.  I do not know what
+constitutes large but we have one installation of 1G for cache where the 
+cleanup works but our 4G cache partition overflows, no matter how small
+the CacheSize is set to (this is another previously reported bug, forget the
+PR but it is closed and obviously not resolved).  The cache grows without
+bound until the volume fills up.
+
+Problem 3)
+
+ This could be related to the two above problems.  Lots of errors of the 
+following sort in error_log (IE megabytes worth)
+
+httpd: [Mon Feb  8 18:43:00 1999] [error] (17)File exists: proxy: error linking 
+cache file /cache/tmpa003op to /cache/2/J/_/cHayrHDwvm8tcfVg7YA
+httpd: [Mon Feb  8 18:43:03 1999] [error] (17)File exists: proxy: error linking 
+cache file /cache/tmpa003pl to /cache/Q/V/r/vfeiR710h@UZIzf5BRA
+>How-To-Repeat:
+Duplicate my config and try.  I'm doing nothing unusual.  Available for
+further help if needed.
+>Fix:
+
+>Audit-Trail:
+Release-Changed-From-To: all-1.3.4
+Release-Changed-By: lars
+Release-Changed-When: Sat Feb 13 17:05:45 PST 1999
+State-Changed-From-To: open-feedback
+State-Changed-By: martin
+State-Changed-When: Wed Apr 28 06:25:00 PDT 1999
+State-Changed-Why:
+It seems that two different errors are mixed in this PR.
+a) [error] (17)File exists: proxy: error linking cache file
+This error can occur under normal situations when two
+requests to the same URL happen in parallel (two proxy
+children). A better concept of "shared memory interprocess
+request table" between proxy children might resolve
+this (not anytime soon...).
+
+b) [error] (16)Device busy:
+Hmmm. What can apache do about that? It seems to be an
+error in your OS. All the proxy does is call unlink(name).
+If Solaris can't handle that, then.... :-(
+Also, I don't see how apache can be involved in
+the inability to handle large disks, other than the fact
+that one GC must have terminated before the next one starts.
+Did you observe any core dumps? Beware, there might be no
+log message about it (GC is detached!). Try to trigger a 
+GC by touching 0101010170 cache/.time and watch the
+background process. Recently in 1.3.7-dev, we had a
+core dump candidate.
+Try to report any findings. Thank you.
+Comment-Added-By: martin
+Comment-Added-When: Wed Apr 28 08:38:56 PDT 1999
+Comment-Added:
+Oops! I should have read PR#3233 first. Yes, large disks
+will make problems when you configure a CacheSize with
+more than 2 gig. I'll fix it RSN.
+State-Changed-From-To: feedback-analyzed
+State-Changed-By: lars
+State-Changed-When: Sun Jun 13 05:12:30 PDT 1999
+State-Changed-Why:
+
+
+Responsible-Changed-From-To: apache-martin
+Responsible-Changed-By: lars
+Responsible-Changed-When: Sun Jun 13 05:12:30 PDT 1999
+Responsible-Changed-Why:
+
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

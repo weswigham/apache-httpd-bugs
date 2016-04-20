@@ -1,0 +1,627 @@
+Received: (qmail 99383 invoked by uid 501); 2 Jul 2000 14:15:25 -0000
+Message-Id: <20000702141525.99381.qmail@locus.apache.org>
+Date: 2 Jul 2000 14:15:25 -0000
+From: Villy Kruse <vek@pharmapartners.nl>
+Reply-To: vek@pharmapartners.nl
+To: submit@bugz.apache.org
+Subject: proxy_ftp.c fails with some servers -- the communication hangs.
+X-Send-Pr-Version: 3.110
+
+>Number:         6268
+>Category:       mod_proxy
+>Synopsis:       proxy_ftp.c fails with some servers -- the communication hangs.
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Jul 02 07:20:01 PDT 2000
+>Closed-Date:    
+>Last-Modified:  Mon Jul 10 04:20:01 PDT 2000
+>Originator:     vek@pharmapartners.nl
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Linux redhat 5.1
+>Description:
+Some FTP server will not send anything on the FTP control channel before
+the data channel has been closed by the server after a file transfer.
+
+On these servers the transfer will not complete properly and the process
+will be waiting for input on the FTP control channel forever or until killed.
+
+>How-To-Repeat:
+
+The site ftp://ftp.nluug.nl is one such site which gives problems when using
+apache as a proxy server.  I don't know what server they are running.
+
+Unix servers running wu_ftpd does not have any problem.
+>Fix:
+Move  ap_bclose(data) to the point right after ap_proxy_send_fb or
+send_dir in proxy_ftp.c before the status code is requested after the
+file transfer is complete.  This has fixed the problem for me.
+>Release-Note:
+>Audit-Trail:
+
+From: Villy Kruse <vek@pharmapartners.nl>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc: apbugs@apache.org
+Subject: Re: mod_proxy/6268: proxy_ftp.c fails with some servers PATCH
+Date: Mon, 10 Jul 2000 13:12:19 +0200
+
+ A suggested patch to fix this problem and a few other problems
+ as well.
+ 
+ Regards,
+ 
+ Villy kruse
+ 
+ 
+ On 2 Jul 2000 submit@bugz.apache.org wrote:
+ > 
+ > Thank you very much for your problem report.
+ > It has the internal identification `mod_proxy/6268'.
+ > The individual assigned to look at your
+ > report is: apache. 
+ > 
+ > >Category:       mod_proxy
+ > >Responsible:    apache
+ > >Synopsis:       proxy_ftp.c fails with some servers -- the communication hangs.
+ > >Arrival-Date:   Sun Jul 02 07:20:01 PDT 2000
+ > 
+ 
+ 
+ 
+ Fixes included:
+ 
+ - Close data socket first thing after receiving EOF.
+ - Drain data socket until EOF after ABOR.
+ - Send telnet interrupt before ABOR.  Some servers require this.
+ - Add Last-Modified: header if information is available using 
+   the FTP command MDTM.
+ - replace ap_bclose(f) with ap_pclosesocket(p, ap_bfileno(f, B_WR))
+   everywhere.
+   Reason: ap_bclose does a file close instead of a socket close and
+   does not cancel closing the socket later when pool cleanup is done.
+   Thus the socket would be closed twice.  Maybe we should not even
+   bother closing the control socket and let the general cleanup
+   take care of this when the transaction is complete.
+ 
+ The proxy now works when using "wget -N" through this proxy.  "wget -N"
+ would do a HEAD http command to the proxy server to get the file time
+ stamp, and that would previously hang the proxy server, because the far
+ end FTP server won't respond to the ABOR command until the data channel
+ has been drained and closed.  It obviously also needs the Last-Modified:
+ header to be meaningful.
+ 
+ Also see PR#5562 for some more reasons why it is important to close
+ the data socket after a data transfer before reading the responce
+ code from the control socket.
+ 
+ This PR#6268 is a duplicate of PR$5562 and I beleive the patch below
+ will also fix PR#5562.
+ 
+ ======START OF PATCH FILE========
+ 
+ --- apache_1.3.12-old/src/modules/proxy/proxy_ftp.c	Tue Jan 11 15:13:45 2000
+ +++ apache_1.3.12/src/modules/proxy/proxy_ftp.c	Tue Jul  4 17:15:50 2000
+ @@ -61,6 +61,7 @@
+  #include "http_main.h"
+  #include "http_log.h"
+  #include "http_core.h"
+ +#include "util_date.h"
+  
+  #define AUTODETECT_PWD
+  
+ @@ -436,6 +437,34 @@
+      return HTTP_UNAUTHORIZED;
+  }
+  
+ +/* Drain data from data stream and discard anything read.
+ + */
+ +static void drain_data(BUFF *f, request_rec *r)
+ +{
+ +    char buf[IOBUFSIZE];
+ +
+ +    ap_bsetflag(f, B_RD, 0);
+ +    ap_hard_timeout("data drain", r);
+ +    while (ap_bread(f, buf, IOBUFSIZE) > 0) {
+ +	ap_reset_timeout(r);
+ +    }
+ +    ap_kill_timeout(r);
+ +}
+ +
+ +/* Some servers need this before ABOR or the command won't be
+ + * recognized until the file transfer is complete.
+ + */
+ +static void send_telnet_interrupt (BUFF *f)
+ +{
+ +    int s = ap_bfileno(f, B_WR);
+ +    /* Sometimes you need to shout real loud to make the server pay
+ +     * attention to the control channel.  Therefore the MSG_OOB
+ +     * message.
+ +     */
+ +    send(s, "\377\364\377", 3, MSG_OOB);	/* IAC IP IAC */
+ +    send(s, "\362", 1, 0);			/* DM */
+ +}
+ +
+  /*
+   * Handles direct access of ftp:// URLs
+   * Original (Non-PASV) version from
+ @@ -482,6 +511,7 @@
+  /* stuff for responses */
+      char resp[MAX_STRING_LEN];
+      char *size = NULL;
+ +    char *lastmodtime = NULL;
+  
+  /* we only support GET and HEAD */
+  
+ @@ -810,7 +840,7 @@
+      if (dsock == -1) {
+  	ap_log_rerror(APLOG_MARK, APLOG_ERR, r,
+  		     "proxy: error creating PASV socket");
+ -	ap_bclose(f);
+ +	ap_pclosesocket(p, ap_bfileno(f, B_WR));
+  	ap_kill_timeout(r);
+  	return HTTP_INTERNAL_SERVER_ERROR;
+      }
+ @@ -840,7 +870,7 @@
+  	ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, r,
+  		     "PASV: control connection is toast");
+  	ap_pclosesocket(p, dsock);
+ -	ap_bclose(f);
+ +	ap_pclosesocket(p, ap_bfileno(f, B_WR));
+  	ap_kill_timeout(r);
+  	return HTTP_INTERNAL_SERVER_ERROR;
+      }
+ @@ -895,7 +925,7 @@
+  	if (getsockname(sock, (struct sockaddr *) &server, &clen) < 0) {
+  	    ap_log_rerror(APLOG_MARK, APLOG_ERR, r,
+  			 "proxy: error getting socket address");
+ -	    ap_bclose(f);
+ +	    ap_pclosesocket(p, ap_bfileno(f, B_WR));
+  	    ap_kill_timeout(r);
+  	    return HTTP_INTERNAL_SERVER_ERROR;
+  	}
+ @@ -904,7 +934,7 @@
+  	if (dsock == -1) {
+  	    ap_log_rerror(APLOG_MARK, APLOG_ERR, r,
+  			 "proxy: error creating socket");
+ -	    ap_bclose(f);
+ +	    ap_pclosesocket(p, ap_bfileno(f, B_WR));
+  	    ap_kill_timeout(r);
+  	    return HTTP_INTERNAL_SERVER_ERROR;
+  	}
+ @@ -915,7 +945,7 @@
+  	    ap_log_rerror(APLOG_MARK, APLOG_ERR, r,
+  			 "proxy: error setting reuseaddr option");
+  	    ap_pclosesocket(p, dsock);
+ -	    ap_bclose(f);
+ +	    ap_pclosesocket(p, ap_bfileno(f, B_WR));
+  	    ap_kill_timeout(r);
+  	    return HTTP_INTERNAL_SERVER_ERROR;
+  #endif /*_OSD_POSIX*/
+ @@ -928,7 +958,7 @@
+  	    ap_snprintf(buff, sizeof(buff), "%s:%d", inet_ntoa(server.sin_addr), server.sin_port);
+  	    ap_log_rerror(APLOG_MARK, APLOG_ERR, r,
+  			 "proxy: error binding to ftp data socket %s", buff);
+ -	    ap_bclose(f);
+ +	    ap_pclosesocket(p, ap_bfileno(f, B_WR));
+  	    ap_pclosesocket(p, dsock);
+  	    return HTTP_INTERNAL_SERVER_ERROR;
+  	}
+ @@ -992,6 +1022,40 @@
+  	}
+      }
+  
+ +    if (parms[0] != 'd') {
+ +	ap_bvputs(f, "MDTM ", path, CRLF, NULL);
+ +	ap_bflush(f);
+ +	Explain1("FTP: MDTM %s", path);
+ +	i = ftp_getrc_msg(f, resp, sizeof resp);
+ +	Explain2("FTP: returned status %d with response %s", i, resp);
+ +	if (i == 213) { /* MDTM command ok */
+ +	    struct tm tm;
+ +	    time_t day;
+ +	    int YY, MM, DD, hh, mm, ss;
+ +
+ +	    for (j = 0; j < sizeof resp && ap_isdigit(resp[j]); j++)
+ +		    ;
+ +	    resp[j] = '\0';
+ +
+ +	    if (j == 14 && sscanf(resp, "%4d%2d%2d%2d%2d%2d",
+ +		       &YY, &MM, &DD, &hh, &mm, &ss) == 6) {
+ +		tm.tm_sec = ss;
+ +		tm.tm_min = mm;
+ +		tm.tm_hour = hh;
+ +		tm.tm_mday = DD;
+ +		tm.tm_mon = MM - 1;
+ +		tm.tm_year = YY - 1900;
+ +		day = ap_tm2sec(&tm);
+ +		if ( day != BAD_DATE ) {
+ +		    /* If for any reason MDTM doesn't work pretend it
+ +		     * never happened 
+ +		     */
+ +		    lastmodtime = ap_gm_timestr_822(p, day);
+ +		}
+ +	    }
+ +	}
+ +    }
+ +
+  #ifdef AUTODETECT_PWD
+      ap_bvputs(f, "PWD", CRLF, NULL);
+      ap_bflush(f);
+ @@ -1150,6 +1214,12 @@
+  	    ap_table_set(resp_hdrs, "Content-Length", size);
+  	    Explain1("FTP: Content-Length set to %s", size);
+  	}
+ +	if ( lastmodtime != NULL ) {
+ +	    /* This is only valid if the ftp server understands
+ +	     * the MDTM command
+ +	     */
+ +	    ap_table_setn(resp_hdrs, "Last-Modified", lastmodtime);
+ +	}
+      }
+      if (r->content_encoding != NULL && r->content_encoding[0] != '\0') {
+  	Explain1("FTP: Content-Encoding set to %s", r->content_encoding);
+ @@ -1167,7 +1237,7 @@
+  
+      if (i != DECLINED) {
+  	ap_pclosesocket(p, dsock);
+ -	ap_bclose(f);
+ +	ap_pclosesocket(p, ap_bfileno(f, B_WR));
+  	return i;
+      }
+  
+ @@ -1181,7 +1251,7 @@
+  	    ap_log_rerror(APLOG_MARK, APLOG_ERR, r,
+  			 "proxy: failed to accept data connection");
+  	    ap_pclosesocket(p, dsock);
+ -	    ap_bclose(f);
+ +	    ap_pclosesocket(p, ap_bfileno(f, B_WR));
+  	    ap_kill_timeout(r);
+  	    if (c != NULL)
+  		c = ap_proxy_cache_error(c);
+ @@ -1234,6 +1304,7 @@
+  	} else
+  	    send_dir(data, r, c, cwd);
+  
+ +	ap_pclosesocket(p, ap_bfileno(data, B_RD));
+  	if (rc == 125 || rc == 150)
+  	    rc = ftp_getrc(f);
+  
+ @@ -1244,11 +1315,13 @@
+      }
+      else {
+  /* abort the transfer */
+ +	send_telnet_interrupt (f);
+  	ap_bputs("ABOR" CRLF, f);
+  	ap_bflush(f);
+ -	if (!pasvmode)
+ -	    ap_bclose(data);
+  	Explain0("FTP: ABOR");
+ +	/* After abort there might still be data in the pipeline.  Drain it. */
+ +	drain_data(data, r);
+ +	ap_pclosesocket(p, ap_bfileno(data, B_RD));
+  /* responses: 225, 226, 421, 500, 501, 502 */
+      /* 225 Data connection open; no transfer in progress. */
+      /* 226 Closing data connection. */
+ @@ -1273,9 +1346,7 @@
+      i = ftp_getrc(f);
+      Explain1("FTP: QUIT: status %d", i);
+  
+ -    if (pasvmode)
+ -	ap_bclose(data);
+ -    ap_bclose(f);
+ +    ap_pclosesocket(p, ap_bfileno(f, B_WR));
+  
+      ap_rflush(r);	/* flush before garbage collection */
+  
+ 
+ 
+ 
+ ======END OF PATCH FILE========
+ 
+ 
+
+From: Villy Kruse <vek@pharmapartners.nl>
+To: submit@bugz.apache.org, apache-bugdb@apache.org
+Cc: apbugs@apache.org
+Subject: Re: mod_proxy/6268: proxy_ftp.c fails with some servers PATCH
+Date: Mon, 10 Jul 2000 13:12:19 +0200
+
+ A suggested patch to fix this problem and a few other problems
+ as well.
+ 
+ Regards,
+ 
+ Villy kruse
+ 
+ 
+ On 2 Jul 2000 submit@bugz.apache.org wrote:
+ > 
+ > Thank you very much for your problem report.
+ > It has the internal identification `mod_proxy/6268'.
+ > The individual assigned to look at your
+ > report is: apache. 
+ > 
+ > >Category:       mod_proxy
+ > >Responsible:    apache
+ > >Synopsis:       proxy_ftp.c fails with some servers -- the communication hangs.
+ > >Arrival-Date:   Sun Jul 02 07:20:01 PDT 2000
+ > 
+ 
+ 
+ 
+ Fixes included:
+ 
+ - Close data socket first thing after receiving EOF.
+ - Drain data socket until EOF after ABOR.
+ - Send telnet interrupt before ABOR.  Some servers require this.
+ - Add Last-Modified: header if information is available using 
+   the FTP command MDTM.
+ - replace ap_bclose(f) with ap_pclosesocket(p, ap_bfileno(f, B_WR))
+   everywhere.
+   Reason: ap_bclose does a file close instead of a socket close and
+   does not cancel closing the socket later when pool cleanup is done.
+   Thus the socket would be closed twice.  Maybe we should not even
+   bother closing the control socket and let the general cleanup
+   take care of this when the transaction is complete.
+ 
+ The proxy now works when using "wget -N" through this proxy.  "wget -N"
+ would do a HEAD http command to the proxy server to get the file time
+ stamp, and that would previously hang the proxy server, because the far
+ end FTP server won't respond to the ABOR command until the data channel
+ has been drained and closed.  It obviously also needs the Last-Modified:
+ header to be meaningful.
+ 
+ Also see PR#5562 for some more reasons why it is important to close
+ the data socket after a data transfer before reading the responce
+ code from the control socket.
+ 
+ This PR#6268 is a duplicate of PR$5562 and I beleive the patch below
+ will also fix PR#5562.
+ 
+ ======START OF PATCH FILE========
+ 
+ --- apache_1.3.12-old/src/modules/proxy/proxy_ftp.c	Tue Jan 11 15:13:45 2000
+ +++ apache_1.3.12/src/modules/proxy/proxy_ftp.c	Tue Jul  4 17:15:50 2000
+ @@ -61,6 +61,7 @@
+  #include "http_main.h"
+  #include "http_log.h"
+  #include "http_core.h"
+ +#include "util_date.h"
+  
+  #define AUTODETECT_PWD
+  
+ @@ -436,6 +437,34 @@
+      return HTTP_UNAUTHORIZED;
+  }
+  
+ +/* Drain data from data stream and discard anything read.
+ + */
+ +static void drain_data(BUFF *f, request_rec *r)
+ +{
+ +    char buf[IOBUFSIZE];
+ +
+ +    ap_bsetflag(f, B_RD, 0);
+ +    ap_hard_timeout("data drain", r);
+ +    while (ap_bread(f, buf, IOBUFSIZE) > 0) {
+ +	ap_reset_timeout(r);
+ +    }
+ +    ap_kill_timeout(r);
+ +}
+ +
+ +/* Some servers need this before ABOR or the command won't be
+ + * recognized until the file transfer is complete.
+ + */
+ +static void send_telnet_interrupt (BUFF *f)
+ +{
+ +    int s = ap_bfileno(f, B_WR);
+ +    /* Sometimes you need to shout real loud to make the server pay
+ +     * attention to the control channel.  Therefore the MSG_OOB
+ +     * message.
+ +     */
+ +    send(s, "\377\364\377", 3, MSG_OOB);	/* IAC IP IAC */
+ +    send(s, "\362", 1, 0);			/* DM */
+ +}
+ +
+  /*
+   * Handles direct access of ftp:// URLs
+   * Original (Non-PASV) version from
+ @@ -482,6 +511,7 @@
+  /* stuff for responses */
+      char resp[MAX_STRING_LEN];
+      char *size = NULL;
+ +    char *lastmodtime = NULL;
+  
+  /* we only support GET and HEAD */
+  
+ @@ -810,7 +840,7 @@
+      if (dsock == -1) {
+  	ap_log_rerror(APLOG_MARK, APLOG_ERR, r,
+  		     "proxy: error creating PASV socket");
+ -	ap_bclose(f);
+ +	ap_pclosesocket(p, ap_bfileno(f, B_WR));
+  	ap_kill_timeout(r);
+  	return HTTP_INTERNAL_SERVER_ERROR;
+      }
+ @@ -840,7 +870,7 @@
+  	ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, r,
+  		     "PASV: control connection is toast");
+  	ap_pclosesocket(p, dsock);
+ -	ap_bclose(f);
+ +	ap_pclosesocket(p, ap_bfileno(f, B_WR));
+  	ap_kill_timeout(r);
+  	return HTTP_INTERNAL_SERVER_ERROR;
+      }
+ @@ -895,7 +925,7 @@
+  	if (getsockname(sock, (struct sockaddr *) &server, &clen) < 0) {
+  	    ap_log_rerror(APLOG_MARK, APLOG_ERR, r,
+  			 "proxy: error getting socket address");
+ -	    ap_bclose(f);
+ +	    ap_pclosesocket(p, ap_bfileno(f, B_WR));
+  	    ap_kill_timeout(r);
+  	    return HTTP_INTERNAL_SERVER_ERROR;
+  	}
+ @@ -904,7 +934,7 @@
+  	if (dsock == -1) {
+  	    ap_log_rerror(APLOG_MARK, APLOG_ERR, r,
+  			 "proxy: error creating socket");
+ -	    ap_bclose(f);
+ +	    ap_pclosesocket(p, ap_bfileno(f, B_WR));
+  	    ap_kill_timeout(r);
+  	    return HTTP_INTERNAL_SERVER_ERROR;
+  	}
+ @@ -915,7 +945,7 @@
+  	    ap_log_rerror(APLOG_MARK, APLOG_ERR, r,
+  			 "proxy: error setting reuseaddr option");
+  	    ap_pclosesocket(p, dsock);
+ -	    ap_bclose(f);
+ +	    ap_pclosesocket(p, ap_bfileno(f, B_WR));
+  	    ap_kill_timeout(r);
+  	    return HTTP_INTERNAL_SERVER_ERROR;
+  #endif /*_OSD_POSIX*/
+ @@ -928,7 +958,7 @@
+  	    ap_snprintf(buff, sizeof(buff), "%s:%d", inet_ntoa(server.sin_addr), server.sin_port);
+  	    ap_log_rerror(APLOG_MARK, APLOG_ERR, r,
+  			 "proxy: error binding to ftp data socket %s", buff);
+ -	    ap_bclose(f);
+ +	    ap_pclosesocket(p, ap_bfileno(f, B_WR));
+  	    ap_pclosesocket(p, dsock);
+  	    return HTTP_INTERNAL_SERVER_ERROR;
+  	}
+ @@ -992,6 +1022,40 @@
+  	}
+      }
+  
+ +    if (parms[0] != 'd') {
+ +	ap_bvputs(f, "MDTM ", path, CRLF, NULL);
+ +	ap_bflush(f);
+ +	Explain1("FTP: MDTM %s", path);
+ +	i = ftp_getrc_msg(f, resp, sizeof resp);
+ +	Explain2("FTP: returned status %d with response %s", i, resp);
+ +	if (i == 213) { /* MDTM command ok */
+ +	    struct tm tm;
+ +	    time_t day;
+ +	    int YY, MM, DD, hh, mm, ss;
+ +
+ +	    for (j = 0; j < sizeof resp && ap_isdigit(resp[j]); j++)
+ +		    ;
+ +	    resp[j] = '\0';
+ +
+ +	    if (j == 14 && sscanf(resp, "%4d%2d%2d%2d%2d%2d",
+ +		       &YY, &MM, &DD, &hh, &mm, &ss) == 6) {
+ +		tm.tm_sec = ss;
+ +		tm.tm_min = mm;
+ +		tm.tm_hour = hh;
+ +		tm.tm_mday = DD;
+ +		tm.tm_mon = MM - 1;
+ +		tm.tm_year = YY - 1900;
+ +		day = ap_tm2sec(&tm);
+ +		if ( day != BAD_DATE ) {
+ +		    /* If for any reason MDTM doesn't work pretend it
+ +		     * never happened 
+ +		     */
+ +		    lastmodtime = ap_gm_timestr_822(p, day);
+ +		}
+ +	    }
+ +	}
+ +    }
+ +
+  #ifdef AUTODETECT_PWD
+      ap_bvputs(f, "PWD", CRLF, NULL);
+      ap_bflush(f);
+ @@ -1150,6 +1214,12 @@
+  	    ap_table_set(resp_hdrs, "Content-Length", size);
+  	    Explain1("FTP: Content-Length set to %s", size);
+  	}
+ +	if ( lastmodtime != NULL ) {
+ +	    /* This is only valid if the ftp server understands
+ +	     * the MDTM command
+ +	     */
+ +	    ap_table_setn(resp_hdrs, "Last-Modified", lastmodtime);
+ +	}
+      }
+      if (r->content_encoding != NULL && r->content_encoding[0] != '\0') {
+  	Explain1("FTP: Content-Encoding set to %s", r->content_encoding);
+ @@ -1167,7 +1237,7 @@
+  
+      if (i != DECLINED) {
+  	ap_pclosesocket(p, dsock);
+ -	ap_bclose(f);
+ +	ap_pclosesocket(p, ap_bfileno(f, B_WR));
+  	return i;
+      }
+  
+ @@ -1181,7 +1251,7 @@
+  	    ap_log_rerror(APLOG_MARK, APLOG_ERR, r,
+  			 "proxy: failed to accept data connection");
+  	    ap_pclosesocket(p, dsock);
+ -	    ap_bclose(f);
+ +	    ap_pclosesocket(p, ap_bfileno(f, B_WR));
+  	    ap_kill_timeout(r);
+  	    if (c != NULL)
+  		c = ap_proxy_cache_error(c);
+ @@ -1234,6 +1304,7 @@
+  	} else
+  	    send_dir(data, r, c, cwd);
+  
+ +	ap_pclosesocket(p, ap_bfileno(data, B_RD));
+  	if (rc == 125 || rc == 150)
+  	    rc = ftp_getrc(f);
+  
+ @@ -1244,11 +1315,13 @@
+      }
+      else {
+  /* abort the transfer */
+ +	send_telnet_interrupt (f);
+  	ap_bputs("ABOR" CRLF, f);
+  	ap_bflush(f);
+ -	if (!pasvmode)
+ -	    ap_bclose(data);
+  	Explain0("FTP: ABOR");
+ +	/* After abort there might still be data in the pipeline.  Drain it. */
+ +	drain_data(data, r);
+ +	ap_pclosesocket(p, ap_bfileno(data, B_RD));
+  /* responses: 225, 226, 421, 500, 501, 502 */
+      /* 225 Data connection open; no transfer in progress. */
+      /* 226 Closing data connection. */
+ @@ -1273,9 +1346,7 @@
+      i = ftp_getrc(f);
+      Explain1("FTP: QUIT: status %d", i);
+  
+ -    if (pasvmode)
+ -	ap_bclose(data);
+ -    ap_bclose(f);
+ +    ap_pclosesocket(p, ap_bfileno(f, B_WR));
+  
+      ap_rflush(r);	/* flush before garbage collection */
+  
+ 
+ 
+ 
+ ======END OF PATCH FILE========
+ 
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

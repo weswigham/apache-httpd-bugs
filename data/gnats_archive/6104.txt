@@ -1,0 +1,79 @@
+Received: (qmail 78881 invoked by uid 501); 19 May 2000 18:58:50 -0000
+Message-Id: <20000519185850.78867.qmail@locus.apache.org>
+Date: 19 May 2000 18:58:50 -0000
+From: Chris Beauregard <chris.beauregard@ec.gc.ca>
+Reply-To: chris.beauregard@ec.gc.ca
+To: submit@bugz.apache.org
+Subject: Apache regcomp()/regexec() collision with libc
+X-Send-Pr-Version: 3.110
+
+>Number:         6104
+>Category:       os-hpux
+>Synopsis:       Apache regcomp()/regexec() collision with libc
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri May 19 12:00:01 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     chris.beauregard@ec.gc.ca
+>Release:        1.3.9
+>Organization:
+apache
+>Environment:
+HP-UX metweb0 B.11.00 U 9000/800 2008361008 unlimited-user license
+gcc version 2.95.2 19991024 (release)
+>Description:
+I spent about a week trying to track this one down...
+
+The regcomp in apache overrides the libc version. This is fine, but when my
+mod_perl module loads in a shared library that uses regcomp/regexec, things
+get weird. Deep down in the chain of libraries, I do:
+	regcomp(preg,workbuf,REG_EXTENDED|REG_ICASE|REG_NOSUB)
+which calls the Apache version. This is fine, except that after running
+though cpp, it looks like
+	regcomp(preg,workbuf,1|4|8),
+which, to the Apache version, means
+	regcomp(preg,workbuf,REG_EXTENDED|REG_NOSUB)
+
+This sucks for those of us expecting REG_ICASE to actually work.
+
+I checked the 2.0a3 source and the regex stuff is about the same, so the bug
+will likely be there as well.
+>How-To-Repeat:
+Basically, you need to create a shared library that is compiled outside of the
+Apache/mod_perl/perl family and link to it from, say, an Apache module.
+Any kind of regcomp() that uses ICASE will then be bogus.
+>Fix:
+Renaming the Apache regex stuff to avoid the name clash would be optimal.
+
+A cheaper fix would be to just change the values of the REG_* macros, but since,
+for example, Linux uses 0x2 for REG_ICASE, this would break other platforms.
+
+To (hack, hack) fix our code, I just added a REG_NEWLINE (which has a value of
+2), since I don't care about newline expansion.
+
+It's possible that linking libc to the original shared library would work, but
+I have quite a number of shared libs that user regex calls, so it would be major
+bloat.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

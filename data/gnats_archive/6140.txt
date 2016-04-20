@@ -1,0 +1,165 @@
+Received: (qmail 69980 invoked by uid 501); 2 Jun 2000 13:29:44 -0000
+Message-Id: <20000602132944.69978.qmail@locus.apache.org>
+Date: 2 Jun 2000 13:29:44 -0000
+From: Adam Kropielnicki <adasz@wp.pl>
+Reply-To: adasz@wp.pl
+To: submit@bugz.apache.org
+Subject: The patch for sending cookies with server's domain and something else..
+X-Send-Pr-Version: 3.110
+
+>Number:         6140
+>Category:       mod_usertrack
+>Synopsis:       The patch for sending cookies with server's domain and something else..
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jun 02 06:30:00 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     adasz@wp.pl
+>Release:        1.3.9
+>Organization:
+apache
+>Environment:
+INTEL LINUX REDHAT 6.1
+>Description:
+This patch adds directive CookieDomain on|off. If on is set the cookie will be
+sent with server domain.
+For example (the server is adasz.cnt.pl)
+CookieDomain = off:
+ADASZ=127000000001.22730959949218517; path=/;
+expires=Fri, 02-Jun-00 12:33:43 GMT
+CookieDomain = on: 
+ADASZ=127000000001.22730959949218517; domain=.cnt.pl; path=/;
+expires=Fri, 02-Jun-00 12:33:43 GMT 
+
+I also changed a body of a cookie. There was a little problem: sometimes cookie 
+contained a dns name of a browser instead of ip address. This is fixed.
+I removed dots from ip address, and added necessary '0' - this is usefull in 
+working with databases. For examle :
+without patch ADASZ=12.128.23.1.98734984373489...
+with          ADASZ=012128023001.98734984373489...
+
+The patch file:
+--- mod_usertrack-old.c	Fri Jun  2 14:09:15 2000
++++ mod_usertrack.c	Fri Jun  2 14:31:19 2000
+@@ -116,6 +116,7 @@
+ typedef struct {
+     int enabled;
+     char *cookie_name;
++    int domain_enabled;
+ } cookie_dir_rec;
+ 
+ /* Define this to allow post-2000 cookies. Cookies use two-digit dates,
+@@ -142,12 +143,27 @@
+     /* 1024 == hardcoded constant */
+     char cookiebuf[1024];
+     char *new_cookie;
+-    const char *rname = ap_get_remote_host(r->connection, r->per_dir_config,
+-					   REMOTE_NAME);
++    const char *rname;
++    char *string;
+     cookie_dir_rec *dcfg;
+ 
+     dcfg = ap_get_module_config(r->per_dir_config, &usertrack_module);
+ 
++    /*
++     * getting browser's ip address, removing dots and adding '0',
++     * for example: 12.123.1.128 -> 012123001128
++     */
++
++    rname = strtok(r->connection->remote_ip, ".");
++
++    while((string = strtok(NULL, ".")) != NULL) {
++        if(strlen(string) == 1)
++            rname = ap_pstrcat(r->pool, rname, "00", NULL);
++        else if(strlen(string) == 2)
++	        rname = ap_pstrcat(r->pool, rname, "0", NULL);			
++        rname=ap_pstrcat(r->pool, rname, string, NULL);	
++    }
++
+ #if defined(NO_GETTIMEOFDAY) && !defined(NO_TIMES)
+ /* We lack gettimeofday(), so we must use time() to obtain the epoch
+    seconds, and then times() to obtain CPU clock ticks (milliseconds).
+@@ -194,12 +210,20 @@
+         tms = gmtime(&when);
+ 
+         /* Cookie with date; as strftime '%a, %d-%h-%y %H:%M:%S GMT' */
++        /*
++         * If CookieDomain directive is on the cookie will be sent for
++         * domain of the server
++         */
+         new_cookie = ap_psprintf(r->pool,
+-                "%s=%s; path=/; expires=%s, %.2d-%s-%.2d %.2d:%.2d:%.2d GMT",
+-                    dcfg->cookie_name, cookiebuf, ap_day_snames[tms->tm_wday],
+-                    tms->tm_mday, ap_month_snames[tms->tm_mon],
+-		    tms->tm_year % 100,
+-                    tms->tm_hour, tms->tm_min, tms->tm_sec);
++            "%s=%s%s%s; path=/; expires=%s, %.2d-%s-%.2d %.2d:%.2d:%.2d GMT",
++             dcfg->cookie_name, cookiebuf,
++             dcfg->domain_enabled ? "; domain=" : "",
++             dcfg->domain_enabled ?
++                   strpbrk(r->server->server_hostname, ".") : "",
++		     ap_day_snames[tms->tm_wday],
++                     tms->tm_mday, ap_month_snames[tms->tm_mon],
++		     tms->tm_year % 100,
++                     tms->tm_hour, tms->tm_min, tms->tm_sec);
+     }
+     else {
+ 	new_cookie = ap_psprintf(r->pool, "%s=%s; path=/",
+@@ -258,6 +282,7 @@
+     dcfg = (cookie_dir_rec *) ap_pcalloc(p, sizeof(cookie_dir_rec));
+     dcfg->cookie_name = COOKIE_NAME;
+     dcfg->enabled = 0;
++    dcfg->domain_enabled = 0;
+     return dcfg;
+ }
+ 
+@@ -344,6 +369,14 @@
+     return NULL;
+ }
+ 
++static const char *set_cookie_domain(cmd_parms *cmd, void *mconfig, int arg)
++{
++    cookie_dir_rec *dcfg = mconfig;
++
++    dcfg->domain_enabled = arg;
++    return NULL;
++}
++
+ static const command_rec cookie_log_cmds[] = {
+     {"CookieExpires", set_cookie_exp, NULL, RSRC_CONF, TAKE1,
+      "an expiry date code"},
+@@ -351,6 +384,8 @@
+      "whether or not to enable cookies"},
+     {"CookieName", set_cookie_name, NULL, OR_FILEINFO, TAKE1,
+      "name of the tracking cookie"},
++    {"CookieDomain", set_cookie_domain, NULL, OR_FILEINFO, FLAG,
++     "whether or not to add domain"},
+     {NULL}
+ };
+>How-To-Repeat:
+
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,155 @@
+Received: (qmail 24421 invoked by uid 2012); 9 Feb 1998 21:35:15 -0000
+Message-Id: <19980209213515.24420.qmail@hyperreal.org>
+Date: 9 Feb 1998 21:35:15 -0000
+From: Jim Patterson <Jim.Patterson@Cognos.COM>
+Reply-To: Jim.Patterson@Cognos.COM
+To: apbugs@hyperreal.org
+Subject: CGI SCRIPT_NAME variable includes extraneous information
+X-Send-Pr-Version: 3.2
+
+>Number:         1786
+>Category:       os-windows
+>Synopsis:       CGI SCRIPT_NAME variable includes extraneous information
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Feb  9 13:40:01 PST 1998
+>Last-Modified:  Sun May  3 03:47:19 PDT 1998
+>Originator:     Jim.Patterson@Cognos.COM
+>Organization:
+>Release:        1.3B3
+>Environment:
+Windows NT 4.0 Service Pack 3
+Visual C++ 4.0
+>Description:
+The SCRIPT_NAME variable passed to CGI scripts is sometimes faulty; it contains 
+information that is duplicated in PATH_INFO. The problem seems to be that the 
+routine that constructs SCRIPT_NAME by matching the trailing PATH_INFO doesn't 
+take into consideration some of the modifications done by the URI parsing 
+functions to extract PATH_INFO in the first place. Specifically:
+
+- if the URI contains trailing slashes, these are dropped to derive PATH_INFO 
+causing the match to fail.
+- If the PATH_INFO portion contains upper case characters, the match also fails 
+since it is case-sensitive and the URI variable is by this time downshifted. 
+(This second problem seems to be WIN32 specific, the downshifting is done in 
+os/win32/util_win32.c{os_canonical_filename}).
+
+This second problem seems to be a more serious problem but in fact is already report
+it seems; see PR#1506.
+The current logic downshifts the entire URI up to the query specification. It 
+really should only downshift only the "filename" portion. It would make sense 
+to "canonize" the PATH_TRANSLATED variable as well, but not PATH_INFO since it 
+may not be an actual pathname.
+>How-To-Repeat:
+I'm using this variation of the old "show environment variable " technique:
+
+/cgi-bin/SHOWENV.BAT:
+@echo off
+echo content: text/plain
+echo:
+set
+
+
+You can see the problem with either of the following URLs. Note that part of 
+PATH_INFO remains in SCRIPT_NAME in a slightly altered from. In one case,
+SCRIPT_NAME has dropped the trailing slash; in the other, the PATH_INFO 
+information has been downshifted.
+
+http://localhost/cgi-bin/showenv.bat/some/information/
+http://localhost/cgi-bin/showenv.bat/Some/Information
+>Fix:
+Fixes:
+
+In util_script.c function find_path_info:
+
+- skip trailing slashes in the REQUEST_URI.
+
+In util_win32.c function canonical_filename and sub_canonical_filename:
+
+- Move the downshift logic to sub_canonical_filename so that it applies only to the actual filename portion.
+
+(If PR#1506 has been fixed, then this change is apparently not needed).
+
+Here is a patch:
+*** os/win32/util_win32.c-orig Mon Feb  9 11:04:30 1998
+--- os/win32/util_win32.c Mon Feb  9 12:14:16 1998
+***************
+*** 48,58 ****
+--- 48,65 ----
+  	strcpy(szCanon,buf);
+  	szCanon[2]='/';
+  	szCanon[3]='\0';
++         strlwr(szCanon);
+      }
+      if(h == INVALID_HANDLE_VALUE)
++     {
+  	strcat(szCanon,szFilePart);
++     }
+      else
++     {
++         strlwr(d.cFileName);
+  	strcat(szCanon,d.cFileName);
++     }
++ 
+  }
+  
+  API_EXPORT(char *) os_canonical_filename(pool *pPool,const char *szFile)
+***************
+*** 60,66 ****
+      char buf[_MAX_PATH];
+  
+      sub_canonical_filename(buf,szFile);
+-     strlwr(buf);
+      return pstrdup(pPool,buf);
+  }
+  
+--- 67,72 ----
+*** main/util_script.c-orig Sun Nov 16 07:45:22 1997
+--- main/util_script.c Mon Feb  9 11:13:38 1998
+***************
+*** 250,255 ****
+--- 250,258 ----
+      int lu = strlen(uri);
+      int lp = strlen(path_info);
+  
++     while (lu && uri[lu-1] == '/')
++         --lu;
++ 
+      while (lu-- && lp-- && uri[lu] == path_info[lp]);
+  
+      if (lu == -1)
+%0
+>Audit-Trail:
+Comment-Added-By: dgaudet
+Comment-Added-When: Sat Feb 21 03:25:07 PST 1998
+Comment-Added:
+The SCRIPT_NAME problem appears to be windows specific.  I
+can't reproduce it on unix... try:
+
+http://www.arctic.org/cgi-bin/printenv/some/info/
+
+for example.
+
+Dean
+Category-Changed-From-To: general-os-windows
+Category-Changed-By: dgaudet
+Category-Changed-When: Sat Feb 21 03:25:07 PST 1998
+
+State-Changed-From-To: open-closed
+State-Changed-By: ben
+State-Changed-When: Sun May  3 03:47:19 PDT 1998
+State-Changed-Why:
+I believe this was fixed sometime before 1.3b6.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

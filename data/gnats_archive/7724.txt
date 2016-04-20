@@ -1,0 +1,88 @@
+Received: (qmail 57583 invoked by uid 501); 15 May 2001 14:25:39 -0000
+Message-Id: <20010515142538.57576.qmail@apache.org>
+Date: 15 May 2001 14:25:38 -0000
+From: Michael Kummer <frost@packetst0rm.net>
+Reply-To: frost@packetst0rm.net
+To: submit@bugz.apache.org
+Subject: apache doesnt start and outputs some strange memory problems
+X-Send-Pr-Version: 3.110
+
+>Number:         7724
+>Category:       os-solaris
+>Synopsis:       apache doesnt start and outputs some strange memory problems
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue May 15 07:30:04 PDT 2001
+>Closed-Date:    Thu May 17 04:34:17 PDT 2001
+>Last-Modified:  Thu May 17 04:34:17 PDT 2001
+>Originator:     frost@packetst0rm.net
+>Release:        1.3.19
+>Organization:
+>Environment:
+SunOS kryton 5.8 Generic_108529-07 i86pc i386 i86pc
+SubRelease 04/04
+gcc version 2.95.2 19991024 (release)
+>Description:
+root@freedom:/tmp/apache_1.3.19# /usr/local/apache/bin/apachectl start
+[Tue May 15 16:14:22 2001] [alert] httpd: Could not determine the server's
+fully qualified domain name, using 213.229.39.130 for ServerName
+/usr/local/apache/bin/apachectl start: httpd could not be started
+
+
+when i looked in /usr/local/apache/logs/error_log i found this:
+
+apc_shmcreate: shmget(0, 33554431,914) failed: Invalid argument
+apc_shmcreate: shmget(0, 33554431,914) failed: Invalid argument
+apc_sem_create: semget(0,...) failed: No space left on device
+apc_sem_create: semget(0,...) failed: No space left on device
+
+
+looks like a serious memory management problem
+>How-To-Repeat:
+install apache + php4 + mod_ssl on a solaris_x86 box
+>Fix:
+nope sorry
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: trawick
+State-Changed-When: Thu May 17 04:34:16 PDT 2001
+State-Changed-Why:
+The failing routines (apc_shmcreate, apc_sem_create) aren't
+part of base apache.  Could they be in PHP or mod_ssl?Regardless, it is a configuration problem.
+
+shmget() is failing because the apache module (whatever it is) wants a bigger shared memory segment (33 million bytes) than your Solaris system is configured to allow.
+
+Look at the Solaris documentation for the /etc/system variable shmsys:shminfo_shmmax.  That will need to be
+tuned to allow a larger shared memory segment.
+
+semget() is failing because the system is out of semaphores.  Look at the documentation of semsys:seminfo_semmni and semsys:seminfo_semmns.
+
+Another tack...  maybe the module has choices on how it gets shared memory or semaphores and you can tell it to use a different mechanism?
+
+There may be documentation for PHP or mod_ssl (or whatever) which tells how to deal with these problems.
+
+Thanks for using Apache.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

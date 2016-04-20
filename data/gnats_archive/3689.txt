@@ -1,0 +1,223 @@
+Received: (qmail 25793 invoked by uid 2012); 16 Jan 1999 12:19:01 -0000
+Message-Id: <19990116121901.25792.qmail@hyperreal.org>
+Date: 16 Jan 1999 12:19:01 -0000
+From: John Volanthen <john@jft.co.uk>
+Reply-To: john@jft.co.uk
+To: apbugs@hyperreal.org
+Subject: Multipart mime messages cannot be read properly on NT / Win32
+X-Send-Pr-Version: 3.2
+
+>Number:         3689
+>Category:       mod_cgi
+>Synopsis:       Multipart mime messages cannot be read properly on NT / Win32
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Jan 16 04:20:01 PST 1999
+>Last-Modified:  Tue Apr 20 21:36:08 PDT 1999
+>Originator:     john@jft.co.uk
+>Organization:
+>Release:        1.3.4
+>Environment:
+NT4 SP3, pre-compiled binary
+>Description:
+I am porting a ".c" CGI program from Linux to Win32, things work OK on Linux, but 
+on Win32 (using standard CGI).
+
+I am using multipart mime to send 2 files to the CGI program. when I send 
+more than about 64Kb of data The "connection reset by peer "message is displayed 
+on the browser. When sending to the same program on Linux all works OK.
+
+If I send about 20Kb of data, the number of bytes I am able to read is always less 
+than the CONTENT_LENGTH variable indicates. This happens for all browsers I have tried
+Tried
+>How-To-Repeat:
+CODE FRAGMENT :
+
+
+/******************************** ReadInData *********************************/
+void ReadInData()
+{
+char Buffer[1024];			/* input buffer */
+char delimeter[255];			/* the delimeter */
+int  delLength;				/* length of delimeter */
+char contentInfo[255];			/* the content info string */
+char name[255];								/* Name of the current item */
+int  i,j;
+char *ptmp;
+int dataSize;								/* size of data in 1k blocks */
+int ContentLength;
+int ActuallyRead;
+
+
+  ptmp = getenv("CONTENT_TYPE");			/* get and verify the content  type */
+  if (!ptmp){
+    SEND_HTTP_HEADERS;
+    printf("%s",INITIAL);
+    fatal(54,0,TRUE);
+  }
+  if(!strstr(ptmp,"multipart")){
+    SEND_HTTP_HEADERS;
+    printf("%s",INITIAL);
+    fatal(54,0,TRUE);
+  }
+  ptmp = getenv("CONTENT_LENGTH");			/* get and verify the content length */
+  if (!ptmp){
+    SEND_HTTP_HEADERS;
+    printf("%s",INITIAL);
+    fatal(54,0,TRUE);
+  }
+  ContentLength = atoi(ptmp);
+  if (ContentLength ==0){
+    SEND_HTTP_HEADERS;
+    printf("%s",INITIAL);
+    fatal(54,0,TRUE);
+  }
+ 
+  printf("Expecting %d<hr>\n",ContentLength);
+
+
+  ptmp = (char *)malloc (1 + (ContentLength));
+  if (!ptmp){
+    SEND_HTTP_HEADERS;
+    printf("%s",INITIAL);		/* USE xmalloc here TODO */
+    fatal(100,0,TRUE);
+  }
+
+  ActuallyRead = read (fileno (stdin), ptmp, ContentLength);
+  ptmp[ActuallyRead] = '\0';
+  printf("Actually Read %d<hr>\n",ActuallyRead);
+  printf("%s",ptmp);
+ 
+  return;
+}
+>Fix:
+No Idea, sorry ....
+>Audit-Trail:
+Comment-Added-By: marc
+Comment-Added-When: Sat Jan 16 10:14:10 PST 1999
+Comment-Added:
+What if you use fread() instead of messing with fileno()
+and accessing the raw descriptor?  Technically, it is NOT valid
+to use fileno() to read from a device that can't seek.
+
+From: John Volanthen <john@jft.co.uk>
+To: marc@apache.org, apbugs@apache.org, apache-bugdb@apache.org
+Cc:  Subject: Re: mod_cgi/3689: Multipart mime messages cannot be read properly on NT / Win32
+Date: Sun, 17 Jan 1999 11:41:25 +0000
+
+ marc@apache.org wrote:
+ 
+ > [In order for any reply to be added to the PR database, ]
+ > [you need to include <apbugs@Apache.Org> in the Cc line ]
+ > [and leave the subject line UNCHANGED.  This is not done]
+ > [automatically because of the potential for mail loops. ]
+ > [If you do not include this Cc, your reply may be ig-   ]
+ > [nored unless you are responding to an explicit request ]
+ > [from a developer.                                      ]
+ > [Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+ >
+ > Synopsis: Multipart mime messages cannot be read properly on NT / Win32
+ >
+ > Comment-Added-By: marc
+ > Comment-Added-When: Sat Jan 16 10:14:10 PST 1999
+ > Comment-Added:
+ > What if you use fread() instead of messing with fileno()
+ > and accessing the raw descriptor?  Technically, it is NOT valid
+ > to use fileno() to read from a device that can't seek.
+ 
+ Marc,
+ 
+ I started off  using fread, this seems to do exactly the same.
+ Even if I put the read / fread in a loop as below I still only get part of
+ the post.
+ 
+ TotalRead =0;
+ do{
+     Read = fread(ptmp,1,ContentLength,stdin);
+     TotalRead +=Read;
+ }while(!feof(stdin));
+ 
+ I have now tried using Borland C++ Builder and get exactly  the same
+ results, so I don't think it's the VC+ libraries
+ 
+ Has anyone ever had the multipart mime stuff working on Win32? is there any
+ sample code ?? - please.
+ 
+ I have not recently looked through the win32 code for mod_cgi but am about
+ to, does the handing of multipart mime differ from that of a straight
+ post?. Is there a limitation on the file sizes which can be "posted" to a
+ WIN32 console application??
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ --
+ John Volanthen
+ JF Technologies Ltd
+ office: 0117 9720332
+ mobile: 0410 515859
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: mod_cgi/3689: Multipart mime messages cannot be read properly
+ on NT / Win32 (fwd)
+Date: Wed, 20 Jan 1999 22:14:58 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ Date: Tue, 19 Jan 1999 09:55:15 +0000
+ From: John Volanthen <john@jft.co.uk>
+ To: marc@apache.org
+ Cc: apache-bugdb@apache.org
+ Subject: Re: mod_cgi/3689: Multipart mime messages cannot be read properly on
+     NT / Win32
+ 
+ By the way,
+ 
+ This problem is definitely specific to multipart mime only on the win 32
+ platform
+ hmm....
+ 
+ If I get a result I'll be in touch .....
+ 
+ john
+ 
+ --
+ John Volanthen
+ JF Technologies Ltd
+ office: 0117 9720332
+ mobile: 0410 515859
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 21:36:08 PDT 1999
+State-Changed-Why:
+There's a magic set_buffer thing you need to do to force
+stdin to be in binary mode.  I don't have it handy, but
+if you can't find it in your manuals, there's a PR describing
+it in the database here.  http://bugs.apache.org/
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

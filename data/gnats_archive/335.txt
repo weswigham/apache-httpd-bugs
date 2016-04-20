@@ -1,0 +1,140 @@
+From nobody@hyperreal.com  Tue Apr  8 23:43:06 1997
+Received: (from nobody@localhost)
+          by hyperreal.com (8.8.4/8.8.4)
+	  id XAA23857; Tue, 8 Apr 1997 23:43:06 -0700 (PDT)
+Message-Id: <199704090643.XAA23857@hyperreal.com>
+Date: Tue, 8 Apr 1997 23:43:06 -0700 (PDT)
+From: Greg Ercolano <erco@d2.com>
+Reply-To: erco@d2.com
+To: apbugs@hyperreal.com
+Subject: cgi-bin script not receiving SIGPIPE during output if client hits STOP
+X-Send-Pr-Version: 3.2
+
+>Number:         335
+>Category:       mod_cgi
+>Synopsis:       cgi-bin script not receiving SIGPIPE during output if client hits STOP
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Apr  8 23:50:01 1997
+>Last-Modified:  Sat Apr 26 23:25:30 PDT 1997
+>Originator:     erco@d2.com
+>Organization:
+>Release:        Apache/1.2b7
+>Environment:
+[erco@puck] RLOGIN 4 : uname -a
+IRIX puck 6.3 09192338 IP32
+[erco@puck] RLOGIN 6 : versions | grep C.Compiler.Version
+I  c_dev.sw.v6_c        03/05/97  C Compiler Version 6
+>Description:
+    A cgi-bin script (See below) should receive a SIGPIPE after the user hits
+    STOP the moment it outputs text to the closed socket.
+
+    This doesn't seem to happen w/apache; the process remains running,
+    the socket stuck in CLOSE_WAIT.
+
+    It should also be updating one line per second to the browser, since
+    there's a flush after each print.. at my installation, I just get a
+    blank screen.. I don't see any of the 'Testing' messages.
+
+#!/usr/local/bin/perl
+$| = 1;          # flush after every print
+print "Content-type: text/html\n\n<PRE>";
+while (1)
+{
+    printf("This is a test %d\n", time);
+    sleep(1);
+}
+
+    Usually when a cgi-bin script writes to a closed socket, it receives
+    a SIGPIPE. This is necessary if the script prints a steady stream of data
+    to the client.
+
+    When the client hits the STOP button, this closes the TCP connection,
+    and the cgi-bin script gets a SIGPIPE the moment it does the write(2).
+
+    This doesn't seem to happen w/apache 1.2b7.
+
+    The above does seem to work correctly in NCSA 1.5.2, both printing
+    one line per second, and killing the process when the user hits Stop.
+>How-To-Repeat:
+    Put the following in your cgi-bin, and invoke it from the browser.
+
+#!/usr/local/bin/perl
+require "flush.pl";
+print "Content-type: text/html\n\n<PRE>";
+while (1)
+{
+    printf("This is a test %d\n", time);
+    flush(STDOUT);
+    sleep(1);
+}
+
+    I would expect to see lines of text appearing in the browser one line per
+    second. When I hit Stop, the process on the server should die within a
+    second as the result of a SIGPIPE. 
+
+    What I see:
+
+	No text is printed one line per second; just the netscape star
+	animation running. Eventually, the netscape browser pops up a
+	dialog saying 'Document contains no data'.
+
+	When I hit Stop, the process is still running, and appears to
+ 	continue running even after several minutes. netstat shows the
+	connection in CLOSE_WAIT.
+
+    The above does seem to work correctly in NCSA 1.5.2 running on the same
+    platform, with the same cgi-bin script.. it prints one line per second, 
+    and kills the process when the user hits Stop.
+>Fix:
+Make sure SIGPIPE is not being blocked after the fork(), or have the daemon
+manually send a kill signal to the child with SIGPIPE the moment it detects
+the TCP connection closes down.
+
+Also, make sure that when the cgi-bin program does a flush, the data is forced
+through to the client browser, so that realtime data can be displayed
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: coar@decus.org
+State-Changed-When: Wed Apr  9 03:15:37 PDT 1997
+State-Changed-Why:
+Leaving the SIGPIPE part alone for the moment..  Apache
+buffers script output internally, which may be part of
+the problem.  Try renaming your script so the filename
+begins with "nph-" (e.g., to "nph-test.cgi") and try
+again.  The output from nph scripts does *not* get
+buffered.  Also, you can avoid the repeated flush() calls
+by simply putting "$| = 1;" before the first printf();
+this tells Perl not to buffer *its* output.  Please see
+if these changes have any effect, and we'll come back to
+the SIGPIPE issue.
+Category-Changed-From-To: os-irix-mod_cgi
+Category-Changed-By: coar@decus.org
+Category-Changed-When: Wed Apr  9 03:15:37 PDT 1997
+
+State-Changed-From-To: feedback-suspended
+State-Changed-By: dgaudet
+State-Changed-When: Sat Apr 19 16:34:00 PDT 1997
+State-Changed-Why:
+We were actually aware of these problems.  But thanks for
+pointing them out.  Unfortunately there's no quick fix for
+1.2, and it is something that we hope to have fixed post-1.2.
+Right now we're just trying to get 1.2 out the door.
+
+Thanks for using Apache!
+Dean
+State-Changed-From-To: suspended-closed
+State-Changed-By: fielding
+State-Changed-When: Sat Apr 26 23:25:28 PDT 1997
+State-Changed-Why:
+
+A fix for this problem will be included in 1.2b9 (after all).
+
+>Unformatted:
+
+

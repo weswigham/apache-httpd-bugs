@@ -1,0 +1,265 @@
+Received: (qmail 86343 invoked by uid 501); 1 May 2000 15:46:16 -0000
+Message-Id: <20000501154616.86342.qmail@locus.apache.org>
+Date: 1 May 2000 15:46:16 -0000
+From: Dongqiang Bai <bai@dreamarts.co.jp>
+Reply-To: bai@dreamarts.co.jp
+To: submit@bugz.apache.org
+Subject: coredump at ap_handle_command() when httpd reading httpd.conf file.
+X-Send-Pr-Version: 3.110
+
+>Number:         6041
+>Category:       config
+>Synopsis:       coredump at ap_handle_command() when httpd reading httpd.conf file.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon May 01 08:50:00 PDT 2000
+>Closed-Date:    Mon May 01 08:59:10 PDT 2000
+>Last-Modified:  Mon May  1 09:30:00 PDT 2000
+>Originator:     bai@dreamarts.co.jp
+>Release:        1.3.9 (UNIX)
+>Organization:
+>Environment:
+Linux 2.2.13-10 i686
+no patch
+gcc
+(This problem seems don't depend on OS or compiler, rather a bug)
+>Description:
+% gdb $APABIN/httpd core
+-------------------------------------------------------------------------
+#0  0x8065d19 in ap_set_flag_slot (cmd=0xbffff96c, struct_ptr=0x0, arg=1)
+    at http_config.c:1062
+1062        *(int *) (struct_ptr + offset) = arg ? 1 : 0;
+(gdb) where
+#0  0x8065d19 in ap_set_flag_slot (cmd=0xbffff96c, struct_ptr=0x0, arg=1)
+    at http_config.c:1062
+#1  0x8065905 in invoke_cmd (cmd=0x80ab284, parms=0xbffff96c, mconfig=0x0,
+    args=0xbfffd8f9 "") at http_config.c:928
+#2  0x8065bd1 in ap_handle_command (parms=0xbffff96c, config=0x80c59ec,
+    l=0xbfffd8ec "EnableTest on") at http_config.c:1008
+#3  0x8065c6d in ap_srm_command_loop (parms=0xbffff96c, config=0x80c59ec)
+    at http_config.c:1022
+#4  0x80660c4 in ap_process_resource_config (s=0x80c5074,
+    fname=0x80c62ac "/usr/local/apache/conf/httpd.conf", p=0x80c504c,
+    ptemp=0x80c906c) at http_config.c:1202
+#5  0x8066a2c in ap_read_config (p=0x80c504c, ptemp=0x80c906c,
+    confname=0x80bd900 "conf/httpd.conf") at http_config.c:1481
+#6  0x807102c in main (argc=1, argv=0xbffffa94) at http_main.c:4812
+>How-To-Repeat:
+(1) CC="gcc -g" configure --activate-module=src/modules/extra/mod_test.o
+(2) The output of the command "diff httpd.conf.default httpd.conf" is:
+    295a296,297
+    > EnableTest on
+    > 
+(3) The mod_test.c is as follows:
+---------------------------------------
+#include "httpd.h"
+#include "http_config.h"
+#include "http_core.h"
+#include "http_log.h"
+#include "http_protocol.h"
+
+module test_module;
+
+/* server config */
+typedef struct {
+    int  enabled;
+} test_config_rec;
+
+static void *create_test_config(pool *p, server_rec *dummy) {
+    test_config_rec *conf =
+            (test_config_rec *)ap_pcalloc(p, sizeof(test_config_rec));
+    conf->enabled = 0;
+}
+
+static const command_rec test_cmds[] = {
+    {"EnableTest", ap_set_flag_slot,
+            (void*)XtOffsetOf(test_config_rec, enabled), OR_FILEINFO, FLAG,
+            "whether or not to enable test"},
+    {NULL}
+};
+
+static int test_fixup(request_rec *req) {
+    return OK;
+}
+
+module test_module = {
+    STANDARD_MODULE_STUFF,
+    NULL,                       /* initializer */
+    NULL,                       /* dir config creater */
+    NULL,                       /* dir merger --- default is to override */
+    create_test_config,         /* server config */
+    NULL,                       /* merge server configs */
+    test_cmds,                  /* command table */
+    NULL,                       /* handlers */
+    NULL,                       /* filename translation */
+    NULL,                       /* check_user_id */
+    NULL,                       /* check auth */
+    NULL,                       /* check access */
+    NULL,                       /* type_checker */
+    test_fixup,                 /* fixups */
+    NULL,                       /* logger */
+    NULL,                       /* header parser */
+    NULL,                       /* child_init */
+    NULL,                       /* child_exit */
+    NULL                        /* post read-request */
+};
+>Fix:
+ap_set_config_vectors() should(?) return sconfig when mconfig==NULL.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Mon May  1 08:59:10 PDT 2000
+State-Changed-Why:
+Umhhh... your code doesn't make any sense.  Your create_test_config
+function isn't returning anything!  That is the whole point
+of the function, yo ucan't just decide that you don't want to return something
+then say Apache is broken... as always, compiling with warnings enabled (eg. gcc -Wall) would tell you this.
+
+From: "Dongqiang Bai" <bai@dreamarts.co.jp>
+To: <marc@apache.org>
+Cc: <apbugs@Apache.Org>
+Subject: RE: config/6041: coredump at ap_handle_command() when httpd reading httpd.conf file.
+Date: Tue, 2 May 2000 01:27:02 +0900
+
+ This is a multi-part message in MIME format.
+ 
+ ------=_NextPart_000_0000_01BFB3D5.84838140
+ Content-Type: text/plain;
+ 	charset="iso-2022-jp"
+ Content-Transfer-Encoding: 7bit
+ 
+ marc,
+ 
+ Thank you for your quick response. You are right, the conf struct
+ must be returned. I have cut my test code too short for sending.
+ Please try again for the new test file included, where the conf is
+ returned.
+ 
+ The really things I want to do is using virtual uri, if you interested,
+ I can briefly describe it in the next mail.
+ 
+ Dongqiang Bai
+ -----Original Message-----
+ From: marc@apache.org [mailto:marc@apache.org]
+ Sent: Tuesday, May 02, 2000 12:59 AM
+ To: apache-bugdb@apache.org; bai@dreamarts.co.jp; marc@apache.org
+ Subject: Re: config/6041: coredump at ap_handle_command() when httpd
+ reading httpd.conf file.
+ 
+ 
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+ Synopsis: coredump at ap_handle_command() when httpd reading httpd.conf
+ file.
+ 
+ State-Changed-From-To: open-closed
+ State-Changed-By: marc
+ State-Changed-When: Mon May  1 08:59:10 PDT 2000
+ State-Changed-Why:
+ Umhhh... your code doesn't make any sense.  Your create_test_config
+ function isn't returning anything!  That is the whole point
+ of the function, yo ucan't just decide that you don't want to return
+ something
+ then say Apache is broken... as always, compiling with warnings enabled (eg.
+ gcc -Wall) would tell you this.
+ 
+ 
+ ------=_NextPart_000_0000_01BFB3D5.84838140
+ Content-Type: application/octet-stream;
+ 	name="mod_test.c"
+ Content-Transfer-Encoding: quoted-printable
+ Content-Disposition: attachment;
+ 	filename="mod_test.c"
+ 
+ #include "httpd.h"=0A=
+ #include "http_config.h"=0A=
+ #include "http_core.h"=0A=
+ #include "http_log.h"=0A=
+ #include "http_protocol.h"=0A=
+ =0A=
+ module test_module;=0A=
+ =0A=
+ /* server config */=0A=
+ typedef struct {=0A=
+     int  enabled;=0A=
+ } test_config_rec;=0A=
+ =0A=
+ static void *create_test_config(pool *p, server_rec *dummy) {=0A=
+     test_config_rec *conf =3D=0A=
+ 	    (test_config_rec *)ap_pcalloc(p, sizeof(test_config_rec));=0A=
+     /* default test action: off */=0A=
+     conf->enabled =3D 0;=0A=
+     return conf;=0A=
+ }=0A=
+ =0A=
+ static const command_rec test_cmds[] =3D {=0A=
+     {"EnableTest", ap_set_flag_slot,=0A=
+ 	    (void*)XtOffsetOf(test_config_rec, enabled), OR_FILEINFO, FLAG,=0A=
+ 	    "whether or not to enable test"},=0A=
+     {NULL}=0A=
+ };=0A=
+ =0A=
+ static int test_fixup(request_rec *req) {=0A=
+     return OK;=0A=
+ }=0A=
+ =0A=
+ module test_module =3D {=0A=
+     STANDARD_MODULE_STUFF,=0A=
+     NULL,                       /* initializer */=0A=
+     NULL,                       /* dir config creater */=0A=
+     NULL,                       /* dir merger --- default is to override =
+ */=0A=
+     create_test_config,         /* server config */=0A=
+     NULL,                       /* merge server configs */=0A=
+     test_cmds,                  /* command table */=0A=
+     NULL,                       /* handlers */=0A=
+     NULL,                       /* filename translation */=0A=
+     NULL,                       /* check_user_id */=0A=
+     NULL,                       /* check auth */=0A=
+     NULL,                       /* check access */=0A=
+     NULL,                       /* type_checker */=0A=
+     test_fixup,                 /* fixups */=0A=
+     NULL,                       /* logger */=0A=
+     NULL,                       /* header parser */=0A=
+     NULL,                       /* child_init */=0A=
+     NULL,                       /* child_exit */=0A=
+     NULL                        /* post read-request */=0A=
+ };=0A=
+ 
+ ------=_NextPart_000_0000_01BFB3D5.84838140--
+ 
+>Unformatted:
+ >Quarter:        
+ >Keywords:       
+ >Date-Required:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

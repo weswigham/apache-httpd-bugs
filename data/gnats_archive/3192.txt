@@ -1,0 +1,145 @@
+Received: (qmail 28435 invoked by uid 2012); 12 Oct 1998 16:04:56 -0000
+Message-Id: <19981012160456.28434.qmail@hyperreal.org>
+Date: 12 Oct 1998 16:04:56 -0000
+From: Ole Tange <ole@tange.dk>
+Reply-To: ole@tange.dk
+To: apbugs@hyperreal.org
+Subject: Slow rewriting gives problems under load
+X-Send-Pr-Version: 3.2
+
+>Number:         3192
+>Category:       mod_rewrite
+>Synopsis:       Slow rewriting gives problems under load
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Oct 12 09:10:01 PDT 1998
+>Last-Modified:  Thu Feb 11 12:56:22 PST 1999
+>Originator:     ole@tange.dk
+>Organization:
+>Release:        1.3.2
+>Environment:
+Linux ns 2.0.32 #1 Wed Nov 19 00:46:45 EST 1997 i586 unknown
+>Description:
+I am using following perl-script for rewriting.
+
+$| = 1;
+open (ERR,">/tmp/my-debug-log");
+while (<STDIN>) {
+    print ERR "IN:$_\nOUT:";
+    print $Calculated{$_} ||= calculate($_); # calculate and store the result for future use
+    print ERR $Calculated{$_} ||= calculate($_);
+    print "\n";
+    print ERR "\n";
+}
+
+The calculate it not quite simple and rather slow, but there is a unique mapping from URL to filename.
+
+When I look at my-debug-log, every input line is converted correctly. But apache seems to mess up the results given.
+
+From httpd.conf:
+ RewriteEngine On
+ RewriteLog "logs/rewrite.log"
+ RewriteMap rw prg:/pi/bin/rewrite
+ RewriteRule /~.*       -       [L]
+ RewriteRule /icons/.*  -       [L]
+ RewriteRule /cgi-bin/.*        -       [L]
+ RewriteRule /(.*) /${rw:%{HTTP_HOST};;;$1}         
+
+Some times apache messes up input too:
+Correct syntax is: http_host;;;path_excluding_/
+Incorrect syntax: http_host;;;path_excluding_/http_host
+                  ;;;path_excluding_/
+
+That is: apache sends the correct syntax, but mixes it with the next request.
+
+>How-To-Repeat:
+http://sysop.person.dk
+>Fix:
+Since the problem only occurs if many requests are sent simultanously (e.g. 4 frames with pictures)
+I would assume the problem is in serializing the requests to/from the rewrite-program.
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Ole Tange <ole@tange.dk>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_rewrite/3192: Slow rewriting gives problems under load
+Date: Mon, 12 Oct 1998 10:43:01 -0700 (PDT)
+
+ On 12 Oct 1998, Ole Tange wrote:
+ 
+ > >From httpd.conf:
+ >  RewriteEngine On
+ >  RewriteLog "logs/rewrite.log"
+ >  RewriteMap rw prg:/pi/bin/rewrite
+ >  RewriteRule /~.*       -       [L]
+ >  RewriteRule /icons/.*  -       [L]
+ >  RewriteRule /cgi-bin/.*        -       [L]
+ >  RewriteRule /(.*) /${rw:%{HTTP_HOST};;;$1}         
+ 
+ Did you try adding a RewriteLock directive as the docs instruct?
+ 
+ 
+
+From: Ole Tange <tange@tange.dk>
+To: Marc Slemko <marcs@znep.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_rewrite/3192: Slow rewriting gives problems under load
+Date: Tue, 13 Oct 1998 01:34:36 +0200 (CEST)
+
+ On Mon, 12 Oct 1998, Marc Slemko wrote:
+ 
+ > On 12 Oct 1998, Ole Tange wrote:
+ > 
+ > > >From httpd.conf:
+ > >  RewriteEngine On
+ > >  RewriteLog "logs/rewrite.log"
+ > >  RewriteMap rw prg:/pi/bin/rewrite
+ > >  RewriteRule /~.*       -       [L]
+ > >  RewriteRule /icons/.*  -       [L]
+ > >  RewriteRule /cgi-bin/.*        -       [L]
+ > >  RewriteRule /(.*) /${rw:%{HTTP_HOST};;;$1}         
+ > 
+ > Did you try adding a RewriteLock directive as the docs instruct?
+ 
+ Yes. No change.
+ 
+ Another remark: When the path has been calculated I cache it for future
+ use. This means that after a few reloads the page will show up correctly. 
+ This appears to be because the program answers quickly. 
+ 
+ /Ole
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: lars
+State-Changed-When: Wed Nov  4 19:04:43 PST 1998
+State-Changed-Why:
+
+You say that you only see the problem under load...
+How much requests (approx.) does your server
+receive in such a situation.
+
+Are you sure that this is no perl problem/bug?
+
+State-Changed-From-To: feedback-closed
+State-Changed-By: lars
+State-Changed-When: Thu Feb 11 12:56:22 PST 1999
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

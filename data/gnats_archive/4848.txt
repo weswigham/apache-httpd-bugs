@@ -1,0 +1,2423 @@
+Received: (qmail 9396 invoked by uid 2012); 10 Aug 1999 21:55:20 -0000
+Message-Id: <19990810215520.9395.qmail@hyperreal.org>
+Date: 10 Aug 1999 21:55:20 -0000
+From: Dustin Vaught <dvaught@inaxx.net>
+Reply-To: dvaught@inaxx.net
+To: apbugs@hyperreal.org
+Subject: Apache locks every few days under high load (multiple physical servers)
+X-Send-Pr-Version: 3.2
+
+>Number:         4848
+>Category:       os-linux
+>Synopsis:       Apache locks every few days under high load (multiple physical servers)
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Aug 10 16:10:00 PDT 1999
+>Last-Modified:  Sun Sep  5 13:40:01 PDT 1999
+>Originator:     dvaught@inaxx.net
+>Organization:
+apache
+>Release:        1.3.6
+>Environment:
+Linux [] 2.2.7 #5 SMP Fri Jul 9 18:23:18 EST 1999 i686 unknown
+gcc 2.7.2.3
+>Description:
+We have an array of around 50 servers. They are all running Linux 2.2.7 and
+apache 1.3.6. Every week or so the apache daemon on many of the servers will
+stop responding to requests. The parent and children do not crash, they just
+stop responding for a period of time. Nothing suspicious in the netstat, and
+there are no crontabs running at the times it occurs. Seems very odd as most or
+all of the servers experience the problem at the same time. Nothing else on the
+servers are affected. The disk/cpu load is not high. Duration is from a minute
+to 20 minutes+ No excess inbound traffic to indicate a brute force attack.
+>How-To-Repeat:
+The problem is hard to reproduce, as I am not sure what triggers it. Possibly a
+vulnerability or anomaly in linux 2.2.7/apache 1.3.6. This problem also occured
+with apache 1.3.3. (the previous version we ran). Very random, sometimes it will
+happen 2 days apart, sometimes a month. Havn't had any other problems.
+>Fix:
+Nope - I will try to grab an strace of the parent apache next time this happens.
+Please help :) When this happens we lose nearly 45 megabits of outbound traffic.
+>Audit-Trail:
+
+From: Dirk-Willem van Gulik <dirkx@webweaving.org>
+To: Dustin Vaught <dvaught@inaxx.net>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-linux/4848: Apache locks every few days under high load
+ (multiple physical servers)
+Date: Wed, 11 Aug 1999 11:24:35 +0200 (CEST)
+
+ 1. If you change the MaxServer of max requests per child, do you see
+ differences ? And what are those values currently ?
+ 
+ 2. Does the propbelm also occur if you -HUP your servers once every 5 days
+ or so ? Or on those servers' you have HUPed recently ?
+ 
+ 2. I've seen this happening on older linux 2.1 installations after
+ some bogus RIP packets where processes the wrong way. That was a buffer
+ overrun in an ioctl() which was fixed. But it would be nice to know if
+ other deamons, say sshd, or sendmail do this as well ?
+ 
+ Dw
+ 
+
+From: "D. Vaught" <dvaught@inaxx.net>
+To: Dirk-Willem van Gulik <dirkx@webweaving.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-linux/4848: Apache locks every few days under high load
+  (multiple physical servers)
+Date: Sun, 15 Aug 1999 15:55:24 -0400
+
+ --=====================_330260==_
+ Content-Type: text/plain; charset="us-ascii"; format=flowed
+ 
+ i really do appreciate your prompt response. here is some more detailed info...
+ 
+ 
+ At 11:24 AM 8/11/99 +0200, you wrote:
+ 
+ >1. If you change the MaxServer of max requests per child, do you see
+ >differences ? And what are those values currently ?
+ 
+ i am not sure why maxrequestsperchild is so high...i advised them to lower 
+ it to 600
+ 
+ 
+ Timeout 
+ 300 
+ 
+ eepAlive 
+ on 
+ 
+ eepAliveTimeout 
+ 5 
+ 
+ inSpareServers 
+ 8 
+ 
+ axSpareServers 
+ 16 
+ 
+ tartServers 
+ 25 
+ 
+ axClients 
+ 400 
+ 
+ axRequestsPerChild 10000
+ 
+ 
+ >2. Does the propbelm also occur if you -HUP your servers once every 5 days
+ >or so ? Or on those servers' you have HUPed recently ?
+ 
+ the problem goes away after restarting the httpd. it sometimes comes right 
+ back...seems to be some sort
+ of DoS attack.
+ 
+ 
+ >2. I've seen this happening on older linux 2.1 installations after
+ >some bogus RIP packets where processes the wrong way. That was a buffer
+ >overrun in an ioctl() which was fixed. But it would be nice to know if
+ >other deamons, say sshd, or sendmail do this as well ?
+ 
+ 
+ no other notable problems occur on the servers
+ 
+ i nabbed some straces of apache while in this "frozen" state. i also got an 
+ strace of an apache parent coming out of the frozen state and resuming 
+ proper operation. these files are attached.
+ 
+ what i make of it is that during this frozen state there is not a single 
+ fork() call. as soon as normal operation resumes, there are about 30 forks 
+ and then they resume their periodic renewal.
+ 
+ also, one of the sparc machines logged this:
+ 
+ Aug 15 14:42:27 pup12 unix: WARNING: High TCP connect timeout rate! System 
+ (port 80) may be under a SYN flood attack!
+ 
+ NOTE that the sparc servers never lock up, and some of them push over 10 
+ megabits per server.
+ 
+ we have a linux box running a 2.0.x kernel and it IS affected. all of the 
+ rest are 2.2.7
+ 
+ last but not least, there doesn't seem to be any noticeable excess incoming 
+ traffic, but there is extra traffic on the nameservers..their traffic about 
+ triples.
+ 
+ it seems that someone is issuing a nuke attack of sorts that only affects 
+ our linux/apache servers...it stops servers from responding and 
+ forking..and it is not brute force, as there is no detactable excess 
+ inbound traffic. and perhaps it triggers the servers to send out heavy dns 
+ requests.
+ 
+ ideas?
+ 
+ -D
+ 
+ 
+ 
+ --=====================_330260==_
+ Content-Type: text/plain; charset="us-ascii"
+ Content-Disposition: attachment; filename="strace.log"
+ 
+ select(0, NULL, NULL, NULL, {0, 50000}) = 0 (Timeout)
+ time(NULL)                              = 934739206
+ kill(25489, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25489
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739207
+ kill(25488, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739209
+ kill(25488, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25488
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739210
+ kill(25487, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739211
+ kill(25487, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25487
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739212
+ kill(25486, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739213
+ kill(25486, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25486
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739214
+ kill(25485, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739215
+ kill(25485, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25485
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739216
+ kill(25484, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739217
+ kill(25484, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25484
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739218
+ kill(25483, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739219
+ kill(25483, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25483
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739220
+ kill(25480, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739221
+ kill(25480, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25480
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739222
+ kill(25479, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739223
+ kill(25479, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25479
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739224
+ kill(25478, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739225
+ kill(25478, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25478
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739226
+ kill(25477, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739227
+ kill(25477, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25477
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739228
+ kill(25476, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739229
+ kill(25476, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25476
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739230
+ kill(25475, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739231
+ kill(25475, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25475
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739232
+ kill(25474, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739233
+ kill(25474, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25474
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739234
+ kill(25473, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739235
+ kill(25473, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25473
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739236
+ kill(25472, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739237
+ kill(25472, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25472
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739238
+ kill(25471, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739239
+ kill(25471, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25471
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739240
+ kill(25470, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739241
+ kill(25470, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25470
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739242
+ kill(25469, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739243
+ kill(25469, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25469
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739244
+ kill(25468, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739245
+ kill(25468, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25468
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739246
+ kill(25467, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739247
+ kill(25467, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25467
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739248
+ kill(25466, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739249
+ kill(25466, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25466
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739250
+ kill(25465, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739251
+ kill(25465, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25465
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739252
+ kill(25461, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739253
+ kill(25461, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25461
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739254
+ kill(25460, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739255
+ kill(25460, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25460
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739256
+ kill(25459, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739257
+ kill(25459, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25459
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739258
+ kill(25458, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739259
+ kill(25458, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25458
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739260
+ kill(25457, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739261
+ kill(25457, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25457
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739262
+ kill(25456, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739263
+ kill(25456, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25456
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739264
+ kill(25455, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739265
+ kill(25455, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25455
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739266
+ kill(25454, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739267
+ kill(25454, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25454
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739268
+ kill(25452, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739269
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25452
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739270
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739271
+ fork()                                  = 25542
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739272
+ fork()                                  = 25543
+ fork()                                  = 25544
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739273
+ kill(25081, SIGALRM)                    = 0
+ fork()                                  = 25545
+ fork()                                  = 25546
+ fork()                                  = 25547
+ fork()                                  = 25548
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739274
+ kill(25075, SIGALRM)                    = 0
+ kill(25079, SIGALRM)                    = 0
+ fork()                                  = 25550
+ fork()                                  = 25551
+ fork()                                  = 25552
+ fork()                                  = 25553
+ fork()                                  = 25554
+ fork()                                  = 25555
+ fork()                                  = 25556
+ fork()                                  = 25557
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739275
+ kill(25083, SIGALRM)                    = 0
+ kill(25451, SIGALRM)                    = 0
+ fork()                                  = 25558
+ fork()                                  = 25559
+ fork()                                  = 25560
+ fork()                                  = 25561
+ fork()                                  = 25562
+ fork()                                  = 25563
+ fork()                                  = 25565
+ fork()                                  = 25566
+ fork()                                  = 25567
+ fork()                                  = 25568
+ fork()                                  = 25569
+ fork()                                  = 25571
+ fork()                                  = 25572
+ fork()                                  = 25573
+ fork()                                  = 25574
+ fork()                                  = 25575
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739276
+ kill(25076, SIGALRM)                    = 0
+ kill(25084, SIGALRM)                    = 0
+ kill(25089, SIGALRM)                    = 0
+ fork()                                  = 25578
+ fork()                                  = 25579
+ fork()                                  = 25580
+ fork()                                  = 25581
+ fork()                                  = 25582
+ fork()                                  = 25584
+ fork()                                  = 25585
+ fork()                                  = 25586
+ fork()                                  = 25587
+ fork()                                  = 25588
+ fork()                                  = 25589
+ fork()                                  = 25590
+ fork()                                  = 25591
+ fork()                                  = 25592
+ fork()                                  = 25593
+ fork()                                  = 25594
+ fork()                                  = 25595
+ fork()                                  = 25596
+ fork()                                  = 25597
+ fork()                                  = 25598
+ fork()                                  = 25599
+ fork()                                  = 25600
+ fork()                                  = 25601
+ fork()                                  = 25602
+ fork()                                  = 25603
+ fork()                                  = 25604
+ fork()                                  = 25605
+ fork()                                  = 25606
+ fork()                                  = 25607
+ fork()                                  = 25608
+ fork()                                  = 25609
+ fork()                                  = 25610
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739277
+ kill(25080, SIGALRM)                    = 0
+ kill(25082, SIGALRM)                    = 0
+ kill(25085, SIGALRM)                    = 0
+ kill(25449, SIGALRM)                    = 0
+ kill(25610, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739278
+ kill(25078, SIGALRM)                    = 0
+ kill(25090, SIGALRM)                    = 0
+ kill(25448, SIGALRM)                    = 0
+ kill(25610, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25610
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739279
+ kill(25087, SIGALRM)                    = 0
+ kill(25544, SIGALRM)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739280
+ kill(25081, SIGALRM)                    = 0
+ kill(25086, SIGALRM)                    = 0
+ kill(25088, SIGALRM)                    = 0
+ kill(25542, SIGALRM)                    = 0
+ kill(25546, SIGALRM)                    = 0
+ kill(25547, SIGALRM)                    = 0
+ fork()                                  = 25615
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739281
+ kill(25075, SIGALRM)                    = 0
+ kill(25551, SIGALRM)                    = 0
+ kill(25555, SIGALRM)                    = 0
+ kill(25556, SIGALRM)                    = 0
+ kill(25557, SIGALRM)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739282
+ kill(25077, SIGALRM)                    = 0
+ kill(25447, SIGALRM)                    = 0
+ kill(25451, SIGALRM)                    = 0
+ kill(25548, SIGALRM)                    = 0
+ kill(25550, SIGALRM)                    = 0
+ kill(25561, SIGALRM)                    = 0
+ kill(25563, SIGALRM)                    = 0
+ kill(25565, SIGALRM)                    = 0
+ kill(25566, SIGALRM)                    = 0
+ kill(25567, SIGALRM)                    = 0
+ kill(25569, SIGALRM)                    = 0
+ kill(25575, SIGALRM)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739283
+ kill(25079, SIGALRM)                    = 0
+ kill(25084, SIGALRM)                    = 0
+ kill(25560, SIGALRM)                    = 0
+ kill(25562, SIGALRM)                    = 0
+ kill(25582, SIGALRM)                    = 0
+ kill(25584, SIGALRM)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739284
+ kill(25080, SIGALRM)                    = 0
+ kill(25085, SIGALRM)                    = 0
+ kill(25089, SIGALRM)                    = 0
+ kill(25446, SIGALRM)                    = 0
+ kill(25543, SIGALRM)                    = 0
+ kill(25553, SIGALRM)                    = 0
+ kill(25568, SIGALRM)                    = 0
+ kill(25572, SIGALRM)                    = 0
+ kill(25581, SIGALRM)                    = 0
+ kill(25586, SIGALRM)                    = 0
+ kill(25587, SIGALRM)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739285
+ kill(25076, SIGALRM)                    = 0
+ kill(25078, SIGALRM)                    = 0
+ kill(25574, SIGALRM)                    = 0
+ kill(25589, SIGALRM)                    = 0
+ kill(25592, SIGALRM)                    = 0
+ kill(25596, SIGALRM)                    = 0
+ kill(25615, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739286
+ kill(25082, SIGALRM)                    = 0
+ kill(25087, SIGALRM)                    = 0
+ kill(25588, SIGALRM)                    = 0
+ kill(25595, SIGALRM)                    = 0
+ kill(25597, SIGALRM)                    = 0
+ kill(25598, SIGALRM)                    = 0
+ kill(25600, SIGALRM)                    = 0
+ kill(25603, SIGALRM)                    = 0
+ kill(25615, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25615
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739287
+ kill(25573, SIGALRM)                    = 0
+ kill(25591, SIGALRM)                    = 0
+ kill(25593, SIGALRM)                    = 0
+ kill(25609, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739288
+ kill(25083, SIGALRM)                    = 0
+ kill(25086, SIGALRM)                    = 0
+ kill(25542, SIGALRM)                    = 0
+ kill(25551, SIGALRM)                    = 0
+ kill(25557, SIGALRM)                    = 0
+ kill(25558, SIGALRM)                    = 0
+ kill(25578, SIGALRM)                    = 0
+ kill(25590, SIGALRM)                    = 0
+ kill(25609, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25609
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739289
+ kill(25077, SIGALRM)                    = 0
+ kill(25447, SIGALRM)                    = 0
+ kill(25559, SIGALRM)                    = 0
+ kill(25567, SIGALRM)                    = 0
+ kill(25569, SIGALRM)                    = 0
+ kill(25571, SIGALRM)                    = 0
+ kill(25585, SIGALRM)                    = 0
+ kill(25599, SIGALRM)                    = 0
+ kill(25608, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25608
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739290
+ kill(25084, SIGALRM)                    = 0
+ kill(25088, SIGALRM)                    = 0
+ kill(25547, SIGALRM)                    = 0
+ kill(25550, SIGALRM)                    = 0
+ kill(25560, SIGALRM)                    = 0
+ kill(25594, SIGALRM)                    = 0
+ kill(25601, SIGALRM)                    = 0
+ kill(25604, SIGALRM)                    = 0
+ kill(25605, SIGALRM)                    = 0
+ kill(25607, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739291
+ kill(25075, SIGALRM)                    = 0
+ kill(25448, SIGALRM)                    = 0
+ kill(25545, SIGALRM)                    = 0
+ kill(25565, SIGALRM)                    = 0
+ kill(25607, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25607
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739292
+ kill(25078, SIGALRM)                    = 0
+ kill(25446, SIGALRM)                    = 0
+ kill(25544, SIGALRM)                    = 0
+ kill(25606, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739293
+ kill(25089, SIGALRM)                    = 0
+ kill(25555, SIGALRM)                    = 0
+ kill(25556, SIGALRM)                    = 0
+ kill(25588, SIGALRM)                    = 0
+ kill(25598, SIGALRM)                    = 0
+ kill(25606, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25606
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739294
+ kill(25449, SIGALRM)                    = 0
+ kill(25451, SIGALRM)                    = 0
+ kill(25561, SIGALRM)                    = 0
+ kill(25568, SIGALRM)                    = 0
+ kill(25584, SIGALRM)                    = 0
+ kill(25605, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739295
+ kill(25082, SIGALRM)                    = 0
+ kill(25578, SIGALRM)                    = 0
+ kill(25605, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25605
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739296
+ kill(25450, SIGALRM)                    = 0
+ kill(25602, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739297
+ kill(25559, SIGALRM)                    = 0
+ kill(25579, SIGALRM)                    = 0
+ kill(25582, SIGALRM)                    = 0
+ kill(25587, SIGALRM)                    = 0
+ kill(25602, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25602
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739298
+ kill(25545, SIGALRM)                    = 0
+ kill(25575, SIGALRM)                    = 0
+ kill(25596, SIGALRM)                    = 0
+ kill(25604, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739299
+ kill(25446, SIGALRM)                    = 0
+ kill(25604, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25604
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739300
+ kill(25075, SIGALRM)                    = 0
+ kill(25078, SIGALRM)                    = 0
+ kill(25544, SIGALRM)                    = 0
+ kill(25556, SIGALRM)                    = 0
+ kill(25603, SIGALRM)                    = 0
+ kill(25601, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739301
+ kill(25591, SIGALRM)                    = 0
+ kill(25603, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25601
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739302
+ kill(25578, SIGALRM)                    = 0
+ kill(25599, SIGALRM)                    = 0
+ kill(25603, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25603
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739303
+ kill(25558, SIGALRM)                    = 0
+ kill(25584, SIGALRM)                    = 0
+ kill(25600, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739304
+ kill(25600, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25600
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739305
+ kill(25559, SIGALRM)                    = 0
+ kill(25599, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739306
+ kill(25599, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25599
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739307
+ kill(25081, SIGALRM)                    = 0
+ kill(25598, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739308
+ kill(25598, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25598
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739309
+ kill(25597, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739310
+ kill(25597, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25597
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739311
+ kill(25596, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739312
+ kill(25596, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25596
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739313
+ kill(25595, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739314
+ kill(25595, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25595
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739315
+ kill(25594, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739316
+ kill(25594, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25594
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739317
+ kill(25593, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739318
+ kill(25593, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25593
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739319
+ kill(25592, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739320
+ kill(25592, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25592
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739321
+ kill(25591, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739322
+ kill(25083, SIGALRM)                    = 0
+ kill(25591, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25591
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739323
+ kill(25590, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739324
+ kill(25590, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25590
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739325
+ kill(25589, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739326
+ kill(25589, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25589
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739327
+ kill(25588, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739328
+ kill(25588, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25588
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739329
+ kill(25587, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739330
+ kill(25587, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25587
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739331
+ kill(25586, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739332
+ kill(25586, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25586
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739333
+ kill(25585, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739334
+ kill(25585, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25585
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739335
+ kill(25584, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739336
+ kill(25584, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25584
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739337
+ kill(25582, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739338
+ kill(25582, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25582
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739339
+ kill(25581, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739340
+ kill(25581, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25581
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739341
+ kill(25580, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739342
+ kill(25580, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25580
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739343
+ kill(25579, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739344
+ kill(25579, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25579
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739345
+ kill(25578, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739346
+ kill(25578, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25578
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739347
+ kill(25575, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739348
+ kill(25575, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25575
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739349
+ kill(25574, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739350
+ kill(25574, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25574
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739351
+ kill(25573, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739352
+ kill(25573, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25573
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739353
+ kill(25572, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739354
+ kill(25572, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25572
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739355
+ kill(25571, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739356
+ kill(25571, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25571
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739357
+ kill(25569, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739358
+ kill(25569, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25569
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739359
+ kill(25568, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739360
+ kill(25568, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25568
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739361
+ kill(25567, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739362
+ kill(25567, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25567
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739363
+ kill(25566, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739364
+ kill(25566, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25566
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739365
+ kill(25565, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739366
+ kill(25565, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25565
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739367
+ kill(25563, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739368
+ kill(25563, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25563
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739369
+ kill(25562, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739370
+ kill(25562, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25562
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739371
+ kill(25561, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739372
+ kill(25561, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25561
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739373
+ kill(25560, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739374
+ kill(25560, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25560
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739375
+ kill(25559, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739376
+ kill(25559, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25559
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739377
+ kill(25558, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739378
+ kill(25558, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25558
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739379
+ kill(25557, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739380
+ kill(25557, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25557
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739381
+ kill(25556, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739382
+ kill(25556, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25556
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739383
+ kill(25555, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739384
+ kill(25555, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25555
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739385
+ kill(25554, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739386
+ kill(25554, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25554
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739387
+ kill(25553, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739388
+ kill(25553, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25553
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739389
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739390
+ fork()                                  = 25632
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739391
+ fork()                                  = 25634
+ fork()                                  = 25635
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739392
+ kill(25545, SIGALRM)                    = 0
+ fork()                                  = 25636
+ fork()                                  = 25637
+ fork()                                  = 25638
+ fork()                                  = 25639
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739393
+ fork()                                  = 25641
+ fork()                                  = 25642
+ fork()                                  = 25643
+ fork()                                  = 25644
+ fork()                                  = 25645
+ fork()                                  = 25647
+ fork()                                  = 25648
+ fork()                                  = 25650
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {0, 940000}) = 0 (Timeout)
+ time(NULL)                              = 934739395
+ kill(25078, SIGALRM)                    = 0
+ kill(25079, SIGALRM)                    = 0
+ kill(25080, SIGALRM)                    = 0
+ kill(25081, SIGALRM)                    = 0
+ kill(25084, SIGALRM)                    = 0
+ kill(25086, SIGALRM)                    = 0
+ kill(25446, SIGALRM)                    = 0
+ kill(25451, SIGALRM)                    = 0
+ kill(25544, SIGALRM)                    = 0
+ kill(25546, SIGALRM)                    = 0
+ fork()                                  = 25653
+ fork()                                  = 25654
+ fork()                                  = 25655
+ fork()                                  = 25656
+ fork()                                  = 25657
+ fork()                                  = 25658
+ fork()                                  = 25659
+ fork()                                  = 25660
+ fork()                                  = 25661
+ fork()                                  = 25662
+ fork()                                  = 25663
+ fork()                                  = 25664
+ fork()                                  = 25665
+ fork()                                  = 25666
+ fork()                                  = 25667
+ fork()                                  = 25668
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 1], WNOHANG, NULL) = 25644
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739396
+ kill(25075, SIGALRM)                    = 0
+ kill(25076, SIGALRM)                    = 0
+ kill(25088, SIGALRM)                    = 0
+ kill(25542, SIGALRM)                    = 0
+ kill(25551, SIGALRM)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739397
+ kill(25082, SIGALRM)                    = 0
+ kill(25083, SIGALRM)                    = 0
+ kill(25089, SIGALRM)                    = 0
+ kill(25547, SIGALRM)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739398
+ kill(25449, SIGALRM)                    = 0
+ kill(25450, SIGALRM)                    = 0
+ kill(25543, SIGALRM)                    = 0
+ kill(25632, SIGALRM)                    = 0
+ kill(25635, SIGALRM)                    = 0
+ fork()                                  = 25671
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739399
+ kill(25545, SIGALRM)                    = 0
+ kill(25552, SIGALRM)                    = 0
+ kill(25638, SIGALRM)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739400
+ fork()                                  = 25672
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739401
+ kill(25077, SIGALRM)                    = 0
+ kill(25639, SIGALRM)                    = 0
+ kill(25641, SIGALRM)                    = 0
+ kill(25642, SIGALRM)                    = 0
+ kill(25643, SIGALRM)                    = 0
+ kill(25647, SIGALRM)                    = 0
+ kill(25648, SIGALRM)                    = 0
+ fork()                                  = 25676
+ fork()                                  = 25677
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739402
+ kill(25078, SIGALRM)                    = 0
+ kill(25080, SIGALRM)                    = 0
+ kill(25084, SIGALRM)                    = 0
+ kill(25086, SIGALRM)                    = 0
+ kill(25544, SIGALRM)                    = 0
+ kill(25550, SIGALRM)                    = 0
+ kill(25650, SIGALRM)                    = 0
+ kill(25653, SIGALRM)                    = 0
+ kill(25654, SIGALRM)                    = 0
+ kill(25655, SIGALRM)                    = 0
+ kill(25656, SIGALRM)                    = 0
+ kill(25658, SIGALRM)                    = 0
+ fork()                                  = 25679
+ fork()                                  = 25680
+ fork()                                  = 25681
+ fork()                                  = 25682
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739403
+ kill(25076, SIGALRM)                    = 0
+ kill(25085, SIGALRM)                    = 0
+ kill(25090, SIGALRM)                    = 0
+ kill(25446, SIGALRM)                    = 0
+ kill(25551, SIGALRM)                    = 0
+ kill(25657, SIGALRM)                    = 0
+ kill(25682, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739404
+ kill(25075, SIGALRM)                    = 0
+ kill(25081, SIGALRM)                    = 0
+ kill(25082, SIGALRM)                    = 0
+ kill(25451, SIGALRM)                    = 0
+ kill(25547, SIGALRM)                    = 0
+ kill(25636, SIGALRM)                    = 0
+ kill(25682, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25682
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739405
+ kill(25635, SIGALRM)                    = 0
+ kill(25667, SIGALRM)                    = 0
+ kill(25681, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739406
+ kill(25545, SIGALRM)                    = 0
+ kill(25552, SIGALRM)                    = 0
+ kill(25632, SIGALRM)                    = 0
+ kill(25638, SIGALRM)                    = 0
+ kill(25659, SIGALRM)                    = 0
+ kill(25662, SIGALRM)                    = 0
+ kill(25681, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25681
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739407
+ kill(25449, SIGALRM)                    = 0
+ kill(25664, SIGALRM)                    = 0
+ kill(25665, SIGALRM)                    = 0
+ kill(25666, SIGALRM)                    = 0
+ kill(25668, SIGALRM)                    = 0
+ kill(25680, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739408
+ kill(25079, SIGALRM)                    = 0
+ kill(25641, SIGALRM)                    = 0
+ kill(25643, SIGALRM)                    = 0
+ kill(25671, SIGALRM)                    = 0
+ kill(25672, SIGALRM)                    = 0
+ kill(25680, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25680
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739409
+ kill(25647, SIGALRM)                    = 0
+ kill(25648, SIGALRM)                    = 0
+ kill(25679, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739410
+ kill(25077, SIGALRM)                    = 0
+ kill(25089, SIGALRM)                    = 0
+ kill(25543, SIGALRM)                    = 0
+ kill(25679, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25679
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739411
+ kill(25085, SIGALRM)                    = 0
+ kill(25677, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739412
+ kill(25075, SIGALRM)                    = 0
+ kill(25078, SIGALRM)                    = 0
+ kill(25081, SIGALRM)                    = 0
+ kill(25447, SIGALRM)                    = 0
+ kill(25450, SIGALRM)                    = 0
+ kill(25635, SIGALRM)                    = 0
+ kill(25656, SIGALRM)                    = 0
+ kill(25667, SIGALRM)                    = 0
+ kill(25677, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25677
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739413
+ kill(25451, SIGALRM)                    = 0
+ kill(25551, SIGALRM)                    = 0
+ kill(25634, SIGALRM)                    = 0
+ kill(25676, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25676
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739414
+ kill(25087, SIGALRM)                    = 0
+ kill(25542, SIGALRM)                    = 0
+ kill(25668, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25668
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739415
+ kill(25645, SIGALRM)                    = 0
+ kill(25664, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739416
+ kill(25076, SIGALRM)                    = 0
+ kill(25641, SIGALRM)                    = 0
+ kill(25643, SIGALRM)                    = 0
+ kill(25648, SIGALRM)                    = 0
+ kill(25664, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25664
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739417
+ kill(25639, SIGALRM)                    = 0
+ kill(25665, SIGALRM)                    = 0
+ kill(25663, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25663
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739418
+ kill(25079, SIGALRM)                    = 0
+ kill(25085, SIGALRM)                    = 0
+ kill(25665, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25665
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739419
+ kill(25078, SIGALRM)                    = 0
+ kill(25647, SIGALRM)                    = 0
+ kill(25661, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25661
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739420
+ kill(25450, SIGALRM)                    = 0
+ kill(25551, SIGALRM)                    = 0
+ kill(25635, SIGALRM)                    = 0
+ kill(25660, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25660
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739421
+ kill(25081, SIGALRM)                    = 0
+ kill(25447, SIGALRM)                    = 0
+ kill(25550, SIGALRM)                    = 0
+ kill(25634, SIGALRM)                    = 0
+ kill(25659, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25659
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739422
+ kill(25446, SIGALRM)                    = 0
+ kill(25666, SIGALRM)                    = 0
+ kill(25658, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739423
+ kill(25084, SIGALRM)                    = 0
+ kill(25655, SIGALRM)                    = 0
+ kill(25658, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25658
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739424
+ kill(25656, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25656
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739425
+ kill(25655, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25655
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739426
+ kill(25546, SIGALRM)                    = 0
+ kill(25547, SIGALRM)                    = 0
+ kill(25632, SIGALRM)                    = 0
+ kill(25667, SIGALRM)                    = 0
+ kill(25666, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25666
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739427
+ kill(25078, SIGALRM)                    = 0
+ kill(25448, SIGALRM)                    = 0
+ kill(25635, SIGALRM)                    = 0
+ kill(25645, SIGALRM)                    = 0
+ kill(25653, SIGALRM)                    = 0
+ kill(25667, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25667
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739428
+ kill(25650, SIGALRM)                    = 0
+ kill(25648, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25648
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739429
+ kill(25446, SIGALRM)                    = 0
+ kill(25449, SIGALRM)                    = 0
+ kill(25552, SIGALRM)                    = 0
+ kill(25650, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739430
+ kill(25650, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25650
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739431
+ kill(25076, SIGALRM)                    = 0
+ kill(25081, SIGALRM)                    = 0
+ kill(25090, SIGALRM)                    = 0
+ kill(25447, SIGALRM)                    = 0
+ kill(25542, SIGALRM)                    = 0
+ kill(25647, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25647
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739432
+ kill(25079, SIGALRM)                    = 0
+ kill(25086, SIGALRM)                    = 0
+ kill(25637, SIGALRM)                    = 0
+ kill(25654, SIGALRM)                    = 0
+ kill(25671, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739433
+ kill(25634, SIGALRM)                    = 0
+ kill(25671, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25671
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739434
+ kill(25084, SIGALRM)                    = 0
+ kill(25642, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739435
+ kill(25448, SIGALRM)                    = 0
+ kill(25635, SIGALRM)                    = 0
+ kill(25642, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25642
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739436
+ kill(25645, SIGALRM)                    = 0
+ kill(25653, SIGALRM)                    = 0
+ kill(25641, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739437
+ kill(25552, SIGALRM)                    = 0
+ kill(25653, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25653
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25641
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739438
+ kill(25643, SIGALRM)                    = 0
+ kill(25639, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739439
+ kill(25547, SIGALRM)                    = 0
+ kill(25632, SIGALRM)                    = 0
+ kill(25643, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25643
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25639
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739440
+ kill(25447, SIGALRM)                    = 0
+ kill(25450, SIGALRM)                    = 0
+ kill(25543, SIGALRM)                    = 0
+ kill(25634, SIGALRM)                    = 0
+ kill(25637, SIGALRM)                    = 0
+ kill(25638, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25638
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739441
+ kill(25079, SIGALRM)                    = 0
+ kill(25545, SIGALRM)                    = 0
+ kill(25654, SIGALRM)                    = 0
+ kill(25637, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25637
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739442
+ kill(25083, SIGALRM)                    = 0
+ kill(25446, SIGALRM)                    = 0
+ kill(25448, SIGALRM)                    = 0
+ kill(25672, SIGALRM)                    = 0
+ kill(25654, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739443
+ kill(25635, SIGALRM)                    = 0
+ kill(25662, SIGALRM)                    = 0
+ kill(25672, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25672
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25654
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739444
+ kill(25086, SIGALRM)                    = 0
+ kill(25090, SIGALRM)                    = 0
+ kill(25645, SIGALRM)                    = 0
+ kill(25662, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25662
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739445
+ kill(25081, SIGALRM)                    = 0
+ kill(25645, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25645
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739446
+ kill(25552, SIGALRM)                    = 0
+ kill(25636, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739447
+ kill(25636, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25636
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739448
+ kill(25551, SIGALRM)                    = 0
+ kill(25634, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25634
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739449
+ kill(25076, SIGALRM)                    = 0
+ kill(25543, SIGALRM)                    = 0
+ kill(25546, SIGALRM)                    = 0
+ kill(25635, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25635
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739450
+ kill(25079, SIGALRM)                    = 0
+ kill(25448, SIGALRM)                    = 0
+ kill(25550, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25550
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739451
+ kill(25547, SIGALRM)                    = 0
+ kill(25546, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739452
+ kill(25546, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25546
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739453
+ kill(25552, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25552
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739454
+ kill(25090, SIGALRM)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739455
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739456
+ kill(25450, SIGALRM)                    = 0
+ kill(25551, SIGALRM)                    = 0
+ kill(25632, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739457
+ kill(25632, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25632
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739458
+ kill(25078, SIGALRM)                    = 0
+ kill(25551, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739459
+ kill(25083, SIGALRM)                    = 0
+ kill(25446, SIGALRM)                    = 0
+ kill(25447, SIGALRM)                    = 0
+ kill(25542, SIGALRM)                    = 0
+ kill(25547, SIGALRM)                    = 0
+ kill(25551, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25551
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739460
+ kill(25076, SIGALRM)                    = 0
+ kill(25086, SIGALRM)                    = 0
+ kill(25547, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739461
+ kill(25547, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25547
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739462
+ kill(25544, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739463
+ kill(25544, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25544
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739464
+ kill(25543, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739465
+ kill(25543, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25543
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739466
+ kill(25542, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739467
+ kill(25548, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25548
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25542
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739468
+ kill(25451, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25451
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739469
+ kill(25450, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25450
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739470
+ kill(25449, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25449
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739471
+ kill(25448, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739472
+ kill(25448, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25448
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739473
+ kill(25447, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25447
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739474
+ kill(25446, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25446
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739475
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739476
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739477
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739478
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739479
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739480
+ kill(25545, SIGALRM)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739481
+ kill(25545, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739482
+ kill(25545, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25545
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739483
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739484
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739485
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739486
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739487
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739488
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739489
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739490
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739491
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739492
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739493
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739494
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739495
+ kill(25657, SIGALRM)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739496
+ kill(25657, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25657
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739497
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739498
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739499
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739500
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739501
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739502
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739503
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739504
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739505
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739506
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739507
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739508
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739509
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739510
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739511
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739512
+ fork()                                  = 25703
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739513
+ fork()                                  = 25705
+ fork()                                  = 25706
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739514
+ fork()                                  = 25707
+ fork()                                  = 25708
+ fork()                                  = 25709
+ fork()                                  = 25710
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739515
+ fork()                                  = 25712
+ fork()                                  = 25713
+ fork()                                  = 25714
+ fork()                                  = 25715
+ fork()                                  = 25716
+ fork()                                  = 25718
+ fork()                                  = 25720
+ fork()                                  = 25721
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739516
+ fork()                                  = 25722
+ fork()                                  = 25723
+ fork()                                  = 25724
+ fork()                                  = 25725
+ fork()                                  = 25726
+ fork()                                  = 25729
+ fork()                                  = 25730
+ fork()                                  = 25731
+ fork()                                  = 25732
+ fork()                                  = 25733
+ fork()                                  = 25734
+ fork()                                  = 25735
+ fork()                                  = 25736
+ fork()                                  = 25737
+ fork()                                  = 25738
+ fork()                                  = 25739
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739517
+ kill(25078, SIGALRM)                    = 0
+ kill(25082, SIGALRM)                    = 0
+ kill(25085, SIGALRM)                    = 0
+ fork()                                  = 25742
+ fork()                                  = 25743
+ fork()                                  = 25744
+ fork()                                  = 25745
+ fork()                                  = 25746
+ fork()                                  = 25747
+ fork()                                  = 25748
+ fork()                                  = 25749
+ fork()                                  = 25750
+ fork()                                  = 25751
+ fork()                                  = 25752
+ fork()                                  = 25753
+ fork()                                  = 25754
+ fork()                                  = 25755
+ fork()                                  = 25756
+ fork()                                  = 25757
+ fork()                                  = 25758
+ fork()                                  = 25759
+ fork()                                  = 25760
+ fork()                                  = 25761
+ fork()                                  = 25762
+ fork()                                  = 25763
+ fork()                                  = 25764
+ fork()                                  = 25765
+ fork()                                  = 25766
+ fork()                                  = 25767
+ fork()                                  = 25768
+ fork()                                  = 25769
+ fork()                                  = 25770
+ fork()                                  = 25771
+ fork()                                  = 25772
+ fork()                                  = 25773
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739518
+ kill(25075, SIGALRM)                    = 0
+ kill(25087, SIGALRM)                    = 0
+ kill(25773, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739519
+ kill(25077, SIGALRM)                    = 0
+ kill(25081, SIGALRM)                    = 0
+ kill(25090, SIGALRM)                    = 0
+ kill(25703, SIGALRM)                    = 0
+ kill(25773, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25773
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739520
+ kill(25706, SIGALRM)                    = 0
+ kill(25772, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739521
+ kill(25705, SIGALRM)                    = 0
+ kill(25707, SIGALRM)                    = 0
+ kill(25709, SIGALRM)                    = 0
+ kill(25772, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25772
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739522
+ kill(25083, SIGALRM)                    = 0
+ kill(25086, SIGALRM)                    = 0
+ kill(25089, SIGALRM)                    = 0
+ kill(25714, SIGALRM)                    = 0
+ kill(25715, SIGALRM)                    = 0
+ kill(25716, SIGALRM)                    = 0
+ kill(25718, SIGALRM)                    = 0
+ kill(25771, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739523
+ kill(25076, SIGALRM)                    = 0
+ kill(25080, SIGALRM)                    = 0
+ kill(25084, SIGALRM)                    = 0
+ kill(25710, SIGALRM)                    = 0
+ kill(25721, SIGALRM)                    = 0
+ kill(25724, SIGALRM)                    = 0
+ kill(25731, SIGALRM)                    = 0
+ kill(25733, SIGALRM)                    = 0
+ kill(25734, SIGALRM)                    = 0
+ kill(25736, SIGALRM)                    = 0
+ kill(25771, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25771
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739524
+ kill(25712, SIGALRM)                    = 0
+ kill(25713, SIGALRM)                    = 0
+ kill(25738, SIGALRM)                    = 0
+ kill(25748, SIGALRM)                    = 0
+ kill(25770, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25770
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739525
+ kill(25087, SIGALRM)                    = 0
+ kill(25769, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25769
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739526
+ kill(25079, SIGALRM)                    = 0
+ kill(25703, SIGALRM)                    = 0
+ kill(25708, SIGALRM)                    = 0
+ kill(25720, SIGALRM)                    = 0
+ kill(25723, SIGALRM)                    = 0
+ kill(25732, SIGALRM)                    = 0
+ kill(25768, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25768
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739527
+ kill(25725, SIGALRM)                    = 0
+ kill(25742, SIGALRM)                    = 0
+ kill(25743, SIGALRM)                    = 0
+ kill(25752, SIGALRM)                    = 0
+ kill(25767, SIGUSR1)                    = 0
+ --- SIGCHLD (Child exited) ---
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25767
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739528
+ kill(25090, SIGALRM)                    = 0
+ kill(25707, SIGALRM)                    = 0
+ kill(25735, SIGALRM)                    = 0
+ kill(25750, SIGALRM)                    = 0
+ kill(25766, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739529
+ kill(25081, SIGALRM)                    = 0
+ kill(25744, SIGALRM)                    = 0
+ kill(25747, SIGALRM)                    = 0
+ kill(25766, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25766
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739530
+ kill(25709, SIGALRM)                    = 0
+ kill(25765, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739531
+ kill(25083, SIGALRM)                    = 0
+ kill(25710, SIGALRM)                    = 0
+ kill(25765, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25765
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739532
+ kill(25082, SIGALRM)                    = 0
+ kill(25705, SIGALRM)                    = 0
+ kill(25715, SIGALRM)                    = 0
+ kill(25749, SIGALRM)                    = 0
+ kill(25764, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739533
+ kill(25718, SIGALRM)                    = 0
+ kill(25736, SIGALRM)                    = 0
+ kill(25764, SIGUSR1)                    = 0
+ wait4(-1, [WIFEXITED(s) && WEXITSTATUS(s) == 0], WNOHANG, NULL) = 25764
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739534
+ kill(25722, SIGALRM)                    = 0
+ kill(25723, SIGALRM)                    = 0
+ kill(25731, SIGALRM)                    = 0
+ kill(25742, SIGALRM)                    = 0
+ kill(25751, SIGALRM)                    = 0
+ kill(25763, SIGUSR1)                    = 0
+ wait4(-1, 0xbffffd64, WNOHANG, NULL)    = 0
+ select(0, NULL, NULL, NULL, {1, 0})     = ? ERESTARTNOHAND (To be restarted)
+ --- SIGCHLD (Child exited) ---
+ select(0, NULL, NULL, NULL, {1, 0})     = 0 (Timeout)
+ time(NULL)                              = 934739535
+ kill(25076, SIGALRM)                    = 0
+ kill(25703, SIGALRM)                    = 0
+ kill(25707, SIGALRM)                    = 0
+ kill(25725, SIGALRM)                    = 0
+ kill(25750, SIGALRM <unfinished ...>
+ 
+ --=====================_330260==_
+ Content-Type: text/plain; charset="us-ascii"; format=flowed
+ 
+ 
+ D. Vaught			p: 404-659-5650
+ Network Engineering		f: 404-659-5652
+ Inaxx Networking
+ --=====================_330260==_--
+ 
+
+From: Dirk-Willem van Gulik <dirkx@webweaving.org>
+To: "D. Vaught" <dvaught@inaxx.net>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-linux/4848: Apache locks every few days under high load 
+ (multiple physical servers)
+Date: Sun, 5 Sep 1999 22:24:02 +0200 (CEST)
+
+ Did you get back to me with a gdb backtrace ? I forgot.
+ 
+ DW
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

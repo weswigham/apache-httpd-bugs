@@ -1,0 +1,266 @@
+Received: (qmail 25328 invoked by uid 2012); 27 Apr 1998 23:27:37 -0000
+Message-Id: <19980427232737.25327.qmail@hyperreal.org>
+Date: 27 Apr 1998 23:27:37 -0000
+From: Janos Farkas <chexum-submit@shadow.banki.hu>
+Reply-To: chexum-submit@shadow.banki.hu
+To: apbugs@hyperreal.org
+Subject: apache always detaches for normal operation
+X-Send-Pr-Version: 3.2
+
+>Number:         2144
+>Category:       general
+>Synopsis:       apache always detaches for normal operation
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Apr 27 16:30:00 PDT 1998
+>Closed-Date:    Tue Aug 01 10:37:27 PDT 2000
+>Last-Modified:  Tue Aug 01 10:37:27 PDT 2000
+>Originator:     chexum-submit@shadow.banki.hu
+>Release:        1.3b6
+>Organization:
+>Environment:
+irrelevant, very generic
+>Description:
+(Not a "real" problem, per se, but I guess it fits in this framework.)
+Apache currently has no way to start up without detaching for normal
+operation.  (-X makes it possible, but in a way that's not supposed to be used for
+non-debugging purposes).  By providing a command-line switch to not detach
+the main process, it would be much easier to watch and govern the running of apache with specialized tools.
+For the worst example, init comes to mind, or a better example is djb's
+svc/supervise from ftp://koobera.math.uic.edu/www/daemontools.html.  They could
+be used to provide non-root access (operator/developer group, controlled by filesystem level access to a directory) to start/stop/restart/signal apache, which seems to be an often wanted feature.
+>How-To-Repeat:
+
+>Fix:
+I can't believe it hasn't been already rehashed, but can't find any trace of it
+in the FAQ, nor in the bugs database.  I can come up with a patch if this
+is a feature which would be accepted if it requires no efforts from your
+side. :)  Willing to provide even docs on how to get it to work with daemontools.
+>Release-Note:
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Janos Farkas <chexum-submit@shadow.banki.hu>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/2144: apache always detaches for normal operation
+Date: Mon, 27 Apr 1998 20:09:17 -0700 (PDT)
+
+ 1.3 is in feature freeze... but if you want to work this out that's cool.
+ If you resubmit the patch after 1.3.0 is released it stands a better
+ chance of being incorporated.
+ 
+ Dean
+ 
+State-Changed-From-To: open-suspended
+State-Changed-By: brian
+State-Changed-When: Wed May 20 05:30:23 PDT 1998
+State-Changed-Why:
+(suspend is the correct state for this)
+
+
+From: Janos Farkas <chexum-submit@shadow.banki.hu>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/2144: apache always detaches for normal operation
+Date: Mon, 31 Aug 1998 17:13:32 +0200
+
+ On 1998-04-27 at 20:09:17, Dean Gaudet wrote:
+ > 1.3 is in feature freeze... but if you want to work this out that's cool.
+ 
+ Ok, I guess I am few months too late, but I just got around to the
+ apache updating game now...  I think I managed to do it as cleanly as
+ possible; without of course affecting users who don't know about it.
+ 
+ So here's it, the essence of the change is very-very small; just making
+ http_main.c detach() not if !one_process, but if !no_detach, and
+ creating a new '-n' option to do just that, and for a bit more
+ streamlining, making '-X' set one_process AND this new no_detach
+ variable.  And of course updating all the getopt calls in there, and
+ updating both the manual page, and the html docs to describe briefly
+ what '-n' does.
+ 
+ [Just an aside, most programs which can do a no-detach start, usually do
+ that on '-f', but it's not available.  A few more programs use -n (the
+ Linux klogd/syslogd, and amd IIRC), so I settled for that.]
+ 
+ Janos
+ 
+ Index: htdocs/manual/invoking.html
+ ===================================================================
+ RCS file: /cvs/apache-1.3/htdocs/manual/invoking.html,v
+ retrieving revision 1.20
+ diff -u -u -r1.20 invoking.html
+ --- invoking.html	1998/07/19 21:34:58	1.20
+ +++ invoking.html	1998/08/31 14:54:10
+ @@ -59,6 +59,10 @@
+  daemon does not detach from the terminal or fork any children. Do <EM>NOT</EM>
+  use this mode to provide ordinary web service.
+  
+ +<DT><CODE>-n</CODE>
+ +<DD>Run the daemon without detaching from the terminal, but don't stop
+ +it from creating child processes.
+ +
+  <DT><CODE>-v</CODE>
+  <DD>Print the version of httpd and its build date, and then exit.
+  
+ Index: src/main/http_main.c
+ ===================================================================
+ RCS file: /cvs/apache-1.3/src/main/http_main.c,v
+ retrieving revision 1.387
+ diff -u -u -r1.387 http_main.c
+ --- http_main.c	1998/08/13 01:55:06	1.387
+ +++ http_main.c	1998/08/31 14:54:26
+ @@ -306,6 +306,12 @@
+  
+  static int one_process = 0;
+  
+ +/* nodetach -- don't detach on startup; has no effect on the further work of
+ + * the server.
+ + */
+ +
+ +static int no_detach = 0;
+ +
+  /* set if timeouts are to be handled by the children and not by the parent.
+   * i.e. child_timeouts = !standalone || one_process.
+   */
+ @@ -954,6 +960,7 @@
+      fprintf(stderr, "  -f file          : specify an alternate ServerConfigFile\n");
+      fprintf(stderr, "  -C \"directive\"   : process directive before reading config files\n");
+      fprintf(stderr, "  -c \"directive\"   : process directive after  reading config files\n");
+ +    fprintf(stderr, "  -n               : don't detach from the terminal\n");
+      fprintf(stderr, "  -v               : show version number\n");
+      fprintf(stderr, "  -V               : show compile settings\n");
+      fprintf(stderr, "  -h               : list available configuration directives\n");
+ @@ -4100,7 +4107,7 @@
+      is_graceful = 0;
+      ++generation;
+  
+ -    if (!one_process) {
+ +    if (!no_detach) {
+  	detach();
+      }
+      else {
+ @@ -4349,7 +4356,7 @@
+      ap_setup_prelinked_modules();
+  
+      while ((c = getopt(argc, argv,
+ -				    "D:C:c:Xd:f:vVhlL:St"
+ +				    "D:C:c:Xnd:f:vVhlL:St"
+  #ifdef DEBUG_SIGSTOP
+  				    "Z:"
+  #endif
+ @@ -4391,6 +4398,9 @@
+  	    exit(0);
+  	case 'X':
+  	    ++one_process;	/* Weird debugging mode. */
+ +				/* flow through to no detach */
+ +	case 'n':
+ +	    ++no_detach;
+  	    break;
+  #ifdef DEBUG_SIGSTOP
+  	case 'Z':
+ @@ -5516,7 +5526,7 @@
+  
+      ap_setup_prelinked_modules();
+  
+ -    while ((c = getopt(argc, argv, "D:C:c:Xd:f:vVhlZ:iusSt")) != -1) {
+ +    while ((c = getopt(argc, argv, "D:C:c:Xnd:f:vVhlZ:iusSt")) != -1) {
+          char **new;
+  	switch (c) {
+  	case 'c':
+ @@ -5577,6 +5587,9 @@
+  	    exit(0);
+  	case 'X':
+  	    ++one_process;	/* Weird debugging mode. */
+ +				/* flow through to no detach */
+ +	case 'n':
+ +	    ++no_detach;
+  	    break;
+  	case 't':
+  	    configtestonly = 1;
+ @@ -5707,12 +5720,13 @@
+       * but only handle the -L option 
+       */
+      llp_dir = SHARED_CORE_DIR;
+ -    while ((c = getopt(argc, argv, "D:C:c:Xd:f:vVhlL:SZ:t")) != -1) {
+ +    while ((c = getopt(argc, argv, "D:C:c:Xnd:f:vVhlL:SZ:t")) != -1) {
+  	switch (c) {
+  	case 'D':
+  	case 'C':
+  	case 'c':
+  	case 'X':
+ +	case 'n':
+  	case 'd':
+  	case 'f':
+  	case 'v':
+ Index: src/support/httpd.8
+ ===================================================================
+ RCS file: /cvs/apache-1.3/src/support/httpd.8,v
+ retrieving revision 1.11
+ diff -u -u -r1.11 httpd.8
+ --- httpd.8	1998/06/16 03:37:32	1.11
+ +++ httpd.8	1998/08/31 14:54:28
+ @@ -71,6 +71,8 @@
+  .BI \-c " directive"
+  ] [
+  .BI \-D " parameter"
+ +] [
+ +.BI \-n
+  ]
+  
+  .B httpd 
+ @@ -144,6 +146,10 @@
+  Sets a configuration \fIparameter\fP which can be used with
+  <IfDefine>...</IfDefine> sections in the configuration files
+  to conditionally skip or process commands.
+ +.TP
+ +.BI \-n
+ +Run the daemon without detaching from the terminal, but don't stop
+ +it from creating child processes.
+  .TP
+  .B \-h
+  Output a list of directives together with expected arguments and
+ 
+
+From: Janos Farkas <chexum@shadow.banki.hu>
+To: apbugs@hyperreal.org
+Cc:  Subject: Re: general/2144: apache always detaches for normal operation
+Date: Tue, 29 Sep 1998 15:19:44 +0200
+
+ Ok, I've put a new version of the patch at:
+ 
+ http://eon.ml.org/dist/diffs/apache-1.3.x-nodetach-2.diff.gz
+ 
+ (In order to not waste storage here, I did not include it; however, feel
+ free to tell me it's better be here, or request it via email.)
+ 
+ It's changed a bit, I modified detach() to take an argument which makes
+ it fork() or not fork().
+ 
+ Janos
+State-Changed-From-To: suspended-closed
+State-Changed-By: abagchi
+State-Changed-When: Tue Aug  1 10:37:27 PDT 2000
+State-Changed-Why:
+This feature has been added to the Apache 2.0 cvs repository.
+It will be available in the next 2.0 alpha release and in all
+subsequent releases.  Apache will not detach from the controlling
+terminal if the environment variable NO_DETACH is set to 1.
+
+Thank you for the bug report.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

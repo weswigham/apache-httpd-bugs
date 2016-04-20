@@ -1,0 +1,349 @@
+From nobody@hyperreal.com  Mon Jun  9 08:48:35 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id IAA19102;
+	Mon, 9 Jun 1997 08:48:35 -0700 (PDT)
+Message-Id: <199706091548.IAA19102@hyperreal.com>
+Date: Mon, 9 Jun 1997 08:48:35 -0700 (PDT)
+From: William Sommers <sommers@sfo.com>
+Reply-To: sommers@sfo.com
+To: apbugs@hyperreal.com
+Subject: VirtualHost relative paths are being over-ridden by global Alias paths
+X-Send-Pr-Version: 3.2
+
+>Number:         704
+>Category:       general
+>Synopsis:       VirtualHost relative paths are being over-ridden by global Alias paths
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun  9 08:50:01 1997
+>Last-Modified:  Sun Nov  9 01:44:47 PST 1997
+>Originator:     sommers@sfo.com
+>Organization:
+>Release:        1.2.0
+>Environment:
+BSD/OS 3.0 (patched current as of report date);
+Apache 1.2.0 compiled using gcc version 2.7.2.1
+>Description:
+Given an srm.conf Alias (hence categorized, perhaps incorrectly, as a
+"mod_alias" problem) statement of the form
+
+Alias /images/ /var/www/images/
+
+a relative reference such as <IMG SRC="images/logo.gif">, a valid reference
+within a <VirtualHost> block's DocumentRoot hierarchy results in attempted
+display of '/var/www/images/logo.gif', as indicated by ErrorLog entries of
+the form
+
+ [date] access to /var/www/images/logo.gif failed for {hostname},
+ reason: File does not exist 
+
+This does not appear to be a problem other than within <VirtualHost>s.  I
+do not know if this "new behavior" is present in all 1.2bX versions -- this
+server jumped directly from release 1.1.3 to 1.2.0.
+
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Sun Jun 22 22:29:23 PDT 1997
+State-Changed-Why:
+I'm really confused.  What you've described is exactly how Alias is
+supposed to work.  If you set it globally outside of all servers
+then it affects all of them ... You're saying 1.1 behaved differently?
+What did it do?
+
+Dean
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Subject: Re: general/704: VirtualHost relative paths are being over-ridden by global Alias paths (fwd)
+Date: Sun, 17 Aug 1997 01:07:49 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Mon, 23 Jun 97 09:14:11 PDT
+ From: William Sommers <sommers@sfo.com>
+ To: apache-bugdb@apache.org, dgaudet@apache.org, sommers@sfo.com,
+     dgaudet@hyperreal.com
+ Subject: Re: general/704: VirtualHost relative paths are being over-ridden by global Alias paths
+ 
+ On Sun, 22 Jun 1997 22:29:24 -0700 (PDT)  dgaudet@hyperreal.com wrote:
+ 
+  > Synopsis: VirtualHost relative paths are being over-ridden by global
+  > Alias paths
+  >
+  > State-Changed-From-To: open-feedback
+  > State-Changed-By: dgaudet
+  > State-Changed-When: Sun Jun 22 22:29:23 PDT 1997
+  > State-Changed-Why:
+  > I'm really confused.  What you've described is exactly how Alias is
+  > supposed to work.  If you set it globally outside of all servers
+  > then it affects all of them ... You're saying 1.1 behaved differently?
+  > What did it do?
+  >
+  > Dean
+ 
+ Let's see if I can briefly clarify...
+ 
+ If I've defined in srm.conf
+ 
+  Alias /images/ /var/www/images/
+ 
+ then I would expect any reference, anywhere on the server (VirtualHost or 
+ otherwise) to <SRC="/images/whatever.jpg"> to indeed expand and use file 
+ /var/www/images/whatever.jpg
+ 
+ However, if we leave off the preceding "/", <SRC="images/whatever.jpg">, 
+ the alias should no longer be expanded, because this is a *relative* path, 
+ relative to the current working directory (aka "./images/whatever.jpg").
+ 
+ This is how it has worked in all Apache versions <= 1.1.3 I've ever used.
+ 
+ In 1.2, however, I am still seeing the expected behavior in UserDir 
+ hierarchies (http://www.sfo.com/~user = ~user/public_html), but within 
+ <VirtualHost> hierarchies
+ 
+  DocumentRoot /usr/home/user/public_html
+ 
+ even relative references are being expanded by the global Alias 
+ definition.  If we call up the same exact VirtualHost site using the 
+ ~user/public_html URL format (physical location is identical), all works 
+ as expected.
+ 
+ (Note that I am not referring to an Alias defined within a <VirtualHost> 
+ block -- the Alias is defined only in srm.conf.)
+ 
+ In other words, I would expect that
+ 
+   <SRC="/images/whatever.jpg">
+   <SRC="images/whatever.jpg">
+ 
+ would point to two diffent places, but they do not.  This is happening 
+ *only* within <VirtualHost>s and is definitely a change from previous 
+ behavior.  (Believe me, since we've always instructed folks to use 
+ relative paths here, this affected many sites and we began hearing from 
+ these VirtualHost customers within hours of the switchover.)
+ 
+ It is very easy to reproduce (at least here in our environment): 
+ 
+  - simply map a <VirtualHost> onto an existing UserDir site, and add
+    an srm.conf Alias with the same name as a uniquely-named
+    subdirectory within the site
+ 
+  - <SRC="subdirectory/file"> will pull up just fine from an html
+    reference when the site is called by UserDir URL, but will fail
+    (in attempt to find expanded <SRC="/subdirectory/file">) if called
+    up by VirtualHost URL.
+ 
+ If need be, I can set up a test site here to demonstrate.
+ 
+ 
+  William Sommers
+  San Francisco Online
+  Televolve, Inc.
+  sommers@sfo.com
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Subject: Re: general/704: VirtualHost relative paths are being over-ridden by global Alias paths (fwd)
+Date: Sun, 17 Aug 1997 01:07:56 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Mon, 23 Jun 1997 15:28:23 -0700 (PDT)
+ From: Dean Gaudet <dgaudet@arctic.org>
+ To: William Sommers <sommers@sfo.com>
+ Cc: apache-bugdb@apache.org
+ Subject: Re: general/704: VirtualHost relative paths are being over-ridden by global Alias paths
+ 
+ I'm still confused --  SRC="images/whatever.jpg" is a relative URL which
+ the *client* translates to a full URL before passing to the server.
+ So apache never sees a relative request.
+ 
+ If you have Alias /images/ /var/www/images/ in your srm.conf then every
+ single vhost inherits that setting.  Perhaps you don't want it in your
+ global server.
+ 
+ Are you saying that if someone accesses http://vhost/images/foobar.gif it
+ does the wrong thing? 
+ 
+ Dean
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Subject: Re: general/704: VirtualHost relative paths are being over-ridden by global Alias paths  (fwd)
+Date: Sun, 17 Aug 1997 01:08:01 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Mon, 23 Jun 97 15:43:26 PDT
+ From: William Sommers <admin@sfo.com>
+ To: William Sommers <sommers@sfo.com>, Dean Gaudet <dgaudet@arctic.org>
+ Cc: apache-bugdb@apache.org
+ Subject: Re: general/704: VirtualHost relative paths are being over-ridden by global Alias paths 
+ 
+ On Mon, 23 Jun 1997 15:28:23 -0700 (PDT)  Dean Gaudet wrote:
+ 
+  > I'm still confused --  SRC="images/whatever.jpg" is a relative URL
+  > which the *client* translates to a full URL before passing to the
+  > server. So apache never sees a relative request.
+  >
+  > If you have Alias /images/ /var/www/images/ in your srm.conf then
+  > every single vhost inherits that setting.  Perhaps you don't want it
+  > in your global server.
+ 
+ That's what we've had to do to work around the "problem".  But, as I say, 
+ using identical definitions in srm.conf, this only appeared during the 
+ switch from 1.1.3 to 1.2.
+ 
+ To put it another way, srm.conf and httpd.conf remained essentially static 
+ (apart from required changes) during the upgrade.  The variable was the 
+ apache binary.
+ 
+  > Are you saying that if someone accesses http://vhost/images/foobar.gif
+  > it does the wrong thing? 
+ 
+ Exactly.  *IF* the URL is specified by *relative* path "images/foobar.gif" 
+ within the site's HTML.  If the HTML is coded using full http:// URLs 
+ instead of relative paths, all works fine.
+ 
+ Take these two hypothetical URLs
+ 
+   http://www.host.com/~vuser/images/foobar.gif
+   http://www.vhost.com/images/foobar.gif
+ 
+ They are one and the same -- vhost DocumentRoot is ~vuser/public_html 
+ (full path spelled out, of course).
+ 
+ Now, we have a relative reference in index.html <SRC="images/foobar.gif">.
+ 
+ Browsing the first, all works fine.  Browsing the second results in an 
+ attempt to load
+ 
+   http://www.host.com/images/foobar.gif
+ 
+ Note "host" versus "vhost".  With vhost DocumentRoot set to 
+ ~vuser/public_html, the client should be doing a translation of
+ 
+   images/foobar.gif
+   --> vhost/images/foobar.gif
+   --> host/~vuser/public_html/images/foobar.gif
+ 
+ instead we're seeing
+ 
+   host/images/foobar.gif
+ 
+ Am I making it any clearer?  I'm not sure I can come up with any more ways 
+ to describe this :-) -- let me know if I need to set up another server to 
+ demonstrate the behavior in action.
+ 
+ 
+  William Sommers
+  San Francisco Online
+  Televolve, Inc.
+  sommers@sfo.com
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Subject: Re: general/704: VirtualHost relative paths are being over-ridden by global Alias paths  (fwd)
+Date: Sun, 17 Aug 1997 01:08:03 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Mon, 23 Jun 97 18:17:27 PDT
+ From: William Sommers <sommers@sfo.com>
+ To: William Sommers <sommers@sfo.com>, Dean Gaudet <dgaudet@arctic.org>
+ Cc: apache-bugdb@apache.org
+ Subject: Re: general/704: VirtualHost relative paths are being over-ridden by global Alias paths 
+ 
+ On Mon, 23 Jun 97 15:43:26 PDT, I wrote:
+ 
+  >> Are you saying that if someone accesses http://vhost/images/foobar.gif
+  >> it does the wrong thing? 
+ 
+  > Exactly.  *IF* the URL is specified by *relative* path
+  > "images/foobar.gif" within the site's HTML.  If the HTML is coded
+  > using full http:// URLs instead of relative paths, all works fine.
+ 
+ My apologies -- this last sentence is incorrect.
+ 
+ I have set up a rudimentary site which should demonstrate the differences 
+ in behavior:
+ 
+  http://www.newsgate.com
+  http://amanda.sfo.com/~newsgate
+ 
+ They are one and the same.  I have included links to both srm.conf and 
+ httpd.conf, so that you can inspect things yourself.
+ 
+  uniquename is an Alias in srm.conf
+  uniquename2 is not
+ 
+ (Please let me know when you feel you no longer need that up -- it is, as 
+ you'll see, a live server and in my haste I've exposed items which would 
+ not normally ever be visible to non-staff.)
+ 
+ 
+  William Sommers
+  San Francisco Online
+  Televolve, Inc.
+  sommers@sfo.com
+ 
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sun Nov  9 01:44:47 PST 1997
+State-Changed-Why:
+Sorry I took so long to close this one out.  Apache is behaving
+correctly.
+
+<img src="images/foo.gif"> is a relative URL which the client
+translates into an absolute URL before sending the request to
+the server.  Suppose this tag is embedded in a page at
+http://www.vhost.com/index.html.  In that case, the relative
+"images/foo.gif" is mapped to the absolute
+"http://www.vhost.com/images/foo.gif".
+
+This results in the URI "/images/foo.gif", which is properly
+Aliased by your global Alias directive.
+
+i.e. in this case <img src="/images/foo.gif"> and
+<img src="images/foo.gif"> refer to the exact same object.
+
+Regarding your other example, in ~userdir situations, the
+relative URL "images/foo.gif" refers to the absolute URI
+"/~userdir/images/foo.gif" which is definately different
+than "/images/foo.gif".
+
+Your only options are to not use "images" URIs in vhosts,
+or to remove the global Alias /images.
+
+Dean
+>Unformatted:
+
+
+
+
+
+

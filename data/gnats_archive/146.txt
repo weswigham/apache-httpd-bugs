@@ -1,0 +1,100 @@
+From nobody@hyperreal.com  Sun Feb  2 03:42:03 1997
+Received: by taz.hyperreal.com (8.8.4/V2.0) id DAA17711; Sun, 2 Feb 1997 03:42:03 -0800 (PST)
+Message-Id: <199702021142.DAA17711@taz.hyperreal.com>
+Date: Sun, 2 Feb 1997 03:42:03 -0800 (PST)
+From: "Taso N. Devetzis" <devetzis@snet.net>
+Reply-To: devetzis@snet.net
+To: apbugs@hyperreal.com
+Subject: attemtps to redirect to URIs with no net_loc component fail at startup
+X-Send-Pr-Version: 3.2
+
+>Number:         146
+>Category:       protocol
+>Synopsis:       attemtps to redirect to URIs with no net_loc component fail at startup
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Feb  2 03:50:01 1997
+>Last-Modified:  Thu Jan 22 09:16:43 PST 1998
+>Originator:     devetzis@snet.net
+>Organization:
+>Release:        1.1.3
+>Environment:
+SunOS 5.5.1 Generic 103640-03 September 1996 (sun4m sparc)
+gcc version 2.7.2.1
+>Description:
+this fails:
+
+Redirect /foo/bar mailto:mumble@foo.com
+
+reason: add_redirect() (mod_alias.c) calls is_url() (util.c) which fails.
+is_url() looks for colon, alpha chars and "//" (net_loc stuff).
+
+i can't see anything in the standards to preclude the above behaviour.
+bnf for location header field is (from rfc 1945):
+
+Location       = "Location" ":" absoluteURI
+
+valid absolute identifiers need not contain network location/login components
+(rfc 1808).
+
+in fact, the above works with other servers (ibm/ncsa).
+>How-To-Repeat:
+the redfirect directive above will fail at runtime.
+>Fix:
+i understand that this has the potential to become a rathole.  i don't know
+what, if any, impact on performance futzing with is_url() might have.
+for my purposes, the following patch (for 1.1.3) mixes the right level of
+idealism and pragmatism (i suppose "telnet:" might be ok as well):
+
+*** util.c.orig Wed Jun 26 06:46:37 1996
+--- util.c      Sun Feb  2 05:57:35 1997
+***************
+*** 792,797 ****
+--- 792,800 ----
+
+      if((u[x+1] == '/') && (u[x+2] == '/'))
+          return 1;
++     else if (!(strncasecmp (&u[0], "mailto:", 7) &&
++              strncasecmp (&u[0], "news:", 5)))
++         return 1;
+      else return 0;
+  }
+%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: coar@decus.org
+State-Changed-When: Thu Feb 27 10:34:26 PST 1997
+State-Changed-Why:
+The analysis of what's happening appears to be correct.
+The correct behaviour of is_url() is under discussion.
+Responsible-Changed-From-To: apache (GNATS administrator)-coar@decus.org
+Responsible-Changed-By: coar@decus.org
+Responsible-Changed-When: Thu Feb 27 10:34:26 PST 1997
+Responsible-Changed-Why:
+I'll track this one
+Category-Changed-From-To: mod_alias-protocol
+Category-Changed-By: coar@decus.org
+Category-Changed-When: Thu Feb 27 10:34:26 PST 1997
+
+State-Changed-From-To: analyzed-closed
+State-Changed-By: coar@decus.org
+State-Changed-When: Fri Mar  7 07:26:38 PST 1997
+State-Changed-Why:
+A fix for this has been checked in to the sources,
+and should be available in the next release after
+1.2b7.  The change makes is_url() compliant with the
+full absoluteURI syntax defined in RFC 2068 section 3.2.
+Thanx for reporting this, and for using Apache!
+Responsible-Changed-From-To: coar@decus.org-apache
+Responsible-Changed-By: coar
+Responsible-Changed-When: Thu Jan 22 09:16:43 PST 1998
+Responsible-Changed-Why:
+Putting back into mainstream bugdb
+>Unformatted:
+
+

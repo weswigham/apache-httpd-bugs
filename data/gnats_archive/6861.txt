@@ -1,0 +1,108 @@
+Received: (qmail 69905 invoked by uid 501); 19 Nov 2000 03:33:02 -0000
+Message-Id: <20001119033302.69904.qmail@locus.apache.org>
+Date: 19 Nov 2000 03:33:02 -0000
+From: Ferry Ie <ferry.ie@ihug.com.au>
+Reply-To: ferry.ie@ihug.com.au
+To: submit@bugz.apache.org
+Subject: jserv does not load some classes at the server startup.
+X-Send-Pr-Version: 3.110
+
+>Number:         6861
+>Category:       mod_jserv
+>Synopsis:       jserv does not load some classes at the server startup.
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    jserv
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Nov 18 19:40:03 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     ferry.ie@ihug.com.au
+>Release:        1.3.12, jserv 1.1.2
+>Organization:
+apache
+>Environment:
+win 98 2nd ed., red hat linux 6.2
+>Description:
+no core dump. jserv proceeds as normal at startup although objects were not successfully allocated as requested.
+>How-To-Repeat:
+the problem can be reproduced by creating a new servlet zone ('test' for ex.) and the following 3 classes: Debug, MyStartupServlet, and TestClass. in the test.properties, add the following entry: servlets.startup=MyStartupServlet. the following are explanations of what each class does:
+Debug class basically is just a class for printing my debug message to a text file (because i am not able to output my debug message to the screen in apache (can i????)). MyStartupServlet is a servlet which is supposed to be loaded at the startup of apache jserv, which basically writes 'before allocating a new object' to a text file, allocates a new TestClass object, and overwrites the text file by writing 'after allocating a new object'. TestClass is my test class that demonstrates that a problem arises when there is a method that calls ConcreteElement.setPrettyPrint() - this method doesn't event get called!!!! so if everything is running as expected, after restarting the httpd, we should have a text file that contains 'after allocating a new object'. but instead it will contain 'before allocating a new object'. try it!!!! but if you comment out the ce.setPrettyPrint(true) in the TestClass' testmethod(), everything will be fine. org.apache.ecs.ConcreteElement class is just a normal class.
+
+the following are my 3 above mentioned classes:
+
+Debug.java:
+
+import java.io.PrintWriter;
+import java.io.FileOutputStream;
+
+public class Debug {
+	public static void print(String s) {
+		try {
+			PrintWriter pw = new PrintWriter(new FileOutputStream("/home/ferry/servlets/vodafone/output.txt"));
+			pw.print(s);
+			pw.flush();
+			pw.close();
+		}  /* try. */
+		catch(Exception e) {
+			System.err.println("Exception caught: " + e.getMessage());
+			e.printStackTrace();
+		}  /* catch. */
+	}  /* print(). */
+}  /* Debug. */
+
+MyStartupServlet.java:
+
+import java.io.IOException;
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServlet;
+
+public class MyStartupServlet extends HttpServlet {
+
+	public MyStartupServlet() throws ServletException, IOException {
+		Debug.print("before allocating a new object.");
+		new TestClass();
+		Debug.print("After allocating a new object.");
+	}  /* MyStartupServlet. */
+}  /* MyStartupServlet. */
+
+TestClass.java:
+
+import org.apache.ecs.ConcreteElement;
+
+public class TestClass {
+	private void testMethod(ConcreteElement ce) {
+		ce.setPrettyPrint(true);  // this is where the problem lies.... comment this out and you will be fine.
+	}
+}  /* TestClass. */
+
+in the MyStartupServlet class i do all the initialisation in the constructor. but even if you do it in the init() method, it will still give you the same result. trust me!!! you can try it yourself. if you do the initialisation in the init() method, the MyStartupServlet will be loaded more than once (sometimes 5x, sometimes 7x, etc. is this normal?). the versions of jvm that i use for apache jserv and for compiling all my classes are the same: 1.3. there was no error reported in the jserv.log and mod_jserv.log.
+
+i have been trying to trace this problem for more than a week. the more i look into it the more i got confused. but i think this is a jserv class loader problem.
+>Fix:
+i think this is a jserv class loader problem.
+
+please keep me posted in this issue. i have been working on this for more than a week but i can't figure out what the problem is. if this is a bug, can somebody tell me how to get around this problem??? i am really desperate and am in the middle of working on a very tight project... please e-mail me a solution to this problem to ferry.ie@ihug.com.au and ferry.ie@edgematrix.com
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

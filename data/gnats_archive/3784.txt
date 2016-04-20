@@ -1,0 +1,147 @@
+Received: (qmail 256 invoked by uid 2012); 27 Jan 1999 15:40:41 -0000
+Message-Id: <19990127154041.250.qmail@hyperreal.org>
+Date: 27 Jan 1999 15:40:41 -0000
+From: Nigel Cole <N.Cole@sc98c.demon.co.uk>
+Reply-To: N.Cole@sc98c.demon.co.uk
+To: apbugs@hyperreal.org
+Subject: CGI scripts not executed if gid not equal to server's gid
+X-Send-Pr-Version: 3.2
+
+>Number:         3784
+>Category:       mod_cgi
+>Synopsis:       CGI scripts not executed if gid not equal to server's gid
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          analyzed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jan 27 07:50:00 PST 1999
+>Last-Modified:  Wed Apr 21 10:22:58 PDT 1999
+>Originator:     N.Cole@sc98c.demon.co.uk
+>Organization:
+>Release:        1.3.4
+>Environment:
+Solaris 2.6, Generic_105181-05
+
+gcc 2.8.0
+>Description:
+This is an expansion of PR 2580: I have a cgi-bin script which is executable
+by a group the webserver belongs to, but which is different to the group the
+server is running as. Apache won't execute it. I'm not using suexec.
+
+MULTIPLE_GROUPS isn't being set by default, so Apache only checks permissions
+using its own group id, decides it can't run it (in ap_can_exec in util.c, 
+called from cgi_handler in mod_cgi.c), and gives a confusing error message
+("file permissions deny server execution" even though, as far as the OS is
+concerned, the server is permitted to execute it).
+
+I tried recompiling with MULTIPLE_GROUPS set (though I'm uncomfortable about
+doing this since I can't find any references to it), and Apache still
+refused to run the script. A look at http_main.c revealed that the array 
+group_id_list is only set when geteuid() returns 0 (ie running as root).
+>How-To-Repeat:
+No example URL, but it's easy to repeat: just change the permissions on a
+cgi-bin script to 750 and put it in a group that the server belongs to but
+doesn't run as.
+>Fix:
+Set MULTIPLE_GROUPS?
+
+Also, move the "#ifdef MULTIPLE_GROUPS" block of code in set_group_privs (in
+http_main.c) outside the "if (!geteuid())" block.
+
+(These changes appear to work, but I haven't searched the code to find any
+unwanted side-effects.)
+
+Not a fix, but the error message would be a lot clearer if it reported
+something like "cannot execute: not in server's group".
+
+A work-round for those of us who need scripts restricted to a different group
+is to use the directory permissions to limit access, since Apache only 
+considers the file permissions.
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 18:51:19 PDT 1999
+State-Changed-Why:
+Are you still having this problem?
+
+MULTIPLE_GROUPS is in fact useless and should be removed... it
+won't help you.
+
+The initgroups() call takes care of setting the groups.
+
+I have no problem with multiple groups ... you have to
+start the server as root -- the geteuid() is necessary,
+initgroups() won't succeed unless you do it as root.
+
+Dean
+
+From: Nigel Cole <N.Cole@sc98c.demon.co.uk>
+To: dgaudet@apache.org
+Cc: apbugs@apache.org
+Subject: Re: mod_cgi/3784: CGI scripts not executed if gid not equal to server's gid
+Date: Wed, 21 Apr 1999 16:07:30 +0100
+
+ In message <19990421015120.12056.qmail@hyperreal.org>,
+ dgaudet@apache.org writes
+ >Are you still having this problem?
+ >
+ >MULTIPLE_GROUPS is in fact useless and should be removed... it
+ >won't help you.
+ >
+ >The initgroups() call takes care of setting the groups.
+ >
+ >I have no problem with multiple groups ... you have to
+ >start the server as root -- the geteuid() is necessary,
+ >initgroups() won't succeed unless you do it as root.
+ 
+ Yes, I'm still having this problem. Apache will not run a cgi-bin script
+ that lacks world-execute permissions, unless the script is group-owned
+ by the same group that the server is running as. This is with suexec
+ disabled; OS is Solaris 2.6.
+ 
+ The error message ("file permissions deny server execution") is being
+ produced in mod_cgi.c because a call to ap_can_exec() is returning 0.
+ Examining ap_can_exec() in util.c, if MULTIPLE_GROUPS is undefined, then
+ group_id_list[] is never examined, and the only group test is:
+         if (ap_group_id == finfo->st_gid)
+                 if (finfo->st_mode & S_IXGRP)
+                         return 1;
+ 
+ MULTIPLE_GROUPS is not defined anywhere in the Apache source; the only
+ occurrences I could find were all #ifdef MULTIPLE_GROUPS
+ 
+ If MULTIPLE_GROUPS is defined, the server *can* execute the scripts, but
+ then the second problem appears: the necessary array group_id_list is
+ set with a call to getgroups, but only if the server is started as root.
+ "initgroups" is not the problem - the problem is in the function
+ "set_group_privs".
+ 
+ -- 
+ Nigel Cole
+State-Changed-From-To: feedback-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Wed Apr 21 10:22:58 PDT 1999
+State-Changed-Why:
+Oh it's that stupid code in mod_cgi again which pretends
+to implement unix access control semantics!  Ugh.  Why
+the heck didn't we get rid of this the last time it cropped
+up as a bug?  It's in the new-httpd archives somewhere.
+
+Thanks for the clarification.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

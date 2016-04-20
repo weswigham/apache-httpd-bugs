@@ -1,0 +1,188 @@
+Received: (qmail 20849 invoked by uid 2012); 16 Oct 1997 16:37:43 -0000
+Message-Id: <19971016163743.20848.qmail@hyperreal.org>
+Date: 16 Oct 1997 16:37:43 -0000
+From: John Murtari <jmurtari@thebook.com>
+Reply-To: jmurtari@thebook.com
+To: apbugs@hyperreal.org
+Subject: Server fails to respond to submit request for a form.
+X-Send-Pr-Version: 3.2
+
+>Number:         1237
+>Category:       protocol
+>Synopsis:       Server fails to respond to submit request for a form.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Oct 16 09:40:01 PDT 1997
+>Last-Modified:  Sat Feb 14 16:20:58 PST 1998
+>Originator:     jmurtari@thebook.com
+>Organization:
+>Release:        1.2.*
+>Environment:
+SunOS torch 5.5.1 Generic_103641-08 i86pc i386 i86pc
+Gnu CC 2.7.2
+Running Apache 1.2.4
+>Description:
+NOTE - had posted to the newsgroup, several folks emailed me with very
+similar experiences, I have separated below with =====================
+
+ME (jmurtari@thebook.com)
+ When submitting CGI forms from some of our PC's, with Netscape browser 3.02Gold we now 
+ "ocasionally" note the following:
+ 1) You fill out the form.
+ 2) Your press the submit button.
+ 3) Netscape says "host contacted, waiting for reply..." 
+ ----- nothing happens for a few minutes
+ 4) Netscape appears to time out with "Document Contains no data" 
+ ===
+ At the same time monitoring the server, there is NO entry
+ in the access logs or CGI logs that the script ever was requested 
+ or fired.  The Apache-status log does not appear to show any 
+ connection open.
+    
+ NOW...
+     
+ 5) Press the "submit" button again, and everything is fine.
+     
+ Doesn't always happen this way, sometimes it works first time, 
+ sometimes you have to press the submit button a couple of times. 
+
+==================================
+
+Jeff Kalchik (jkalchik@usr.com)wrote:
+     
+ I've got kind of an interesting situation here.  I've got an internal 
+ web site running using Apache 1.2.4, running quite well.  I've tried 
+ Netscape Navigator, Netscape Communicator, MS IE, etc.  All of these 
+ have worked well on my machine.  I've got 1 user (Navigator 3.03) that 
+ fails on 1 particular CGI request.
+     
+ To wit: he selects a link from the main index.html page, which runs a 
+ CGI program.  This program sends back an HTML form, and exits.  It's a 
+ simple form, with a SUBMIT button at the bottom.  Usually, when the 
+ SUBMIT is hit, the CGI runs again with the forms data, and returns in 
+ just a couple of seconds with the generated HTML report.
+     
+ This user more often than not gets an hourglass, and nothing. 
+ Sometimes it works, but usually not.  I've put a sniffer on the 
+ network at his machine, and I can see the POST packet leave his 
+ machine.  When the request succeeds, I can see  an HTML packet with 
+ "Content-type:  application/x-www-form-urlencoded" as the first header 
+ and the forms data  go out to the server.  When it fails, the HTML 
+ packet with the forms data does not show up.
+
+=================
+John, WROTE: aesmoot@aescon.com (Art Smoot)
+
+   I'm starting to experience the same thing.  I'm running BSDI 3.0
+with Apache 1.2.4.  The error log is giving me "lingering close
+lost connection to client ....".   I've also seen an error somewhere,
+but I can't track it down now, about something being wrong with
+the post length.  I see this from NetScape 3.03 and I think the
+error started only after I installed IE 4.0 (a mistake). =20
+
+
+
+
+>How-To-Repeat:
+Apache 1.2.4 on Solaris 2.5.1 X86, talking over a modem link to a
+PC running Windows 95, and Netscape 3.02gold. Microsofts TCP /IP stack.
+
+We stopped running 1.2.4 and went back to 1.2b6 (where it seems to occur
+much less frequently); however, if you want we can run 1.2.4 and then
+we can make it happen from one of our PC's like "clockwork". It will ALWAYS
+fail the same way.
+>Fix:
+If you wish, we can give you a temp login to one of our servers, and we
+can make the request so you can monitor. Best time here is between
+0800-1200 EST.
+%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Tue Oct 21 18:11:01 PDT 1997
+State-Changed-Why:
+This is probably related to PR#1142 <http://bugs.apache.org/index/full/1142>.
+It is a browser bug, not an apache bug (I analysed the network
+traffic).  The only "workaround" known so far is to disable 
+keep-alive... but that's not a good idea in general.
+
+Try disabling keep-alive, see how that affects things.
+
+I'm really busy at the moment, but if you want to collect tcpdumps
+I can try to get a chance to look at them.  I'll need full packet
+contents... so something like this:
+
+    tcpdump -w dumpfile -s 1514 tcp port 80 and host addr.of.client
+
+run that on the server before the client makes any requests.
+Then reproduce the problem with the client (let all timeouts
+happen).  Then hit ^C, and gzip the dumpfile... if it's not
+too large (i.e. less than 100k) then send it to us in email.
+Otherwise stuff it somewhere and send us the URL.
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: John Murtari <jmurtari@thebook.com>
+Cc: apbugs@apache.org
+Subject: Re: protocol/1237: Server fails to respond to submit request for a form.
+Date: Wed, 22 Oct 1997 10:41:00 -0700 (PDT)
+
+ It's likely worse in 1.2.4 than 1.2b6 because in 1.2b7 or so I overhauled
+ Apache's network performance.  The bugs in other browsers show up
+ particularly because they "like" webservers to send the headers in one
+ packet, and the rest of the data in subsequent packets.  Apache never does
+ that deliberately any longer.  Note that even if Apache were changed to
+ flush its buffer after the headers it wouldn't guarantee the clients would
+ see things nice and rosy like they want -- because TCP gets to make the
+ decision about where packet boundaries are.  So these latent bugs in
+ browsers have to be fixed anyhow, and I'd rather not back down on this
+ performance change. 
+ 
+ The changes were prompted by early versions of the paper
+ <http://www.w3.org/Protocols/HTTP/Performance/Pipeline.html> which showed
+ how poor Apache was at stuffing network packets.  We're now pretty close
+ to optimal. 
+ 
+ 1.3 won't make it any better, although it may change the behaviour a bit. 
+ 1.3 uses writev() to replace two write()s.
+ 
+ Dean
+ 
+ On Wed, 22 Oct 1997, John Murtari wrote:
+ 
+ > Dean,
+ > 	Thanks for the message on the PR.  Understand what you mean
+ > about the browser bug (unfortunately its a "big" browser), will
+ > pass your message on to the other 3 folks who also complained of
+ > problems.
+ > 	I'm still wondering why it was worse in 1.2.4, and 
+ > less annoying in 1.2b6??  Would the new 1.3 be different, since
+ > you guys have streamlined internals?
+ > 
+ > 	Thanks for your help, will try to get the dump and send
+ > along.
+ > 
+ >                                           John
+ > ___________________________________________________________________
+ > John Murtari                              Software Workshop Inc.
+ > jmurtari@thebook.com 315.695.1301(x-211)  "TheBook.Com" (TM)
+ > http://www.thebook.com/
+ > 
+ > 
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Feb 14 16:20:58 PST 1998
+State-Changed-Why:
+This has been tracked to a bug in navigator which netscape has fixed.
+The most recent versions of 3.x and 4.x have the bugfix.
+
+Dean
+>Unformatted:
+

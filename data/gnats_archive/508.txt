@@ -1,0 +1,88 @@
+From nobody@hyperreal.com  Tue Apr 29 09:25:45 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id JAA19429;
+	Tue, 29 Apr 1997 09:25:45 -0700 (PDT)
+Message-Id: <199704291625.JAA19429@hyperreal.com>
+Date: Tue, 29 Apr 1997 09:25:45 -0700 (PDT)
+From: Lars Eilebrecht <sfx@unix-ag.org>
+Reply-To: sfx@unix-ag.org
+To: apbugs@hyperreal.com
+Subject: Logging programs
+X-Send-Pr-Version: 3.2
+
+>Number:         508
+>Category:       mod_log-any
+>Synopsis:       Logging programs
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Apr 29 09:30:03 1997
+>Last-Modified:  Thu Oct 23 23:52:34 PDT 1997
+>Originator:     sfx@unix-ag.org
+>Organization:
+>Release:        1.2b8
+>Environment:
+Linux/i586 (2.0.29)
+>Description:
+ Via CustomLog/TransferLog it's possible to log to a
+ program instead of a file (eg. TranferLog |/bin/foobar).
+
+ If the logging program is alive and working there is no
+ problem, but when the logging program crashed or had been
+ killed Apache becauses unusable.
+ Requests are accepted, but immediately after the client
+ send the request the connection is closed.
+ In the error log the following entry appears on every request:
+ "request lost connection to client <foobar>"
+
+ My question is now... Is it possible to handle such a case,
+ eg. to disable the logging funcionality, but still serve requests?
+
+
+ (By the way, is there a reason why the logging program has to be
+ run under the id of the user who started Apache (eg. root)?)
+>How-To-Repeat:
+ Here's a minimal version of the script I used for testing:
+
+   #!/bin/sh
+   LOGFILE=/usr/local/etc/httpd/logs/badreferer.log
+   while /bin/true;
+   do
+     read l
+     if [ `echo "$l" | grep -c '\-$'` = 0 ];
+     then
+       echo "$l" >> $LOGFILE &
+     fi
+   done
+
+ Configuration:
+ 
+   CustomLog |/usr/local/etc/httpd/sbin/reflog.sh "%t %U %{Referer}i"
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 29 15:15:40 PDT 1997
+State-Changed-Why:
+This is a feature that won't make 1.2.  But the solution I
+like is to deal with a blocked write, and possibly
+a dead child, and recover by doing a graceful restart so that
+we can re-open the log child.
+
+Dean
+State-Changed-From-To: suspended-closed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Oct 23 23:52:33 PDT 1997
+State-Changed-Why:
+reliable piped logs are part of 1.3.
+
+Dean
+>Unformatted:
+
+

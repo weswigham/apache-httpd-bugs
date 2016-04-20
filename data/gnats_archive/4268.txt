@@ -1,0 +1,366 @@
+Received: (qmail 15575 invoked by uid 2012); 18 Apr 1999 19:44:34 -0000
+Message-Id: <19990418194434.15574.qmail@hyperreal.org>
+Date: 18 Apr 1999 19:44:34 -0000
+From: Karthik Prabhakar <prab@cs.purdue.edu>
+Reply-To: prab@cs.purdue.edu
+To: apbugs@hyperreal.org
+Subject: Performance drops off after high specweb loads on highperformance-conf-dist
+X-Send-Pr-Version: 3.2
+
+>Number:         4268
+>Category:       os-linux
+>Synopsis:       Performance drops off after high specweb loads on highperformance-conf-dist
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Apr 18 12:50:01 PDT 1999
+>Last-Modified:  Thu May  6 01:10:01 PDT 1999
+>Originator:     prab@cs.purdue.edu
+>Organization:
+>Release:        1.3.6
+>Environment:
+Linux 2.2.5, redhat 5.9, compiled using egcs 3.16 (-O2)
+2*PII/450, 512 MB, 2*9Gig 10000rpm ultra-scsi disks (OS,apache on 1st,
+web root on 2nd - ext2fs), 1.3 Gig swap.
+Most files are being served from cache
+
+This problem is both with the default verion (1.3.4) shipped with redhat 5.9,
+as well as with a compiled 1.3.6, without any modules enabled.
+>Description:
+I'm running some specweb tests on apache, and with the specific config file
+from the distribution, performance drastically drops after reaching
+high loads - and remains poor even after the specweb tests stop.
+
+Latency after specific loads increases to up to 4 seconds for 512 byte files,
+and throughput drops steeply as well.
+
+The OS itself is in fine shape - there are no problems. CPU load, memory usage,
+swap usage, and network load are not high. Restarting apache brings performance 
+back to normal levels.
+
+The problem seems specific to the highperformance.conf of the distribution - 
+and child processes that process up to 10000000 requests. Other configurations
+where the there are more child servers that process fewer requests each do not 
+seem to have this performance drop off, although performance is about 20% 
+lower.
+>How-To-Repeat:
+Yes, run the specweb96 tests.
+>Fix:
+If I did, I'd be much happier ;-)
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 09:52:08 PDT 1999
+State-Changed-Why:
+Can you strace the children and see what they're doing?
+Specifically use "strace -r -T" so that we can see where
+time is being spent.
+
+Do the children grow in size?
+
+Does this happen on a redhat 5.2 system?  (I don't like getting
+reports from beta versions of anything... especially something
+like glibc 2.1)
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: os-linux/4268: Performance drops off after high specweb loads on  highperformance-conf-dist (fwd)
+Date: Wed, 21 Apr 1999 19:31:51 -0700 (PDT)
+
+ ---------- Forwarded message ----------
+ Date: Thu, 22 Apr 1999 02:45:13 +0000
+ From: Karthik Prabhakar <karthik@corp.hp.com>
+ To: dgaudet@apache.org
+ Cc: apache-bugdb@apache.org, prab@cs.purdue.edu
+ Subject: Re: os-linux/4268: Performance drops off after high specweb loads on  highperformance-conf-dist
+ 
+ dgaudet@apache.org wrote:
+ > 
+ > Synopsis: Performance drops off after high specweb loads on highperformance-conf-dist
+ > 
+ > State-Changed-From-To: open-feedback
+ > State-Changed-By: dgaudet
+ > State-Changed-When: Tue Apr 20 09:52:08 PDT 1999
+ > State-Changed-Why:
+ > Can you strace the children and see what they're doing?
+ > Specifically use "strace -r -T" so that we can see where
+ > time is being spent.
+ > 
+ > Do the children grow in size?
+ > 
+ > Does this happen on a redhat 5.2 system?  (I don't like getting
+ > reports from beta versions of anything... especially something
+ > like glibc 2.1)
+ > 
+ > Dean
+ 
+ 
+ I finally got a hold of a redhat 5.2 / glibc2.1 system running a 
+ stock 2.2.5 kernel, and replicated the problem. Attached is a
+ tcpdump, as well as a strace of the httpd processes. 
+ 
+ >From the strace, it appears that the read() from the socket is
+ taking a bit of time, as well as the flock(). I might
+ conclude that this could be a linux problem, except that killing
+ & restarting the apache process fixes the problem. Besides, the
+ problem does not occur with other web server's I've tried.
+ 
+ Again, I've only managed to make this happen on the 
+ highperformance-conf.dist config file, and not on the default
+ apache httpd.conf file.
+ 
+ Do you think I need to bring this up on the linux-kernel list?
+ 
+ thanks!
+ karthik
+ 
+ 
+ tcpdump:18:17:06.539084 15.54.164.205.2284 > 15.5.2.41.80: S 570626839:570626839(0) win 8192 <mss 1460> (DF) (ttl 126, id 5983)
+ 18:17:06.539135 15.5.2.41.80 > 15.54.164.205.2284: S 2713308169:2713308169(0) ack 570626840 win 0 <mss 1460> (DF) (ttl 64, id
+ 25657)
+ 18:17:06.539979 15.54.164.205.2284 > 15.5.2.41.80: . ack 1 win 8760 (DF) (ttl 126, id 6239)
+ 18:17:09.544373 15.54.164.205.2284 > 15.5.2.41.80: . 1:2(1) ack 1 win 8760 (DF) (ttl 126, id 6495)
+ 18:17:09.544414 15.5.2.41.80 > 15.54.164.205.2284: . ack 1 win 32120 (DF) (ttl 64, id 25658)
+ 18:17:09.545829 15.54.164.205.2284 > 15.5.2.41.80: P 1:267(266) ack 1 win 8760 (DF) (ttl 126, id 6751)
+ 18:17:09.545871 15.5.2.41.80 > 15.54.164.205.2284: . ack 267 win 31854 (DF) (ttl 64, id 25659)
+ 18:17:09.547965 15.5.2.41.80 > 15.54.164.205.2284: . 1:1461(1460) ack 267 win 32120 (DF) (ttl 64, id 25660)
+ 18:17:09.744598 15.54.164.205.2284 > 15.5.2.41.80: . ack 1461 win 8760 (DF) (ttl 126, id 7007)
+ 18:17:09.744643 15.5.2.41.80 > 15.54.164.205.2284: . 1461:2921(1460) ack 267 win 32120 (DF) (ttl 64, id 25661)
+ 18:17:09.744653 15.5.2.41.80 > 15.54.164.205.2284: . 2921:4381(1460) ack 267 win 32120 (DF) (ttl 64, id 25662)
+ 
+ [...... uninteresting stuff deleted ......]
+ 
+ 
+ 18:17:10.620546 15.5.2.41.80 > 15.54.164.205.2284: . 128481:129941(1460) ack 267 win 32120 (DF) (ttl 64, id 25748)
+ 18:17:10.625721 15.54.164.205.2284 > 15.5.2.41.80: . ack 128481 win 1460 (DF) (ttl 126, id 21855)
+ 18:17:10.645192 15.54.164.205.2284 > 15.5.2.41.80: . ack 129941 win 4380 (DF) (ttl 126, id 22111)
+ 18:17:10.645237 15.5.2.41.80 > 15.54.164.205.2284: P 129941:131401(1460) ack 267 win 32120 (DF) (ttl 64, id 25749)
+ 18:17:10.645246 15.5.2.41.80 > 15.54.164.205.2284: . 131401:132861(1460) ack 267 win 32120 (DF) (ttl 64, id 25750)
+ 18:17:10.645256 15.5.2.41.80 > 15.54.164.205.2284: P 132861:134287(1426) ack 267 win 32120 (DF) (ttl 64, id 25751)
+ 18:17:10.650327 15.54.164.205.2284 > 15.5.2.41.80: . ack 132861 win 1460 (DF) (ttl 126, id 22367)
+ 18:17:10.669796 15.54.164.205.2284 > 15.5.2.41.80: . ack 134287 win 4414 (DF) (ttl 126, id 22623)
+ 18:17:10.693746 15.54.164.205.2284 > 15.5.2.41.80: . ack 134287 win 8760 (DF) (ttl 126, id 22879)
+ 18:17:26.757288 15.5.2.41.80 > 15.54.164.205.2284: F 134287:134287(0) ack 267 win 32120 (DF) (ttl 64, id 25752)
+ 18:17:26.758424 15.54.164.205.2284 > 15.5.2.41.80: . ack 134288 win 8760 (DF) (ttl 126, id 23647)
+ 
+ 
+ 
+ strace:
+ [pid   376]      0.000000 flock(18, LOCK_EX <unfinished ...>
+ [pid   375]      0.000203 flock(18, LOCK_EX <unfinished ...>
+ [pid   374]      0.000071 flock(18, LOCK_EX <unfinished ...>
+ [pid   373]      0.000068 flock(18, LOCK_EX <unfinished ...>
+ [pid   296]      0.000068 flock(18, LOCK_EX <unfinished ...>
+ [pid   282]      0.000068 flock(18, LOCK_EX <unfinished ...>
+ [pid   281]      0.000068 flock(18, LOCK_EX <unfinished ...>
+ [pid   280]      0.000068 flock(18, LOCK_EX <unfinished ...>
+ [pid   279]      0.000068 flock(18, LOCK_EX <unfinished ...>
+ [pid   278]      0.000090 accept(15,  <unfinished ...>
+ [pid   277]      0.000105 select(0, NULL, NULL, NULL, {0, 610000}) = 0 (Timeout) <0.604967>
+ [pid   277]      0.605065 time(NULL)    = 924743824 <0.000015>
+ [pid   277]      0.000111 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000018>
+ [pid   277]      0.000106 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999685>
+ [pid   277]      0.999778 time(NULL)    = 924743825 <0.000016>
+ [pid   277]      0.000093 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000018>
+ [pid   277]      0.000112 select(0, NULL, NULL, NULL, {1, 0} <unfinished ...>
+ [pid   278]      0.783613 <... accept resumed> {sin_family=AF_INET, sin_port=htons(2284), sin_addr=inet_addr("15.54.164.205")},
+ [16]) = 3 <2.388926>
+ [pid   278]      0.000340 flock(18, LOCK_UN <unfinished ...>
+ [pid   279]      0.000108 <... flock resumed> ) = 0 <2.389484>
+ [pid   279]      0.000062 accept(15,  <unfinished ...>
+ [pid   278]      0.000068 <... flock resumed> ) = 0 <0.000197>
+ [pid   278]      0.000057 sigaction(SIGUSR1, {SIG_IGN}, {0x80581b0, [], SA_STACK|0x77c5c}) = 0 <0.000017>
+ [pid   278]      0.000261 getsockname(3, {sin_family=AF_INET, sin_port=htons(80), sin_addr=inet_addr("15.5.2.41")}, [16]) = 0
+ <0.000021>
+ [pid   278]      0.000133 setsockopt(3, IPPROTO_TCP, 1, [1], 4) = 0 <0.000020>
+ [pid   278]      0.000151 read(3,  <unfinished ...>
+ [pid   277]      0.214964 <... select resumed> ) = 0 (Timeout) <0.999700>
+ [pid   277]      0.000055 time(NULL)    = 924743826 <0.000017>
+ [pid   277]      0.000107 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000016>
+ [pid   277]      0.000097 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999685>
+ [pid   277]      0.999779 time(NULL)    = 924743827 <0.000016>
+ [pid   277]      0.000091 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000017>
+ [pid   277]      0.000097 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999717>
+ [pid   277]      0.999812 time(NULL)    = 924743828 <0.000015>
+ [pid   277]      0.000092 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000016>
+ [pid   277]      0.000096 select(0, NULL, NULL, NULL, {1, 0} <unfinished ...>
+ [pid   278]      0.789548 <... read resumed> "GET /spec/file4000 HTTP/1.0\r\nC"..., 4096) = 266 <3.004643>
+ [pid   278]      0.000138 sigaction(SIGUSR1, {SIG_IGN}, {SIG_IGN}) = 0 <0.000020>
+ [pid   278]      0.000224 time(NULL)    = 924743829 <0.000015>
+ [pid   278]      0.000214 stat("/disk2/web/spec/file4000", {st_mode=0, st_size=0, ...}) = 0 <0.000045>
+ [pid   278]      0.000294 open("/disk2/web/spec/file4000", O_RDONLY) = 4 <0.000033>
+ [pid   278]      0.000184 mmap(0, 133979, PROT_READ, MAP_PRIVATE, 4, 0) = 0x40136000 <0.000029>
+ [pid   278]      0.000211 writev(3, [{"HTTP/1.1 200 OK\r\nDate: Thu, 22"..., 307}, {"Number Of Classes: 4\n#\nClass N"...,
+ 32768}], 2) = 33075 <0.000602>
+ [pid   278]      0.000791 write(3, "action: 1\nAccessType: POISSON\n"..., 32768 <unfinished ...>
+ [pid   277]      0.208189 <... select resumed> ) = 0 (Timeout) <0.999729>
+ [pid   277]      0.000059 time(NULL)    = 924743829 <0.000015>
+ [pid   277]      0.000113 wait4(-1,  <unfinished ...>
+ [pid   278]      0.000178 <... write resumed> ) = 32768 <0.208458>
+ [pid   278]      0.000083 write(3, " 8\nAccess Fraction: 1\nAccessTy"..., 32768 <unfinished ...>
+ [pid   277]      0.000133 <... wait4 resumed> 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000353>
+ [pid   277]      0.000077 select(0, NULL, NULL, NULL, {1, 0} <unfinished ...>
+ [pid   278]      0.289883 <... write resumed> ) = 32768 <0.289994>
+ [pid   278]      0.000067 write(3, "Number Range: 0 8\nAccess Fracti"..., 32768) = 32768 <0.228609>
+ [pid   278]      0.228799 close(4)      = 0 <0.000019>
+ [pid   278]      0.000116 select(4, [3], NULL, NULL, {0, 0}) = 0 (Timeout) <0.000027>
+ [pid   278]      0.000178 write(3, "et/dir258/class3_\nNumber Range:"..., 2907) = 2907 <0.026451>
+ [pid   278]      0.026582 munmap(0x40136000, 133979) = 0 <0.000046>
+ [pid   278]      0.000128 sigaction(SIGUSR1, {0x80581b0, [], SA_STACK|0x4fb76}, {SIG_IGN}) = 0 <0.000018>
+ [pid   278]      0.000257 read(3,  <unfinished ...>
+ [pid   277]      0.453349 <... select resumed> ) = 0 (Timeout) <0.999265>
+ [pid   277]      0.000059 time(NULL)    = 924743830 <0.000016>
+ [pid   277]      0.000094 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000017>
+ [pid   277]      0.000099 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999671>
+ [pid   277]      0.999771 time(NULL)    = 924743831 <0.000017>
+ [pid   277]      0.000108 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000016>
+ [pid   277]      0.000098 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999693>
+ [pid   277]      0.999787 time(NULL)    = 924743832 <0.000015>
+ [pid   277]      0.000092 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000017>
+ [pid   277]      0.000097 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999719>
+ [pid   277]      0.999812 time(NULL)    = 924743833 <0.000015>
+ [pid   277]      0.000090 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000017>
+ [pid   277]      0.000096 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999719>
+ [pid   277]      0.999813 time(NULL)    = 924743834 <0.000015>
+ [pid   277]      0.000092 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000017>
+ [pid   277]      0.000095 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999719>
+ [pid   277]      0.999813 time(NULL)    = 924743835 <0.000017>
+ [pid   277]      0.000105 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000017>
+ [pid   277]      0.000098 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999704>
+ [pid   277]      0.999802 time(NULL)    = 924743836 <0.000016>
+ [pid   277]      0.000093 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000017>
+ [pid   277]      0.000098 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999712>
+ [pid   277]      0.999805 time(NULL)    = 924743837 <0.000015>
+ [pid   277]      0.000092 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000016>
+ [pid   277]      0.000096 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999717>
+ [pid   277]      0.999812 time(NULL)    = 924743838 <0.000015>
+ [pid   277]      0.000092 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000016>
+ [pid   277]      0.000096 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999717>
+ [pid   277]      0.999811 time(NULL)    = 924743839 <0.000017>
+ [pid   277]      0.000105 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000017>
+ [pid   277]      0.000098 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999702>
+ [pid   277]      0.999798 time(NULL)    = 924743840 <0.000016>
+ [pid   277]      0.000091 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000016>
+ [pid   277]      0.000096 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999727>
+ [pid   277]      0.999824 time(NULL)    = 924743841 <0.000015>
+ [pid   277]      0.000093 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000016>
+ [pid   277]      0.000097 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999704>
+ [pid   277]      0.999799 time(NULL)    = 924743842 <0.000016>
+ [pid   277]      0.000091 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000017>
+ [pid   277]      0.000097 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999716>
+ [pid   277]      0.999809 time(NULL)    = 924743843 <0.000018>
+ [pid   277]      0.000132 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000017>
+ [pid   277]      0.000098 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999677>
+ [pid   277]      0.999772 time(NULL)    = 924743844 <0.000015>
+ [pid   277]      0.000092 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000017>
+ [pid   277]      0.000097 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999732>
+ [pid   277]      0.999860 time(NULL)    = 924743845 <0.000015>
+ [pid   277]      0.000098 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000017>
+ [pid   277]      0.000099 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999671>
+ [pid   277]      0.999775 time(NULL)    = 924743846 <0.000016>
+ [pid   277]      0.000089 kill(278, SIGALRM <unfinished ...>
+ [pid   278]      0.000090 <... read resumed> 0x8077c9c, 4096) = ? ERESTARTSYS (To be restarted) <16.453510>
+ [pid   278]      0.000058 --- SIGALRM (Alarm clock) ---
+ [pid   278]      0.000454 sigaction(SIGPIPE, {SIG_IGN}, {0x8057110, [], SA_NOMASK|0x740e2}) = 0 <0.000019>
+ [pid   278]      0.000240 close(3)      = 0 <0.000157>
+ [pid   278]      0.000245 sigprocmask(SIG_SETMASK, [], NULL) = 0 <0.000016>
+ [pid   278]      0.000160 sigaction(SIGURG, {0x8057110, [], SA_STACK|0x77c5c}, {0x8057110, [], SA_NOCLDSTOP|0xb5a}) = 0
+ <0.000018>
+ [pid   278]      0.000249 sigaction(SIGPIPE, {0x8057110, [], SA_STACK|0x4fb76}, {SIG_IGN}) = 0 <0.000017>
+ [pid   278]      0.000227 sigaction(SIGALRM, {0x8057380, [], SA_STACK|SA_RESTART|SA_INTERRUPT|SA_ONESHOT|0x7fffbc8}, {0x8057380,
+ [], SA_STACK|SA_RESTART|SA_INTERRUPT
+ |SA_ONESHOT|0x7fffba0}) = 0 <0.000017>
+ [pid   278]      0.000254 sigaction(SIGUSR1, {0x80581b0, [], SA_STACK|0x4fb76}, {0x80581b0, [], SA_STACK|0x77c5c}) = 0
+ <0.000020>
+ [pid   278]      0.000351 flock(18, LOCK_EX <unfinished ...>
+ [pid   277]      0.000067 <... kill resumed> ) = 0 <0.002352>
+ [pid   277]      0.000060 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000016>
+ [pid   277]      0.000112 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.997244>
+ [pid   277]      0.997347 time(NULL)    = 924743847 <0.000016>
+ [pid   277]      0.000093 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000016>
+ [pid   277]      0.000098 select(0, NULL, NULL, NULL, {1, 0}) = 0 (Timeout) <0.999692>
+ [pid   277]      0.999793 time(NULL)    = 924743848 <0.000016>
+ [pid   277]      0.000093 wait4(-1, 0xbffffd14, WNOHANG, NULL) = -1 ECHILD (No child processes) <0.000016>
+ [pid   277]      0.000099 select(0, NULL, NULL, NULL, {1, 0} <unfinished ...>
+ 
+State-Changed-From-To: feedback-open
+State-Changed-By: coar
+State-Changed-When: Thu Apr 29 13:07:05 PDT 1999
+State-Changed-Why:
+[User sent response]
+Release-Changed-From-To: 1.3.6, 1.3.4-1.3.6
+Release-Changed-By: coar
+Release-Changed-When: Thu Apr 29 13:07:05 PDT 1999
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Karthik Prabhakar <karthik@corp.hp.com>
+Cc: prab@cs.purdue.edu, apbugs@apache.org
+Subject: Re: os-linux/4268: Performance drops off after high specweb loads on  highperformance-conf-dist
+Date: Sat, 1 May 1999 10:24:48 -0700 (PDT)
+
+ On Thu, 22 Apr 1999, Karthik Prabhakar wrote:
+ 
+ > >From the strace, it appears that the read() from the socket is
+ > taking a bit of time, as well as the flock().
+ 
+ the flock() is not abnormal -- it's used for interprocess synchronization.
+ The read() is also probably not a problem... it's usually client latency.
+ 
+ I'm not sure what's up... I'm actually going to have a chance to test this
+ stuff out on a high end linux box under specweb this weekend I think.  So
+ I may be able to repeat it.
+ 
+ Dean
+ 
+
+From: Karthik Prabhakar <karthik@corp.hp.com>
+To: Dean Gaudet <dgaudet@arctic.org>
+Cc: prab@cs.purdue.edu, apbugs@apache.org
+Subject: Re: os-linux/4268: Performance drops off after high specweb loads on  
+ highperformance-conf-dist
+Date: Thu, 06 May 1999 08:03:53 +0000
+
+ Dean Gaudet wrote:
+ > 
+ > On Thu, 22 Apr 1999, Karthik Prabhakar wrote:
+ > 
+ > > >From the strace, it appears that the read() from the socket is
+ > > taking a bit of time, as well as the flock().
+ > 
+ > the flock() is not abnormal -- it's used for interprocess synchronization.
+ > The read() is also probably not a problem... it's usually client latency.
+ > 
+ > I'm not sure what's up... I'm actually going to have a chance to test this
+ > stuff out on a high end linux box under specweb this weekend I think.  So
+ > I may be able to repeat it.
+ > 
+ > Dean
+ 
+ The mystery continues. I got round to trying out 1.3.6 again this evening,
+ this time on 2.2.7. I did _not_ see the performance drop off. Just to verify,
+ I rechecked on the stock 2.2.5 kernel, and the drop off is there.
+ 
+ So _something_ has been fixed between 2.2.5 and 2.2.7 that has made this problem
+ go away. I'll keep plugging away as I get spare time to see if I can get the
+ problem to occur. 
+ 
+ cheers,
+ karthik
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

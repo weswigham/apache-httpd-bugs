@@ -1,0 +1,342 @@
+Received: (qmail 7737 invoked by uid 2012); 22 Apr 1998 16:12:24 -0000
+Message-Id: <19980422161224.7736.qmail@hyperreal.org>
+Date: 22 Apr 1998 16:12:24 -0000
+From: David MacKenzie <djm@va.pubnix.com>
+Reply-To: djm@va.pubnix.com
+To: apbugs@hyperreal.org
+Subject: The CIDR syntax support for allow and deny finds the '/' in comments.
+X-Send-Pr-Version: 3.2
+
+>Number:         2117
+>Category:       general
+>Synopsis:       The CIDR syntax support for allow and deny finds the '/' in comments.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Apr 22 09:20:01 PDT 1998
+>Last-Modified:  Wed Apr 22 16:10:00 PDT 1998
+>Originator:     djm@va.pubnix.com
+>Organization:
+>Release:        1.3b6
+>Environment:
+BSDI BSD/OS 3.1, but I don't think it matters.
+>Description:
+We have a .htaccess file on some of our servers that looks like,
+reduced to the relevant parts:
+
+order deny,allow
+deny from all
+allow from 153.39               # UUNET office network
+allow from 208.196.158.5        # eeg.va.pubnix.com
+allow from 208.211.134          # Pubnix web development desktop/dev network
+
+This was fine with apache 1.2.6.  1.3b6 complains:
+[Wed Apr 22 11:56:04 1998] [alert] /homes/www068/w3featherlegged/html/.htaccess: syntax error in network portion of network/netmask
+It is seeing the slash in the comment and taking it to be a netmask separator.
+
+It is not documented specifically that comments are accepted in .htaccess files,
+but aside from this new bug it has always worked.
+
+
+
+
+>How-To-Repeat:
+Put a comment containing a slash in a .htaccess file "allow" line,
+or presumably a "deny" line.
+>Fix:
+1.  Document that comments are accepted in .htaccess files.
+2.  Make the IP address or network parser pickier about the syntax it accepts,
+    so it doesn't try to accept part of a comment as part of the address.
+    Or just strip out comments before handing it the line to parse.
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Wed Apr 22 11:46:07 PDT 1998
+State-Changed-Why:
+Comments aren't permitted on lines with directives; they must
+be on their own line.  It's always been that way.  No idea what
+your config does.
+
+Dean
+
+From: "David J. MacKenzie" <djm@va.pubnix.com>
+To: dgaudet@hyperreal.org
+Cc: apache-bugdb@apache.org, apbugs@Apache.Org, djm@va.pubnix.com
+Subject: Re: general/2117: The CIDR syntax support for allow and deny finds the '/' in comments.
+Date: Wed, 22 Apr 1998 15:36:47 -0400 (EDT)
+
+ On 22 Apr 1998 18:46:10 -0000, dgaudet@hyperreal.org said:
+ 
+ > [In order for any reply to be added to the PR database, ]
+ > [you need to include <apbugs@Apache.Org> in the Cc line ]
+ > [and leave the subject line UNCHANGED.  This is not done]
+ > [automatically because of the potential for mail loops. ]
+ 
+ 
+ > Synopsis: The CIDR syntax support for allow and deny finds the '/' in comments.
+ 
+ > State-Changed-From-To: open-closed
+ > State-Changed-By: dgaudet
+ > State-Changed-When: Wed Apr 22 11:46:07 PDT 1998
+ > State-Changed-Why:
+ > Comments aren't permitted on lines with directives; they must
+ > be on their own line.  It's always been that way.  No idea what
+ > your config does.
+ 
+ That's fine, but in that case apache should print reasonable error
+ messages rejecting lines with trailing comments, not do undefined
+ things with them (such as silently accept them in some cases and
+ suddenly break upon a new release :-).  Checking correctness seems be
+ the apache approach to configuration file processing in other
+ respects.
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: "David J. MacKenzie" <djm@va.pubnix.com>
+Cc: apbugs@Apache.Org
+Subject: Re: general/2117: The CIDR syntax support for allow and deny finds the '/' in comments.
+Date: Wed, 22 Apr 1998 12:43:05 -0700 (PDT)
+
+ On Wed, 22 Apr 1998, David J. MacKenzie wrote:
+ 
+ > That's fine, but in that case apache should print reasonable error
+ > messages rejecting lines with trailing comments, not do undefined
+ > things with them (such as silently accept them in some cases and
+ > suddenly break upon a new release :-).  Checking correctness seems be
+ > the apache approach to configuration file processing in other
+ > respects.
+ 
+ It actually does a well defined thing with them... it treats them all as
+ hostnames in this case.  In general there's not much we can do without
+ overhauling the config language -- because the RAW_ARGS style of commands
+ can do almost anything they want.  There's no well defined quoting style; 
+ and inadequate centralized parsing.  It's somewhat difficult to shoehorn
+ fixes into it.  A rewrite is definately in order. 
+ 
+ Dean
+ 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: "David J. MacKenzie" <djm@va.pubnix.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: general/2117: The CIDR syntax support for allow and deny finds the '/' in comments.
+Date: Wed, 22 Apr 1998 13:41:46 -0600 (MDT)
+
+ On Wed, 22 Apr 1998, David J. MacKenzie wrote:
+ 
+ > > Synopsis: The CIDR syntax support for allow and deny finds the '/' in comments.
+ > 
+ > > State-Changed-From-To: open-closed
+ > > State-Changed-By: dgaudet
+ > > State-Changed-When: Wed Apr 22 11:46:07 PDT 1998
+ > > State-Changed-Why:
+ > > Comments aren't permitted on lines with directives; they must
+ > > be on their own line.  It's always been that way.  No idea what
+ > > your config does.
+ > 
+ > That's fine, but in that case apache should print reasonable error
+ > messages rejecting lines with trailing comments, not do undefined
+ > things with them (such as silently accept them in some cases and
+ > suddenly break upon a new release :-).  Checking correctness seems be
+ > the apache approach to configuration file processing in other
+ > respects.
+ 
+ But the problem is that they aren't trailing comments; it just happens
+ that you have specified that access should be allowed from a certain set
+ of hostnames that you think should be a comment, but that Apache knows are
+ just a list of space delimited hostnames.  We could special-case the '#'
+ character or do more stringent checks for names that are valid in
+ hostnames, but that can get to be a pain. 
+ 
+ 
+
+From: "David J. MacKenzie" <djm@va.pubnix.com>
+To: Marc Slemko <marcs@znep.com>
+Cc: "David J. MacKenzie" <djm@va.pubnix.com>,
+        Apache bugs database <apbugs@apache.org>
+Subject: Re: general/2117: The CIDR syntax support for allow and deny finds the '/' in comments.
+Date: Wed, 22 Apr 1998 15:56:36 -0400 (EDT)
+
+ On Wed, 22 Apr 1998 13:41:46 -0600 (MDT), Marc Slemko <marcs@znep.com> said:
+ 
+ > But the problem is that they aren't trailing comments; it just happens
+ > that you have specified that access should be allowed from a certain set
+ > of hostnames that you think should be a comment, but that Apache knows are
+ > just a list of space delimited hostnames.  We could special-case the '#'
+ > character or do more stringent checks for names that are valid in
+ > hostnames, but that can get to be a pain. 
+ 
+ Ah, I see!  Caught by surprise!  Don't special-case '#', but it's
+ easy to write a function to tell whether a word could potentially
+ be a valid hostname or IP address:
+ 
+ int ap_hostname_syntax(char *s)
+ {
+     for (; *s; s++) {
+ 	/* Allow : for IPv6.  */
+ 	if (!isalnum(*s) && strchr("_-.:", *s) == NULL)
+ 	    return 0;
+     }
+     return 1;
+ }
+ 
+ I suggest using that where a valid hostname or IP address is required.
+
+From: "David J. MacKenzie" <djm@va.pubnix.com>
+To: Marc Slemko <marcs@znep.com>
+Cc: Apache bugs database <apbugs@apache.org>,
+        "David J. MacKenzie" <djm@va.pubnix.com>
+Subject: Re: general/2117: The CIDR syntax support for allow and deny finds the '/' in comments.
+Date: Wed, 22 Apr 1998 16:01:24 -0400 (EDT)
+
+ I wrote:
+ 
+ int ap_hostname_syntax(char *s)
+ {
+     for (; *s; s++) {
+ 	/* Allow : for IPv6.  */
+ 	if (!isalnum(*s) && strchr("_-.:", *s) == NULL)
+ 	    return 0;
+     }
+     return 1;
+ }
+ 
+ Include a "/" in the strchr argument if you want to allow netmask
+ specification, too.... or else split up the IP addr from the host
+ before calling this.  It's not perfect, but it will help diagnose
+ errors such as our staff made.  Or you could even have a function that
+ takes a hostname or IP address or network number plus optional netmask,
+ and returns a magic token or two depending on what sort of thing it
+ determined it got passed.  I haven't looked, but you must have some
+ code like that already.  It just needs to be more careful about what
+ it accepts as a hostname... there's an RFC that specifies what
+ characters can be in valid Internet hostnames.
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: "David J. MacKenzie" <djm@va.pubnix.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: general/2117: The CIDR syntax support for allow and deny finds the '/' in comments.
+Date: Wed, 22 Apr 1998 14:02:47 -0600 (MDT)
+
+ On Wed, 22 Apr 1998, David J. MacKenzie wrote:
+ 
+ > On Wed, 22 Apr 1998 13:41:46 -0600 (MDT), Marc Slemko <marcs@znep.com> said:
+ > 
+ > > But the problem is that they aren't trailing comments; it just happens
+ > > that you have specified that access should be allowed from a certain set
+ > > of hostnames that you think should be a comment, but that Apache knows are
+ > > just a list of space delimited hostnames.  We could special-case the '#'
+ > > character or do more stringent checks for names that are valid in
+ > > hostnames, but that can get to be a pain. 
+ > 
+ > Ah, I see!  Caught by surprise!  Don't special-case '#', but it's
+ > easy to write a function to tell whether a word could potentially
+ > be a valid hostname or IP address:
+ > 
+ > int ap_hostname_syntax(char *s)
+ > {
+ >     for (; *s; s++) {
+ > 	/* Allow : for IPv6.  */
+ > 	if (!isalnum(*s) && strchr("_-.:", *s) == NULL)
+ > 	    return 0;
+ >     }
+ >     return 1;
+ > }
+ > 
+ > I suggest using that where a valid hostname or IP address is required.
+ 
+ But the complication here is that these can be more than DNS hostnames. 
+ They can be anything that a systems resolver can grok, and some such
+ routines on some systems allow for less stringent naming rules that can
+ allow other characters, possibly including '#'; I have no idea offhand.
+ 
+ Isn't life fun.
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: "David J. MacKenzie" <djm@va.pubnix.com>
+Cc: apbugs@apache.org
+Subject: Re: general/2117: The CIDR syntax support for allow and deny finds the '/' in comments.
+Date: Wed, 22 Apr 1998 13:07:58 -0700 (PDT)
+
+ On 22 Apr 1998, David J. MacKenzie wrote:
+ 
+ >  int ap_hostname_syntax(char *s)
+ >  {
+ >      for (; *s; s++) {
+ >  	/* Allow : for IPv6.  */
+ >  	if (!isalnum(*s) && strchr("_-.:", *s) == NULL)
+ >  	    return 0;
+ >      }
+ >      return 1;
+ >  }
+ 
+ _ isn't valid though... I suppose we could do something like bind does
+ with it; complain but allow it.
+ 
+ Dean
+ 
+
+From: "David J. MacKenzie" <djm@va.pubnix.com>
+To: Marc Slemko <marcs@znep.com>
+Cc: "David J. MacKenzie" <djm@va.pubnix.com>,
+        Apache bugs database <apbugs@apache.org>
+Subject: Re: general/2117: The CIDR syntax support for allow and deny finds the '/' in comments.
+Date: Wed, 22 Apr 1998 16:14:23 -0400 (EDT)
+
+ On Wed, 22 Apr 1998 14:02:47 -0600 (MDT), Marc Slemko <marcs@znep.com> said:
+ 
+ > But the complication here is that these can be more than DNS hostnames. 
+ > They can be anything that a systems resolver can grok, and some such
+ > routines on some systems allow for less stringent naming rules that can
+ > allow other characters, possibly including '#'; I have no idea offhand.
+ 
+ Do you mean things like NIS+ or NeXT's net-thing?  
+ 
+ > Isn't life fun.
+ 
+ It's weirder than I thought.
+
+From: Marc Slemko <marcs@znep.com>
+To: "David J. MacKenzie" <djm@va.pubnix.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: general/2117: The CIDR syntax support for allow and deny finds the '/' in comments.
+Date: Wed, 22 Apr 1998 14:50:34 -0600 (MDT)
+
+ On Wed, 22 Apr 1998, David J. MacKenzie wrote:
+ 
+ > On Wed, 22 Apr 1998 14:02:47 -0600 (MDT), Marc Slemko <marcs@znep.com> said:
+ > 
+ > > But the complication here is that these can be more than DNS hostnames. 
+ > > They can be anything that a systems resolver can grok, and some such
+ > > routines on some systems allow for less stringent naming rules that can
+ > > allow other characters, possibly including '#'; I have no idea offhand.
+ > 
+ > Do you mean things like NIS+ or NeXT's net-thing?  
+ 
+ Yes, among others.  It is possible NT does similar things as well, but I
+ don't know if they are integrated in the resolver calls we are using
+ there.
+ 
+ 
+ 
+ > 
+ > > Isn't life fun.
+ > 
+ > It's weirder than I thought.
+ > 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

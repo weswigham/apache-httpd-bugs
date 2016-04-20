@@ -1,0 +1,222 @@
+Received: (qmail 5671 invoked by uid 2012); 18 Jun 1998 19:40:32 -0000
+Message-Id: <19980618194032.5670.qmail@hyperreal.org>
+Date: 18 Jun 1998 19:40:32 -0000
+From: Jeffrey Mahoney <jdmsys@rit.edu>
+Reply-To: jdmsys@rit.edu
+To: apbugs@hyperreal.org
+Subject: initgroups()
+X-Send-Pr-Version: 3.2
+
+>Number:         2468
+>Category:       os-dgux
+>Synopsis:       initgroups()
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          mistaken
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jun 18 12:50:01 PDT 1998
+>Last-Modified:  Sun Aug 15 01:16:27 PDT 1999
+>Originator:     jdmsys@rit.edu
+>Organization:
+>Release:        1.3.0
+>Environment:
+Digital UNIX v4.0, using cc.
+uname -a: OSF1 sauron V4.0 878 alpha
+>Description:
+[Thu Jun 18 15:30:47 1998] [notice] Apache/1.3.0 (Unix) configured -- resuming normal operations
+[Thu Jun 18 15:30:47 1998] [alert] (22)Invalid argument: initgroups: unable to set groups for User nobody and Group 200
+[Thu Jun 18 15:30:47 1998] [alert] (22)Invalid argument: initgroups: unable to set groups for User nobody and Group 200
+[Thu Jun 18 15:30:47 1998] [alert] (22)Invalid argument: initgroups: unable to set groups for User nobody and Group 200
+[Thu Jun 18 15:30:47 1998] [alert] (22)Invalid argument: initgroups: unable to set groups for User nobody and Group 200
+[Thu Jun 18 15:30:47 1998] [alert] (22)Invalid argument: initgroups: unable to set groups for User nobody and Group 200
+[Thu Jun 18 15:30:48 1998] [alert] Child 15527 returned a Fatal error... 
+Apache is exiting!
+
+
+
+>How-To-Repeat:
+Run httpd, under Digital UNIX.
+>Fix:
+It seems that the initgroups call in http_main.c is comparing the wrong return value under Digital UNIX.
+
+From the initgroups() man page:
+RETURN VALUES
+
+  Upon successful completion, the initgroups() function returns 0 (zero). If
+  the initgroups() function fails, 1 is returned and errno is set to indicate
+  the error.
+
+From the http_main.c source:
+  if (initgroups(name, ap_group_id) == -1) {
+            ap_log_error(APLOG_MARK, APLOG_ALERT, server_conf,
+                        "initgroups: unable to set groups for User %s "
+                        "and Group %u", name, (unsigned)ap_group_id);
+            clean_child_exit(APEXIT_CHILDFATAL);
+        }
+
+For Digital UNIX, it should be == 1.
+
+I applied this fix, and the server appears to work. Without this fix, the server would exit, with error, immediatly.
+>Audit-Trail:
+
+From: Marc Slemko <marcs@znep.com>
+To: Jeffrey Mahoney <jdmsys@rit.edu>
+Cc: apbugs@hyperreal.org
+Subject: Re: general/2468: initgroups()
+Date: Thu, 18 Jun 1998 15:26:10 -0700 (PDT)
+
+ On 18 Jun 1998, Jeffrey Mahoney wrote:
+ 
+ > >Fix:
+ > It seems that the initgroups call in http_main.c is comparing the wrong return value under Digital UNIX.
+ > 
+ > >From the initgroups() man page:
+ > RETURN VALUES
+ > 
+ >   Upon successful completion, the initgroups() function returns 0 (zero). If
+ >   the initgroups() function fails, 1 is returned and errno is set to indicate
+ >   the error.
+ 
+ That is bastard.
+ 
+ Are you _sure_ that isn't a -1?
+ 
+ > 
+ > >From the http_main.c source:
+ >   if (initgroups(name, ap_group_id) == -1) {
+ >             ap_log_error(APLOG_MARK, APLOG_ALERT, server_conf,
+ >                         "initgroups: unable to set groups for User %s "
+ >                         "and Group %u", name, (unsigned)ap_group_id);
+ >             clean_child_exit(APEXIT_CHILDFATAL);
+ >         }
+ > 
+ > For Digital UNIX, it should be == 1.
+ > 
+ > I applied this fix, and the server appears to work. Without this fix, the server would exit, with error, immediatly.
+ 
+ Erm... that makes no sense.
+ 
+ If it returns 0 on success, and it is succeeding, then the error will not
+ be logged because 0 != -1.  So obviously it can't be returning 0 on
+ success.  Are you sure you didn't change anything else when you
+ recompiled? 
+ 
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: lars
+State-Changed-When: Sat Feb 20 17:13:09 PST 1999
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: lars
+State-Changed-When: Sun Jun 13 04:44:23 PDT 1999
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+
+From: Jeff Mahoney <jdmsys@osfmail.isc.rit.edu>
+To: lars@apache.org
+Cc: apache-bugdb@apache.org, jdmsys@ritvax.isc.rit.edu, apbugs@apache.org
+Subject: Re: general/2468: initgroups()
+Date: Sun, 13 Jun 1999 16:53:37 -0400 (EDT)
+
+ 	This problem still exists under Digital UNIX 4.0
+ 
+ 	The initgroups() that is part of DU returns 1 on error, rather
+ than the -1 as expected in the source (http_main.c).
+ 
+ 	The initgroups() included with the source isn't sufficient, since
+ the initgroups() that is part of DU uses SIA calls (similar to
+ Linux/Solaris PAM).
+ 
+ 	Perhaps an if( initgroups( name, ap_group_id ) != 0 ) would be
+ more appropriate than the "if( initgroups( name, ap_group_id ) == -1 )"
+ already present in src/main/http_main.c.
+ 
+ 	-Jeff
+ 
+ --
+ Jeffrey Mahoney
+ System Programmer
+ Information Systems and Computing
+ Rochester Institute of Technology
+ Rochester, NY
+ Ph: 716-475-2258
+ 
+ On Sun, 13 Jun 1999 lars@apache.org wrote:
+ 
+ > [In order for any reply to be added to the PR database, you need]
+ > [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ > [subject line starts with the report component and number, with ]
+ > [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ > ["Re: general/1098:").  If the subject doesn't match this       ]
+ > [pattern, your message will be misfiled and ignored.  The       ]
+ > ["apbugs" address is not added to the Cc line of messages from  ]
+ > [the database automatically because of the potential for mail   ]
+ > [loops.  If you do not include this Cc, your reply may be ig-   ]
+ > [nored unless you are responding to an explicit request from a  ]
+ > [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ > 
+ > 
+ > Synopsis: initgroups()
+ > 
+ > State-Changed-From-To: feedback-closed
+ > State-Changed-By: lars
+ > State-Changed-When: Sun Jun 13 04:44:23 PDT 1999
+ > State-Changed-Why:
+ > [This is a standard response.]
+ > No response from submitter, assuming issue has been resolved.
+ > 
+ 
+State-Changed-From-To: closed-open
+State-Changed-By: lars
+State-Changed-When: Sun Jun 13 14:53:31 PDT 1999
+State-Changed-Why:
+issue still open
+State-Changed-From-To: open-closed
+State-Changed-By: fielding
+State-Changed-When: Sun Aug 15 01:16:26 PDT 1999
+State-Changed-Why:
+
+This report is mistaken.  Changing the value just prevents
+the error from being caught.  You should instead find
+out why initgroups is failing and fix that problem, rather
+than the symptom.
+
+The man page is simply in error.  If the function wasn't
+returning -1, then Apache would not have exited.
+
+....Roy
+
+Class-Changed-From-To: sw-bug-mistaken
+Class-Changed-By: fielding
+Class-Changed-When: Sun Aug 15 01:16:26 PDT 1999
+Severity-Changed-From-To: critical-non-critical
+Severity-Changed-By: fielding
+Severity-Changed-When: Sun Aug 15 01:16:26 PDT 1999
+Category-Changed-From-To: general-os-dgux
+Category-Changed-By: fielding
+Category-Changed-When: Sun Aug 15 01:16:26 PDT 1999
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

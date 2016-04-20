@@ -1,0 +1,175 @@
+Received: (qmail 22798 invoked from network); 17 Mar 1998 19:18:54 -0000
+Message-Id: <199803171918.LAA21327@shadowfax.reference.com>
+Date: Tue, 17 Mar 1998 11:18:19 -0800 (PST)
+From: nick@webthing.com
+Cc: apbugs@hyperreal.org, authoring-cgi@boutell.com
+Subject: Apache - broken CGI interface?
+
+>Number:         1960
+>Category:       mod_cgi
+>Synopsis:       Apache - broken CGI interface?
+>Confidential:   yes
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   unknown
+>Arrival-Date:   Tue Mar 17 11:20:00 PST 1998
+>Last-Modified:  Mon Jan  4 12:34:54 PST 1999
+>Originator:     nick@webthing.com
+>Organization:
+>Release:        1.2.5
+>Environment:
+>Description:
+>How-To-Repeat:
+>Fix:
+>Audit-Trail:
+Originator-Changed-From-To: -nick@webthing.com
+Originator-Changed-By: coar
+Originator-Changed-When: Wed Apr  8 15:50:58 PDT 1998
+Release-Changed-From-To: -1.2.5
+Release-Changed-By: coar
+Release-Changed-When: Wed Apr  8 15:50:58 PDT 1998
+Responsible-Changed-From-To: gnats-admin-apache
+Responsible-Changed-By: coar
+Responsible-Changed-When: Wed Apr  8 15:50:58 PDT 1998
+Responsible-Changed-Why:
+Taking out of 'pending' state, where it was put through
+improper entry into the database
+Category-Changed-From-To: pending-mod_cgi
+Category-Changed-By: coar
+Category-Changed-When: Wed Apr  8 15:50:58 PDT 1998
+
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Mon Aug 31 14:39:36 PDT 1998
+State-Changed-Why:
+
+I wonder where the CGI++ people read that CGI/1.1
+guarantees a Content-Length?  The only thing in this area
+that I can recall (my references are not currently
+available) is that if the method is POST then the script
+needs to read no more than Content-Length bytes from the
+input stream.  That should be extrapolated to apply to
+any method the defined semantics of which include a
+content-body.
+
+It's a little unclear whether you're talking about input
+to the script, or output therefrom.  For the former, the
+CONTENT_LENGTH envariable should always be defined, even
+if as a null string.
+
+As for HTTP/1.1 and the lack of Content-Length..  IIRC that
+only happens if the transfer-encoding is chunked, which
+isn't supported for CGI anyway.
+
+
+From: Nick Kew <nick@webthing.com>
+To: coar@apache.org
+Cc: apache-bugdb@apache.org, apbugs@apache.org
+Subject: mod_cgi/1960: Apache - broken CGI interface?
+Date: Tue, 1 Sep 1998 12:02:39 -0200 (GMT+2)
+
+ > I wonder where the CGI++ people read that CGI/1.1
+ > guarantees a Content-Length?  The only thing in this area
+ > that I can recall (my references are not currently
+ > available)
+ 
+ Neither is mine, but I'm 99% certain it's in the old Robinson
+ draft, which is as near as we ever had to a formal spec.
+ 
+ > It's a little unclear whether you're talking about input
+ > to the script, or output therefrom.  For the former, the
+ > CONTENT_LENGTH envariable should always be defined, even
+ > if as a null string.
+ 
+ Shouldn't "0" be preferable to a null string?  (n.b. CGI++
+ treats them the same, but also logs an error if it gets null).
+ 
+ > As for HTTP/1.1 and the lack of Content-Length..  IIRC that
+ > only happens if the transfer-encoding is chunked, which
+ > isn't supported for CGI anyway.
+ 
+ IIRC it happens also when the browser loses the connection.
+ IMHO - for CGI/1.1 at least - it shouldn't call CGI at all when
+ the request is incomplete.
+ 
+ -- 
+ Nick Kew
+ 
+State-Changed-From-To: feedback-open
+State-Changed-By: lars
+State-Changed-When: Sat Nov 14 08:31:10 PST 1998
+State-Changed-Why:
+
+
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Mon Jan  4 12:34:52 PST 1999
+State-Changed-Why:
+
+On re-reading this, I think I see what's going on.
+Yes, a CONTENT_LENGTH metavariable MUST be supplied by
+a CGI/1.1-compliant server when starting a script and
+supplying a content-body.  It is based on HTTP/1.0 in
+this regard, and HTTP/1.1 for bodies that aren't
+sent with chunked transfer-encoding.  Chunked T-E isn't
+supported by CGI/1.1 at all.  It looks as though something
+is trying to hand a chunked body to a CGI script, and
+that's bogus.  For CGI/1.1, if the server passes a body,
+then it must also pass a CONTENT_LENGTH metavariable.
+
+>Unformatted:
+[posted to servers.unix and authoring.cgi; mailed to apache-bugs]
+
+I've just seen the following in an error_log of a new server.
+A similar bug is listed as "closed" at bugs.apache.org under
+references 1140 and 1142, but doesn't make reference to CGI.
+
+   [Tue Mar 17 15:46:44 1998] send body timed out for napa.sdc.asi.it
+   [Tue Mar 17 15:46:44 1998] send body timed out for napa.sdc.asi.it
+   Methods POST and PUT without Content-length not supported
+   Methods POST and PUT without Content-length not supported
+
+(interesting that it appears twice with the same timestamp)
+
+Obviously the first line is Apache's error method, while
+the second is from CGI++.  As I understand it, CGI/1.1
+guarantees a Content-Length header, regardless of whether
+the browser has sent one to the server.  As the comment
+in the CGI++ code puts it:
+
+/* POST and PUT require a body (for other methods, we'll take one if
+   we're given one, but not insist :-)
+
+   CGI/1.1 guarantees us a valid Content-length.   However, so does
+   HTTP/1.0, for which CGI/1.1 was really written.   HTTP/1.1 doesn't,
+   so we might find someone sending us a body WITHOUT a content-length
+   (in violation of the spec).   If so, this will break.
+*/
+
+I've looked quite closely at mod_cgi when writing mod_ecgi[1]
+and I've no recollection of any code to insert a missing
+Content-Length.  I've thought about trying to handle this
+situation within CGI++, but the consequences of getting it
+wrong if stdin doesn't happen to be nicely null-terminated
+look much more dangerous than a clean abortion!
+
+[ anyone familiar with what CGI.pm&co do in this situation? ]
+
+System: Solaris 5.5.1, Apache 1.2.5, default build except for
+addition of mod_auth_dbm.
+
+[1] mod_ecgi (Embedded, aka non-forking CGI) is at a pre-operational
+    "works for me" stage.  Would anyone like to test-drive it?
+    If it reaches a stable condition, I'll release it under standard
+    Apache license terms.
+
+Nick Kew.
+
+
+  -------------------------------------------------------------------- 
+  Posted using Reference.COM                  http://WWW.Reference.COM 
+  FREE Usenet and Mailing list archive, directory and clipping service 
+  -------------------------------------------------------------------- 

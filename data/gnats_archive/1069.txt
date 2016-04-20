@@ -1,0 +1,296 @@
+From apwww@hyperreal.org  Thu Aug 28 10:45:12 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id KAA24710;
+	Thu, 28 Aug 1997 10:45:12 -0700 (PDT)
+Message-Id: <199708281745.KAA24710@hyperreal.org>
+Date: Thu, 28 Aug 1997 10:45:12 -0700 (PDT)
+From: Nathan Haley <nhaley@ie-e.com>
+Reply-To: nhaley@ie-e.com
+To: apbugs@hyperreal.org
+Subject: Directory deny does not deny by ip
+X-Send-Pr-Version: 3.2
+
+>Number:         1069
+>Category:       config
+>Synopsis:       Directory deny does not deny by ip
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Aug 28 10:50:01 1997
+>Last-Modified:  Fri Feb 27 01:50:59 PST 1998
+>Originator:     nhaley@ie-e.com
+>Organization:
+>Release:        1.2.4
+>Environment:
+Running RedHat Linux 4.1, all current RedHat patches in place.
+Using current GCC from RedHat 4.1 release. 
+>Description:
+We are running with the proxy and several options enabled. The Server is 
+multi-homed and serves 5 ip addresses with 3 virtual hosts.
+
+We also have modifications to the proxy routines in place, but they should not
+affect this (proxy_connect.c, proxy_ftp.c, proxy_http.c) as they validate a
+host a against an external list. Admittedly, I have not tried without these mods.
+
+The Directory deny command does not seem effective. We wish to limit access to
+some internal reference pages by IP, while allowing the rest to be open.
+I have configured with deny from all, then allows by specific IP's. It does
+not limit access at all to the host directories.
+I have tried simply deny all and no allows and access is still open.
+
+Appropriate portions of the access.conf:
+
+<Directory /home/httpd/html/local>
+Options Includes ExecCGI
+AllowOverride None
+order deny,allow
+deny from all
+allow from 209.69.34.130
+allow from 209.69.34.136   
+allow from 209.69.34.130
+allow from 209.69.34.136
+allow from 209.69.34.135
+allow from 209.69.34.140
+allow from 209.69.34.141
+</Directory>
+
+<Directory /home/httpd/html>
+Options Includes ExecCGI
+AllowOverride None
+order deny,allow
+deny from all
+allow from 209.69.34.130
+allow from 209.69.34.136
+allow from 209.69.34.135
+allow from 209.69.34.140
+allow from 209.69.34.141
+</Directory>  
+
+Have also tried the following with no success:
+
+<Directory /home/httpd/html>
+Options Includes ExecCGI
+AllowOverride None
+order deny,allow
+deny from all
+</Directory>  
+
+
+Note on our modifications to mod_proxy:
+Just to explain why I don't believe this is at fault...
+
+I added a small piece of code immediately following the test for sites blocked.
+I will be submitting a suggestion for this in a moment.
+This code block opens a proxy request file and compares entries to determine 
+if a site is listed. This allows us to build a large table of sites and
+deny and approve without restarting the server. It also always a deny/allow 
+version of restriction for the proxy.
+If a line not matching the host as compared in the standard checking is not
+found in the text file, it calls proxyerror, else it continues normally.
+>How-To-Repeat:
+URL sample for the above config is http://main.ie-e.com/local/
+
+>Fix:
+Sorry, no suggestions
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Thu Aug 28 14:05:21 PDT 1997
+State-Changed-Why:
+What is your DocumentRoot set to?
+
+What does the error log report if you try to access
+http://main.ie-e.com/local/adlfkjad (ie. a non-existent
+URL under that path)?
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Subject: Re: config/1069: Directory deny does not deny by ip (fwd)
+Date: Fri, 29 Aug 1997 08:27:38 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: Fri, 29 Aug 1997 09:51:36 -0400
+ From: Nathan Haley <nhaley@ie-e.com>
+ To: Marc Slemko <marc@hyperreal.org>
+ Subject: Re: config/1069: Directory deny does not deny by ip
+ 
+ Marc Slemko wrote:
+ > 
+ > Synopsis: Directory deny does not deny by ip
+ > 
+ > State-Changed-From-To: open-analyzed
+ > State-Changed-By: marc
+ > State-Changed-When: Thu Aug 28 14:05:21 PDT 1997
+ > State-Changed-Why:
+ > What is your DocumentRoot set to?
+ 
+ srm.conf has DocumentRoot as  /home/httpd/html
+ 
+ 
+ > What does the error log report if you try to access
+ > http://main.ie-e.com/local/adlfkjad (ie. a non-existent
+ > URL under that path)?
+ 
+ Same error for your attempt and mine:
+ "[Date/Time] access to /home/httpd/html/local/adlfkjad failed for
+ 209.69.34.141, reason: File does not exist"
+ 
+ Your attempt left a domain name in the log. 
+ 
+ -- 
+ Nathan Haley
+ nhaley@ie-e.com
+ IE&E Industries, Inc.
+ 248-544-8181
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Nathan Haley <nhaley@ie-e.com>
+Subject: Re: config/1069: Directory deny does not deny by ip
+Date: Fri, 29 Aug 1997 08:48:13 -0600 (MDT)
+
+ 
+ So my attempt (ie. one from outside the given IPs) gave the same error
+ message?
+ 
+ You are sure you restarted Apache after putting in the changes?
+ 
+ Please try with a fresh copy of the unpatched 1.2.x source from
+ http://www.apache.org/
+ 
+ Redhat does some very stupid things in their package; nothing that should
+ cause this, but...
+ 
+ On Fri, 29 Aug 1997, Nathan Haley wrote:
+ 
+ > Marc Slemko wrote:
+ > > 
+ > > Synopsis: Directory deny does not deny by ip
+ > > 
+ > > State-Changed-From-To: open-analyzed
+ > > State-Changed-By: marc
+ > > State-Changed-When: Thu Aug 28 14:05:21 PDT 1997
+ > > State-Changed-Why:
+ > > What is your DocumentRoot set to?
+ > 
+ > srm.conf has DocumentRoot as  /home/httpd/html
+ > 
+ > 
+ > > What does the error log report if you try to access
+ > > http://main.ie-e.com/local/adlfkjad (ie. a non-existent
+ > > URL under that path)?
+ > 
+ > Same error for your attempt and mine:
+ > "[Date/Time] access to /home/httpd/html/local/adlfkjad failed for
+ > 209.69.34.141, reason: File does not exist"
+ > 
+ > Your attempt left a domain name in the log. 
+ > 
+ > -- 
+ > Nathan Haley
+ > nhaley@ie-e.com
+ > IE&E Industries, Inc.
+ > 248-544-8181
+ > 
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Nathan Haley <nhaley@ie-e.com>
+Subject: Re: config/1069: Directory deny does not deny by ip
+Date: Fri, 29 Aug 1997 09:33:27 -0600 (MDT)
+
+ 
+ On Fri, 29 Aug 1997, Nathan Haley wrote:
+ 
+ > Marc Slemko wrote:
+ > > 
+ > > So my attempt (ie. one from outside the given IPs) gave the same error
+ > > message?
+ > Yes.
+ >  
+ > > You are sure you restarted Apache after putting in the changes?
+ > Yes. 
+ > 
+ > > Please try with a fresh copy of the unpatched 1.2.x source from
+ > > http://www.apache.org/
+ > 
+ > Okay. I won't be able to leave it running due to localized company
+ > network policies...
+ 
+ That's fine.
+ 
+ > I wasn't even allowed to connect the other facilities to the internet
+ > until the modifications to the proxy module were complete.
+ > 
+ > I compilied from the 1.2.4 source I downloaded yesterday from
+ > ftp.apache.org, file was apache_1.2.4.tar.gz, I believe the directory
+ > was /apache/releases/. FTP logs for the site should confim my download
+ > yesterday morning from 209.69.34.130. I modified the Configuration file
+ > slightly to enable some logging and to enable mod_proxy.
+ > I also editted httpd.h to set our local conf to /etc instead
+ > /usr/local/etc.
+ > I then compiled with gcc-2.7.2.1-2 from RedHat. I then terminated the
+ > running httpd process are started the new one with ./httpd from the src
+ > directory.
+ > 
+ > So, it's running a basically stock configuration.. I then used the
+ > invalid directory:
+ > 
+ > Error message in the logs for non-existent directory:
+ > [Fri Aug 29 11:09:30 1997] access to /home/httpd/html/local/adlfkjad
+ > failed for 209.69.34.141, reason: File does not exist
+ 
+ Can you show me the output of a:
+ 
+ 	ls -ld /home /home/httpd /home/httpd/html /home/httpd/html/local
+ 
+ > 
+ > I still have access to the site even though the access.conf is still
+ > set:
+ > <directory /home/httpd/html>
+ > order deny,allow
+ > deny from all
+ > </directory>
+ > 
+ > > Redhat does some very stupid things in their package; nothing that should
+ > > cause this, but...
+ > but the Xwindows configuration utilities mean some much less involvement
+ > in the intitial configuration and setup. (Not that everything works
+ > right when it's done)
+ >  
+ 
+Release-Changed-From-To: 1.2.4 and 1.2.0-1.2.4
+Release-Changed-By: coar
+Release-Changed-When: Thu Jan 22 07:53:55 PST 1998
+State-Changed-From-To: analyzed-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Sat Feb 14 14:14:11 PST 1998
+State-Changed-Why:
+I can't reproduce this problem.  Are you still having this trouble?
+
+Can you make a minimal config file which demonstrates the
+problem?
+
+Are you certain there are no .htaccess files in the directories
+involved?
+
+Dean
+State-Changed-From-To: feedback-closed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Feb 27 01:50:59 PST 1998
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+
+
+
+
+

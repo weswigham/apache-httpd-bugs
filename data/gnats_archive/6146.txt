@@ -1,0 +1,177 @@
+Received: (qmail 68445 invoked by uid 501); 4 Jun 2000 19:12:48 -0000
+Message-Id: <20000604191248.68444.qmail@locus.apache.org>
+Date: 4 Jun 2000 19:12:48 -0000
+From: Pascal Dupuis <dupuis@lei.ucl.ac.be>
+Reply-To: dupuis@lei.ucl.ac.be
+To: submit@bugz.apache.org
+Subject: adding a chroot() call like in bind-8.2.2
+X-Send-Pr-Version: 3.110
+
+>Number:         6146
+>Category:       general
+>Synopsis:       adding a chroot() call like in bind-8.2.2
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Jun 04 12:20:00 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     dupuis@lei.ucl.ac.be
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Linux darkstar 2.2.15pre13 #9 Tue Mar 7 20:34:06 CET 2000 i686 unknown
+gcc-2.95.2/glibc-2.1.2
+>Description:
+Hello,
+
+I've implemented a "chroot" environment for apache, the same way as in bind
+(version 8.2.2): a "chroot" is done just before forking.
+
+In the case of someone craking the server security (or in case of
+misconfiguration :-(), only the files in the chrooted environment
+would be compromised. In particular, there should not be any 'passwd'
+file lying around there.
+
+I made it this way (platform : PII, Slackware 7.0):
+-created /usr/local/chrooted/apache as a jail
+-created /usr/local/chrooted/apache/var/lib/apache as basis (let's call
+ it CHROOT)
+-linked /var/lib/apache -> CHROOT/var/lib/apache to get the same
+ environment for developping and running apache;
+-added a '-r' switch in http_main.c (patch follows)
+-configured apache : ./configure --prefix=/var/lib/apache; compiled; installed
+-created CHROOT/dev/null
+-created CHROOT/etc, populated with nsswitch.conf, passwd, group and hosts.
+ All files were reduced to the strict minimum, f.i. passwd only contains
+ nobody:x:99:99:nobody:/:
+-created CHROOT/lib, populated with required libs
+and that's all!
+
+First test : I set DocumentRoot to '/', asked for '/etc/passwd' and just got
+the one-liner shown above.
+
+Second test : I set DocumentRoot "/var/lib/apache/htdocs", and symlinked
+there the name passwd to /etc/passwd: I also got this one-liner.
+
+In summary, this approach give some additionnal security level, by creating
+a specific environment with less sensitive information. Another benefit is
+that in case of breaking, the main libraries are out of reach, and trojaning
+them require to also break the 'chrooted jail'. This won't give absolute
+security, (nor does I pretend there are security problems with the server
+itself ;-), but this would help a bit.
+
+Patch (again source 1.3.12):
+--- src/main/http_main.c.orig   Sat Feb  5 13:01:52 2000
++++ src/main/http_main.c        Sun Jun  4 20:46:42 2000
+@@ -288,6 +288,7 @@
+ static listen_rec *head_listener;
+
+ API_VAR_EXPORT char ap_server_root[MAX_STRING_LEN]="";
++char ap_server_chroot[MAX_STRING_LEN]="";
+ char ap_server_confname[MAX_STRING_LEN]="";
+ char ap_coredump_dir[MAX_STRING_LEN];
+
+@@ -1047,6 +1048,7 @@
+ #else
+     fprintf(stderr, "Usage: %s [-D name] [-d directory] [-f file]\n", bin);
+ #endif
++    fprintf(stderr, "       %s [-r directory]\n", pad);
+     fprintf(stderr, "       %s [-C \"directive\"] [-c \"directive\"]\n", pad);
+     fprintf(stderr, "       %s [-v] [-V] [-h] [-l] [-L] [-S] [-t] [-T]\n", pad);
+ #ifdef WIN32
+@@ -1056,6 +1058,9 @@
+ #ifdef SHARED_CORE
+     fprintf(stderr, "  -R directory     : specify an alternate location for shared object files\n");
+ #endif
++#ifndef WIN32
++    fprintf(stderr, "  -r directory     : performs a chroot() after reading arguments\n");
++#endif
+     fprintf(stderr, "  -D name          : define a name for use in <IfDefine name> directives\n");
+     fprintf(stderr, "  -d directory     : specify an alternate initial ServerRoot\n");
+     fprintf(stderr, "  -f file          : specify an alternate ServerConfigFile\n");
+@@ -3034,7 +3039,21 @@
+ #if !defined(WIN32) && !defined(NETWARE)
+     int x;
+
+-    chdir("/");
++    if (strlen(ap_server_chroot) > 0) {
++        if (chroot(ap_server_chroot) < 0) {
++           perror("chroot");
++           fprintf(stderr, "%s: unable to chroot to %s\n", ap_server_argv0,
++                   ap_server_chroot);
++           exit(1);
++       }
++    }
++
++    if (chdir("/") < 0) {
++        perror("chdir");
++       fprintf(stderr, "%s: unable to chdir to \"/\"\n", ap_server_argv0);
++       exit(1);
++    }
++
+ #if !defined(MPE) && !defined(OS2) && !defined(TPF)
+ /* Don't detach for MPE because child processes can't survive the death of
+    the parent. */
+@@ -4869,7 +4888,7 @@
+     ap_setup_prelinked_modules();
+
+     while ((c = getopt(argc, argv,
+-                                   "D:C:c:xXd:f:vVlLR:StTh"
++                                   "D:C:r:c:xXd:f:vVlLR:StTh"
+ #ifdef DEBUG_SIGSTOP
+                                    "Z:"
+ #endif
+@@ -4883,6 +4902,9 @@
+        case 'C':
+            new = (char **)ap_push_array(ap_server_pre_read_config);
+            *new = ap_pstrdup(pcommands, optarg);
++           break;
++       case 'r':
++           ap_cpystrn(ap_server_chroot, optarg, sizeof(ap_server_root));
+            break;
+        case 'D':
+            new = (char **)ap_push_array(ap_server_config_defines);
+
+
+
+Discussion :
+the 'chroot' call should come just before the ap_read_config() on line 4955
+in the original version, BUT the getpwnam() stop working. (Maybe it is
+glibc-2.1 specific ?). Those functions are called with the 'User'
+and 'Group' directives in the httpd.conf.
+
+In the case of bind, there are two switches, -u and -g, so that
+the change of user and group is performed just after the getopt()
+loop, before doing the chroot(): this way, the uid and gid are read in
+the main passwd file, then the work continue in the chrooted dir.
+
+In my case, I put the chroot before the chdir, and this require to have
+the apache main dir symlinked to the CHROOT dir. May be uid and gid should
+be given as arguments ?
+>How-To-Repeat:
+
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

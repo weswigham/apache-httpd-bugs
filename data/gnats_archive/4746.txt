@@ -1,0 +1,123 @@
+Received: (qmail 13637 invoked by uid 2012); 21 Jul 1999 12:57:08 -0000
+Message-Id: <19990721125708.13636.qmail@hyperreal.org>
+Date: 21 Jul 1999 12:57:08 -0000
+From: gilles chervy <chervy@balease.com>
+Reply-To: chervy@balease.com
+To: apbugs@hyperreal.org
+Subject: duplicate output and header while forking
+X-Send-Pr-Version: 3.2
+
+>Number:         4746
+>Category:       mod_cgi
+>Synopsis:       duplicate output and header while forking
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jul 21 07:10:02 PDT 1999
+>Last-Modified:  Wed Jul 21 09:43:26 PDT 1999
+>Originator:     chervy@balease.com
+>Organization:
+>Release:        1.3.6
+>Environment:
+sco openserver 5.04 on a dell poweredge 4300
+>Description:
+when forking with apache 1.3.6, i experience some harsh problem with http header and content : 
+
+if i write something to standard output before the C fork instruction, and, despite the fact i close stdout in my first child instruction line, i got a duplicate of header and bodies (I.e if i output onhting but the header text/plain, i'll get a plain text file (that's ok) but it will not be void. It will contain "Content-type: text/plain"....
+
+and it is worse when i've done some previous output with an html page. 
+
+////////////////
+SAMPLE DUPLICATE PAGE (in french; sorry for the inconvenience)
+//////////////////
+<html>
+<head> <title>ERROR IN SQL
+</title>
+</head>
+<H2>MERCI DE PREVENIR BALEASE DE CETTE ERREUR AU 
+</H2>
+04.92.38.38.00<br>
+ERROR : -1 AT INSERT INTO contract (  id, starting_date, created )  VALUES (  '999999999933', now(), now() ) 
+</body></html>
+Content-type: text/html
+
+<html>
+<head> <title>ERROR IN SQL
+</title>
+</head>
+<H2>MERCI DE PREVENIR BALEASE DE CETTE ERREUR AU 
+</H2>
+04.92.38.38.00<br>
+ERROR : -1 AT INSERT INTO contract (  id, starting_date, created )  VALUES (  '999999999933', now(), now() ) 
+</body></html>
+Content-type: text/html
+
+
+>How-To-Repeat:
+/**************************************************/
+this one will do duplicate header and body
+
+int main(int argc, char *argv[]) 
+{
+  printf("Content-type: text/plain\n\n");  
+  switch (fork())
+    {
+    case 0 :
+      /* child */
+      fclose(stdout);
+      sleep(15);
+      exit (0);      
+      /* Parent : return to caller */
+    default :
+      break;
+    }
+  exit (0);
+}
+
+/**************************************************/
+this one will perfectly work 
+int main(int argc, char *argv[]) 
+{
+  switch (fork())
+    {
+    case 0 :
+      /* child */
+      fclose(stdout);
+      sleep(15);
+      exit (0);      
+      /* Parent : return to caller */
+    default :
+      break;
+    }
+  printf("Content-type: text/plain\n\n");  <----- moved after the fork process
+  exit (0);
+}
+>Fix:
+hum... don't know, bu i'd greatly appreciate any help (i will be in production status in short term and really don't want to switch to **** webserver)
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Wed Jul 21 09:43:25 PDT 1999
+State-Changed-Why:
+Your code is buggy.  As the stdio man page on most platform
+says, you need to ensure you flush certain types of buffers
+before forking or the results are undefined.  eg. fflush(stdout)
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

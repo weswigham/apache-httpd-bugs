@@ -1,0 +1,202 @@
+Received: (qmail 4565 invoked by uid 2012); 15 Sep 1999 02:22:08 -0000
+Message-Id: <19990915022208.4564.qmail@hyperreal.org>
+Date: 15 Sep 1999 02:22:08 -0000
+From: Robet Hoghaug <robert@exdevco.com>
+Reply-To: robert@exdevco.com
+To: apbugs@hyperreal.org
+Subject: Create Apache 1.3.6 for DSO could not Load mod_userdir error reported below
+X-Send-Pr-Version: 3.2
+
+>Number:         5012
+>Category:       mod_userdir
+>Synopsis:       Create Apache 1.3.6 for DSO could not Load mod_userdir error reported below
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Sep 14 19:30:00 PDT 1999
+>Closed-Date:    
+>Last-Modified:  Tue Feb 27 14:20:00 PST 2001
+>Originator:     robert@exdevco.com
+>Release:        1.3.6
+>Organization:
+apache
+>Environment:
+Mandrake Linux 6.0 Linux version 2.2.9 Mandrake Kernel Patch Level 27
+Compiler version pgcc-2.91.66
+>Description:
+[root@edgepro]:/usr/local/apache/bin> ./httpd
+Syntax error on line 236 of /usr/local/apache/conf/httpd.conf:
+Cannot load /usr/local/apache/libexec/mod_userdir.so into server: /usr/local/apache/libexec/mod_userdir.so: undefined symbol: ap_os_is_path_absolute
+
+1. This occured after I tried to create the Apache Server with DSO enabled.
+
+2.> Another Iportant point would be that I was also trying to create mod_perl 1.21 as a DSO as well. I allow mod_perl to "modify" the configuration of the apache server build environment. I do not know if this problem is releated to mod_perl but it does seems suspicious.
+
+3. The module loading order is the same as you have listed in you help files.
+
+4. Since I used mod_perl the build environment "ALWAYS" create libraries to be linked in. The only This is the final line of the compile and link pahes of the build
+
+gcc  -DLINUX=2 -DUSE_HSREGEX -O -mpentium `./apaci`   -rdynamic \
+      -o httpd buildmark.o modules.o modules/standard/libstandard.a main/libmain.a ./os/unix/libos.a ap/libap.a regex/libregex.a  -lm -lcrypt -lndbm -ldl
+
+5. I have been using htis same build scenario on a Solaris 2.5.1 system and it does build and load all modules. The only difference being the loading order of the modules. But, since the function ap_os_is_path_absoulte or it "real: name os_is_path_absolute is statically linked in I do not think it was load order related.
+
+It does seem as if the library created from the src/os/unix dir is linked in as the function ap_os_is_path_absolute is located in os_inline.c
+
+I freely admit that I may hve done something wrong. My concern is that I have not changed Any files and that all I have done is to change the location of the apache install to /usr/local/apache and added the -mpentium flag since the compile supports it.
+
+This is all I can think of at the moment.
+
+Please feel free to contact me for assitance or more information.
+
+>How-To-Repeat:
+I used the exapmle out of the apache documentation
+ $ ./configure --prefix=/path/to/apache \
+                  --enable-module=rewrite \
+                  --enable-shared=rewrite
+    $ make
+    $ make install
+
+Also configure mod_perl 1.21 to be create using apxs and as a DSO.
+    
+>Fix:
+I can simply create a macro to be included which does the same thing as os_is_path_absolute. THis can't be the right answer though. I must be doing something wrong. 
+>Release-Note:
+>Audit-Trail:
+
+From: Bernhard Reiter <bernhard@intevation.de>
+To: fastcgi-developers@fastcgi.com
+Cc: apbugs@Apache.Org
+Subject: mod_userdir/5012: Re: DSO inserting fails (2.2.10 in apache 1.3.9 and 1.3.14
+Date: Tue, 27 Feb 2001 22:59:28 +0100
+
+ --3xQkynibq3FKlJyM
+ Content-Type: text/plain; charset=us-ascii
+ Content-Disposition: inline
+ Content-Transfer-Encoding: quoted-printable
+ 
+ Rob,
+ thanks.
+ Your hint gave me the right idea,
+ actually it is a bug in the header files of apache.
+ (Reported in Sep 1999, PR# 5012, but never fixed.)
+ 
+ Under certain circumstances (gcc compiler, unix) it
+ will use a definition like
+ 	extern __inline__=20
+ in os.h for ap_os_is_path_absolute().=20
+ This way the function is not inlined with normal compiles=20
+ and the compiler then relies on a library or in this case apache=20
+ to have non-inlined version of the function for linking.
+ 
+ Of course apache does not contain the function.
+ And gcc does not do any linining without optimisation.
+ If you switch on function inlining in the compile of=20
+ fcgi_util.c (e.g. through enabling optimising), it works fine.
+ 
+ You might want to add to the INSTALL files a hint,
+ that
+ 	apxs -Wc,-O -o mod_fastcgi.so -c *.c=20
+ might help, if you have problems with
+ 	/usr/lib/apache/1.3/mod_fastcgi.so: undefined symbol: ap_os_is_path_absolu=
+ te
+ when trying to insert the module into apache.
+ 
+ The real solution in the apache sources is=20
+ to leave out the "extern" from the INLINE macro line 77 os.h (for unix)=20
+ and add the "extern" to the empty ap_line macro in ap_config (line 104).
+ 
+ 	Bernhard
+ 
+ 
+ 
+ On Sun, Feb 25, 2001 at 09:55:39PM -0500, Rob Saccoccio wrote:
+ > > I am trying to build mod_fastcgi.c as DSO and load it into
+ > > apache 1.3.9 or 1.3.14 on GNU/Linux intel (Debian).
+ > >
+ > > apachectl configtest
+ > > Syntax error on line 113 of /etc/apache/httpd.conf:
+ > > Cannot load /usr/lib/apache/1.3/mod_fastcgi.so into server:
+ > > /usr/lib/apache/1.3/mod_fastcgi.so: undefined symbol:
+ > > ap_os_is_path_absolute
+ >=20
+ > ap_os_is_path_absolute() probably got inlined in httpd, but not in the
+ > building of mod_fastcgi (see its
+ >=20
+ > You'll have to do one or the other for both.
+ >=20
+ > Try rebuilding mod_fastcgi with INLINE defined.
+ >=20
+ > --robs
+ >=20
+ 
+ --=20
+ Professional Service around Free Software                (intevation.net) =
+ =20
+ The FreeGIS Project                                         (freegis.org)
+ Association for a Free Informational Infrastructure            (ffii.org)
+ FSF Europe                                            	  (fsfeurope.org)
+ 
+ --3xQkynibq3FKlJyM
+ Content-Type: application/pgp-signature
+ Content-Disposition: inline
+ 
+ -----BEGIN PGP SIGNATURE-----
+ Version: GnuPG v1.0.4 (GNU/Linux)
+ Comment: Weitere Infos: siehe http://www.gnupg.org
+ 
+ iEYEARECAAYFAjqcI0AACgkQh9ag3dpKERZauwCdEtpWwlsDhzIcHWRYFvMsB0iH
+ 0ikAoN8HGaCjK/uwMX/RFJhAo8qUeOWj
+ =2srP
+ -----END PGP SIGNATURE-----
+ 
+ --3xQkynibq3FKlJyM--
+
+From: Bernhard Reiter <bernhard@intevation.de>
+To: apbugs@Apache.Org
+Cc:  
+Subject: mod_userdir/5012: Comment for fix
+Date: Tue, 27 Feb 2001 23:10:54 +0100
+
+ --mvuFargmsA+C2jC8
+ Content-Type: text/plain; charset=us-ascii
+ Content-Disposition: inline
+ 
+ Of course my proposed fix to the apache sources is untested.
+ 
+ --mvuFargmsA+C2jC8
+ Content-Type: application/pgp-signature
+ Content-Disposition: inline
+ 
+ -----BEGIN PGP SIGNATURE-----
+ Version: GnuPG v1.0.4 (GNU/Linux)
+ Comment: Weitere Infos: siehe http://www.gnupg.org
+ 
+ iEYEARECAAYFAjqcJe4ACgkQh9ag3dpKERZoOgCgyGlqYnhoTKbnyLvXqG+pIce7
+ bmEAni8TMfxQYSvf3eNC6rZLFhqUwupN
+ =M5uH
+ -----END PGP SIGNATURE-----
+ 
+ --mvuFargmsA+C2jC8--
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

@@ -1,0 +1,147 @@
+Received: (qmail 20761 invoked by uid 2012); 11 Jun 1998 21:12:56 -0000
+Message-Id: <19980611211256.20760.qmail@hyperreal.org>
+Date: 11 Jun 1998 21:12:56 -0000
+From: Eric Raskin <ehr@listworks.com>
+Reply-To: ehr@listworks.com
+To: apbugs@hyperreal.org
+Subject: ProxyPassReverse causes endless loop when Proxying "/" directory
+X-Send-Pr-Version: 3.2
+
+>Number:         2422
+>Category:       mod_proxy
+>Synopsis:       ProxyPassReverse causes endless loop when Proxying "/" directory
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jun 11 14:20:00 PDT 1998
+>Last-Modified:  Thu Feb 11 12:51:23 PST 1999
+>Originator:     ehr@listworks.com
+>Organization:
+>Release:        1.3.0
+>Environment:
+Running Linux 2.0.33 with gcc 2.7.2.1
+>Description:
+I'm using apache as a fancy http firewall proxy.  Outside world accesses my site via www.listworks.com and gets to firewall.  Apache redirects all accesses to my internal NT Server 4.0 IIS server (not accessible from outside the firewall).  I use the following configuration:
+
+ProxyPass        / http://<internal server>.listworks.com/postoffice
+ProxyPassReverse / http://<internal server>.listworks.com/postoffice
+
+The first part, ProxyPass, works properly.  However, when I use it by itself, the user can't follow any links within the site (they all reference <internal server>, which as I said, isn't accessible outside the firewall).  When I include the ProxyPassReverse directive, the apache server goes into an endless loop, and I receive the following over and over in the access_log file until I kill apache:
+
+ehrpc.listworks.com - - [11/Jun/1998:17:08:19 -0400] "GET / HTTP/1.1" 302 154
+ehrpc.listworks.com - - [11/Jun/1998:17:08:19 -0400] "GET // HTTP/1.1" 302 154
+ehrpc.listworks.com - - [11/Jun/1998:17:08:19 -0400] "GET // HTTP/1.1" 302 154
+ehrpc.listworks.com - - [11/Jun/1998:17:08:19 -0400] "GET // HTTP/1.1" 302 154
+ehrpc.listworks.com - - [11/Jun/1998:17:08:19 -0400] "GET // HTTP/1.1" 302 154
+ehrpc.listworks.com - - [11/Jun/1998:17:08:19 -0400] "GET // HTTP/1.1" 302 154
+                            <etc>
+
+Notice that the first item is slightly different -- "/" vs. "//".
+
+Also note that it works perfectly as long as the directory being proxied is not "/".  I tried it with a sub-directory and it worked fine.
+
+My web site can't get out until this is fixed... Please help!!  TIA
+>How-To-Repeat:
+Just set up a ProxyPass / ... and a ProxyPassReverse / ...
+>Fix:
+No -- sorry.  
+>Audit-Trail:
+
+From: Alvaro Martinez Echevarria <alvaro@lander.es>
+To: Eric Raskin <ehr@listworks.com>
+Cc:  Subject: mod_proxy/2422: your bug report to apache...
+Date: Fri, 12 Jun 1998 03:25:27 +0200 (CEST)
+
+ Hi.
+ I have done some research on your bug report to apache (with
+ synopsis "ProxyPassReverse causes endless loop when Proxying "/"
+ directory"). I have found out that probably you are trying to
+ do reverse-proxying on a subdirectory of your internal server,
+ and this causes a loop of redirections. As a temporary fix you
+ can try to add a trailing slash your internal URLs:
+ 
+ ProxyPass        / http://<internal server>.listworks.com/postoffice/
+ ProxyPassReverse / http://<internal server>.listworks.com/postoffice/
+ 
+ Anyway, we'll try to find a decent solution for this as soon as
+ possible.
+ Hope this helps.
+ Regards.
+ 
+ =2E------------------------------------------------------------------.
+ |   Alvaro Mart=EDnez Echevarr=EDa   |      LANDER SISTEMAS            |
+ |        alvaro@lander.es        |      P=BA Castellana, 121         |
+ `--------------------------------|      28046 Madrid, SPAIN        |
+                                  |      Tel: +34-91-5562883        |
+                                  |      Fax: +34-91-5563001        |
+                                  `---------------------------------'
+ 
+ 
+Comment-Added-By: lars
+Comment-Added-When: Fri Jun 12 04:42:51 PDT 1998
+Comment-Added:
+
+As a workaround you can use mod_rewrite.
+BTW, have you set UseCanonicalName to 'On' or 'Off'?
+
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Alvaro Martinez Echevarria <alvaro@lander.es>,
+  Eric Raskin <ehr@listworks.com>
+Cc: apbugs@apache.org
+Subject: Re: mod_proxy/2422: your bug report to apache...
+Date: Mon, 15 Jun 1998 18:18:04 -0700 (PDT)
+
+ I'm tempted to say we should just document this rather than attempt to
+ work around it.  Unless someone can find a cheap test to implement.
+ 
+ Dean
+ 
+
+From: Lars Eilebrecht <Lars.Eilebrecht@unix-ag.org>
+To: (Apache GNATS) <apbugs@apache.org>
+Cc:  Subject: RE: mod_proxy/2422: ProxyPassReverse causes endless loop when Proxying "/" directory
+Date: Mon, 15 Jun 1998 22:45:43 +0200 (CEST)
+
+ -----------------Forwarded message----------------------------
+ 
+ From: Eric Raskin <ehr@listworks.com>
+ To: lars@apache.org
+ Subject: RE: mod_proxy/2422: ProxyPassReverse causes endless loop when
+ Proxying "/" directory
+ 
+ lars,
+ 
+    I received a work-around that fixed the problem from Alvaro Martínez
+ Echevarría (alvaro@lander.es).  The solution was to add a trailing slash to
+ the redirected URL, like this:
+ 
+     ProxyPass      /    http://<internal server>.listworks.com/postoffice/
+     ProxyPassReverse /  http://<internal server>.listworks.com/postoffice/
+ 
+    This seems to be necessary since 'postoffice' is an internal directory on
+ my IIS server.
+ 
+    He also implied that this shouldn't be necessary (that they would work on
+ a better fix).  For me, this is good enough!!! :-)
+ 
+ 
+ --------------End of forwarded message-------------------------
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: lars
+State-Changed-When: Thu Feb 11 12:51:23 PST 1999
+State-Changed-Why:
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

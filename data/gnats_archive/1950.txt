@@ -1,0 +1,473 @@
+Received: (qmail 19188 invoked by uid 2012); 15 Mar 1998 10:53:04 -0000
+Message-Id: <19980315105304.19187.qmail@hyperreal.org>
+Date: 15 Mar 1998 10:53:04 -0000
+From: Steven Uggowitzer <uggowitzers@who.ch>
+Reply-To: uggowitzers@who.ch
+To: apbugs@hyperreal.org
+Subject: All child processes die. Parent remains and no longer responds to queries
+X-Send-Pr-Version: 3.2
+
+>Number:         1950
+>Category:       os-linux
+>Synopsis:       All child processes die. Parent remains and no longer responds to queries
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Mar 15 04:10:00 PST 1998
+>Last-Modified:  Wed Apr  8 16:01:23 PDT 1998
+>Originator:     uggowitzers@who.ch
+>Organization:
+>Release:        1.2.4 & 1.2.5
+>Environment:
+Linux RedHat 5.0, with latest libc & ld.so patches
+glibc-2.0.6-9, ld.so-1.9.5-5, libc-5.3.12-25
+Kernel 2.0.33 & 2.0.32 on HP SMP 2xPPro i686 512Mb Ram
+>Description:
+All child processes die for no apparent reason. This problem started for me
+when I upgraded to RedHat 5.0 from 4.2.  Prior to this, the system was working fine. The problem happens very often on my site - sometimes as frequently as once every 2 hours. It occurs with both Apache 1.2.4 & 1.2.5.  Also with
+Linux kernel 2.0.32 & 2.0.33.
+
+When the children all die, I get something like this in the error_log:
+
+error_log:
+[Sun Mar 15 00:56:02 1998] access to /home/live/html/cdr/pub/cdd/cddpub.htm fail
+ed for gaitana.interred.net.co, reason: File does not exist
+[Sun Mar 15 00:56:29 1998] access to /home/live/html/architext/AT-aimquery.html
+failed for proxy.arcos.org, reason: File does not exist
+[Sun Mar 15 00:58:24 1998] accept: (client socket): Connection reset by peer
+[Sun Mar 15 00:59:04 1998] accept: (client socket): Connection reset by peer
+[Sun Mar 15 00:59:35 1998] accept: (client socket): Connection reset by peer
+[Sun Mar 15 00:59:35 1998] accept: (client socket): Connection reset by peer
+[Sun Mar 15 01:01:52 1998] accept: (client socket): Connection reset by peer
+[Sun Mar 15 01:01:52 1998] accept: (client socket): Connection reset by peer
+[Sun Mar 15 01:01:52 1998] accept: (client socket): Connection reset by peer 
+
+I also have slightly hacked version of log_server_status running every minute.
+It reports the following for the minutes leading up to the above event:
+004300:209:6:2549:1.59382
+004401:211:7:2609:1.5662
+004500:216:8:2660:1.54391
+004600:217:8:2739:1.52671
+004700:221:8:2833:1.53781
+004800:227:9:2903:1.59585
+004900:237:7:2998:1.67424
+005000:236:9:3040:1.66213
+005101:242:8:3101:1.63953
+005201:247:3:3133:1.61418
+005300:248:2:3171:1.61129
+005400:245:5:3212:1.58615
+005500:250:0:3292:1.56556
+005601:247:3:3363:1.56482
+005701:250:0:3414:1.55866
+005759:250:0:3457:1.53429
+005901:250:0:3483:1.50583   
+From that point on, it can't speak to the server anymore.
+>How-To-Repeat:
+This bug seems to manifest itself on a random basis.  I can't directly repeat
+the problem.  However, I suspect that it is related to the amount of usage that
+the server is subjected to. There are 3 other httpd groups running on the same system bound to other IP alias addresses. All are compiled exactly the same way.  These never exhibit this nor any other problem. Only our main server (http://www.who.ch) crashs.  But it is typically subjected to 2-8 queries per second.  
+>Fix:
+As mentioned earlier, the problem started for me when I upgraded from RedHat 
+4.2 to 5.0.  Since I am running the same kernel (2.0.33)as before, even the 
+same binary, I don't suspect the problem is there.  However, the libc libraries 
+are drastically different in 5.0.  I think the problem might be there.  
+I have surgically examined my system for other cron jobs et al. that might
+interfere with the httpd and come up blank.  
+
+My latest attempt at fixing this has been to staticly compile and link the 
+server on a RedHat 4.2 machine.  The binary is huge (500K) but I don't really
+care because I have a lot of RAM.  This has now been running for about an hour
+with out any problems on the RedHat 5.0 machine. Time will tell....
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Steven Uggowitzer <uggowitzers@who.ch>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-linux/1950: All child processes die. Parent remains and no longer responds to queries
+Date: Sun, 15 Mar 1998 16:29:23 -0800 (PST)
+
+ On 15 Mar 1998, Steven Uggowitzer wrote:
+ 
+ > As mentioned earlier, the problem started for me when I upgraded from RedHat 
+ > 4.2 to 5.0.  Since I am running the same kernel (2.0.33)as before, even the 
+ > same binary, I don't suspect the problem is there.  However, the libc libraries 
+ > are drastically different in 5.0.  I think the problem might be there.  
+ > I have surgically examined my system for other cron jobs et al. that might
+ > interfere with the httpd and come up blank.  
+ 
+ Try typing "ldd httpd" against the dynamically linked httpd you brought
+ from 4.2 to 5.0 ... that should indicate if you're using any libraries
+ that aren't prepared to be used with libc5.  Send us the list of libraries
+ it mentions please.
+ 
+ If the 4.2 statically linked thing works, can you try doing a 5.0 native
+ compiled executable?
+ 
+ There are a few other related reports and I'm currently of the opinion
+ that it's some subtle glibc2 bug... but I've been unable to find it. 
+ 
+ Dean
+ 
+ 
+
+From: uggowitzers@who.ch
+To: Dean Gaudet <dgaudet@arctic.org>, Steven Uggowitzer <uggowitzers@who.ch>
+Cc: apbugs@hyperreal.org
+Subject: Re[2]: os-linux/1950: All child processes die. Parent remain
+Date: Mon, 16 Mar 1998 11:00:35 +0100
+
+ The static linked version also bombs.  Huff.  Now I'm really discouraged.
+ It crashs about once an hour.
+ 
+ Here's the ldd output on RedHat 5.0 for the server compiled on 4.2 and moved:
+ 
+ [stevie@pluto ~]$ ldd ./httpd
+         libgdbm.so.2 => /usr/lib/libgdbm.so.2 (0x40000000)
+         libc.so.5 => not found
+         libc.so.6 => /lib/libc.so.6 (0x4000a000)
+         /lib/ld-linux.so.1 => /lib/ld-linux.so.2 (0x00000000)  
+ 
+ Here's the ldd output on RedHat 5.0 for the server compiled on the same
+ machine:
+ 
+ [stevie@pluto src]$ ldd ./httpd
+         libcrypt.so.1 => /lib/libcrypt.so.1 (0x40004000)
+         libgdbm.so.2 => /usr/lib/libgdbm.so.2 (0x40031000)
+         libc.so.6 => /lib/libc.so.6 (0x40037000)
+         /lib/ld-linux.so.2 => /lib/ld-linux.so.2 (0x00000000)  
+ 
+ 
+ This is the script that I have in a cron job, running once a minute 
+ to wake things up again. Someone might find it useful:
+ 
+ #!/usr/bin/perl
+ # By Steven Uggowitzer
+ # WHO/OMS WHO-HQ ISM/TES
+ # Makes sure the program is still running.
+ # This should be run in a CRON job every
+ # minute.  Will leave it here until we resolve problems
+ # with RedHat 5.0 and Apache.
+ # March 15, 1998.
+ 
+ $serverpid="/home/live/logs/httpd.pid";
+ $serverbin="/home/live/bin/httpd";
+ $serverconf="/home/live/conf/httpd.conf";
+ 
+ open FD, "/bin/ps auxwww | /bin/grep live\/bin | /usr/bin/wc -l|";
+ while (<FD>) {
+  $servers=$_;
+ }
+ close FD;
+ $servers=~s/ //ig;
+ $servers=~s/\t//ig;
+ chomp $servers;
+ 
+ open FD, $serverpid;
+ while(<FD>) {
+    $pid=$_;
+ }
+ close FD;
+ chomp $pid;
+ 
+ if ($servers < 5 ) {
+   print "Had to restart.\n";
+   print "Killing PID [$pid]\n";
+   kill 'TERM', $pid;
+   print "Starting again.\n";
+   system("$serverbin -f $serverconf");               
+ }
+ 
+ 
+ I've gone back to the dynamically linked 1.2.5 Apache. Since it doesn't
+ seem to make much of a difference.  Suggestions?
+ 
+ 
+ Steven
+ 
+ 
+  ______________________________________________________________________
+ | Steven Uggowitzer                | email: uggowitzers@who.ch         |
+ | World Health Organization,ISM/TES|        stevie@emf.mcgill.ca       |
+ | CH-1211, Geneva 27               | phone: (41) 22 791 2453/2111      |
+ | Switzerland                      |   fax: (41) 22 791 0746           |
+  -See you at INET'98, Geneva 21-24,July 98 http://www.isoc.org/inet98/
+ 
+ 
+ 
+ 
+ 
+ 
+ ____________________Reply Separator____________________
+ Subject:    Re: os-linux/1950: All child processes die. Parent remains a
+ Author: Dean Gaudet <dgaudet@arctic.org>
+ Date:       15-Mar-1998 16:29
+ 
+ On 15 Mar 1998, Steven Uggowitzer wrote:
+ 
+ > As mentioned earlier, the problem started for me when I upgraded from RedHat 
+ > 4.2 to 5.0.  Since I am running the same kernel (2.0.33)as before, even the 
+ > same binary, I don't suspect the problem is there.  However, the libc
+ libraries 
+ > are drastically different in 5.0.  I think the problem might be there.  
+ > I have surgically examined my system for other cron jobs et al. that might
+ > interfere with the httpd and come up blank.  
+ 
+ Try typing "ldd httpd" against the dynamically linked httpd you brought
+ from 4.2 to 5.0 ... that should indicate if you're using any libraries
+ that aren't prepared to be used with libc5.  Send us the list of libraries
+ it mentions please.
+ 
+ If the 4.2 statically linked thing works, can you try doing a 5.0 native
+ compiled executable?
+ 
+ There are a few other related reports and I'm currently of the opinion
+ that it's some subtle glibc2 bug... but I've been unable to find it. 
+ 
+ Dean
+ 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Steven Uggowitzer <uggowitzers@who.ch>
+Cc: apbugs@hyperreal.org
+Subject: Re: Re[2]: os-linux/1950: All child processes die. Parent remain
+Date: Mon, 16 Mar 1998 11:28:04 -0800 (PST)
+
+ On Mon, 16 Mar 1998 uggowitzers@who.ch wrote:
+ 
+ > Here's the ldd output on RedHat 5.0 for the server compiled on 4.2 and moved:
+ > 
+ > [stevie@pluto ~]$ ldd ./httpd
+ >         libgdbm.so.2 => /usr/lib/libgdbm.so.2 (0x40000000)
+ >         libc.so.5 => not found
+ >         libc.so.6 => /lib/libc.so.6 (0x4000a000)
+ >         /lib/ld-linux.so.1 => /lib/ld-linux.so.2 (0x00000000)  
+ 
+ That looks really really wrong.  If it's compiled against libc5 it
+ certainly shouldn't be using libc6/glibc stuff.  It will definately crash
+ that way.
+ 
+ > Here's the ldd output on RedHat 5.0 for the server compiled on the same
+ > machine:
+ > 
+ > [stevie@pluto src]$ ldd ./httpd
+ >         libcrypt.so.1 => /lib/libcrypt.so.1 (0x40004000)
+ >         libgdbm.so.2 => /usr/lib/libgdbm.so.2 (0x40031000)
+ >         libc.so.6 => /lib/libc.so.6 (0x40037000)
+ >         /lib/ld-linux.so.2 => /lib/ld-linux.so.2 (0x00000000)  
+ 
+ That looks right.
+ 
+ >   kill 'TERM', $pid;
+ >   print "Starting again.\n";
+ >   system("$serverbin -f $serverconf");               
+ 
+ You probably want to insert a delay in there or you'll end up with "unable
+ to bind to port" errors occasionally.
+ 
+ > I've gone back to the dynamically linked 1.2.5 Apache. Since it doesn't
+ > seem to make much of a difference.  Suggestions?
+ 
+ Have you tried an alpha linux newsgroup?  Maybe others have solved this...
+ 
+ You've got the latest updates from redhat for everything right?  You
+ definately need the glibc update. 
+ 
+ Dean
+ 
+ 
+
+From: uggowitzers@who.ch
+To: Dean Gaudet <dgaudet@arctic.org>, Steven Uggowitzer <uggowitzers@who.ch>
+Cc: apbugs@hyperreal.org
+Subject: Re[2]: Re[2]: os-linux/1950: All child processes die. Parent
+Date: Tue, 17 Mar 1998 09:32:42 +0100
+
+ >Have you tried an alpha linux newsgroup?  Maybe others have solved this...
+ >
+ >You've got the latest updates from redhat for everything right?  You
+ >definately need the glibc update. 
+ 
+ I've done a little bit of poking around on the net but haven't come up
+ with anything.  I've also verified all the RPMs on the machine. All the 
+ library and core system related files are up to date.
+ 
+ Last night it died about once every half hour.  One thing I have noticed is
+ that prior to dying, the number of requests being serviced increases to the 
+ limit set on my machine (250). Then the server dies. For example:
+ 
+ Current Time: Tue Mar 17 09:09:04 1998 
+ Restart Time: Tue Mar 17 08:36:00 1998 
+ Server uptime: 33 minutes 4 seconds
+ Total accesses: 3457 - Total Traffic: 20.6 MB
+ CPU Usage: u14.7 s10.47 cu22.46 cs7.97 - 2.8% CPU load
+ 1.74 requests/sec - 10.6 kB/second - 6.1 kB/request
+ 248 requests currently being processed, 2 idle servers 
+ WKWKWKKKWWWKWKWWKKKKKKKKWWWKKKKKWKKKKKKKKWWKKKWWKKKKWWKKWKKWKKWK
+ KKKKWWKWKWKKWKKKWKKKKKWKWKKWKWWWKWKKWKKKWWWKKWWWKWKKKWWWWKKWWWKK
+ WWWKWKKWKWWKWWKKKWWKKKKWKRWWKKKKKWKKWWWKWKWKWWKKKKKKWKKKKWWWKKKW
+ WKKKWKKWWWKKWKKWKWWKKKKWW_KKKKWWKKWWKWKWKWKKKKDKKKKWWKW_WW......
+ 
+ However, my server does NOT ever get that many concurrent requests.  The
+ KeepAlives seem to linger way too long as well. Also there are way too
+ many of them active. Infact there are way more than my config file
+ specifies (see below).
+ 
+ Any ideas?
+ 
+ Steven
+ 
+  ______________________________________________________________________
+ | Steven Uggowitzer                | email: uggowitzers@who.ch         |
+ | World Health Organization,ISM/TES|        stevie@emf.mcgill.ca       |
+ | CH-1211, Geneva 27               | phone: (41) 22 791 2453/2111      |
+ | Switzerland                      |   fax: (41) 22 791 0746           |
+  -See you at INET'98, Geneva 21-24,July 98 http://www.isoc.org/inet98/
+ 
+ 
+ ##########SNIP FROM HTTPD.CONF##############################
+ 
+ # CacheNegotiatedDocs: By default, Apache sends Pragma: no-cache with each
+ # document that was negotiated on the basis of content. This asks proxy
+ # servers not to cache the document. Uncommenting the following line disables
+ # this behavior, and proxies will be allowed to cache the documents.
+ 
+ CacheNegotiatedDocs
+ 
+ # Timeout: The number of seconds before receives and sends time out
+ #  n.b. the compiled default is 1200 (20 minutes !)
+ 
+ # Set to 5 minutes.  Steven
+ Timeout 300
+ 
+ # KeepAlive: The number of Keep-Alive persistent requests to accept
+ # per connection. Set to 0 to deactivate Keep-Alive support
+ 
+ KeepAlive On
+ 
+ # But this has some problems with Netscape 2.0 so:
+ BrowserMatch Mozilla/2 nokeepalive
+ BrowserMatch "MSIE 4\.0b2;" nokeepalive
+ BrowserMatch Java/1.0 force-response-1.0
+ BrowserMatch JDK/1.0 force-response-1.0
+ BrowserMatch "RealPlayer 4.0" force-response-1.0
+ BrowserMatch "MSIE 4\.0b2;" downgrade-1.0 force-response-1.0
+ 
+ # KeepAliveTimeout: Number of seconds to wait for the next request
+ KeepAliveTimeout 15
+ 
+ #The MaxKeepAliveRequests directive limits the number of requests allowed
+ #per connection when KeepAlive is on. If it is set to "0", unlimited requests wi
+ ll be allowed.
+ #We recommend that this setting be kept to a high value for maximum server perfo
+ rmance.
+ 
+ MaxKeepAliveRequests 40                           
+ # Server-pool size regulation.  Rather than making you guess how many
+ # server processes you need, Apache dynamically adapts to the load it
+ # sees --- that is, it tries to maintain enough server processes to
+ # handle the current load, plus a few spare servers to handle transient
+ # load spikes (e.g., multiple simultaneous requests from a single
+ # Netscape browser).
+ 
+ # It does this by periodically checking how many servers are waiting
+ # for a request.  If there are fewer than MinSpareServers, it creates
+ # a new spare.  If there are more than MaxSpareServers, some of the
+ # spares die off.  These values are probably OK for most sites ---
+ 
+ MinSpareServers 5
+ MaxSpareServers 10
+ 
+ # Number of servers to start --- should be a reasonable ballpark figure.
+ 
+ StartServers 8
+ 
+ # Limit on total number of servers running, i.e., limit on the number
+ # of clients who can simultaneously connect --- if this limit is ever
+ # reached, clients will be LOCKED OUT, so it should NOT BE SET TOO LOW.
+ # It is intended mainly as a brake to keep a runaway server from taking
+ # Unix with it as it spirals down...
+ 
+ MaxClients 250
+ 
+ # MaxRequestsPerChild: the number of requests each child process is
+ #  allowed to process before the child dies.
+ #  The child will exit so as to avoid problems after prolonged use when
+ #  Apache (and maybe the libraries it uses) leak.  On most systems, this
+ #  isn't really needed, but a few (such as Solaris) do have notable leaks
+ #  in the libraries.
+ 
+ MaxRequestsPerChild 30                 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Steven Uggowitzer <uggowitzers@who.ch>
+Cc: apbugs@hyperreal.org
+Subject: Re: Re[2]: Re[2]: os-linux/1950: All child processes die. Parent
+Date: Tue, 17 Mar 1998 11:10:27 -0800 (PST)
+
+ On Tue, 17 Mar 1998 uggowitzers@who.ch wrote:
+ 
+ > Any ideas?
+ 
+ Maybe something is going wrong with timeouts, keepalive timeouts in
+ particular.  Try this:
+ 
+ telnet www.foo.com 80
+ GET / HTTP/1.0
+ Connection: keep-alive
+ 
+ 
+ (that's an extra blank line in there after the keep-alive header, you have
+ to hit return twice) 
+ 
+ And then sit there in the telnet session after the response and it should
+ close approximately 15 seconds later.  If it doesn't then we've found the
+ problem. 
+ 
+ In that case you want to get some straces... of the parent and some of the
+ children.  Preferably of children that seem to be blocked waiting forever. 
+ Use "strace -p <pid>". 
+ 
+ Dean
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Wed Apr  8 15:55:13 PDT 1998
+State-Changed-Why:
+This appears to be similar to PR#1940, which the
+submitter has closed with the following note:
+
+:It seems that the problem of dying httpds on RedHat 5.0 is solved by:
+:
+:  Upgrade to glibc-{devel-}2.0.7-4
+:  Recompile apache (rpm --rebuild ...)
+:
+:In other words: The bug is/was in glibc.
+:
+:The server has now been up for 30 hours. Before the compile, the server
+:would die after max 6 hours.
+:
+:/Ole
+
+Can you verify that this does/doesn't solve the issue for
+you?
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Wed Apr  8 16:01:23 PDT 1998
+State-Changed-Why:
+Upgrade of glibc appears to have fixed this.  (Noted
+from response elsewhere in the bugdb.)  Thanks for
+using Apache!
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,245 @@
+Received: (qmail 26961 invoked by uid 2012); 6 Aug 1998 08:52:58 -0000
+Message-Id: <19980806085258.26960.qmail@hyperreal.org>
+Date: 6 Aug 1998 08:52:58 -0000
+From: Nic Doye <nic@niss.ac.uk>
+Reply-To: nic@niss.ac.uk
+To: apbugs@hyperreal.org
+Subject: ap_config.h misses STDIN_FILENO STDOUT_FILENO and STDERR_FILENO
+X-Send-Pr-Version: 3.2
+
+>Number:         2796
+>Category:       os-solaris
+>Synopsis:       ap_config.h misses STDIN_FILENO STDOUT_FILENO and STDERR_FILENO
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Aug  6 02:00:01 PDT 1998
+>Last-Modified:  Thu Feb 11 13:26:39 PST 1999
+>Originator:     nic@niss.ac.uk
+>Organization:
+>Release:        1.3.1
+>Environment:
+gristle $ uname -a
+SunOS gristle 5.6 Generic sun4m sparc SUNW,SPARCstation-5
+gristle $ cc -V
+cc: WorkShop Compilers 4.2 30 Oct 1996 C 4.2
+>Description:
+Ok. make dumps out in alloc.c because STD*_FILENO are not defined. I can't
+believe no-one else has had this problem, so either I'm a complete incompetent
+or everyone else in the world uses gcc.
+>How-To-Repeat:
+Um. Find a Solaris 2.6 box with the workshop compilers?
+>Fix:
+OK. Here's a patch. (edited by hand afterwards so I hope it isn't screwed :-)
+I've put a bit in to check for the SunPro compiler (I don't have room for gcc
+on my machine so I can't test that - but I know other Solaris users who use
+gcc).
+
+gristle $ diff -c src/include/ap_config.h src/include/ap_config.h.new >> solaris.sunpro.patch
+1gristle $ more solaris.sunpro.patch 
+*** src/include/ap_config.h     Sat Jul 18 16:30:43 1998
+--- src/include/ap_config.h.new Thu Aug  6 09:18:49 1998
+***************
+*** 164,169 ****
+--- 164,175 ----
+  #define HAVE_SYSLOG 1
+  #define SYS_SIGLIST _sys_siglist
+  
++ #ifdef __SUNPRO_C
++ #define STDIN_FILENO  0
++ #define STDOUT_FILENO 1
++ #define STDERR_FILENO 2
++ #endif
++ 
+  #elif defined(IRIX)
+  #undef HAVE_GMTOFF
+  /* IRIX has killpg, but it's only in _BSD_COMPAT, so don't use it in case
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Thu Aug  6 09:17:38 PDT 1998
+State-Changed-Why:
+Erm... these are supposed to be defined by your OS and,
+on Solaris, they are.  Does your /usr/include/unistd.h not
+have them in?  Are you sure your compiler is properly installed?
+
+The solution you suggest is just a workaround for some other
+problem.
+
+From: Marc Slemko <marcs@znep.com>
+To: apbugs@apache.org
+Cc:  Subject: Re: os-solaris/2796: ap_config.h misses STDIN_FILENO STDOUT_FILENO
+ and STDERR_FILENO (fwd)
+Date: Thu, 6 Aug 1998 09:35:31 -0700 (PDT)
+
+ ---------- Forwarded message ----------
+ Date: Thu, 6 Aug 1998 17:21:39 +0100 (BST)
+ From: N J Doye <nic@niss.ac.uk>
+ To: marc@hyperreal.org
+ Cc: apache-bugdb@apache.org,
+     marc@apache.org,
+     nic@niss.ac.uk
+ Subject: Re: os-solaris/2796: ap_config.h misses STDIN_FILENO STDOUT_FILENO and
+     STDERR_FILENO
+ 
+ marc@hyperreal.org wrote on 6-August-1998:
+ 
+ ->Synopsis: ap_config.h misses STDIN_FILENO STDOUT_FILENO and STDERR_FILENO
+ ->
+ ->State-Changed-From-To: open-feedback
+ ->State-Changed-By: marc
+ ->State-Changed-When: Thu Aug  6 09:17:38 PDT 1998
+ ->State-Changed-Why:
+ ->Erm... these are supposed to be defined by your OS and,
+ ->on Solaris, they are.  Does your /usr/include/unistd.h not
+ ->have them in?  Are you sure your compiler is properly installed?
+ ->
+ ->The solution you suggest is just a workaround for some other
+ ->problem.
+ 
+ Err, you're right they _are_ in that file. I didn't really believe it
+ could have been your mistake. I'll investigate further tomorrow and
+ let you know one way or another.
+ 
+ Thanks for everything,
+ nic (feeling foolish)
+ -- 
+ Dr  N.J.Doye, Systems Programmer, CHEST and NISS Centre, University of
+ Bath,   Claverton Down,     Bath,     Somerset.    BA2 7AY.    England
+ 
+
+From: djc6@alpha.cwru.edu (David Carlin)
+To: marc@hyperreal.org
+Cc: apbugs@Apache.Org
+Subject: Re: os-solaris/2796: ap_config.h misses STDIN_FILENO STDOUT_FILENO and STDERR_FILENO
+Date: Sun, 30 Aug 1998 19:44:59 -0400 (EDT)
+
+ Hello,
+ 
+ 	I've encountered the same problem under Solaris 2.5.1 with
+ GCC 2.8.1.  Here's what happens:
+ 
+ I use the following line to run configure:
+ 
+ env 'LIBS=-lkrb' \
+ 'CFLAGS=-DKRB4 -DKRB_DEF_REALM=\\\"INS.CWRU.EDU\\\"' \
+ ./configure --compat --prefix=/www/secure \
+ --add-module=src/modules/kerberos/mod_auth_kerb.c
+ 
+ and apache stops compiling at src/main/alloc.c with the following error:
+ 
+ gcc -c  -I../os/unix -I../include   -DSOLARIS2=251 -DKRB4 -DKRB_DEF_REALM=\"INS.CWRU.EDU\" `../apaci` alloc.c
+ alloc.c: In function `spawn_child_core':
+ alloc.c:1949: `STDOUT_FILENO' undeclared (first use in this function)
+ alloc.c:1949: (Each undeclared identifier is reported only once
+ alloc.c:1949: for each function it appears in.)
+ alloc.c:1955: `STDIN_FILENO' undeclared (first use in this function)
+ alloc.c:1961: `STDERR_FILENO' undeclared (first use in this function)
+ *** Error code 1
+ make: Fatal error: Command failed for target `alloc.o'
+ Current working directory /www/build/apache_1.3.1/src/main
+ 
+ If I run configure with the following line:
+ 
+ env 'CFLAGS=-DKRB4 -DKRB_DEF_REALM=\\\"INS.CWRU.EDU\\\"' \
+ ./configure --compat --prefix=/www/secure \
+ --add-module=src/modules/kerberos/mod_auth_kerb.c
+ 
+ it gets past alloc.c, but stops where mod_auth_kerb.c needs libkrb.a.
+ 
+ Why would changing LIBS affect the inclusion of those variables from
+ unistd.h?  My apologies if I am missing something obvious..
+ 
+ Anothing thing I noticed is if I try to include mod_rewrite with the option
+ "--enable-module=rewrite" and I have a LIBS var defined, I get the following
+ when I run ./configure:
+ 
+     o rewrite_module uses ConfigStart/End
+       disabling DBM support for mod_rewrite
+       (perhaps you need to add -ldbm, -lndbm or -lgdbm to EXTRA_LIBS)
+ 
+ When I remove 'LIBS=-lkrb' it gets included and I get the following output
+ from ./configure:
+ 
+     o rewrite_module uses ConfigStart/End
+       enabling DBM support for mod_rewrite
+ 
+ I tried changing 'LIBS=-lkrb' to 'LIBS=-L/usr/ucblib:/usr/lib -lkrb -ldbm'
+ but it didn't help at all.
+ 
+ 		-David
+
+From: Marc Slemko <marcs@znep.com>
+To: David Carlin <djc6@alpha.CES.CWRU.Edu>
+Cc: apbugs@Apache.Org
+Subject: Re: os-solaris/2796: ap_config.h misses STDIN_FILENO STDOUT_FILENO
+ and STDERR_FILENO
+Date: Sun, 30 Aug 1998 17:10:59 -0700 (PDT)
+
+ On Sun, 30 Aug 1998, David Carlin wrote:
+ 
+ > Hello,
+ > 
+ > 	I've encountered the same problem under Solaris 2.5.1 with
+ > GCC 2.8.1.  Here's what happens:
+ > 
+ > I use the following line to run configure:
+ > 
+ > env 'LIBS=-lkrb' \
+ > 'CFLAGS=-DKRB4 -DKRB_DEF_REALM=\\\"INS.CWRU.EDU\\\"' \
+ > ./configure --compat --prefix=/www/secure \
+ > --add-module=src/modules/kerberos/mod_auth_kerb.c
+ 
+ The problem is that, for whatever reason, you aren't including all the
+ libraries that -lkrb needs.  It may need -lsocket -lnsl or something else.  
+ 
+ The routine to check to see if a header file exists uses the extra libs
+ you give, so if something is wrong with them then it won't think any of
+ the header files exist.  This can be confusing because in some cases the
+ final thing may still link if Apache automatically includes other
+ libraries (eg. -lsocket) that aren't included at that time.
+ 
+ > it gets past alloc.c, but stops where mod_auth_kerb.c needs libkrb.a.
+ 
+ Are you saying it can't find libkrb.a?  Then that is your problem; your
+ system isn't setup so that libkrb.a can be found so the compile is
+ failing.
+ 
+ 
+Comment-Added-By: lars
+Comment-Added-When: Sat Nov 14 08:23:43 PST 1998
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: lars
+State-Changed-When: Thu Feb 11 13:26:39 PST 1999
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

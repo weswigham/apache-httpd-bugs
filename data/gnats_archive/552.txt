@@ -1,0 +1,80 @@
+From nobody@hyperreal.com  Tue May  6 11:55:45 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id LAA20345;
+	Tue, 6 May 1997 11:55:45 -0700 (PDT)
+Message-Id: <199705061855.LAA20345@hyperreal.com>
+Date: Tue, 6 May 1997 11:55:45 -0700 (PDT)
+From: Igor Brezac <igor@ipass.net>
+Reply-To: igor@ipass.net
+To: apbugs@hyperreal.com
+Subject: Web server stops operating properly when using lot of virtual domains
+X-Send-Pr-Version: 3.2
+
+>Number:         552
+>Category:       os-solaris
+>Synopsis:       Web server stops operating properly when using lot of virtual domains
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Tue May  6 12:00:03 1997
+>Last-Modified:  Wed May  7 11:44:52 PDT 1997
+>Originator:     igor@ipass.net
+>Organization:
+>Release:        1.1.3 & 1.2b10
+>Environment:
+Solaris 2.5 & 2.5.1 w/ latest patches
+SunOS passport.ipass.net 5.5.1 Generic_103640-08 sun4u sparc SUNW,Ultra-1
+Reading specs from /usr/local/lib/gcc-lib/sparc-sun-solaris2.5.1/2.7.2.2/specs
+gcc version 2.7.2.2
+>Description:
+This is famous Solaris bug where open() will not be able to create 
+file descriptor greater then 256 even if ulimit allows more.
+
+
+>How-To-Repeat:
+Setup apache with 130 virtual domains and have at least 2 open logs for each
+domain.  CGI scripts will not work.
+>Fix:
+alloc.c - enhanced popenf routine
+
+int popenf(struct pool *a, char *name, int flg, int mode)
+{
+  int fd;
+#ifdef SOLARIS2
+  int nfd;
+#endif
+
+  block_alarms();
+  fd = open(name, flg, mode);
+#ifdef SOLARIS2
+  if (fd >= 0 && fd < 256) {
+    nfd = fcntl(fd, F_DUPFD, 256);
+    close(fd);
+    fd = nfd;
+  }
+#endif
+  if (fd >= 0) note_cleanups_for_fd (a, fd);
+  unblock_alarms();
+  return fd;
+}
+%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Wed May  7 11:44:52 PDT 1997
+State-Changed-Why:
+Yeah this is a solution that has been considered, but it has always
+seemed too ugly a workaround.  However I think I'll do a full
+patch catching the other cases you don't (like the accept(), and
+socket() calls).  Note that your patch should check the return
+value of fcntl.
+
+Thanks for using Apache!
+Dean
+>Unformatted:
+
+

@@ -1,0 +1,116 @@
+Received: (qmail 30497 invoked by uid 501); 26 Apr 2001 08:28:00 -0000
+Message-Id: <20010426082800.30496.qmail@apache.org>
+Date: 26 Apr 2001 08:28:00 -0000
+From: Sander van Zoest <sander-aprbug@vanzoest.com>
+Reply-To: sander-aprbug@vanzoest.com
+To: submit@bugz.apache.org
+Subject: httpd-2.0 --srcdir / apr-util --with-apr broken
+X-Send-Pr-Version: 3.110
+
+>Number:         7630
+>Category:       build
+>Synopsis:       httpd-2.0 --srcdir / apr-util --with-apr broken
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Apr 26 01:30:00 PDT 2001
+>Closed-Date:    Sun Jul 08 19:30:29 PDT 2001
+>Last-Modified:  Sun Jul 08 19:30:29 PDT 2001
+>Originator:     sander-aprbug@vanzoest.com
+>Release:        2.0.16-beta
+>Organization:
+>Environment:
+This is probably largely irrelevant, but here it goes:
+FreeBSD 4.3-STABLE #1: Mon Apr 23 12:13:35 PDT 2001
+gcc version 2.95.3 [FreeBSD] 20010315 (release)
+>Description:
+As posted on new-httpd@apache.org on Feb 5th, 2001 in
+Message-ID: <Pine.BSF.4.21.0102051056540.75094-100000@escher.vanzoest.com>
+
+Building Apache HTTPd 2.0 with --srcdir= with a path to a read-only src tree,
+breaks because apr-util expects to be passed a --with-apr which is impossible
+because the src and obj files are in two seperate place that can not be pointed
+to via a single path argument.
+>How-To-Repeat:
+Okay. It has been a little while and my source tree might be a little tweaked
+but this still works for me to try to figure this out.
+
+1) % mkdir -p src obj/httpd-2.0
+2) % cd src
+3) checkout httpd-2.0,apr and apr-util
+4) % ln -s src/apr httpd-2.0/srclib/apr
+   % ln -s src/apr-util httpd-2.0/srclib/apr-util
+   % ln -s src/apr-iconv httpd-2.0/srclib/apr-iconv
+4) % ./buildconf
+5) % cd obj/httpd-2.0
+   % ../httpd-2.0/src/configure --srcdir="../httpd-2.0/src"
+--prefix="/usr/local"
+
+Now this assumes that src/ could be a read-only medium (you can just run some
+funny chmod to remove all write privledges to that tree).
+
+The build process should build Apache in obj/httpd-2.0, httpd-2.0 seems to
+work fine, srclib/apr seems to build fine, apr-util doesn't.
+
+apr-util requires the --with-apr=<path> option to its configure. The problem
+really is, is that apr-util has no knowledge what it should find under
+obj/httpd-2.0/srclib/apr or when it should look at src/httpd-2.0/srclib/apr,
+since it expects only one dir with both of the files in that single place. Things
+like APRVARS and apr.h are in the obj dir, but when it looks for apr_pools.h
+in the obj dir it fails, because it should be finding this in the src dir.
+
+Although this might be tweaked a little, roughly the error you get is
+the following:
+
+<snip>
+checking for mawk... (cached) awk
+checking for rm... (cached) rm
+checking if APR was just build using --srcdir... not found
+configure: error: APR could not be located. Please use the --with-apr option.
+configure failed for srclib/apr-util
+%
+
+The check for srcdir might not exist, that might have been me hacking,
+I don't remember.
+
+Hope that helps to repeat the problem.
+>Fix:
+1) provide a way to give two arguments for apr (src and objs) to ./configure and
+   use this as a default to pass on to apr-util from httpd-2.0.
+2) require installation of apr onto system and use installed apr for dependency
+   checking and building of apr-util.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rbb
+State-Changed-When: Sun Jul  8 19:30:27 PDT 2001
+State-Changed-Why:
+I have just committed changes to allow all of the projects
+included with Apache 2.0 to build when --srcdir is used.
+APR, APR-utils, Expat, even Apache's support directories
+were not always using the correct location to build from.
+
+They have all been fixed, and VPATH support should work as
+advertised now.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

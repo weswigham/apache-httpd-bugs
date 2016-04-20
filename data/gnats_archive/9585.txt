@@ -1,0 +1,84 @@
+Received: (qmail 79365 invoked by uid 501); 24 Jan 2002 21:10:50 -0000
+Message-Id: <20020124211049.79362.qmail@apache.org>
+Date: 24 Jan 2002 21:10:49 -0000
+From: Christophe BAEGERT <cbaegert@europeanservers.net>
+Reply-To: cbaegert@europeanservers.net
+To: submit@bugz.apache.org
+Subject: CGI scripts running whith SuExec become immortal after "apachectl graceful"
+X-Send-Pr-Version: 3.110
+
+>Number:         9585
+>Category:       suexec
+>Synopsis:       CGI scripts running whith SuExec become immortal after "apachectl graceful"
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jan 24 13:20:00 PST 2002
+>Closed-Date:
+>Last-Modified:
+>Originator:     cbaegert@europeanservers.net
+>Release:        1.3.14 to 1.3.23
+>Organization:
+apache
+>Environment:
+Linux Mandrake 7.2 with kernel 2.4.16 (Athlon)
+Linux Mandrake 8.1 with kernel 2.4.17 (PIII)
+>Description:
+Every script taking a long time to be executed can be dangerous when 
+executing "apachectl graceful", because if a "graceful restart" has occured 
+between the time when you begin to load the page and the time when you hit 
+the stop button (or reload the script), the process won't die, and will
+continue infinitely, and if you reload, the new process will be "immortal"
+as well, as will be all the next ones !!!
+
+If I comment "User" and "Group" in my Virtual Host configuration, and changes 
+to permissions of the script to 755, stop Apache, start Apache, call my 
+script and then restart gracefully apache, the process becomes  <defunct> 
+just after I hit the stop button, and then die. So everything is OK without 
+SuExec.
+
+So if Apache allows 100 childs, just type 100 times <Enter> in the URL bar 
+after loading the script a first time and after a graceful restart, and you 
+can trust all the childs until the system administrator kills them manually. 
+During this time, Apache won't be able to respond to other visitors any more. 
+This need only a very few resources on the remote attacker and on the network 
+(9600bits/s can be enough...).
+
+This can even prevent Apache from restarting. I even had to reboot my web server.
+
+I send it to security@apache.org, since this can be used for a DoS attack.
+But no answer for 2 days....
+>How-To-Repeat:
+use this script with suexec, run it, then restart apache gracefully, then reload the script several times, and type "top" !
+
+#!/usr/bin/perl
+printf "Content-type: text/html\n\n<html><body>";
+for ($i=1;$i<=4000;$i++)
+{print "$i\n<br>";sleep(1);
+}
+>Fix:
+Just kill the "suexeced" cgi-scripts when using "apachectl graceful", like are the other CGIs.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

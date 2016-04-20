@@ -1,0 +1,224 @@
+Received: (qmail 89646 invoked by uid 501); 28 Jul 2001 21:02:25 -0000
+Message-Id: <20010728210225.89645.qmail@apache.org>
+Date: 28 Jul 2001 21:02:25 -0000
+From: Taketo Kabe <kabe@sra-tohoku.co.jp>
+Reply-To: kabe@sra-tohoku.co.jp
+To: submit@bugz.apache.org
+Subject: [PATCH] byterange on SSI puts excess buckets after error response
+X-Send-Pr-Version: 3.110
+
+>Number:         8102
+>Category:       general
+>Synopsis:       [PATCH] byterange on SSI puts excess buckets after error response
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Jul 28 14:10:00 PDT 2001
+>Closed-Date:    Wed Aug 01 22:03:59 PDT 2001
+>Last-Modified:  Wed Aug 01 22:03:59 PDT 2001
+>Originator:     kabe@sra-tohoku.co.jp
+>Release:        2.0.21
+>Organization:
+>Environment:
+
+SunOS 5.8 Generic_108528-05 sun4u sparc SUNW,Ultra-60
+gcc version 2.95.2 19991024 (release)
+
+httpd-2_0_17-alpha --enable-include --enable-cgid
+>Description:
+
+When you request a out-of-range byterange on SSI file, the response will
+put excess things after proper 416 error response head/body.
+
+This is an forward port of PR#7636, which was "fixed" on 2.0.20
+and reappeared on 2.0.21, by the modules/http/http_protocol.c:reset_filters()
+modification.
+
+The problem is identical as reported in PR#7636.
+
+Analysis: The upstream filter (INCLUDES) trys to push on the content
+buckets out to network even after the downstream filter (BYTERANGE)
+has sent down an error bucket and sent out an error response.
+
+INCLUDE----BYTERANGE----CONTENT_LENGTH----HEADER----[conn_filters]
+           out of range,
+           detach
+           sends down 416 error bucket
+                                     ap_die()
+                                     reset_filter
+                                     r->ot_filters = r->conn->ot_filters
+                                     restack CONTENT_LENGTH,HEADER
+
+INCLUDE-----------------CONTENT_LENGTH----HEADER---+[conn_filters]
+ (416 err generator)----CONTENT_LENGTH----HEADER---+
+                                                        sends down 416
+                                                        return
+
+INCLUDE-----------------CONTENT_LENGTH----HEADER---+[conn_filters]
+rewind stack,
+continue to push remaining data
+
+
+The proposed patch below disassembles the old filter chain, assuming that
+"upstream" filters are stacked before r->connection->output_filters.
+
+It fixes the problem on hand but doesn't solve the real problem;
+we should make a way to notify the upstream filters to terminate.
+
+>How-To-Repeat:
+
+[Requesting out-of-range byterange to http://dev.apache.org/;
+ I guess this weird output is caused by the same problem.]
+
+% telnet dev.apache.org 80
+Trying 64.208.42.41...
+Connected to dev.apache.org.
+Escape character is '^]'.
+GET / HTTP/1.0
+Range: bytes=10000-
+
+HTTP/1.1 416 Requested Range Not Satisfiable
+Date: Sat, 28 Jul 2001 20:27:45 GMT
+Server: Apache/2.0.22-dev (Unix)
+Content-Length: 382
+Connection: close
+Content-Type: text/html; charset=iso-8859-1
+
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<HTML><HEAD>
+<TITLE>416 Requested Range Not Satisfiable</TITLE>
+</HEAD><BODY>
+<H1>Requested Range Not Satisfiable</H1>
+None of the range-specifier values in the Range
+request-header field overlap the current extent
+of the selected resource.
+<HR>
+<ADDRESS>Apache/2.0.22-dev Server at dev.apache.org Port 80</ADDRESS>
+</BODY></HTML>
+HTTP/1.1 416 Requested Range Not Satisfiable
+Date: Sat, 28 Jul 2001 20:27:45 GMT
+Server: Apache/2.0.22-dev (Unix)
+Content-Length: 901
+Connection: close
+Content-Type: text/html; charset=iso-8859-1
+
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<HTML><HEAD>
+<TITLE>416 Requested Range Not Satisfiable</TITLE>
+</HEAD><BODY>
+<H1>Requested Range Not Satisfiable</H1>
+None of the range-specifier values in the Range
+request-header field overlap the current extent
+of the selected resource.
+<P>Additionally, a 416 Requested Range Not Satisfiable
+error was encountered while trying to use an ErrorDocument to handle the request.
+<HR>
+<ADDRESS>Apache/2.0.22-dev Server at dev.apache.org Port 80</ADDRESS>
+</BODY></HTML>
+HTTP/1.1 416 Requested Range Not Satisfiable
+Date: Sat, 28 Jul 2001 20:27:45 GMT
+Server: Apache/2.0.22-dev (Unix)
+Content-Length: 1420
+Connection: close
+Content-Type: text/html; charset=iso-8859-1
+
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<HTML><HEAD>
+<TITLE>416 Requested Range Not Satisfiable</TITLE>
+</HEAD><BODY>
+<H1>Requested Range Not Satisfiable</H1>
+None of the range-specifier values in the Range
+request-header field overlap the current extent
+of the selected resource.
+<P>Additionally, a 416 Requested Range Not Satisfiable
+error was encountered while trying to use an ErrorDocument to handle the request.
+<HR>
+<ADDRESS>Apache/2.0.22-dev Server at dev.apache.org Port 80</ADDRESS>
+</BODY></HTML>
+HTTP/1.1 416 Requested Range Not Satisfiable
+Date: Sat, 28 Jul 2001 20:27:45 GMT
+Server: Apache/2.0.22-dev (Unix)
+Content-Length: 6327
+Connection: close
+Content-Type: text/html; charset=iso-8859-1
+
+
+  <H1 ALIGN="CENTER"><SAMP>Dev.Apache.Org</SAMP><BR>Developer Resources</H1>
+  <P>
+  <BLOCKQUOTE>
+  This site includes many of the reference materials used by the Apache
+  Project.
+.....
+.....
+
+>Fix:
+
+#
+#****** modules/http/http_protocol.c:reset_filters() disassemble upstream patch
+#
+# This patch fixes garbage buckets appended to 416 responses
+# for SSI output, which is similar to PR#7636
+# which surfaced again by the reset_filters() 1.329 modification
+#
+##find httpd-2_0_21 -name '*.dist9' -exec ./0diff {} \;
+/usr/local/gnu/bin/patch -p1 --backup --suffix=.dist9 << 'EOP'
+=============================== {
+diff -u httpd-2_0_21/modules/http/http_protocol.c.dist9 httpd-2_0_21/modules/http/http_protocol.c
+--- httpd-2_0_21/modules/http/http_protocol.c.dist9	Wed Jul 18 19:52:40 2001
++++ httpd-2_0_21/modules/http/http_protocol.c	Sat Jul 28 20:16:14 2001
+@@ -1755,6 +1755,18 @@
+     /* only reset request level filters,
+      * connection level filters need to remain in tact
+      */
++    /*
++     * kabe: but disconnect all upstream filters which trys to
++     * push excecss buckets down; see PR#7636.
++     * Disassemble filter chain before connection filters,
++     * assuming that all request filters are stacked before connection filters.
++     */
++    struct ap_filter_t *f,*fx;
++    for (f = r->output_filters; f && f != r->connection->output_filters; ) {
++        fx = f->next;
++        f->next = NULL;
++        f = fx;
++    }
+     r->output_filters = r->connection->output_filters;
+     ap_add_output_filter("CONTENT_LENGTH", NULL, r, r->connection);
+     ap_add_output_filter("HTTP_HEADER", NULL, r, r->connection);
+=============================== }}
+EOP
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: rbb
+State-Changed-When: Wed Aug  1 22:03:59 PDT 2001
+State-Changed-Why:
+I have just committed a patch that makes mod_include honor
+the return code from lower level filters.  The problem was
+that the byterange filter was correctly returning the HTTP
+status code 416, but mod_include was ignoring it.  
+
+Thank you for the bug report
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

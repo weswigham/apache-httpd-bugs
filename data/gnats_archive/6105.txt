@@ -1,0 +1,360 @@
+Received: (qmail 40338 invoked by uid 501); 19 May 2000 20:56:30 -0000
+Message-Id: <20000519205630.40337.qmail@locus.apache.org>
+Date: 19 May 2000 20:56:30 -0000
+From: Gary Pinkham <gary.pinkham@reasoning.com>
+Reply-To: gary.pinkham@reasoning.com
+To: submit@bugz.apache.org
+Subject: Software Inspection of Apache
+X-Send-Pr-Version: 3.110
+
+>Number:         6105
+>Category:       general
+>Synopsis:       Software Inspection of Apache
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri May 19 14:00:01 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     gary.pinkham@reasoning.com
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Solaris running Reasoning's Automated Software inspection tools
+>Description:
+I sent in an earlier submission about the company that I work for (Reasoning, Inc.) performing software inspections on Open source Software for free.  I haven't heard back from anyone at Apache but I wanted to make sure that I sent you the defects that we've found to show you that I was serious and not some sales guy trying to sell you something.  At any rate, we have several tools to automate code review and ran these tools on the Apache 1.3.12 codebase.  We have found 8 defects that we thought you would be interested in.  I'm going to paste the detailed defect report into this field.  There actually is an entire report surrounding the defect report but that is mostly for managment types.  The defect report may not look pretty in formatted into this field but the details are still the same.   Just as a note we search for things like "Memory Leaks", "NULL Pointer Dereferences", "Initialization Issues" and "Out of Bounds Problems".    We've "Memory Leaks", "NULL Pointer Dereferences" and "Out of Bounds Problems" in your code.   If you have any questions or comments please feel free to contact me via email or via phone at 781-359-3132.  Good Luck! 
+
+DETAILED INSPECTION REPORT
+	Inspection Class: Memory Leak
+	File:	\apache_1.3.12\src\os\win32\readdir.c (Line: 43)
+	Defect:	Auto variable dp on line 22 points to allocated memory which is not freed.
+	Explanation:	Memory pointed by dp on line 34 and by filespec on line 27 are not released before the early return.
+	Impact:	Program termination.
+
+20  API_EXPORT(DIR *) opendir(const char *dir)
+21  {
+22      DIR *dp;
+23      char *filespec;
+24      long handle;
+25      int index;
+26  
+27      filespec = malloc(strlen(dir) + 2 + 1);
+28      strcpy(filespec, dir);
+29      index = strlen(filespec) - 1;
+30      if (index >= 0 && (filespec[index] == '/' || filespec[index] == '\\'))
+31          filespec[index] = '\0';
+32      strcat(filespec, "/*");
+33  
+34      dp = (DIR *)malloc(sizeof(DIR));
+35      dp->offset = 0;
+36      dp->finished = 0;
+37      dp->dir = strdup(dir);
+38  
+39      if ((handle = _findfirst(filespec, &(dp->fileinfo))) < 0) {
+40          if (errno == ENOENT)
+41              dp->finished = 1;
+42          else
+43          return NULL;
+44      }
+45  
+46      dp->handle = handle;
+47      free(filespec);
+48  
+49      return dp;
+50  }
+  
+DETAILED INSPECTION REPORT
+	Inspection Class: Null Pointer Dereference
+	File:	\apache_1.3.12\src\modules\proxy\proxy_ftp.c (Line: 357)
+	Defect:	Pointer filename can be null when used as an argument to ++.
+	Explanation:	Variable filename assigned by the strrchr() on line 356 could return a NULL value.
+	Impact:	Program termination.
+
+266  static long int send_dir(BUFF *f, request_rec *r, cache_req *c, char *cwd)
+267  {
+268      char buf[IOBUFSIZE];
+269      char buf2[IOBUFSIZE];
+270      char *filename;
+271      int searchidx = 0;
+272      char *searchptr = NULL;
+273      int firstfile = 1;
+274      unsigned long total_bytes_sent = 0;
+275      register int n, o, w;
+276      conn_rec *con = r->connection;
+277      char *dir, *path, *reldir, *site;
+278  
+...
+330  	if (n == 0)
+331  	    break;		/* EOF */
+332  	if (buf[0] == 'l' && (filename=strstr(buf, " -> ")) != NULL) {
+333  	    char *link_ptr = filename;
+334  
+335  	    do {
+336  		filename--;
+337  	    } while (filename[0] != ' ');
+338  	    *(filename++) = '\0';
+339  	    *(link_ptr++) = '\0';
+340  	    if ((n = strlen(link_ptr)) > 1 && link_ptr[n - 1] == '\n')
+341  	      link_ptr[n - 1] = '\0';
+342  	    ap_snprintf(buf2, sizeof(buf2), "%s <A HREF=\"%s\">%s %s</A>\n", buf, filename, filename, link_ptr);
+343  	    ap_cpystrn(buf, buf2, sizeof(buf));
+344  	    n = strlen(buf);
+345  	}
+346  	else if (buf[0] == 'd' || buf[0] == '-' || buf[0] == 'l' || ap_isdigit(buf[0])) {
+347  	    if (ap_isdigit(buf[0])) {	/* handle DOS dir */
+348  		searchptr = strchr(buf, '<');
+349  		if (searchptr != NULL)
+350  		    *searchptr = '[';
+351  		searchptr = strchr(buf, '>');
+352  		if (searchptr != NULL)
+353  		    *searchptr = ']';
+354  	    }
+355  
+356  	    filename = strrchr(buf, ' ');
+357  	    *(filename++) = 0;
+358  	    filename[strlen(filename) - 1] = 0;
+  
+DETAILED INSPECTION REPORT
+	Inspection Class: Out Of Bounds Array Read
+	File:	\apache_1.3.12\src\modules\proxy\proxy_ftp.c (Line: 988)
+	Defect:	Operator [ accesses 1 past the end of the data.
+	Explanation:	Valid element for resp is from [0] to [sizeof(resp)-1]. The "for loop" on line 986 could set the  index "j" to the [sizeof(resp)], which will access data beyond the array boundary.
+	Impact:	Data corruption.
+
+445  int ap_proxy_ftp_handler(request_rec *r, cache_req *c, char *url)
+446  {
+447      char *host, *path, *strp, *parms;
+448      char *cwd = NULL;
+449      char *user = NULL;
+450  /*    char *account = NULL; how to supply an account in a URL? */
+451      const char *password = NULL;
+452      const char *err;
+453      int port, i, j, len, sock, dsock, rc, nocache = 0;
+454      int csd = 0;
+455      struct sockaddr_in server;
+456      struct hostent server_hp;
+457      struct in_addr destaddr;
+458      table *resp_hdrs;
+459      BUFF *f;
+460      BUFF *data = NULL;
+461      pool *p = r->pool;
+462      int one = 1;
+463      const long int zero = 0L;
+464      NET_SIZE_T clen;
+465      struct tbl_do_args tdo;
+466  
+467      void *sconf = r->server->module_config;
+468      proxy_server_conf *conf =
+469      (proxy_server_conf *) ap_get_module_config(sconf, &proxy_module);
+470      struct noproxy_entry *npent = (struct noproxy_entry *) conf->noproxies->elts;
+471      struct nocache_entry *ncent = (struct nocache_entry *) conf->nocaches->elts;
+472  
+473  /* stuff for PASV mode */
+474      unsigned int presult, h0, h1, h2, h3, p0, p1;
+475      unsigned int paddr;
+476      unsigned short pport;
+477      struct sockaddr_in data_addr;
+478      int pasvmode = 0;
+479      char pasv[64];
+480      char *pstr;
+481  
+482  /* stuff for responses */
+483      char resp[MAX_STRING_LEN];
+...
+986  		for (j = 0; j < sizeof resp && ap_isdigit(resp[j]); j++)
+987 			;
+988  		resp[j] = '\0';
+...
+1285  }
+ 
+ 
+DETAILED INSPECTION REPORT
+	Inspection Class: Null Pointer Dereference
+	File:	\apache_1.3.12\src\support\ab.c (Line: 688)
+	Defect:	Pointer part can be null when used on the left side of ptr+int.
+	Explanation:	Variable part assigned by the strstr() on line 687 could return a NULL value.
+	Impact:	Program termination.
+
+603  static void read_connection(struct connection * c)
+604  {
+605      int r;
+606      char *part;
+...
+687  	    part = strstr(c->cbuff, "HTTP");	/* really HTTP/1.x_ */
+688  	    strncpy(respcode, (part + strlen("HTTP/1.x_")), 3);
+...
+754  }
+  
+DETAILED INSPECTION REPORT
+	Inspection Class: Null Pointer Dereference
+	File:	\apache_1.3.12\src\support\htpasswd.c (Line: 534)
+	Defect:	Pointer arg. no. 1  can be null when passed to fclose(struct {...} *).
+	Explanation:	Variable fpw assigned by the fopen() on line 533 could return a NULL value.
+	Impact:	Program termination.
+
+344  int main(int argc, char *argv[])
+345  {
+346      FILE *ftemp = NULL;
+347      FILE *fpw = NULL;
+...
+519      tempfilename = tmpnam(NULL);
+520      ftemp = fopen(tempfilename, "w+");
+521      if (ftemp == NULL) {
+522 	 	fprintf(stderr, "%s: unable to create temporary file\n", argv[0]);
+523  		perror("fopen");
+524  		exit(ERR_FILEPERM);
+525      }
+526      /*
+527       * If we're not creating a new file, copy records from the existing
+528       * one to the temporary file until we find the specified user.
+529       */
+530      if (! newfile) {
+531  		char scratch[MAX_STRING_LEN];
+532  
+533  		fpw = fopen(pwfilename, "r");
+534  		while (! (getline(line, sizeof(line), fpw))) {
+...
+572      if (! newfile) {
+573  		copy_file(ftemp, fpw);
+574  		fclose(fpw);
+575	    }
+576      /*
+577       * The temporary file now contains the information that should be
+578       * in the actual password file.  Close the open files, re-open them
+579       * in the appropriate mode, and copy them file to the real one.
+580       */
+581      fclose(ftemp);
+582      fpw = fopen(pwfilename, "w+");
+583      ftemp = fopen(tempfilename, "r");
+584      copy_file(fpw, ftemp);
+585      fclose(fpw);
+586      fclose(ftemp);
+587      unlink(tempfilename);
+588      return 0;
+589  }
+  
+DETAILED INSPECTION REPORT
+	Inspection Class: Null Pointer Dereference
+	File:	\apache_1.3.12\src\support\htpasswd.c (Line: 586)
+	Defect:	Pointer arg. no. 1  can be null when passed to fclose(struct {...} *).
+	Explanation:	Variable ftemp assigned by the fopen() on line 583 could return a NULL value.
+	Impact:	Program termination.
+
+344  int main(int argc, char *argv[])
+345  {
+346      FILE *ftemp = NULL;
+347      FILE *fpw = NULL;
+...
+582      fpw = fopen(pwfilename, "w+");
+583      ftemp = fopen(tempfilename, "r");
+584      copy_file(fpw, ftemp);
+585      fclose(fpw);
+586      fclose(ftemp);
+587      unlink(tempfilename);
+588      return 0;
+589  }
+ 
+DETAILED INSPECTION REPORT
+	Inspection Class: Null Pointer Dereference
+	File:	\apache_1.3.12\src\os\win32\readdir.c (Line: 28)
+	Defect:	Pointer arg. no. 1  can be null when passed to strcpy(char *, const char *).
+	Explanation:	Variable filespec assigned by malloc() on line 27 could return a NULL value.
+	Impact:	Program termination.
+
+20  API_EXPORT(DIR *) opendir(const char *dir)
+21  {
+22      DIR *dp;
+23      char *filespec;
+24      long handle;
+25      int index;
+26  
+27      filespec = malloc(strlen(dir) + 2 + 1);
+28      strcpy(filespec, dir);
+29      index = strlen(filespec) - 1;
+30      if (index >= 0 && (filespec[index] == '/' || filespec[index] == '\\'))
+31          filespec[index] = '\0';
+32      strcat(filespec, "/*");
+33  
+34      dp = (DIR *)malloc(sizeof(DIR));
+35      dp->offset = 0;
+36      dp->finished = 0;
+37      dp->dir = strdup(dir);
+38  
+39      if ((handle = _findfirst(filespec, &(dp->fileinfo))) < 0) {
+40          if (errno == ENOENT)
+41          dp->finished = 1;
+42      else
+43          return NULL;
+44      }
+45  
+46      dp->handle = handle;
+47      free(filespec);
+48
+49      return dp;
+50  }
+  
+DETAILED INSPECTION REPORT
+	Inspection Class: Null Pointer Dereference
+	File:	\apache_1.3.12\src\os\win32\readdir.c (Line: 35)
+	Defect:	Pointer dp can be null when used on the left side of ->.
+	Explanation:	Variable dp assigned by malloc() on line 34 could return a NULL value.
+	Impact:	Program termination.
+
+20  API_EXPORT(DIR *) opendir(const char *dir)
+21  {
+22      DIR *dp;
+23      char *filespec;
+24      long handle;
+25      int index;
+26  
+27      filespec = malloc(strlen(dir) + 2 + 1);
+28      strcpy(filespec, dir);
+29      index = strlen(filespec) - 1;
+30      if (index >= 0 && (filespec[index] == '/' || filespec[index] == '\\'))
+31          filespec[index] = '\0';
+32      strcat(filespec, "/*");
+33  
+34      dp = (DIR *)malloc(sizeof(DIR));
+35      dp->offset = 0;
+36      dp->finished = 0;
+37      dp->dir = strdup(dir);
+38  
+39      if ((handle = _findfirst(filespec, &(dp->fileinfo))) < 0) {
+40          if (errno == ENOENT)
+41          dp->finished = 1;
+42      else
+43          return NULL;
+44      }
+45  
+46      dp->handle = handle;
+47      free(filespec);
+48
+49      return dp;
+50  }
+ 
+>How-To-Repeat:
+WWW.REASONING.COM
+>Fix:
+Please contact me and we can discuss this.
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

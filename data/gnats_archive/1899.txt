@@ -1,0 +1,284 @@
+Received: (qmail 21458 invoked by uid 2012); 2 Mar 1998 15:57:17 -0000
+Message-Id: <19980302155717.21457.qmail@hyperreal.org>
+Date: 2 Mar 1998 15:57:17 -0000
+From: Al Sorrell <asorrell@troweprice.com>
+Reply-To: asorrell@troweprice.com
+To: apbugs@hyperreal.org
+Subject: AuthUser/AuthGroup not working with alias'd directory
+X-Send-Pr-Version: 3.2
+
+>Number:         1899
+>Category:       mod_alias
+>Synopsis:       AuthUser/AuthGroup not working with alias'd directory
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Mar  2 08:00:00 PST 1998
+>Last-Modified:  Fri Mar  6 11:20:01 PST 1998
+>Originator:     asorrell@troweprice.com
+>Organization:
+>Release:        1.2.5
+>Environment:
+SunOS netops 5.5.1 Generic_103640-08 sun4u sparc SUNW,Ultra-Enterprise
+Solaris 2.5.1, Apache 1.2.5 compiled under gcc 2.7.2.1, no compilation problems
+>Description:
+DocumentRoot is /vol1/apache/htdocs
+
+I have successfully used authentication for a directory under the Document Root
+using the following in access.conf:
+#
+# Prevent directory browsing and .htaccess files in the main tree
+#
+<Directory />
+        AllowOverride None
+        order deny,allow
+        deny from all
+</Directory>
+
+
+<Directory /vol1/apache/htdocs/net/priv>
+        AllowOverride None
+        AuthName netpriv
+        AuthType Basic
+        AuthUserFile /vol1/apache/security/passwd
+        AuthGroupFile /vol1/apache/security/group
+        require group netpriv webadmin
+</Directory>
+
+Attempted access to any file in the directory pops up a password dialog
+box as expected & I can access stuff after giving it the right info.
+Note that this directory is under the DocumentRoot.
+
+However, if in srm.conf, I set up an alias with the directive:
+Alias   /mrtg   /var/mrtg
+
+and then use a similar construct to provide access control:
+<Directory /var/mrtg >
+        AllowOverride None
+        AuthName netpriv
+        AuthType Basic
+        AuthUserFile /vol1/apache/security/passwd
+        AuthGroupFile /vol1/apache/security/group
+        require group netpriv webadmin
+</Directory>
+
+and ask for http://server/mrtg/x.html (where x.html exists & has permissions),
+I simply get a message:
+
+  Forbidden
+  You don't have permission to access /mrtg/x.html on this server
+
+without ever being prompted for the password. (Whether or not I have
+previously authenticated to one of the groups does not matter. I get the
+same results if this is the first access after bringing up the browser).
+
+Note, if instead of the restrictive access show above, I instead use the
+following, I have no problem accessing the files (as expected - unfortunately 
+NOBODY has any problems ;)
+
+<Directory /var/mrtg>
+        Options Indexes FollowSymLinks
+        AllowOverride AuthConfig
+        order allow,deny
+        allow from all
+</Directory>
+>How-To-Repeat:
+not publicly accessible, sorry
+>Fix:
+
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Al Sorrell <asorrell@troweprice.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_alias/1899: AuthUser/AuthGroup not working with alias'd directory
+Date: Mon, 2 Mar 1998 10:19:49 -0800 (PST)
+
+ Are there any errors in the error_log?
+ 
+ Dean
+ 
+
+From: Al Sorrell <Al_Sorrell@troweprice.com>
+To: smtp:dgaudet@artic.org
+Cc: smtp:apbugs@Apache.org
+Subject: Re: mod_alias/1899: AuthUser/AuthGroup not working with
+	alias'd directory
+Date: Tue, 03 Mar 1998 08:59:50 -0500
+
+ (I have not received your direct e-mail, for whatever reason, but I saw
+ your update in the bug database...)
+ 
+ I just re-configured the access.conf file to:
+ 
+ <Directory /var/mrtg >
+         AllowOverride None
+         AuthName netpriv
+         AuthType Basic
+         AuthUserFile /vol1/apache/security/passwd
+         AuthGroupFile /vol1/apache/security/group
+         require group netpriv webadmin
+ </Directory>
+ 
+ HUP'd the server and tried accessing - the following is from the error
+ log:
+ 
+ [Tue Mar  3 08:56:48 1998] SIGHUP received.  Attempting to restart
+ [Tue Mar  3 08:56:48 1998] Server configured -- resuming normal operations
+ [Tue Mar  3 08:57:08 1998] access to /var/mrtg/techctr1.5.html failed for
+ 172.23.28.146, reason: Client denied by server configuration
+ 
+ 
+ There was NO prompt for a username/password and this was a fresh (Netscape
+ 4.03) session.
+ 
+ FYI:
+ # ll -d /var/mrtg
+ drwxrwxr-x   2 sorrell  staff      32768 Feb 27 17:30 /var/mrtg/
+ # ll /var/mrtg/techctr1.5.html
+ -rw-rw-r--   1 sorrell  staff       7104 Feb 27 16:15
+ /var/mrtg/techctr1.5.html
+ 
+ Thanks for looking into this -
+ Al Sorrell
+ asorrell@troweprice.com
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Al Sorrell <Al_Sorrell@troweprice.com>
+Cc: apbugs@apache.org
+Subject: Re: mod_alias/1899: AuthUser/AuthGroup not working with alias'd directory
+Date: Tue, 3 Mar 1998 11:30:40 -0800 (PST)
+
+ On 3 Mar 1998, Al Sorrell wrote:
+ 
+ >  <Directory /var/mrtg >
+                        ^
+ Anything happen if you remove the indicated space?
+ 
+ Dean
+ 
+
+From: Al Sorrell <Al_Sorrell@troweprice.com>
+To: dgaudet@arctic.org
+Cc: smtp:apbugs@apache.org
+Subject: Re: mod_alias/1899: AuthUser/AuthGroup not working with
+	alias'd directory -Reply
+Date: Tue, 03 Mar 1998 16:35:39 -0500
+
+ no change - still gives Forbidden and no password prompt.
+ Al
+ 
+ >>> Dean Gaudet <dgaudet@arctic.org> 03/03/98 02:30pm >>>
+ 
+ 
+ On 3 Mar 1998, Al Sorrell wrote:
+ 
+ >  <Directory /var/mrtg >
+                        ^
+ Anything happen if you remove the indicated space?
+ 
+ Dean
+ 
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Al Sorrell <Al_Sorrell@troweprice.com>
+Cc: apbugs@Apache.org
+Subject: Re: mod_alias/1899: AuthUser/AuthGroup not working with alias'd directory
+Date: Wed, 4 Mar 1998 00:57:24 -0800 (PST)
+
+ On Tue, 3 Mar 1998, Al Sorrell wrote:
+ 
+ > [Tue Mar  3 08:56:48 1998] SIGHUP received.  Attempting to restart
+ > [Tue Mar  3 08:56:48 1998] Server configured -- resuming normal operations
+ > [Tue Mar  3 08:57:08 1998] access to /var/mrtg/techctr1.5.html failed for
+ > 172.23.28.146, reason: Client denied by server configuration
+ 
+ Oh I didn't read this last time.  You're probably getting this because
+ you've got some global directive like:
+ 
+ <Directory />
+ order deny,allow
+ deny from all
+ </Directory>
+ 
+ If so, you should add: 
+ 
+ order allow,deny
+ allow from all
+ 
+ To the <Directory /var/mrtg> section.
+ 
+ Dean
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Mar  6 11:16:43 PST 1998
+State-Changed-Why:
+User reports my suggestion fixed the problem.
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: mod_alias/1899: AuthUser/AuthGroup not working with alias'd directory -Reply (fwd)
+Date: Fri, 6 Mar 1998 11:16:23 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ Date: Fri, 06 Mar 1998 08:52:59 -0500
+ From: Al Sorrell <Al_Sorrell@troweprice.com>
+ To: dgaudet@arctic.org
+ Subject: Re: mod_alias/1899: AuthUser/AuthGroup not working with alias'd directory -Reply
+ 
+ Dean,
+ That did it! THanks for the help (BTW, in the initial bug report, I did
+ have the access.conf which had the restriction paragraph on /).
+ 
+ Thanks again for your help!
+ Al
+ 
+ >>> Dean Gaudet <dgaudet@arctic.org> 03/04/98 03:57am >>>
+ 
+ 
+ On Tue, 3 Mar 1998, Al Sorrell wrote:
+ 
+ > [Tue Mar  3 08:56:48 1998] SIGHUP received.  Attempting to restart
+ > [Tue Mar  3 08:56:48 1998] Server configured -- resuming normal
+ operations
+ > [Tue Mar  3 08:57:08 1998] access to /var/mrtg/techctr1.5.html failed
+ for
+ > 172.23.28.146, reason: Client denied by server configuration
+ 
+ Oh I didn't read this last time.  You're probably getting this because
+ you've got some global directive like:
+ 
+ <Directory />
+ order deny,allow
+ deny from all
+ </Directory>
+ 
+ If so, you should add: 
+ 
+ order allow,deny
+ allow from all
+ 
+ To the <Directory /var/mrtg> section.
+ 
+ Dean
+ 
+ 
+ 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

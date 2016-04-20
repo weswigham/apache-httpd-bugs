@@ -1,0 +1,217 @@
+From apwww@hyperreal.org  Mon Sep 29 07:13:52 1997
+Received: (from apwww@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id HAA08897;
+	Mon, 29 Sep 1997 07:13:52 -0700 (PDT)
+Message-Id: <199709291413.HAA08897@hyperreal.org>
+Date: Mon, 29 Sep 1997 07:13:52 -0700 (PDT)
+From: Gordon Lack <gml4410@ggr.co.uk>
+Reply-To: gml4410@ggr.co.uk
+To: apbugs@hyperreal.org
+Subject: Apache cannot handle continuation line in headers
+X-Send-Pr-Version: 3.2
+
+>Number:         1176
+>Category:       mod_cgi
+>Synopsis:       Apache cannot handle continuation line in headers
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          suspended
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Sep 29 07:20:02 1997
+>Last-Modified:  Thu Jan 22 08:45:49 PST 1998
+>Originator:     gml4410@ggr.co.uk
+>Organization:
+>Release:        1.3a1
+>Environment:
+Tested for 1.2.4 on SG Irix5.3, but the bug is obvious from reading
+the code and is not OS dependent.
+>Description:
+   The HTTP standard allows for continuation lines in the header field.
+
+   RFC1945 (HTTP/1.0) allows it, but doesn't recommend it.
+
+   RFC2068 (HTTP/1.1) allows it with no such qualms.
+
+   [Both in Section 4.2]
+
+   The Apache code which looks at headers coming back from cgi-bin
+programs (scan_script_header_err in util_script.c - only called by
+mod_cgi.c) make no attempt to look for continuation lines.  As such, the
+example script (given below) produces an error.
+
+   The error log entry is like this:
+
+[Mon Sep 29 14:33:41 1997] access to /my-apache-server/cgi-bin/gml-split
+ failed for localhost, reason: malformed header from script.
+ Bad header= text/plain
+
+
+   Interestingly:
+
+a) NCSA http server (1.5.2a) allowed for continuation lines (but got the
+code slightly wrong, hence the leading space in the body of the message,
+which highlights *their* bug).
+
+b) Netscape Enterprise 2.01 suffers from the bug too (they now have a
+bug report about it as well).
+>How-To-Repeat:
+   Add this simple script as a cgi-bin program and try to access it.
+
+#!/bin/sh
+echo "Content-type:"
+echo " text/plain"
+echo "Content-length: 6"
+echo ""
+echo " Z234"
+>Fix:
+Not immediately, although a look at what sendmail does for headers 
+might be a way forward.
+
+You might also like to consider combining the problem in PR#1028 here (found
+by searching for "header" before submitting this).  There is a denial-of-service
+problem if a cgi-bin program decides to send its headers in a loop, ie. all valid
+but repeated
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Mon Sep 29 07:29:34 PDT 1997
+State-Changed-Why:
+This is not a bug nor an RFC violation.  The RFCs define
+how HTTP clients and servers communicate with each other,
+not how servers communicate with applications.  This falls
+into the realm of the CGI specification, not HTTP - and
+there's nothing in that specification that provides for
+continuation lines.
+
+There are some people interested in enhancing and
+re-codifying the CGI specification; if you would like to
+participate in that effort, please let me know.
+Class-Changed-From-To: sw-bug-mistaken
+Class-Changed-By: coar
+Class-Changed-When: Mon Sep 29 07:29:34 PDT 1997
+Comment-Added-By: coar
+Comment-Added-When: Mon Sep 29 07:43:43 PDT 1997
+Comment-Added:
+Thank you for reporting this, though, and for using
+Apache!
+
+From: coar@decus.org (Rodent of Unusual Size)
+To: APbugs@apache.org, gml4410@ggr.co.uk, Coar@decus.org
+Subject: Re: mod_cgi/1176: Apache cannot handle continuation line in headers
+Date: Mon, 29 Sep 1997 16:19:42 -0400
+
+ 
+ From the fingers of Lack Mr G M flowed the following:
+ >
+ >coar@hyperreal.org wrote:
+ >> This is not a bug nor an RFC violation.
+ >
+ >   I beg to differ (and not just because I have now sent the code to
+ >fix this anyway).
+ >
+ >   The draft CGI document that comes along with the CD on the O'Reilly
+ >Apache book states:
+ 
+     You've put your finger on the issue.  That's a draft version, and
+     there's absolutely no requirement that anybody comply with a draft.
+     In fact, it's rather more the opposite - implementors are somewhat
+     DIScouraged from hewing too closely to an unfinalised specification.
+ 
+ >> There are some people interested in enhancing and
+ >> re-codifying the CGI specification; if you would like to
+ >> participate in that effort, please let me know.
+ >
+ >   I might be.  In particular I might be interested in pointing out
+ >which bits are open to interpretation and should be clarified/made more
+ >exact in the hope of making all clients and servers able to interact
+ >properly all of the time.
+ 
+     That would be welcome input.
+ 
+     So, at the moment we don't consider this behaviour to be a bug.
+     I'll attach your patch (from the other PR) to this item and mark it
+     as suspended so it can be revisited in the next feature
+     consideration phase.  In the meantime, perhaps we can put your
+     patch into the contrib area.
+ 
+     #ken    P-)}
+State-Changed-From-To: closed-suspended
+State-Changed-By: coar
+State-Changed-When: Mon Sep 29 13:39:41 PDT 1997
+State-Changed-Why:
+[text from original submitter, posted as PR#1177]
+
+I submitted a bug-report earlier this afternoon, but it hasn't shown up yet.
+
+This is the fix for it....
+
+The code below seems to fix the problem.
+
+It should *replace* the code in scan_script_header_err in the util_script.c file
+between lines 325 and 349.
+
+The buf_start and buf_allow recalculations could be reworked to work on
+only that which was read this time around, but it doesn't seem worth
+complicating ths code - this is easier to read.
+
+    hard_timeout ("read script header", r);
+     
+/* GML - Need to allow for continuation lines */
+         
+   while(1) {
+      char *buf_start;
+      int buf_allow;
+      int buf_so_far;
+      int testc;
+         
+      buf_start = w;
+      buf_allow = MAX_STRING_LEN - 1;
+  
+      while(1) {
+/* GML Need a moving buf_start & buf_allow here */
+         if (fgets(buf_start, buf_allow, f) == NULL) {
+            kill_timeout (r);
+            log_reason ("Premature end of script headers", r->filename, r);
+            return SERVER_ERROR;
+         }
+/* Delete terminal (CR?)LF */
+         p = strlen(w);
+         if (p > 0 && w[p-1] == '\n') {
+            if (p > 1 && w[p-2] == '\015') w[p-2] = '\0';
+            else w[p-1] = '\0';
+         }  
+/* Blank line is EOH *regardless* of char1 on next line */
+         if (w[0] == '\0') {
+            kill_timeout (r);
+            return OK;
+         }
+/* Allow for continuation headers. ie. is the next character LWS */
+         testc = fgetc(f);
+         if (testc != EOF)   
+            ungetc(testc, f);
+         if (testc == ' ' || testc == '\t') {
+/* It's a continuation line - move buf_* vars and get the next line */
+            buf_so_far = strlen(w);
+            buf_start = w + buf_so_far;
+            buf_allow = MAX_STRING_LEN - 1 - buf_so_far;  
+            continue;
+         }
+/* Not a continuation line, so exit loop */
+         break;
+      }
+/* GML End of continuation line handling. */
+
+        /* if we see a bogus header don't ignore it. Shout and scream */
+Class-Changed-From-To: mistaken-change-request
+Class-Changed-By: coar
+Class-Changed-When: Mon Sep 29 13:39:41 PDT 1997
+Release-Changed-From-To: 1.2.4 & 1.3a1-1.3a1
+Release-Changed-By: coar
+Release-Changed-When: Thu Jan 22 08:45:49 PST 1998
+>Unformatted:
+
+
+

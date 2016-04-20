@@ -1,0 +1,126 @@
+Received: (qmail 345 invoked by uid 2012); 21 Sep 1998 16:58:32 -0000
+Message-Id: <19980921165832.344.qmail@hyperreal.org>
+Date: 21 Sep 1998 16:58:32 -0000
+From: Michael Gratton <mgratton@wpine.com>
+Reply-To: mgratton@wpine.com
+To: apbugs@hyperreal.org
+Subject: PATH_TRANSLATED is shifted to lower case from mixed case
+X-Send-Pr-Version: 3.2
+
+>Number:         3038
+>Category:       os-windows
+>Synopsis:       PATH_TRANSLATED is shifted to lower case from mixed case
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Sep 21 11:10:01 PDT 1998
+>Last-Modified:  Fri Oct  2 11:13:40 PDT 1998
+>Originator:     mgratton@wpine.com
+>Organization:
+>Release:        1.3.1
+>Environment:
+Windows NT Server 4.0 SP3
+Binary Distribution with no modifications.
+>Description:
+PATH_TRANSLATED is shifted to lower case from mixed case.  This is normally
+not a problem on Windows, however the interpreter i am using (JRE, Java Runtime)
+does care as when i go to run the java class file, PATH_TRANSLATED says foo.class
+when it should really be Foo.class.  The change in case yields java inoperable.
+
+An snippet of the environment for this script is shown here:
+SERVER_PROTOCOL=HTTP/1.0
+REQUEST_METHOD=GET
+QUERY_STRING=showLogin=1
+REQUEST_URI=/wpscripts/whitepine.pub.UserAuthentication.class?showLogin=1
+SCRIPT_NAME=/wpscripts/runcgi.bat
+PATH_INFO=/wpscripts/whitepine.pub.UserAuthentication.class
+PATH_TRANSLATED=c:\temp\runcgi\whitepine.pub.userauthentication.class
+
+Notice PATH_TRANSLATED is all lower case but none of the other environment strings are.
+>How-To-Repeat:
+http://portnoy.wpine.com:7690/showbug/whitepine.pub.UserAuthentication.class?showLogin=1
+
+I hope this works, sometimes our firewall lets stuff through and sometimes not.
+Also this is my development machine and Apache may or may not be running (sorry!).
+If not then simply create a mixed case cgi script name, make a call to it and
+notice the PATH_TRANSLATED variable is in all lower case.
+>Fix:
+Dont really have suggested way to fix, just would like to see it fixed :)
+>Audit-Trail:
+Release-Changed-From-To: 1.3.1 (Win32)-1.3.1
+Release-Changed-By: coar
+Release-Changed-When: Fri Sep 25 05:32:39 PDT 1998
+State-Changed-From-To: open-closed
+State-Changed-By: kparz@raleigh.ibm.com
+State-Changed-When: Wed Sep 30 14:08:22 PDT 1998
+State-Changed-Why:
+Hello,
+I did some investigating on this one, and as it turns
+out, this is working as designed.  On Win32, PATH_TRANSLATED
+is not required to preserve the case of the filename.  In
+fact, PATH_TRANSLATED does not even need to be supplied
+by the server.
+There is a document I encourage you to read. It is a 
+CGI spec which is not yet an RFC, but I believe it is 
+headed that way.  You can find it at 
+<http://Web.Golux.Com/coar/cgi/>
+There's also a mailing list there too which you can 
+subscribe and make your opinions known.
+
+Thanks for using Apache.
+
+From: mgratton@wpine.com (Michael Gratton)
+To: kparz@raleigh.ibm.com,apache-bugdb@apache.org
+Cc: apbugs@Apache.Org
+Subject: Re: os-windows/3038: PATH_TRANSLATED is shifted to lower case
+  from mixed case
+Date: Fri, 02 Oct 1998 09:58:15 -0400
+
+ This is such a simple one.  Please i implore you to implement the fix i
+ have suggested.  My only argument right now is that the fix suggested i
+ describe comes from how your Unix releases implement this issue.  They
+ provide PATH_TRANSLATED, and they dont shift the case.
+Comment-Added-By: coar
+Comment-Added-When: Fri Oct  2 11:13:40 PDT 1998
+Comment-Added:
+
+No, it is not simple.  If you think it is, you don't
+understand all of the issues involved.  On Unix platforms
+PATH_TRANSLATED's case is preserved because the filesystem
+is case sensitive; "X" and "x" are different files, and
+PATH_TRANSLATED must be able to distinguish between them.
+On Win32, "X" and "x" are the same file, and Apache needs
+to be able to determine *that* for purposes of access
+checking, et cetera -- so Win32 filenames are canonicalised
+into an all-lowercase format so that comparisons will
+always be accurate.  PATH_TRANSLATED is generated on the
+back end of this process, and thus inherits the transformed
+name.
+
+You should not depend upon PATH_TRANSLATED in any event.
+Try using REQUEST_URI and DOCUMENT_ROOT, both of which
+are available to CGI and aren't transformed, to construct
+the path you need.
+
+PATH_TRANSLATED is only intended to provide *a* working
+path to the file -- not necessarily *the* working path.
+If you depend upon it, you are trying to interpret
+Web locations using filesystem semantics -- which isn't
+guaranteed to work, as you have found.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

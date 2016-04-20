@@ -1,0 +1,633 @@
+Received: (qmail 9621 invoked by uid 2012); 22 Jan 1999 18:05:26 -0000
+Message-Id: <19990122180526.9620.qmail@hyperreal.org>
+Date: 22 Jan 1999 18:05:26 -0000
+From: T.V.Raman <raman@adobe.com>
+Reply-To: raman@adobe.com
+To: apbugs@hyperreal.org
+Subject: Apparent memory leak +httpd processes that refuse to die
+X-Send-Pr-Version: 3.2
+
+>Number:         3749
+>Category:       os-solaris
+>Synopsis:       Apparent memory leak +httpd processes that refuse to die
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jan 22 10:10:00 PST 1999
+>Closed-Date:    Mon Oct 30 18:53:44 PST 2000
+>Last-Modified:  Mon Oct 30 18:53:44 PST 2000
+>Originator:     raman@adobe.com
+>Release:        1.3.4
+>Organization:
+>Environment:
+SunOS labrador 5.6 Generic_105181-03 sun4u sparc SUNW,Ultra-2
+Reading specs from /usr/local/lib/gcc-lib/sparc-sun-solaris2.6/2.7.2/specs
+gcc version 2.7.2
+
+Apache 1.3.4 --built with mod_dso support --configured as 
+./configure \
+"--prefix=/export/local/apache" \
+"--enable-module=most" \
+"--enable-shared=max" 
+
+
+>Description:
+On a moderately  loaded server  (around 3000 requests per day on acerage,
+Apache 1.3.4 (as well as 1.3.1 and 1.3.3 before it)
+hits serious trouble. The server in question exports a large number of Novell shares to the Intranet via NFS; the problems appear to emerge when the Novell servers dont respond. In this case, the number of httpd processes grows, memory drains, and things grind to a halt.
+
+Attempting to stop apache by saying
+bin/apachectl stop 
+produces the following warnings in error_log about children refusing to die;
+httpd: [Fri Jan 22 09:39:30 1999] [warn] child process 483 still did not exit, sending a SIGTERM
+... similar lines omitted --
+
+>How-To-Repeat:
+The problem appears to be specific to Solaris 2.6 and exporting novell volumes via NFS and apache.
+>Fix:
+None known yet, 
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Fri Jan 22 10:12:11 PST 1999
+State-Changed-Why:
+Why do you think this is an Apache problem?  If your OS
+is not letting Apache read from the files it is trying
+to serve, what do you expect Apache to do?  From everything
+you have said, it appears that Apache is simply being
+blocked on an operation on an unresponsive filesystem
+by your OS.
+
+From: "T. V. Raman" <raman@Adobe.COM>
+To: marc@apache.org
+Cc: apache-bugdb@apache.org, raman@Adobe.COM, <apbugs@apache.org>
+Subject: Re: os-solaris/3749: Apparent memory leak +httpd processes that refuse to die
+Date: Fri, 22 Jan 1999 10:18:47 -0800 (PST)
+
+ >>>>> "marc" == marc  <marc@apache.org> writes:
+ 
+ 
+ 
+     marc> Synopsis: Apparent memory leak +httpd processes
+     marc> that refuse to die
+ Wow-- first off, thanks for the instantaneous response.
+ (wish I get a similar response from the folks responsible
+      for solaris:-)
+ The reason I reported this as an Apache bug:
+ 
+ 1)   When the novell servers dont respond via NFS --and the
+      connecting WWW client goes away,
+ Solaris/Apache continues to wait for the NFS system to
+      respond --this is possibly buggy behavior on Solaris'
+      part
+ 
+ On the apache side, the problem is that the httpd processes
+ that get stuck in this way dont die 
+ and continue to consume resources.
+ 
+ The combination of the above is to bring solaris to its
+ knees *very very* quickly.
+ 
+ 
+     marc> State-Changed-From-To: open-feedback
+     marc> State-Changed-By: marc State-Changed-When: Fri Jan
+     marc> 22 10:12:11 PST 1999 State-Changed-Why: Why do you
+     marc> think this is an Apache problem?  If your OS is
+     marc> not letting Apache read from the files it is
+     marc> trying to serve, what do you expect Apache to do?
+     marc> From everything you have said, it appears that
+     marc> Apache is simply being blocked on an operation on
+     marc> an unresponsive filesystem by your OS.
+ 
+ -- 
+ Best Regards,
+ --raman
+ 
+       Adobe Systems                 Tel: 1 408 536 3945   (W14-128)
+       Advanced Technology Group     Fax: 1 408 537 4042 
+       W14-128 345 Park Avenue     Email: raman@adobe.com 
+       San Jose , CA 95110 -2704     Email:  raman@cs.cornell.edu
+       http://labrador.corp.adobe.com/~raman/        (Adobe Intranet)
+       http://cs.cornell.edu/home/raman/raman.html    (Cornell)
+ ----------------------------------------------------------------------
+     Disclaimer: The opinions expressed are my own and in no way should be taken
+ as representative of my employer, Adobe Systems Inc.
+ ____________________________________________________________
+
+From: Marc Slemko <marcs@znep.com>
+To: "T. V. Raman" <raman@Adobe.COM>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: os-solaris/3749: Apparent memory leak +httpd processes that
+ refuse to die
+Date: Fri, 22 Jan 1999 10:30:01 -0800 (PST)
+
+ On Fri, 22 Jan 1999, T. V. Raman wrote:
+ 
+ > >>>>> "marc" == marc  <marc@apache.org> writes:
+ > 
+ > 
+ > 
+ >     marc> Synopsis: Apparent memory leak +httpd processes
+ >     marc> that refuse to die
+ > Wow-- first off, thanks for the instantaneous response.
+ > (wish I get a similar response from the folks responsible
+ >      for solaris:-)
+ > The reason I reported this as an Apache bug:
+ > 
+ > 1)   When the novell servers dont respond via NFS --and the
+ >      connecting WWW client goes away,
+ > Solaris/Apache continues to wait for the NFS system to
+ >      respond --this is possibly buggy behavior on Solaris'
+ >      part
+ > 
+ > On the apache side, the problem is that the httpd processes
+ > that get stuck in this way dont die 
+ > and continue to consume resources.
+ 
+ The Apache process can't do anything until the blocking IO function that
+ it is calling completes.  When that happens, depends on the OS.  By
+ default, NFS is (properly) quite "good" about never giving an error but
+ just keeping retrying until it works properly.  This is necessary in the
+ general case to avoid unnecessary data loss due to temporary
+ disconnections.
+ 
+ If the mounts are primarily being used to serve files to the web, then
+ this may not be necessary.  You may want to configure your mounts to give
+ an error more quickly.  See the mount_nfs man page for options like soft,
+ intr, timeo, and retrans.
+ 
+ What resources do the Apache processes continue to consume?  What does a
+ truss on one of the hung processes show?
+ 
+ 
+
+From: "T. V. Raman" <raman@Adobe.COM>
+To: Marc Slemko <marcs@znep.com>
+Cc: "T. V. Raman" <raman@Adobe.COM>, Apache bugs database <apbugs@apache.org>
+Subject: Re: os-solaris/3749: Apparent memory leak +httpd processes that
+ refuse to die
+Date: Fri, 22 Jan 1999 10:32:04 -0800 (PST)
+
+ The processes continue to eat memory.
+ truss on the processes that are refusing to die hangs.
+ I'll check into setting up mount 
+ to return an error more quickly on these problem volumes, 
+ but I just restarted my old apache 1.2.4 setup and it
+ appears to behave better in this situation.
+ 
+ I'd still like to help resolve this since I do want to run
+ 1.3.4 --especially for mod_perl (incidentally, I initially
+ suspected modperl and disabled it --but to no avail-- which
+ is how I tracked things down to the Novell/NFS mess)
+ 
+ -- 
+ Best Regards,
+ --raman
+ 
+       Adobe Systems                 Tel: 1 408 536 3945   (W14-128)
+       Advanced Technology Group     Fax: 1 408 537 4042 
+       W14-128 345 Park Avenue     Email: raman@adobe.com 
+       San Jose , CA 95110 -2704     Email:  raman@cs.cornell.edu
+       http://labrador.corp.adobe.com/~raman/        (Adobe Intranet)
+       http://cs.cornell.edu/home/raman/raman.html    (Cornell)
+ ----------------------------------------------------------------------
+     Disclaimer: The opinions expressed are my own and in no way should be taken
+ as representative of my employer, Adobe Systems Inc.
+ ____________________________________________________________
+
+From: "T. V. Raman" <raman@Adobe.COM>
+To: Marc Slemko <marcs@znep.com>
+Cc: "T. V. Raman" <raman@Adobe.COM>, Apache bugs database <apbugs@apache.org>
+Subject: Re: os-solaris/3749: Apparent memory leak +httpd processes that
+ refuse to die
+Date: Fri, 5 Feb 1999 15:35:09 -0800 (PST)
+
+ Hi Mark--
+ 
+ This is a final follow-up to the case you helped me with a
+ couple of weeks ago.
+ 
+ I reconfigured automounter on my solaris box to mount the
+ offending Novell servers soft,intr,
+ and though this diminished the problem, it did not eliminate
+ it. Following that reconfiguration, my server went through a
+ week where it got heavy use, and solaris 2.6 kept crashing
+ --apparently due to too many fin_wait_2 sockets. (I've read
+ the fin_wait_2.html document in the documentation and
+ understand the problem).
+ I finally gave up and went back to apache 1.2.6 which kept
+ my server up without trouble during the heavy load period.
+ 
+ Apache 1.3.4 is a great release, but solaris 2.6 and apache
+ 1.3.4 are definitely not a good marriage.
+ 
+ I'm continuing to run 1.3.4 on my solaris box on a
+ non-standard port so I can play with it, but for the time
+ being I've gone back to 1.2.6 (sigh) for my production
+ server.
+ 
+ If there is some development in this area, I'd be happy to
+ test things out--
+ 
+ 
+ >>>>> "Marc" == Marc Slemko <marcs@znep.com> writes:
+ 
+     Marc> On Fri, 22 Jan 1999, T. V. Raman wrote:
+     >> >>>>> "marc" == marc <marc@apache.org> writes:
+     >> 
+     >> 
+     >> 
+     marc> Synopsis: Apparent memory leak +httpd processes
+     marc> that refuse to die
+     >> Wow-- first off, thanks for the instantaneous
+     >> response.  (wish I get a similar response from the
+     >> folks responsible for solaris:-) The reason I
+     >> reported this as an Apache bug:
+     >> 
+     >> 1) When the novell servers dont respond via NFS --and
+     >> the connecting WWW client goes away, Solaris/Apache
+     >> continues to wait for the NFS system to respond
+     >> --this is possibly buggy behavior on Solaris' part
+     >> 
+     >> On the apache side, the problem is that the httpd
+     >> processes that get stuck in this way dont die and
+     >> continue to consume resources.
+ 
+     Marc> The Apache process can't do anything until the
+     Marc> blocking IO function that it is calling completes.
+     Marc> When that happens, depends on the OS.  By default,
+     Marc> NFS is (properly) quite "good" about never giving
+     Marc> an error but just keeping retrying until it works
+     Marc> properly.  This is necessary in the general case
+     Marc> to avoid unnecessary data loss due to temporary
+     Marc> disconnections.
+ 
+     Marc> If the mounts are primarily being used to serve
+     Marc> files to the web, then this may not be necessary.
+     Marc> You may want to configure your mounts to give an
+     Marc> error more quickly.  See the mount_nfs man page
+     Marc> for options like soft, intr, timeo, and retrans.
+ 
+     Marc> What resources do the Apache processes continue to
+     Marc> consume?  What does a truss on one of the hung
+     Marc> processes show?
+ 
+ -- 
+ Best Regards,
+ --raman
+ 
+       Adobe Systems                 Tel: 1 408 536 3945   (W14-128)
+       Advanced Technology Group     Fax: 1 408 537 4042 
+       W14-128 345 Park Avenue     Email: raman@adobe.com 
+       San Jose , CA 95110 -2704     Email:  raman@cs.cornell.edu
+       http://labrador.corp.adobe.com/~raman/        (Adobe Intranet)
+       http://cs.cornell.edu/home/raman/raman.html    (Cornell)
+ ----------------------------------------------------------------------
+     Disclaimer: The opinions expressed are my own and in no way should be taken
+ as representative of my employer, Adobe Systems Inc.
+ ____________________________________________________________
+
+From: "T. V. Raman" <raman@Adobe.COM>
+To: Marc Slemko <marcs@znep.com>
+Cc: raman@Adobe.COM, Apache bugs database <apbugs@apache.org>
+Subject: Re: os-solaris/3749: Apparent resource leak +httpd processes that
+ refuse to die
+Date: Thu, 11 Feb 1999 13:43:03 -0800 (PST)
+
+ Here is some more data on the problem with Solaris 2.6,
+ Apache 1.3.4, NFS and resource leaks.
+ 
+ For the following test, the nfs volumes in question are
+ being mounted soft,inter.
+ The server is serving out many pages from NFS volumes.
+ 
+ After being up for a day I once again noticed many waiting
+ apache children.
+ , the NFS volume these children were trying to
+ access   were up and accessible from other workstations on
+ the network.  However from the server in question, accesses
+ to those NFS volumes from a shell hung-- I suspect some
+ weird nfs locking bug.
+ 
+ Doing an apachectl  graceful turned the status of those
+ waiting children from W to G --but nfs accesses were still
+ blocking.
+ Next, I did a apachectl restart --and this still did not get
+ rid of the blocked children.
+ 
+ I then did apachectl stop --and all but one httpd process
+ went away.
+ The remaining httpd process (pid 5313 in the logs below)
+ refused to die.
+ Trying to  restart apache now threw a "address already in
+ use error".
+ 
+ kill -9 on the process returned silently.
+ truss on the process hung indefinitely.
+ I'm appending the output of 
+ tracing the kill using truss.
+ 
+ Rebooting the workstation was the only way to fix this
+ problem.
+ 
+ 
+ Details on the hanging httpd child:
+   S   nobody  5313     1  0  39 20   4656    7744 107b1268
+ # truss kill -9 5313
+ execve("/usr/bin/kill", 0xEFFFFEC8, 0xEFFFFED8)  argc = 4
+ open("/usr/lib/libsocket.so.1", O_RDONLY)	= 3
+ fstat(3, 0xEFFFFA58)				= 0
+ mmap(0x00000000, 8192, PROT_READ|PROT_EXEC, MAP_SHARED, 3, 0) = 0xEF7C0000
+ mmap(0x00000000, 106496, PROT_READ|PROT_EXEC, MAP_PRIVATE, 3, 0) = 0xEF7A0000
+ munmap(0xEF7A8000, 57344)			= 0
+ mmap(0xEF7B6000, 8185, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_PRIVATE|MAP_FIXED, 3, 24576) = 0xEF7B6000
+ open("/dev/zero", O_RDONLY)			= 4
+ mmap(0xEF7B8000, 388, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_PRIVATE|MAP_FIXED, 4, 0) = 0xEF7B8000
+ close(3)					= 0
+ open("/usr/lib/libnsl.so.1", O_RDONLY)		= 3
+ fstat(3, 0xEFFFFA58)				= 0
+ mmap(0xEF7C0000, 8192, PROT_READ|PROT_EXEC, MAP_SHARED|MAP_FIXED, 3, 0) = 0xEF7C0000
+ mmap(0x00000000, 581632, PROT_READ|PROT_EXEC, MAP_PRIVATE, 3, 0) = 0xEF700000
+ munmap(0xEF770000, 57344)			= 0
+ mmap(0xEF77E000, 33756, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_PRIVATE|MAP_FIXED, 3, 450560) = 0xEF77E000
+ mmap(0xEF788000, 16824, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_PRIVATE|MAP_FIXED, 4, 0) = 0xEF788000
+ close(3)					= 0
+ open("/usr/lib/libc.so.1", O_RDONLY)		= 3
+ fstat(3, 0xEFFFFA58)				= 0
+ mmap(0xEF7C0000, 8192, PROT_READ|PROT_EXEC, MAP_SHARED|MAP_FIXED, 3, 0) = 0xEF7C0000
+ mmap(0x00000000, 696320, PROT_READ|PROT_EXEC, MAP_PRIVATE, 3, 0) = 0xEF600000
+ munmap(0xEF694000, 57344)			= 0
+ mmap(0xEF6A2000, 24432, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_PRIVATE|MAP_FIXED, 3, 598016) = 0xEF6A2000
+ mmap(0xEF6A8000, 6784, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_PRIVATE|MAP_FIXED, 4, 0) = 0xEF6A8000
+ close(3)					= 0
+ open("/usr/lib/libdl.so.1", O_RDONLY)		= 3
+ fstat(3, 0xEFFFFA58)				= 0
+ mmap(0xEF7C0000, 8192, PROT_READ|PROT_EXEC, MAP_SHARED|MAP_FIXED, 3, 0) = 0xEF7C0000
+ mmap(0x00000000, 8192, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_PRIVATE, 4, 0) = 0xEF6F0000
+ close(3)					= 0
+ open("/usr/lib/libmp.so.2", O_RDONLY)		= 3
+ fstat(3, 0xEFFFFA58)				= 0
+ mmap(0x00000000, 8192, PROT_READ|PROT_EXEC, MAP_SHARED, 3, 0) = 0xEF6E0000
+ mmap(0x00000000, 81920, PROT_READ|PROT_EXEC, MAP_PRIVATE, 3, 0) = 0xEF6C0000
+ munmap(0xEF6C4000, 57344)			= 0
+ mmap(0xEF6D2000, 3581, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_PRIVATE|MAP_FIXED, 3, 8192) = 0xEF6D2000
+ close(3)					= 0
+ open("/usr/platform/SUNW,Ultra-2/lib/libc_psr.so.1", O_RDONLY) = 3
+ fstat(3, 0xEFFFF870)				= 0
+ mmap(0xEF6E0000, 8192, PROT_READ|PROT_EXEC, MAP_SHARED|MAP_FIXED, 3, 0) = 0xEF6E0000
+ mmap(0x00000000, 16384, PROT_READ|PROT_EXEC, MAP_PRIVATE, 3, 0) = 0xEF5F0000
+ close(3)					= 0
+ close(4)					= 0
+ munmap(0xEF6E0000, 8192)			= 0
+ getuid()					= 0 [0]
+ getuid()					= 0 [0]
+ getgid()					= 1 [1]
+ getgid()					= 1 [1]
+ time()						= 918767729
+ brk(0x0004E818)					= 0
+ brk(0x00050818)					= 0
+ time()						= 918767729
+ brk(0x00050818)					= 0
+ brk(0x00052818)					= 0
+ sigprocmask(SIG_SETMASK, 0xEFFFFCF8, 0x00000000) = 0
+ sigaction(SIGABRT, 0xEFFFFBD8, 0xEFFFFC58)	= 0
+ sigaction(SIGALRM, 0xEFFFFBD8, 0xEFFFFC58)	= 0
+ sigaction(SIGBUS, 0xEFFFFBD8, 0xEFFFFC58)	= 0
+ sigaction(SIGCLD, 0xEFFFFBD8, 0xEFFFFC58)	= 0
+ sigaction(SIGEMT, 0xEFFFFBD8, 0xEFFFFC58)	= 0
+ sigaction(SIGFPE, 0xEFFFFBD8, 0xEFFFFC58)	= 0
+ sigaction(SIGHUP, 0xEFFFFBD8, 0xEFFFFC58)	= 0
+ sigaction(SIGILL, 0xEFFFFBD8, 0xEFFFFC58)	= 0
+ sigaction(SIGINT, 0xEFFFFB78, 0xEFFFFBF8)	= 0
+ sigaction(SIGABRT, 0xEFFFFBD8, 0xEFFFFC58)	= 0
+ sigaction(SIGPIPE, 0xEFFFFBD8, 0xEFFFFC58)	= 0
+ sigaction(SIGQUIT, 0xEFFFFB78, 0xEFFFFBF8)	= 0
+ sigaction(SIGSYS, 0xEFFFFBD8, 0xEFFFFC58)	= 0
+ sigaction(SIGTERM, 0xEFFFFBD8, 0xEFFFFC58)	= 0
+ sigaction(SIGTRAP, 0xEFFFFBD8, 0xEFFFFC58)	= 0
+ sigaction(SIGUSR1, 0xEFFFFBD8, 0xEFFFFC58)	= 0
+ sigaction(SIGUSR2, 0xEFFFFBD8, 0xEFFFFC58)	= 0
+ sigaction(SIGXCPU, 0xEFFFFBD8, 0xEFFFFC58)	= 0
+ sigaction(SIGXFSZ, 0xEFFFFB78, 0xEFFFFBF8)	= 0
+ getpid()					= 12435 [12434]
+ getpid()					= 12435 [12434]
+ stat64("/", 0xEFFFFC10)				= 0
+ stat64(".", 0xEFFFFB78)				= 0
+ stat64("/", 0xEFFFFC10)				= 0
+ stat64(".", 0xEFFFFB78)				= 0
+ stat64("/usr/spool/cron/atjobs", 0xEFFFFC10)	= 0
+ stat64(".", 0xEFFFFB78)				= 0
+ stat64("/", 0xEFFFFC10)				= 0
+ stat64(".", 0xEFFFFB78)				= 0
+ stat64("/", 0xEFFFFC10)				= 0
+ stat64(".", 0xEFFFFB78)				= 0
+ stat64("/usr/spool/cron/atjobs", 0xEFFFFC10)	= 0
+ stat64(".", 0xEFFFFB78)				= 0
+ pipe()						= 3 [4]
+ fork()						= 12436
+     Received signal #18, SIGCLD [caught]
+       siginfo: SIGCLD CLD_EXITED pid=12436 status=0x0000
+ setcontext(0xEFFFE8A8)
+ sigaction(SIGCLD, 0xEFFFE9A0, 0xEFFFEA20)	= 0
+ waitid(P_ALL, 0, 0xEFFFE9E0, WEXITED|WTRAPPED|WSTOPPED|WNOHANG) = 0
+ waitid(P_ALL, 0, 0xEFFFE9E0, WEXITED|WTRAPPED|WSTOPPED|WNOHANG) Err#10 ECHILD
+ sigaction(SIGCLD, 0xEFFFE9A0, 0xEFFFEA20)	= 0
+ close(4)					= 0
+ fcntl(3, F_GETFL, 0x00000000)			= 2
+ fstat64(3, 0xEFFFEBD0)				= 0
+ llseek(3, 0, SEEK_CUR)				Err#29 ESPIPE
+ ioctl(3, TCGETS, 0x0004D424)			Err#22 EINVAL
+ sigaction(SIGCLD, 0xEFFFE668, 0xEFFFE6E8)	= 0
+ waitid(P_ALL, 0, 0xEFFFE6A8, WEXITED|WTRAPPED|WSTOPPED|WNOHANG) Err#10 ECHILD
+ sigaction(SIGCLD, 0xEFFFE668, 0xEFFFE6E8)	= 0
+ read(3, " / e x p o r t / l o c a".., 1024)	= 25
+ sigaction(SIGCLD, 0xEFFFE668, 0xEFFFE6E8)	= 0
+ waitid(P_ALL, 0, 0xEFFFE6A8, WEXITED|WTRAPPED|WSTOPPED|WNOHANG) Err#10 ECHILD
+ sigaction(SIGCLD, 0xEFFFE668, 0xEFFFE6E8)	= 0
+ read(3, 0xEFFFEEE8, 1024)			= 0
+ sigaction(SIGCLD, 0xEFFFEC38, 0xEFFFECB8)	= 0
+ sigaction(SIGCLD, 0xEFFFEC38, 0xEFFFECB8)	= 0
+ close(3)					= 0
+ brk(0x00052818)					= 0
+ brk(0x00054818)					= 0
+ stat64("/export/local/apache/bin", 0xEFFFFC10)	= 0
+ stat64(".", 0xEFFFFB78)				= 0
+ stat64("/usr/bin/kill", 0xEFFFFC10)		= 0
+ open64("/usr/bin/kill", O_RDONLY)		= 3
+ close(62)					Err#9 EBADF
+ fcntl(3, F_DUPFD, 0x0000003E)			= 62
+ close(3)					= 0
+ fcntl(62, F_SETFD, 0x00000001)			= 0
+ fcntl(62, F_GETFL, 0x00000000)			= 8192
+ fstat64(62, 0xEFFFFAB0)				= 0
+ llseek(62, 0, SEEK_CUR)				= 0
+ ioctl(62, TCGETS, 0x0004D424)			Err#25 ENOTTY
+ read(62, " # ! / b i n / k s h\n #".., 1024)	= 131
+ pipe()						= 3 [4]
+ fork()						= 12437
+     Received signal #18, SIGCLD [caught]
+       siginfo: SIGCLD CLD_EXITED pid=12437 status=0x0000
+ setcontext(0xEFFFED18)
+ sigaction(SIGCLD, 0xEFFFEE10, 0xEFFFEE90)	= 0
+ waitid(P_ALL, 0, 0xEFFFEE50, WEXITED|WTRAPPED|WSTOPPED|WNOHANG) = 0
+ waitid(P_ALL, 0, 0xEFFFEE50, WEXITED|WTRAPPED|WSTOPPED|WNOHANG) Err#10 ECHILD
+ sigaction(SIGCLD, 0xEFFFEE10, 0xEFFFEE90)	= 0
+ close(4)					= 0
+ fcntl(3, F_GETFL, 0x00000000)			= 2
+ fstat64(3, 0xEFFFF040)				= 0
+ llseek(3, 0, SEEK_CUR)				Err#29 ESPIPE
+ ioctl(3, TCGETS, 0x0004D424)			Err#22 EINVAL
+ sigaction(SIGCLD, 0xEFFFEAD8, 0xEFFFEB58)	= 0
+ waitid(P_ALL, 0, 0xEFFFEB18, WEXITED|WTRAPPED|WSTOPPED|WNOHANG) Err#10 ECHILD
+ sigaction(SIGCLD, 0xEFFFEAD8, 0xEFFFEB58)	= 0
+ read(3, " k i l l\n", 1024)			= 5
+ sigaction(SIGCLD, 0xEFFFEAD8, 0xEFFFEB58)	= 0
+ waitid(P_ALL, 0, 0xEFFFEB18, WEXITED|WTRAPPED|WSTOPPED|WNOHANG) Err#10 ECHILD
+ sigaction(SIGCLD, 0xEFFFEAD8, 0xEFFFEB58)	= 0
+ read(3, 0xEFFFF358, 1024)			= 0
+ sigaction(SIGCLD, 0xEFFFF0A8, 0xEFFFF128)	= 0
+ sigaction(SIGCLD, 0xEFFFF0A8, 0xEFFFF128)	= 0
+ close(3)					= 0
+ kill(5313, SIGKILL)				= 0
+ read(62, 0xEF6A9664, 1024)			= 0
+ _exit(0)
+ # 
+ 
+ 15:20:48 ?        0:01 /export/local/apache/bin/httpd
+ httpd: [Thu Feb 11 12:45:03 1999] [error] could not make child process 5313 exit, attempting to continue anyway
+ 
+ -- 
+ Best Regards,
+ --raman
+ 
+       Adobe Systems                 Tel: 1 408 536 3945   (W14-128)
+       Advanced Technology Group     Fax: 1 408 537 4042 
+       W14-128 345 Park Avenue     Email: raman@adobe.com 
+       San Jose , CA 95110 -2704     Email:  raman@cs.cornell.edu
+       http://labrador.corp.adobe.com/~raman/        (Adobe Intranet)
+       http://cs.cornell.edu/home/raman/raman.html    (Cornell)
+ ----------------------------------------------------------------------
+     Disclaimer: The opinions expressed are my own and in no way should be taken
+ as representative of my employer, Adobe Systems Inc.
+ ____________________________________________________________
+State-Changed-From-To: feedback-open
+State-Changed-By: lars
+State-Changed-When: Sat Feb 20 16:28:21 PST 1999
+State-Changed-Why:
+Info from PR#3924:
+
+
+From: Daniel Rinehart <danielr@ccs.neu.edu>
+To: raman
+Subject: Apache Bug# 3749
+Date: Fri, 19 Feb 1999 14:36:45 -0500
+
+        I noticed that you had registered the following bug number in the
+database. I am also having similar problems with Apache 1.3.4 on Solaris
+2.6. The majority of our files are served off of NFS from a NetApp. At
+least once or twice a week I end up with Apache children that can't be
+killed and end up having to reboot the machine. I was wondering if you
+had been able to uncover anything else since your last message to Apache
+bugs?
+        I was also wondering if you had tried the "LockFile" recommendation in
+http://bugs.apache.org/index/full/1977 ?
+        Thank you for your time.
+
+- Daniel R. <danielr@ccs.neu.edu> [http://www.ccs.neu.edu/home/danielr/]
+
+-- 
+Best Regards,
+--raman
+
+
+Comment-Added-By: lars
+Comment-Added-When: Sat Feb 20 16:30:43 PST 1999
+Comment-Added:
+Info from PR#3927:
+
+
+        I stumbeled across this, I wonder if Apache needs to add checks for
+Large File System errors under Solaris 2.6 (section 3.1.2)? 
+
+        http://www.sun.com/software/white-papers/wp-largefiles/largefiles.pdf
+        Large Files in Solaris: A White Paper
+
+- Daniel R. <danielr@ccs.neu.edu> [http://www.ccs.neu.edu/home/danielr/]
+
+
+Comment-Added-By: coar
+Comment-Added-When: Tue Mar 23 14:13:08 PST 1999
+Comment-Added:
+[More info from submitter, who sent it to the wrong address]
+
+This is a follow-up to a case I had opened a month or more
+ago.
+
+After investigating the problem with truss and guessing that
+the problems were a result of bugs resulting from solaris
+2.6 implementation of fstat64 and friends, I downgraded my
+sparc station to Solaris 2.5.1 --and apache has since been
+running like a champ with no trouble.
+
+I maintain a second server on which I have applied the
+Sun patches for solaris 2.6 and am watching it to see if the
+patches overcome the nfs bugs that were biting apache --I'll
+update this list when I discover something concrete.
+ Thanks, 
+ --Raman
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Tue Apr 20 20:58:16 PDT 1999
+State-Changed-Why:
+Thanks for keeping us up to date on this one.
+
+Another thing you may wish to try is to comment out the
+USE_MMAP_FILES definition in the SOLARIS section of
+src/include/ap_config.h.  I've experienced problems with
+mmap() on NFS on solaris in situations of low swap --
+check the swap with "swap -s".  These problems were 
+alleviated by upgrading to the -12 kernel patch and
+bumping up the swap space.
+
+Dean
+Comment-Added-By: lars
+Comment-Added-When: Sun Jun 13 05:11:09 PDT 1999
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+If you have information to add, BE SURE to reply to this
+message and include the apbugs@Apache.Org address so it
+will be attached to the problem report!
+State-Changed-From-To: feedback-closed
+State-Changed-By: slive
+State-Changed-When: Mon Oct 30 18:53:44 PST 2000
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

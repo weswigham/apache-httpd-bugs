@@ -1,0 +1,149 @@
+Received: (qmail 4164 invoked by uid 2012); 24 Oct 1997 23:42:21 -0000
+Message-Id: <19971024234221.4163.qmail@hyperreal.org>
+Date: 24 Oct 1997 23:42:21 -0000
+From: David Schuler <schuld@btv.ibm.com>
+Reply-To: schuld@btv.ibm.com
+To: apbugs@hyperreal.org
+Subject: Proxy Module - File/directory name on AIX 1.X cannot be "@"
+X-Send-Pr-Version: 3.2
+
+>Number:         1317
+>Category:       os-aix
+>Synopsis:       Proxy Module - File/directory name on AIX 1.X cannot be "@"
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Oct 24 16:50:00 PDT 1997
+>Last-Modified:  Thu Oct 30 11:21:12 PST 1997
+>Originator:     schuld@btv.ibm.com
+>Organization:
+>Release:        1.2.4
+>Environment:
+i386-ibm-aix - IBM AIX Version 1.3.0 ptf (patchlevel) 0024
+gcc 2.7.2.3
+>Description:
+The IBM AIX version 1.X operating system does not allow a file name or directory
+name to be "@" (a single ampersand).  When I enable and use the mod_proxy
+module, it is consistently logging the following type of errors:
+
+[Thu Oct 23 20:30:35 1997] proxy: error creating cache directory
+- mkdir: /usr/local/etc/httpd/proxy/2/G/@: No such file or directory
+[Thu Oct 23 20:30:35 1997] proxy: error linking cache file
+- link: /usr/local/etc/httpd/proxy/2/G/@/cFQnVidGCEF7152linQ: No such file or directory
+[Thu Oct 23 20:36:09 1997] proxy: error creating cache directory
+- mkdir: /usr/local/etc/httpd/proxy/W/c/@: No such file or directory
+[Thu Oct 23 20:36:10 1997] proxy: error linking cache file
+- link: /usr/local/etc/httpd/proxy/W/c/@/@s9PQJTCvqmSKK@b@og: No such file or directory
+
+This fail is caused because a file and/or directory name cannot have a single
+"@" as it's name.  In AIX versions 1.X and 2.X, IBM used the single "@" character
+as a special type of hidden directory/file.  This was used with the IBM/Locus
+Transparent Computing Facility (TCF) code.
+
+The ONLY fails I received from the mod_proxy are when the "@" was going to be
+used as a file / directory name.
+>How-To-Repeat:
+The only way to recreate this fail is to use an AIX 1.X or 2.X system.
+>Fix:
+I can give you a fix for AIX 1.X.  A slightly different symbol (which I don't
+know) would be required for AIX 2.X.  But, the odds of anyone having AIX 2.X
+are pretty slim these days, anyway.  A quick fix that doesn't screw up the
+hashing function is to use the "%" character in place of the "@" character
+on AIX 1.X.  This causes file names and directory names to be created with a
+single "%", which has been running for a while now without any fails of any
+type being logged.
+
+To fix AIX 1.X, apply the following context diff to apache_1.2.4 source:
+
+
+*** src/modules/proxy/proxy_util.c-	Fri Oct 24 15:31:02 1997
+--- src/modules/proxy/proxy_util.c	Fri Oct 24 15:31:52 1997
+***************
+*** 558,564 ****
+--- 558,568 ----
+      int i, k, d;
+      unsigned int x;
+      static const char table[64]=
++ #ifdef __ps2__
++ "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_%";
++ #else
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_@";
++ #endif
+  
+      MD5Init(&context);
+      MD5Update(&context, (const unsigned char *)it, strlen(it));
+%
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: David Schuler <schuld@btv.ibm.com>
+Cc: apbugs@hyperreal.org
+Subject: Re: os-aix/1317: Proxy Module - File/directory name on AIX 1.X cannot be "@"
+Date: Fri, 24 Oct 1997 19:19:57 -0700 (PDT)
+
+ Oh wow.  What a cool misfeature :)  Thanks for the patch.  Is this test: 
+ 
+ #if defined(AIX) && defined(__ps2__)
+ ...
+ #endif
+ 
+ Sufficient to distinguish AIX 1.x from all other AIXs and operating
+ systems?  Or should we maybe -DAIX=1 or 2 (where 2 means > 1) in
+ src/Configure, and use that? 
+ 
+ Dean
+ 
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: os-aix/1317: Proxy Module - File/directory name on AIX 1.X cannot be "@"  (fwd)
+Date: Sun, 26 Oct 1997 12:31:38 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ Date: Sun, 26 Oct 1997 15:21:44 -0500
+ From: "David W. Schuler" <schuld@btv.ibm.com>
+ To: Dean Gaudet <dgaudet@arctic.org>
+ Subject: Re: os-aix/1317: Proxy Module - File/directory name on AIX 1.X cannot be "@" 
+ 
+ Dean:
+ 
+ The patch you mention below is prefectly adequate to distinguish AIX 1.X from
+ the other releases of AIX.  This type of check is used in a lot of software
+ and has never given anyone a problem.  I'd go with it, and not try to do anything
+ more fancy.  The chances of screwing things up are increased if we try to be more
+ clever.
+ 
+ Dave Schuler
+ schuld@btv.ibm.com
+ 
+ 
+ On Fri, 24 Oct 1997 19:19:57 PDT Dean Gaudet wrote:
+ >Oh wow.  What a cool misfeature :)  Thanks for the patch.  Is this test: 
+ >
+ >#if defined(AIX) && defined(__ps2__)
+ >...
+ >#endif
+ >
+ >Sufficient to distinguish AIX 1.x from all other AIXs and operating
+ >systems?  Or should we maybe -DAIX=1 or 2 (where 2 means > 1) in
+ >src/Configure, and use that? 
+ >
+ >Dean
+ >
+ >
+ 
+ 
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Oct 30 11:21:12 PST 1997
+State-Changed-Why:
+Your fix has been committed to 1.3b3.
+
+Dean
+>Unformatted:
+

@@ -1,0 +1,113 @@
+Received: (qmail 25346 invoked by uid 2012); 15 Jun 1998 23:51:53 -0000
+Message-Id: <19980615235153.25345.qmail@hyperreal.org>
+Date: 15 Jun 1998 23:51:53 -0000
+From: Janne Snabb <snabb@epipe.fi>
+Reply-To: snabb@epipe.fi
+To: apbugs@hyperreal.org
+Subject: quotes missing from $CFG_LDFLAGS_SHLIB in apxs in OSF1
+X-Send-Pr-Version: 3.2
+
+>Number:         2449
+>Category:       os-osf
+>Synopsis:       quotes missing from $CFG_LDFLAGS_SHLIB in apxs in OSF1
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun 15 18:10:06 PDT 1998
+>Closed-Date:    Wed May 03 13:55:59 PDT 2000
+>Last-Modified:  Wed May 03 13:55:59 PDT 2000
+>Originator:     snabb@epipe.fi
+>Release:        1.3.0
+>Organization:
+>Environment:
+OSF1/V4.0 878 alpha, stock cc
+>Description:
+There are quotes missing from $CFG_LDFLAGS_SHLIB variable in apxs perl
+script. Currently the configuration systems sets it to:
+	my $CFG_LDFLAGS_SHLIB = '-shared -expect_unresolved * -msym -s';
+...but it should definitely be:
+	my $CFG_LDFLAGS_SHLIB = '-shared -expect_unresolved \'*\' -msym -s';
+...as the asterisk here isn't meant to be a shell filename glob. It should
+be passed "as-is" to the ld command. OSF ld manual page also warns that
+the wildcard characters afer "-expect_unresolved" need to be quoted from shell.
+Apxs uses the perl system() function with a single string argument, which means 
+that the command is passed through the shell and expanded.
+>How-To-Repeat:
+/tmp/jserv0.9.11 $ /usr/local/apache/sbin/apxs -c mod_jserv.c 
+cc -DOSF1 -DSTATUS -DUSE_HSREGEX -DSHARED_MODULE -I/usr/local/apache/include  -c mod_jserv.c
+ld -shared -expect_unresolved * -msym -s -o mod_jserv.so mod_jserv.o
+ld:
+Object file format error in: INSTALL: read_cur_obj_info: bad file magic number(0x6854)
+apxs:Break: Command failed with rc=65536
+/tmp/jserv0.9.11 $ 
+>Fix:
+I tried adding the quotes (and some backslashes in front of them) in the relevant
+location in src/Configure, but no success. Probably because I don't know
+Apache Configure system too well. As a temporary work-around I edited 
+/usr/local/apache/sbin/apxs script manually.
+>Release-Note:
+>Audit-Trail:
+
+From: Janne Snabb <snabb@epipe.fi>
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: os-osf/2449: quotes missing from $CFG_LDFLAGS_SHLIB in apxs in OSF1
+Date: Tue, 16 Jun 1998 12:47:00 +0300 (EEST)
+
+ I did some more debugging of the problem, and found out a simple fix:
+ 
+ --- apxs.pl.dist	Tue Jun 16 12:37:32 1998
+ +++ apxs.pl	Tue Jun 16 12:37:47 1998
+ @@ -211,11 +211,11 @@
+      my (@cmds) = @_;
+      my ($cmd, $rc);
+  
+      foreach $cmd (@cmds) {
+          print STDERR "$cmd\n";
+ -        $rc = system("$cmd");
+ +        $rc = system(split(' ', $cmd));
+          if ($rc != 0) {
+              printf(STDERR "apxs:Break: Command failed with rc=%d\n", $rc << 8);
+              exit(1);
+          }
+      }
+ 
+ ...although I don't know if this breaks apxs on some other platforms,
+ but I assume that apxs commands don't have to be passed throuhg /bin/sh in
+ any situation. (BTW, why was the system() argument string $cmd surrounded
+ with the double-quotes anyway? :-)
+ 
+ --
+ Janne Snabb / Broken Pipe Oy
+ snabb@epipe.fi
+ 
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Wed May  5 11:40:41 PDT 1999
+State-Changed-Why:
+
+I'm sending you a message containing a patch I'd like you
+to test.  Please reply to *this* message with the results.
+
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Wed May  3 13:55:59 PDT 2000
+State-Changed-Why:
+I believe this is fixed as of 1.3.8; definitely as of
+1.3.12.  If you can reproduce the problem with that
+version please let us know.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

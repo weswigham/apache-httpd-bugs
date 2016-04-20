@@ -1,0 +1,223 @@
+Received: (qmail 18060 invoked by uid 2012); 16 Dec 1997 19:28:05 -0000
+Message-Id: <19971216192805.18059.qmail@hyperreal.org>
+Date: 16 Dec 1997 19:28:05 -0000
+From: David Woolley <djw@bts.co.uk>
+Reply-To: djw@bts.co.uk
+To: apbugs@hyperreal.org
+Subject: BrowserMatch variable cause CGI failure: 'variable=1: is not an identifier' - SCO /bin/sh
+X-Send-Pr-Version: 3.2
+
+>Number:         1562
+>Category:       os-sco
+>Synopsis:       BrowserMatch variable cause CGI failure: 'variable=1: is not an identifier' - SCO /bin/sh
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Dec 16 11:30:00 PST 1997
+>Last-Modified:  Thu May 21 06:40:00 PDT 1998
+>Originator:     djw@bts.co.uk
+>Organization:
+>Release:        1.2.4
+>Environment:
+$ uname -a
+btsu4 btsu4 3.2 2 i386   (SCO 3.2v4.2)
+
+Set                              Release   Notes
+---                              -------   -----
+NET382D Enhanced TCP/IP 1.2.1 Dr 4.0.0a    removed
+Console Keyboard Driver SLS      2.0.0a    installed
+SCO NFS Development System       1.2.0j    installed
+SCO NFS Runtime System           1.2.0m    installed
+ClusStar Async Device Driver     5.4.0     partially installed
+Software Development System      3.2.4n    installed
+Specialix RIO Intelligent I/O dr 2.04T-1.1 partially installed
+3Com EtherLink III Driver Releas 1.1       removed
+SCO LLI Driver Disk              3.1.0j    installed
+SCO TCP/IP Runtime System        1.2.1o    installed
+Comtrol RocketPort Driver v1.2   1.2       installed
+SCO UNIX System V Extended Utili 3.2.4l    installed
+SCO UNIX System V Operating Syst 3.2.4l    installed
+ (prd = unixos)                  3.2.4l    installed  
+>Description:
+If the BrowserMatch line advised for getting round the MSIE 4/Java/HTTP 1.1 bug fails on a Browser match (not specific to MSIE - one can change the string to get the same effect on Lynx), there is a 500 error with the following in the log file:
+
+downgrade-1.0=1: is not an identifier
+[Tue Dec 16 17:25:47 1997] access to /usr/bts/wrm/cgi-bin/wrm/repdefinition failed for columbine.bts.co.uk, reason: Premature end of script headers
+>How-To-Repeat:
+Access /cgi-bin/test-cgi  (NCSA one) after having applied the MSIE 4 workaround and with your browser string set to match the browser used.
+>Fix:
+Experiments indicate that bash will accept:
+
+export fred=jim
+
+but /bin/sh fails thus:
+
+$ export fred=jim
+fred=jim: is not an identifier
+$
+
+I'd therefore surmise that Apache is assuming an extension in the shell language. (Also, the string is obviously in /bin/sh, as confirmed by strings, but not in apache).
+
+Unfortunately the logistics of rebuilding Apache are a bit fraught (it has to be sent to another office, who have the TCP/IP development kit) and for marketing (not technical) reasons, Netscape server is being used in the system to be sold, so actually testing this is outside my budget (I can work round it by disabling HTTP/1.1 in MSIE)
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: coar
+State-Changed-When: Tue Dec 16 12:25:12 PST 1997
+State-Changed-Why:
+Hmm.  Would you please reply with the exact BrowserMatch
+line from your configuration file?
+
+From: Marc Slemko <marcs@znep.com>
+To: coar@hyperreal.org
+Cc: djw@bts.co.uk, Apache bugs database <apbugs@apache.org>
+Subject: Re: os-sco/1562: BrowserMatch variable cause CGI failure: 'variable=1: is not an identifier' - SCO /bin/sh
+Date: Tue, 16 Dec 1997 13:42:36 -0700 (MST)
+
+ On 16 Dec 1997 coar@hyperreal.org wrote:
+ 
+ > Synopsis: BrowserMatch variable cause CGI failure: 'variable=1: is not an identifier' - SCO /bin/sh
+ > 
+ > State-Changed-From-To: open-feedback
+ > State-Changed-By: coar
+ > State-Changed-When: Tue Dec 16 12:25:12 PST 1997
+ > State-Changed-Why:
+ > Hmm.  Would you please reply with the exact BrowserMatch
+ > line from your configuration file?
+ > 
+ 
+ This is a known problem (thought there was another PR about it... can't
+ find it right now) related to the use of a "-" in a variable name.  Some
+ shells do not accept that.  It needs to be changed in the Apache code.  A
+ temporary workaround would be to use a replacement shell that supports it
+ (eg. bash), however this can only be changed by recompiling Apache with
+ the SHELL_PATH define changed.
+ 
+
+From: "David J Woolley" <djw@bts.co.uk>
+To: Marc Slemko <marcs@znep.com>
+Cc: djw@bts.co.uk, Apache bugs database <apbugs@apache.org>,
+        coar@hyperreal.org
+Subject: Re: os-sco/1562: BrowserMatch variable cause CGI failure: 'varia
+Date: Wed, 17 Dec 1997 12:07:38 +0100
+
+ > On 16 Dec 1997 coar@hyperreal.org wrote:
+ 
+ > > Hmm.  Would you please reply with the exact BrowserMatch
+ > > line from your configuration file?
+ > > 
+ 
+ This is the last one I tried on MSIE 4; I cut out one variable 
+ because it wasn't documented except in the MSIE 4/ Java workaround 
+ and I thought Apache was rejecting it at the time:
+ 
+ BrowserMatch "MSIE 4\.0" force-response-1.0
+ 
+ I also tried:
+ 
+ BrowserMatch "Lynx" force-response-1.0
+ 
+ > 
+ > This is a known problem (thought there was another PR about it... can't
+ > find it right now) related to the use of a "-" in a variable name.  Some
+ > shells do not accept that.  It needs to be changed in the Apache code.  A
+ > temporary workaround would be to use a replacement shell that supports it
+ > (eg. bash), however this can only be changed by recompiling Apache with
+ > the SHELL_PATH define changed.
+ 
+ This seems sufficient but not necessary.  SCO /bin/sh certainly 
+ doesn't parse variables with a - properly, but the error message 
+ observed can only be generated by using export, whereas the - would 
+ have produced an error on the assignment as well.
+ 
+ 
+ # fred-1=jim
+ fred-1=jim: not found
+ # 'fred-1'=jim
+ fred-1=jim: not found
+ # export fred-1
+ fred-1: is not an identifier
+ # export fred
+ # fred-1=jim /bin/echo
+ fred-1=jim: not found
+ # export fred-1=jim
+ fred-1=jim: is not an identifier
+ # fred=jim
+ #
+  
+ 
+ As I indicated in the original report, marketing considerations that 
+ are outside the hands of a mere programmer, mean that the system sold 
+ will use SCO Fast Start and its included Netscape; I was using Apache 
+ for testing on the older SCO we had in this office, although 
+ personally I see no technical advantage in Netscape (the application 
+ is so CGI intensive that threads offer no advantage).  As such, I can 
+ work round by configuring MSIE not to use HTTP 1.1.
+ 
+ -- 
+ David Woolley - Office: David Woolley <djw@bts.co.uk>
+ BTS             Home: <david@djwhome.demon.co.uk>
+ Wallington      TQ 2887 6421
+ England         51  21' 44" N,  00  09' 01" W (WGS 84)
+Comment-Added-By: coar
+Comment-Added-When: Wed Dec 17 05:28:27 PST 1997
+Comment-Added:
+Apache is neither setting the envariables through the
+command line nor issuing the export commands; it sets
+them through the exec[lv]e() calls.  The exporting must
+be getting done by the shell at some point after it has
+been started.
+
+Will SCO's sh accept a dash if it's escaped?  E.g.,
+"alpha\-omega=1"?
+State-Changed-From-To: feedback-closed
+State-Changed-By: brian
+State-Changed-When: Wed May 20 19:15:17 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+
+From: "David J Woolley" <djw@bts.co.uk>
+To: brian@hyperreal.org
+Cc: apbugs@Apache.Org
+Subject: Re: os-sco/1562: BrowserMatch variable cause CGI failure: 'varia
+Date: Thu, 21 May 1998 13:41:46 +0100
+
+ I didn't follow this up further because our maketing people wouldn't 
+ accept a free third party browser in the distributed product.  They 
+ wanted the SCO supplied and supported Netscape product, so even 
+ though Apache performs better we had to target for Fast Track!  We 
+ moved from SCO 3.2v4.2 to SCO 3.2v5 for development, so we had Fast 
+ Track and there was no excuse for using another server.
+ 
+ For testing, we could disable HTTP 1.1 in MSIE 4.
+ 
+ > 
+ > Synopsis: BrowserMatch variable cause CGI failure: 'variable=1: is
+ > not an identifier' - SCO /bin/sh
+ > 
+ > State-Changed-From-To: feedback-closed
+ > State-Changed-By: brian
+ > State-Changed-When: Wed May 20 19:15:17 PDT 1998
+ > State-Changed-Why:
+ > [This is a standard response.]
+ > No response from submitter, assuming issue has been resolved.
+ > 
+ > 
+ 
+ -- 
+ David Woolley - Office: David Woolley <djw@bts.co.uk>
+ BTS             Home: <david@djwhome.demon.co.uk>
+ Wallington      TQ 2887 6421
+ England         51  21' 44" N,  00  09' 01" W (WGS 84)
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

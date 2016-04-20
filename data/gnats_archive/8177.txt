@@ -1,0 +1,347 @@
+Received: (qmail 50980 invoked by uid 501); 13 Aug 2001 22:16:10 -0000
+Message-Id: <20010813221610.50979.qmail@apache.org>
+Date: 13 Aug 2001 22:16:10 -0000
+From: Charles Zhao <cyzhao@hotmail.com>
+Reply-To: cyzhao@hotmail.com
+To: submit@bugz.apache.org
+Subject: Get HTTP errors when making multiple concurrent request to proxy module which rewrites url.
+X-Send-Pr-Version: 3.110
+
+>Number:         8177
+>Category:       mod_rewrite
+>Synopsis:       Get HTTP errors when making multiple concurrent request to proxy module which rewrites url.
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          feedback
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Aug 13 15:20:00 PDT 2001
+>Closed-Date:    
+>Last-Modified:  Tue Aug 14 08:50:00 PDT 2001
+>Originator:     cyzhao@hotmail.com
+>Release:        1.3.19
+>Organization:
+>Environment:
+This bug only happens on Apache Server 1.3.19 for Win32.
+>Description:
+Our product uses Apache's proxy module and rewrite module to implement proxy funcationality, when we did load testing with Silk Performer we found this problem. When we made multiple concurrent requests from Silk Performer to Apache's proxy module with rewrite rules, Silk Performer finally gave 
+"error HTTP: 1000 - invalid header, RecvHeader second attempt" error. When I took out rewrite rules from proxy module and did the same load testing, it worked fine.
+
+>How-To-Repeat:
+Add new proxy module by adding the follwing lines to httpd.conf:
+
+Listen 9000
+
+<VirtualHost our.company.com:9000>
+	ProxyRequests On
+
+	ProxyVia On
+	CacheRoot "c:/apache/proxy"
+	CacheSize 5
+	CacheGcInterval 4
+	CacheMaxExpire 24
+	CacheLastModifiedFactor 0.1
+	CacheDefaultExpire 1
+
+	RewriteEngine On
+	RewriteLog c:/apache/logs/rewrite.log
+	RewriteLogLevel 9
+	RewriteCond %{HTTP_HOST}   !^our\.company\.com
+	# Use [P] to proxy/rewrite, [R] for a URL-decoration type rewrite
+	RewriteRule ^proxy:(.+) $1 [P]
+</VirtualHost>
+
+In Silk Performer, add script which makes request to http://www.google.com through proxy server - our.company.com:9000
+
+Start the test with multiple concurrent users and each user keeps making requests for 2 mintues, then you will get HTTP error after some sucessful requests.
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: marc
+State-Changed-When: Mon Aug 13 22:00:29 PDT 2001
+State-Changed-Why:
+Why are you load testing google's servers?  That doesn't seem very polite.
+
+What does the error you are getting actually mean?  We have no idea what your load testing utility means when it gives that error.
+
+What makes you think this is anything more than intermittent connectivity issues reaching google when you are stressing your internet connection while bombarding it with requests?
+
+From: "Chunyun Zhao" <cyzhao@hotmail.com>
+To: marc@apache.org, apache-bugdb@apache.org
+Cc: apbugs@Apache.Org
+Subject: Re: mod_rewrite/8177: Get HTTP errors when making multiple concurrent request to proxy module which rewrites url.
+Date: Tue, 14 Aug 2001 15:45:03 +0000
+
+ Actually I used our local web server for load testing, I just gave 
+ www.google.com as the example when I submitted the issue, sorry for the 
+ confusion.
+ 
+ I have tried out 2.3.14 for Win32 and 2.3.17 for Solaris, this problem 
+ doesn't exist. This is why I thought it is a bug of 2.3.19 for Win32.
+ 
+ Since I also don't know what that info from Silk Performer means, so I 
+ reproduced the bug using a simple java application successfully, the 
+ following are steps:
+ 
+ 1. Add the following lines to httpd.conf to create a new proxy module:
+ 
+   Listen 9000
+ 
+   <VirtualHost zhao.mycompany.com:9000>
+ 	ProxyRequests On
+ 
+ 	ProxyVia On
+ 	CacheRoot "c:/apache/proxy"
+ 	CacheSize 5
+ 	CacheGcInterval 4
+ 	CacheMaxExpire 24
+ 	CacheLastModifiedFactor 0.1
+ 	CacheDefaultExpire 1
+ 
+ 	RewriteEngine On
+ 	RewriteLog c:/apache/logs/rewrite.log
+ 	RewriteLogLevel 9
+ 	RewriteCond %{HTTP_HOST}   !^zhao\.mycompany\.com
+ 	# Use [P] to proxy/rewrite, [R] for a URL-decoration type rewrite
+ 	RewriteRule ^proxy:(.+)    $1 [P]
+ </VirtualHost>
+ 
+ 
+ 2. Restart Apache service.
+ 
+ 3. Create the following Java application which can make multiple concurrent 
+ requests to the proxy, the source code are as follows:
+ 
+ import java.util.*;
+ import java.io.*;
+ import java.net.*;
+ 
+ public class HTTPPerformer
+ {
+   private static int numberOfThreads;
+ 
+   public static void main(String[] args)
+   {
+     try
+     {
+       //Use proxy server to get pages
+       System.setProperty("http.proxyHost", "zhao.mycompany.com");
+       System.setProperty("http.proxyPort", "9000");
+ 
+       numberOfThreads = Integer.parseInt(args[0]);
+       multiThreadTest();
+     }
+     catch (Exception e)
+     {
+       System.out.println("Exception in main: " + e);
+       e.printStackTrace();
+     }
+   }
+ 
+   private static void multiThreadTest()
+   {
+     for (int i = 0; i < numberOfThreads; i++)
+     {
+       MyThread myT = new MyThread(i);
+       Thread t = new Thread(myT);
+       t.start();
+     }
+   }
+ 
+   static class MyThread implements Runnable
+   {
+     int counter;
+ 
+     public MyThread(int i)
+     {
+       counter = i;
+     }
+ 
+     public void run()
+     {
+       try
+       {
+ 	String uri = "http://zhao.mycompany.com/load_testing.htm";
+         URL url = new URL( uri );
+         URLConnection conn = url.openConnection();
+         InputStream is = conn.getInputStream();
+         int b = is.read();
+         while (b!=-1)
+         {
+           b = is.read();
+         }
+ 	System.out.println("Get the page successfully.");
+         is.close();
+       }
+       catch (Exception e)
+       {
+         System.out.println(e);
+         e.printStackTrace();
+       }
+     }
+   }
+ }
+ 
+ 4. Compile the Java application and run it, and the following are results 
+ from my console:
+ 
+ C:\temp>java HTTPPerformer 1
+ Get the page successfully.
+ 
+ C:\temp>java HTTPPerformer 2
+ Get the page successfully.
+ Get the page successfully.
+ 
+ C:\temp>java HTTPPerformer 3
+ Get the page successfully.
+ Get the page successfully.
+ Get the page successfully.
+ 
+ C:\temp>java HTTPPerformer 4
+ java.net.SocketException: Connection reset by peer: JVM_recv in socket input 
+ stream read
+ 
+ java.net.SocketException: Connection reset by peer: JVM_recv in socket input 
+ stream read java.net.SocketException: Connection reset by peer: JVM_recv in 
+ socket input stream read
+ 
+ java.net.SocketException: Connection reset by peer: JVM_recv in socket input 
+ stream read
+         at java.net.SocketInputStream.socketRead(Native Method)
+ 
+ java.net.SocketException: Connection reset by peer: JVM_recv in socket input 
+ stream read
+         at java.net.SocketInputStream.read(Unknown Source)
+         at java.io.BufferedInputStream.fill(Unknown Source)
+         at java.io.BufferedInputStream.read1(Unknown Source)
+         at java.io.BufferedInputStream.read(Unknown Source)
+         at java.io.FilterInputStream.read(Unknown Source)
+         at java.io.PushbackInputStream.read(Unknown Source)
+         at sun.net.www.http.HttpClient.parseHTTPHeader(Unknown Source)
+         at sun.net.www.http.HttpClient.parseHTTP(Unknown Source)
+         at sun.net.www.http.HttpClient.parseHTTP(Unknown Source)
+         at 
+ sun.net.www.protocol.http.HttpURLConnection.getInputStream(Unknown Source)
+         at HTTPPerformer$MyThread.run(HTTPPerformer.java:51)
+         at java.lang.Thread.run(Unknown Source)
+ java.net.SocketException: Connection reset by peer: JVM_recv in socket input 
+ stream read
+         at java.net.SocketInputStream.socketRead(Native Method)
+         at java.net.SocketInputStream.read(Unknown Source)
+         at java.io.BufferedInputStream.fill(Unknown Source)
+         at java.io.BufferedInputStream.read1(Unknown Source)
+         at java.io.BufferedInputStream.read(Unknown Source)
+         at java.io.FilterInputStream.read(Unknown Source)
+         at java.io.PushbackInputStream.read(Unknown Source)
+         at sun.net.www.http.HttpClient.parseHTTPHeader(Unknown Source)
+         at sun.net.www.http.HttpClient.parseHTTP(Unknown Source)
+         at sun.net.www.http.HttpClient.parseHTTP(Unknown Source)
+         at 
+ sun.net.www.protocol.http.HttpURLConnection.getInputStream(Unknown Source)
+         at HTTPPerformer$MyThread.run(HTTPPerformer.java:51)
+         at java.lang.Thread.run(Unknown Source)
+ java.net.SocketException: Connection reset by peer: JVM_recv in socket input 
+ stream read
+         at java.net.SocketInputStream.socketRead(Native Method)
+         at java.net.SocketInputStream.read(Unknown Source)
+         at java.io.BufferedInputStream.fill(Unknown Source)
+         at java.io.BufferedInputStream.read1(Unknown Source)
+         at java.io.BufferedInputStream.read(Unknown Source)
+         at java.io.FilterInputStream.read(Unknown Source)
+         at java.io.PushbackInputStream.read(Unknown Source)
+         at sun.net.www.http.HttpClient.parseHTTPHeader(Unknown Source)
+         at sun.net.www.http.HttpClient.parseHTTP(Unknown Source)
+         at sun.net.www.http.HttpClient.parseHTTP(Unknown Source)
+         at 
+ sun.net.www.protocol.http.HttpURLConnection.getInputStream(Unknown Source)
+         at HTTPPerformer$MyThread.run(HTTPPerformer.java:51)
+         at java.lang.Thread.run(Unknown Source)
+ java.net.SocketException: Connection reset by peer: JVM_recv in socket input 
+ stream read
+         at java.net.SocketInputStream.socketRead(Native Method)
+         at java.net.SocketInputStream.read(Unknown Source)
+         at java.io.BufferedInputStream.fill(Unknown Source)
+         at java.io.BufferedInputStream.read1(Unknown Source)
+         at java.io.BufferedInputStream.read(Unknown Source)
+         at java.io.FilterInputStream.read(Unknown Source)
+         at java.io.PushbackInputStream.read(Unknown Source)
+         at sun.net.www.http.HttpClient.parseHTTPHeader(Unknown Source)
+         at sun.net.www.http.HttpClient.parseHTTP(Unknown Source)
+         at sun.net.www.http.HttpClient.parseHTTP(Unknown Source)
+         at 
+ sun.net.www.protocol.http.HttpURLConnection.getInputStream(Unknown Source)
+         at HTTPPerformer$MyThread.run(HTTPPerformer.java:51)
+         at java.lang.Thread.run(Unknown Source)
+ 
+ 5. The above results show that when there are many concurrent requests made 
+ to the proxy, the socket connections are suddenly reset by Apache server 
+ proxy module.
+ 
+ 6. I followed the above steps with Apache Server 2.3.14 for Win32, and it 
+ worked fine.
+ 
+ Thanks,
+ Charles
+ 
+ >From: marc@apache.org
+ >To: apache-bugdb@apache.org, cyzhao@hotmail.com, marc@apache.org
+ >Subject: Re: mod_rewrite/8177: Get HTTP errors when making multiple 
+ >concurrent request to proxy module which rewrites url.
+ >Date: 14 Aug 2001 05:00:30 -0000
+ >
+ >[In order for any reply to be added to the PR database, you need]
+ >[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ >[subject line starts with the report component and number, with ]
+ >[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ >["Re: general/1098:").  If the subject doesn't match this       ]
+ >[pattern, your message will be misfiled and ignored.  The       ]
+ >["apbugs" address is not added to the Cc line of messages from  ]
+ >[the database automatically because of the potential for mail   ]
+ >[loops.  If you do not include this Cc, your reply may be ig-   ]
+ >[nored unless you are responding to an explicit request from a  ]
+ >[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ >
+ >
+ >Synopsis: Get HTTP errors when making multiple concurrent request to proxy 
+ >module which rewrites url.
+ >
+ >State-Changed-From-To: open-feedback
+ >State-Changed-By: marc
+ >State-Changed-When: Mon Aug 13 22:00:29 PDT 2001
+ >State-Changed-Why:
+ >Why are you load testing google's servers?  That doesn't seem very polite.
+ >
+ >What does the error you are getting actually mean?  We have no idea what 
+ >your load testing utility means when it gives that error.
+ >
+ >What makes you think this is anything more than intermittent connectivity 
+ >issues reaching google when you are stressing your internet connection 
+ >while bombarding it with requests?
+ >
+ 
+ 
+ _________________________________________________________________
+ Get your FREE download of MSN Explorer at http://explorer.msn.com/intl.asp
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

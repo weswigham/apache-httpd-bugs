@@ -1,0 +1,158 @@
+Received: (qmail 20184 invoked by uid 500); 8 Jun 2000 21:03:06 -0000
+Message-Id: <20000608154947.A2200@utx.cz>
+Date: Thu, 8 Jun 2000 15:49:47 +0200
+From: Stanislav Brabec <utx@k332.feld.cvut.cz>
+To: apbugs@Apache.Org
+Subject: AddCharset and languages in conf + new browserbug
+
+>Number:         6168
+>Category:       config
+>Synopsis:       language specific AddCharset in httpd.conf & browserbug
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       low
+>Responsible:    apache
+>State:          open
+>Class:          support
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jun 08 14:10:00 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     Stanislav Brabec
+>Release:        1.3.12
+>Organization:
+Bc. Stanislav Brabec, UTX
+>Environment:
+all
+>Description:
+language specific AddCharset are missing in httpd.conf & new browser known bug
+>How-To-Repeat:
+see Lynx {configured for Czech/iso-8859-2 as default}
+browsing default Apache docs:
+    URL: http://localhost/index.html.fr
+before patch
+    Charset: iso-8859-2 (assumed)
+after patch
+    URL: http://localhost/index.html.fr
+    Charset: iso-8859-1
+)
+
+>Fix:
+
+Fix contains:
+- Change httpd.conf for language-specific charsets.
+- Documents known Mozilla/4 Accept-Charset bug.
+- Cosmetical fix or httpd.conf comments on paths (irrelevant to subject).
+
+Netscape and Accept-Charset:
+============================
+(you can add it to manual, chapter "Known problems with various clients")
+
+Incorrect value for Accept-Charset in Netscape:
+
+Netscape (BrowserMatch Mozilla/4) returns Accept-Charset everytimes
+equal to "iso-8859-1,*,utf-8", independently on preferred languages
+and selected default charset. This fact have no direct consequence to
+Apache functionallity, but client programs parsing returned
+Accept-Charset value should encounter this problem and in case of
+Mozilla/4 guess charset from language/OS pair.
+
+
+language specific default charsets (and cz language code):
+==========================================================
+I recommend adding of language specific AddCharset lines to UNIX's
+default httpd.conf (it brings better document charset negotiation).
+Especially West European / American webmasters takes no care about
+proper setting of charset, because most browsers (in West Europa)
+defaults to Latin-1.
+
+Iso-8859-2 probably is not good default for Win Apache (East European
+Win uses windows-1250 by default).
+
+Czech: Most browsers (and RFCs) use cs for Czech language (CZ is
+reserved for country code) and Apache needs to support "cs" language
+string. If there is no reason for cz instead of cs in name, you also
+can rename index.html.cz to index.html.cs and cz lines remove (or keep
+it for backward compatibility).
+
+In following patch is missing specification for languages, which
+conventions I don't know.
+
+----------------------
+--- apache_1.3.12/conf/httpd.conf-dist~	Wed Jun  7 09:43:57 2000
++++ apache_1.3.12/conf/httpd.conf-dist	Thu Jun  8 11:00:42 2000
+@@ -740,27 +744,39 @@
+     # Danish (da) - Dutch (nl) - English (en) - Estonian (ee)
+     # French (fr) - German (de) - Greek-Modern (el)
+     # Italian (it) - Portugese (pt) - Luxembourgeois* (ltz)
+-    # Spanish (es) - Swedish (sv) - Catalan (ca) - Czech(cz)
++    # Spanish (es) - Swedish (sv) - Catalan (ca) - Czech (cs)
+     # Polish (pl) - Brazilian Portuguese (pt-br) - Japanese (ja)
+     #
+     AddLanguage da .dk
++    AddCharset ISO-8859-1 .dk
+     AddLanguage nl .nl
++    AddCharset ISO-8859-1 .nl
+     AddLanguage en .en
++    AddCharset US-ASCII .en
+     AddLanguage et .ee
+     AddLanguage fr .fr
++    AddCharset ISO-8859-1 .fr
+     AddLanguage de .de
++    AddCharset ISO-8859-1 .de
+     AddLanguage el .el
+     AddLanguage it .it
++    AddCharset ISO-8859-1 .it
+     AddLanguage ja .ja
+     AddCharset ISO-2022-JP .jis
+     AddLanguage pl .po
+     AddCharset ISO-8859-2 .iso-pl
+     AddLanguage pt .pt
++    AddCharset ISO-8859-1 .pt
+     AddLanguage pt-br .pt-br
+     AddLanguage ltz .lu
+     AddLanguage ca .ca
+     AddLanguage es .es
++    AddCharset ISO-8859-1 .es
+     AddLanguage sv .se
++    AddCharset ISO-8859-1 .se
++    AddLanguage cs .cz
++    AddCharset ISO-8859-2 .cz
++# for compatibility:
+     AddLanguage cz .cz
+ 
+     # LanguagePriority allows you to give precedence to some languages
+----------------------
+
+Cosmetical fix of httpd.conf file comments (default paths)
+This one was written against 1.3.9, but without change can be applied
+to 1.3.12.
+----------------------
+--- apache_1.3.9/conf/httpd.conf-dist~	Wed May  5 22:17:59 1999
++++ apache_1.3.9/conf/httpd.conf-dist	Mon Dec  6 12:43:30 1999
+@@ -11,7 +11,7 @@
+ # consult the online docs. You have been warned.  
+ #
+ # After this file is processed, the server will look for and process
+-# @@ServerRoot@@/conf/srm.conf and then @@ServerRoot@@/conf/access.conf
++# conf/srm.conf and then conf/access.conf
+ # unless you have overridden these with ResourceConfig and/or
+ # AccessConfig directives here.
+ #
+--- apache_1.3.9/Makefile.tmpl~	Fri Aug 13 08:58:18 1999
++++ apache_1.3.9/Makefile.tmpl	Mon Dec  6 12:42:32 1999
+@@ -503,6 +503,8 @@
+ 			-e "s;logs/referer_log;$(logfiledir)/$${target_prefix}referer_log;" \
+ 			-e "s;logs/agent_log;$(logfiledir)/$${target_prefix}agent_log;" \
+ 			-e 's;conf/magic;$(sysconfdir)/magic;' \
++			-e 's;conf/srm.conf;$(sysconfdir)/srm.conf;' \
++			-e 's;conf/access.conf;$(sysconfdir)/access.conf;' \
+ 			-e 's;conf/mime\.types;$(sysconfdir)/mime.types;' \
+ 			-e 's;User nobody;User $(conf_user);' \
+ 			-e 's;Group #-1;Group $(conf_group);' \
+----------------------
+-- 
+Stanislav Brabec
+>Release-Note:
+>Audit-Trail:
+>Unformatted:

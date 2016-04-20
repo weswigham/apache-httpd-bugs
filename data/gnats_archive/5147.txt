@@ -1,0 +1,144 @@
+Received: (qmail 19970 invoked by uid 2012); 14 Oct 1999 13:48:41 -0000
+Message-Id: <19991014134841.19969.qmail@hyperreal.org>
+Date: 14 Oct 1999 13:48:41 -0000
+From: Jeremy Laidman <jlaidman@auug.org.au>
+Reply-To: jlaidman@auug.org.au
+To: apbugs@hyperreal.org
+Subject: Matching "on" with !="on" succeeds when it should fail
+X-Send-Pr-Version: 3.2
+
+>Number:         5147
+>Category:       mod_rewrite
+>Synopsis:       Matching "on" with !="on" succeeds when it should fail
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Oct 14 06:50:01 PDT 1999
+>Last-Modified:  Wed Oct 27 08:20:00 PDT 1999
+>Originator:     jlaidman@auug.org.au
+>Organization:
+apache
+>Release:        1.3.9
+>Environment:
+Linux 2.2.9#13
+gcc
+>Description:
+I'm trying to test whether the HTTPS env var is set to "on" and use this fact
+to determine when a redirect rule should be executed.  The rule redirects
+to a secure URL and is only supposed to execute if the connection is not secure.
+
+My rewrite condition is
+  RewriteCond %{ENV:HTTPS} !="on"
+
+The rewrite log indicates that:
+  input='' pattern='!="on"' => matched
+for a non-SSL request, and then
+  input='on' pattern='!="on"' => matched
+for an SSL request.  The latter is in error.  The subsequent rule is executed
+when it shouldn't.
+>How-To-Repeat:
+httpd.conf section (these lines are within a <Location> section):
+
+<IfModule mod_rewrite.c>
+<IfDefine SSL>
+    RewriteEngine On
+    RewriteCond %{ENV:HTTPS} !="on"
+    RewriteRule ^/(.*)  https://%{HTTP_HOST}%{REQUEST_URI}      [L,R]
+</IfDefine>
+</IfModule>
+</Location>
+
+My rewrite log shows:
+
+Earlier entry (non-SSL)
+192.168.1.9 - authent [14/Oct/1999:10:38:17 +0100] [www/sid#80b8744][rid#80985a4/initial] (4) RewriteCond: input='' pattern='!="on"' => matched
+
+SSL connection:
+192.168.1.9 - authent [14/Oct/1999:10:38:21 +0100] [www/sid#80c31f4][rid#80985a4/initial] (1) [per-dir /proj/] redirect to https://www/proj/ [REDIRECT/302]
+192.168.1.9 - authent [14/Oct/1999:10:38:28 +0100] [www/sid#80c31f4][rid#80985a4/initial] (3) [per-dir /proj/] add path-info postfix: /home/httpd/html/proj -> /home/httpd/html/proj/
+192.168.1.9 - authent [14/Oct/1999:10:38:28 +0100] [www/sid#80c31f4][rid#80985a4/initial] (3) [per-dir /proj/] applying pattern '^/(.*)' to uri '/home/httpd/html/proj/'
+192.168.1.9 - authent [14/Oct/1999:10:38:28 +0100] [www/sid#80c31f4][rid#80985a4/initial] (4) RewriteCond: input='on' pattern='!="on"' => matched
+192.168.1.9 - authent [14/Oct/1999:10:38:28 +0100] [www/sid#80c31f4][rid#80985a4/initial] (2) [per-dir /proj/] rewrite /home/httpd/html/proj/ -> https://www/proj/
+192.168.1.9 - authent [14/Oct/1999:10:38:28 +0100] [www/sid#80c31f4][rid#80985a4/initial] (2) [per-dir /proj/] explicitly forcing redirect with https://www/proj/
+192.168.1.9 - authent [14/Oct/1999:10:38:28 +0100] [www/sid#80c31f4][rid#80985a4/initial] (1) [per-dir /proj/] escaping https://www/proj/ for redirect
+192.168.1.9 - authent [14/Oct/1999:10:38:28 +0100] [www/sid#80c31f4][rid#80985a4/initial] (1) [per-dir /proj/] redirect to https://www/proj/ [REDIRECT/302]
+
+>Fix:
+My workaround is to use this rewrite condition:
+
+    RewriteCond %{ENV:HTTPS} ^$
+>Audit-Trail:
+
+From: "Ralf S. Engelschall" <rse@engelschall.com>
+To: jlaidman@auug.org.au
+Cc: apbugs@apache.org
+Subject: Re: mod_rewrite/5147: Matching "on" with !="on" succeeds when it should fail
+Date: Wed, 27 Oct 1999 11:14:59 +0200
+
+ In article <19991014134841.19969.qmail@hyperreal.org> you wrote:
+ 
+ >>Synopsis:       Matching "on" with !="on" succeeds when it should fail
+ > 
+ > [...]
+ >   RewriteCond %{ENV:HTTPS} !="on"
+ 
+ The correct syntax is:
+ 
+     RewriteCond %{ENV:HTTPS} !=on
+ 
+ i.e. without the quotation marks!
+                                        Ralf S. Engelschall
+                                        rse@engelschall.com
+                                        www.engelschall.com
+
+From: Jeremy Laidman <jlaidman@auug.org.au>
+To: rse@engelschall.com
+Cc: apbugs@apache.org
+Subject: Re: mod_rewrite/5147: Matching "on" with !="on" succeeds when it should 
+ fail
+Date: Wed, 27 Oct 1999 16:15:09 +0100
+
+ "Ralf S. Engelschall" wrote:
+  
+ > In article <19991014134841.19969.qmail@hyperreal.org> you wrote:
+ > 
+ > >>Synopsis:       Matching "on" with !="on" succeeds when it should fail
+ > >
+ > > [...]
+ > >   RewriteCond %{ENV:HTTPS} !="on"
+ > 
+ > The correct syntax is:
+ > 
+ >     RewriteCond %{ENV:HTTPS} !=on
+ > 
+ > i.e. without the quotation marks!
+ 
+ Fair enough, I guess.  However:
+ 
+ a) isn't this counter-intuitive, especially as two quotes "" are used to
+ compare an empty string? and
+ b) how would I compare with a string with embedded spaces if quotes
+ aren't permitted?
+ 
+ -- 
+ Cheers
+ Jeremy
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

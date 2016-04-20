@@ -1,0 +1,101 @@
+Received: (qmail 28268 invoked by uid 2012); 14 Mar 1999 10:35:06 -0000
+Message-Id: <19990314103506.28267.qmail@hyperreal.org>
+Date: 14 Mar 1999 10:35:06 -0000
+From: Scott Stevenson <scotts@websculptors.com>
+Reply-To: scotts@websculptors.com
+To: apbugs@hyperreal.org
+Subject: Allow directive does not correctly override eariler Deny directive
+X-Send-Pr-Version: 3.2
+
+>Number:         4054
+>Category:       mod_access
+>Synopsis:       Allow directive does not correctly override eariler Deny directive
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Mar 14 02:40:01 PST 1999
+>Last-Modified:  Sun Mar 14 03:04:39 PST 1999
+>Originator:     scotts@websculptors.com
+>Organization:
+>Release:        1.3.4
+>Environment:
+Red Hat 5.2 on Pentium II
+
+[root@pele logs]# uname -a
+Linux pele.golaso.com 2.0.36 #1 Tue Oct 13 22:17:11 EDT 1998 i686 unknown
+
+[root@pele logs]# gcc -v
+Reading specs from /usr/lib/gcc-lib/i386-redhat-linux/2.7.2.3/specs
+gcc version 2.7.2.3
+>Description:
+The following (contained within VirtualHost) should deny access to the docroot for everyone except 128.66.12.2:
+
+<Directory />
+Options None
+AllowOverride None
+Order allow,deny
+Deny from all
+</Directory>
+
+<Directory "/SomeFilesystem/SomeDocroot">
+Options FollowSymLinks IncludesNoExec
+AllowOverride None
+Order allow,deny
+Deny from all
+Allow from 128.66.12.2
+</Directory>
+
+Unfortunately, it just denies access to everyone, including 128.66.12.2.
+
+The workaround is to remove the "Deny from all" from the second Directory directive:
+
+<Directory />
+Options None
+AllowOverride None
+Order allow,deny
+Deny from all
+</Directory>
+
+<Directory "/SomeFilesystem/SomeDocroot">
+Options FollowSymLinks IncludesNoExec
+AllowOverride None
+Order allow,deny
+#Deny from all
+Allow from 128.66.12.2
+</Directory>
+
+In which case, the desired behavior is achieved. The end result is the same, but the ambiguity caused me about an hour of frustration. Additionally, the mod_access docs seem to support the idea the the first example above should work.
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Sun Mar 14 03:04:39 PST 1999
+State-Changed-Why:
+Look at the docs for the order directive.  You have
+"order allow,deny" which says start out with everything
+denied, then allow access from those in the allow list
+then deny access from those in the denied list.
+
+This results in the state being denied -> allowed -> denied,
+which is a final state of denied.
+
+If you don't want this, you can use "order deny,allow"
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

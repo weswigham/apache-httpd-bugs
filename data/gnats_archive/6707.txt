@@ -1,0 +1,123 @@
+Received: (qmail 78448 invoked by uid 501); 18 Oct 2000 14:49:14 -0000
+Message-Id: <20001018144914.78446.qmail@locus.apache.org>
+Date: 18 Oct 2000 14:49:14 -0000
+From: Benoit Artuso <apache@maggie.proxad.net>
+Reply-To: apache@maggie.proxad.net
+To: submit@bugz.apache.org
+Subject: Wrong vhost in server-status when using VirtualDocumentRoot or Rewrite
+X-Send-Pr-Version: 3.110
+
+>Number:         6707
+>Category:       mod_status
+>Synopsis:       Wrong vhost in server-status when using VirtualDocumentRoot or Rewrite
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          feedback
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          mistaken
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Oct 18 07:50:01 PDT 2000
+>Closed-Date:    
+>Last-Modified:  Thu Oct 19 11:50:01 PDT 2000
+>Originator:     apache@maggie.proxad.net
+>Release:        1.3.12
+>Organization:
+>Environment:
+Uname -a :
+Linux maggie 2.2.14 #1 Mon Jan 24 15:04:53 CET 2000 i686 unknown
+using gcc 2.95 and 2.72
+>Description:
+When using Rewrite or VirtualDocumentRoot to set up Mass Virtual Hosting,
+the information given in the server-status does not reflect the real Host: from
+the request of the client.
+UseCanonicalName is correctly set to Off so Apache must use the hostname:port
+that the client supplied and it also must put it in the scoreboard so the
+server-status can provide the good information.
+>How-To-Repeat:
+You can repeat it by using VirtualDocumentRoot to set up some virtual hosts and
+by calling them (with a Host: header) and by dumping the server-status.
+>Fix:
+IMHO, you can modify server-status to query correctly the Host: as it was
+entered. It means that, with the info in the scoreboard, you must be able to
+to locate the connection object with the good Host: and display it.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: fanf
+State-Changed-When: Thu Oct 19 02:18:17 PDT 2000
+State-Changed-Why:
+This is a known problem. We have looked at a number of
+possible fixes but none of them are satisfactory. One fix
+would be to revert a performance optimisation that predates
+the mass vhosting stuff, which we are reluctant to do. If
+you have a patch we'll consider it.
+
+From: Tony Finch <fanf@apache.org>
+To: Benoit Artuso <apache@maggie.proxad.net>
+Cc: apbugs@apache.org
+Subject: Re: mod_status/6707: Wrong vhost in server-status when using VirtualDocumentRoot or Rewrite
+Date: Thu, 19 Oct 2000 17:58:01 +0000
+
+ Benoit Artuso <apache@maggie.proxad.net> wrote:
+ >
+ >so if i understand well the apache code, there is no way to access the
+ >request_rec by looking in the scoreboard without involving same black magic.
+ 
+ You can't do it at all because the request_rec is unique to the child
+ process that is handling the request, wheras the server_rec is shared.
+ Therefore pointers to the server_rec in the scoreboard are globally
+ valid, but the same is not the case for the request_rec.
+ 
+ >The only way i can think is to alter the the short_score structure and add
+ >something that permits to retrieve the good information. In some way, i
+ >think it's exactly what you means in 'reverting a performance optimisation'
+ 
+ Yes. In the past the server name from the request_rec was copied into
+ the scoreboard; now we just put the server_rec pointer in there.
+ 
+ >I understand you have to keep the short score as little as possible but
+ >could we imagine replacing the pointer to the server_rec struct by a pointer
+ >to the request_rec. 
+ 
+ No, for the reasons above.
+ 
+ >I don't know enough the internals of Apache to choose The Right Way (TM) so
+ >i think i will try to revert your performance optim and give it a try.
+ 
+ Yes, have a look at the revision history for details.
+ <http://www.apache.org/websrc/cvsweb.cgi/apache-1.3>
+ 
+ >The reason behind 'having the good hostname in the scoreboard' is that i
+ >want a way to count how many servers are serving the same hostname in a very
+ >large environnement and, perhaps, adapting some module to limit the max
+ >servers for one hostname.
+ >
+ >Anyway, will this be fixed in 2.0 version ?
+ 
+ Possibly. The scoreboard stuff has been rewriten, and I haven't looked
+ at it yet to see what the issues are.
+ 
+ Tony.
+ -- 
+ en oeccget g mtcaa    f.a.n.finch
+ v spdlkishrhtewe y    dot@dotat.at
+ eatp o v eiti i d.    fanf@covalent.net
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

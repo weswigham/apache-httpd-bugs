@@ -1,0 +1,429 @@
+From nobody@hyperreal.org  Wed Jul 30 11:03:46 1997
+Received: (from nobody@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id LAA21092;
+	Wed, 30 Jul 1997 11:03:46 -0700 (PDT)
+Message-Id: <199707301803.LAA21092@hyperreal.org>
+Date: Wed, 30 Jul 1997 11:03:46 -0700 (PDT)
+From: "Peter A. DeNitto" <peter_denitto@sra.com>
+Reply-To: peter_denitto@sra.com
+To: apbugs@hyperreal.org
+Subject: Problems in source code when using Sun's CC
+X-Send-Pr-Version: 3.2
+
+>Number:         941
+>Category:       os-solaris
+>Synopsis:       Problems in source code when using Sun's CC
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jul 30 11:10:00 1997
+>Last-Modified:  Sat Aug  1 03:54:01 PDT 1998
+>Originator:     peter_denitto@sra.com
+>Organization:
+>Release:        1.2.1
+>Environment:
+SunOS aldebaran 5.5.1 Generic_103640-08 sun4m sparc SUNW,SPARCstation-1
+ucbcc: SC3.0.1 13 Jul 1994
+ld: Software Generation Utilities (SGU) SunOS/ELF (LK-2.0 (S/I) - versioning)
+>Description:
+After reading http://www.apache.org/bugdb.cgi/full/681 and then http://www.apache.org/bugdb.cgi/full/308
+I came to the conclusion that there are some "quirks" between the cc & gcc, one of them being
+that sun's cc holds major & minor as reserved words, sun's cc doesn't recognize const
+as a reserved word, among other things. Without the bits of hacking, it would not compile.
+
+I have a diff patch file and have been able to get Apache to compile, and I still get
+some warnings like:
+cc -c -Iregex  -O2 -DSOLARIS2 -DBSD=0 -DLINT=1 -DLint=1 -DSPRINTF_CHAR=1 -DVSPRI
+NTF_CHAR=1 -DUSE_FLOCK_SERIALIZED_ACCEPT  http_log.c
+"http_log.c", line 181: va_start: argument mismatch
+"http_log.c", line 163: warning: improper pointer/integer combination: op "="
+
+>How-To-Repeat:
+Well, get a Solaris 2.5.1 machine, install Sun's CC 3.0.1 on it, make, 
+edit every file s/const / /g
+etc...
+>Fix:
+Well, I do have a patch...
+
+*** src/Configuration   Sat Jul  5 22:20:07 1997
+--- src-work/Configuration      Wed Jul 30 12:30:01 1997
+***************
+*** 41,52 ****
+  # Settings here have priority; If not set, Configure will attempt to guess
+  # the C compiler, and set OPTIM to '-O2'
+  #
+! EXTRA_CFLAGS=
+  EXTRA_LFLAGS=
+  EXTRA_LIBS=
+  EXTRA_INCLUDES=
+
+! #CC=
+  #OPTIM=-O2
+  #RANLIB=
+
+--- 41,52 ----
+  # Settings here have priority; If not set, Configure will attempt to guess
+  # the C compiler, and set OPTIM to '-O2'
+  #
+! EXTRA_CFLAGS=-DBSD=0
+  EXTRA_LFLAGS=
+  EXTRA_LIBS=
+  EXTRA_INCLUDES=
+
+! CC=cc
+  #OPTIM=-O2
+  #RANLIB=
+
+*** src/conf.h  Mon Jun 30 21:38:13 1997
+--- src-work/conf.h     Wed Jul 30 12:37:27 1997
+***************
+*** 93,98 ****
+--- 93,99 ----
+
+  #elif defined(SOLARIS2)
+  #undef HAVE_GMTOFF
++ typedef int rlim_t;
+  #define NO_KILLPG
+  #undef NO_SETSID
+  #define HAVE_SYS_RESOURCE_H
+*** src/explain.c       Sun Nov  3 16:28:59 1996
+--- src-work/explain.c  Wed Jul 30 12:45:50 1997
+***************
+*** 2,8 ****
+  #include <stdarg.h>
+  #include "explain.h"
+
+! void _Explain(const char *szFile,int nLine,const char *szFmt,...)
+      {
+      va_list vlist;
+
+--- 2,8 ----
+  #include <stdarg.h>
+  #include "explain.h"
+
+! void _Explain(char *szFile,int nLine, char *szFmt,...)
+      {
+      va_list vlist;
+
+*** src/http_protocol.c Tue Jul  1 02:50:29 1997
+--- src-work/http_protocol.c    Wed Jul 30 12:41:29 1997
+***************
+*** 602,609 ****
+      char l[HUGE_STRING_LEN];
+      const char *ll = l, *uri;
+      conn_rec *conn = r->connection;
+!     int major = 1, minor = 0; /* Assume HTTP/1.0 if non-"HTTP" protocol*/
+      int len;
+
+      /* Read past empty lines until we get a real request line,
+       * a read error, the connection closes (EOF), or we timeout.
+--- 602,610 ----
+      char l[HUGE_STRING_LEN];
+      const char *ll = l, *uri;
+      conn_rec *conn = r->connection;
+!     int maj = 1, mine = 0;    /* Assume HTTP/1.0 if non-"HTTP" protocol*/
+      int len;
++
+
+      /* Read past empty lines until we get a real request line,
+       * a read error, the connection closes (EOF), or we timeout.
+***************
+*** 645,652 ****
+      r->assbackwards = (ll[0] == '\0');
+      r->protocol = pstrdup (r->pool, ll[0] ? ll : "HTTP/0.9");
+!     sscanf(r->protocol, "HTTP/%d.%d", &major, &minor);
+!     r->proto_num = 1000*major + minor;
+
+      return 1;
+  }
+--- 646,653 ----
+
+      r->assbackwards = (ll[0] == '\0');
+      r->protocol = pstrdup (r->pool, ll[0] ? ll : "HTTP/0.9");
+!     sscanf(r->protocol, "HTTP/%d.%d", &maj, &mine);
+!     r->proto_num = 1000*maj + mine;
+
+      return 1;
+  }
+*** src/md5.h   Wed Jan  1 13:10:23 1997
+--- src-work/md5.h      Wed Jul 30 12:43:06 1997
+***************
+*** 94,99 ****
+  } MD5_CTX;
+
+  extern void MD5Init(MD5_CTX *context);
+! extern void MD5Update(MD5_CTX *context, const unsigned char *input,
+                      unsigned int inputLen);
+  extern void MD5Final(unsigned char digest[16], MD5_CTX *context);
+--- 94,99 ----
+  } MD5_CTX;
+
+  extern void MD5Init(MD5_CTX *context);
+! extern void MD5Update(MD5_CTX *context, unsigned char *input,
+                      unsigned int inputLen);
+  extern void MD5Final(unsigned char digest[16], MD5_CTX *context);
+*** src/md5c.c  Wed Jan  1 13:10:24 1997
+--- src-work/md5c.c     Wed Jul 30 12:44:51 1997
+***************
+*** 107,116 ****
+  #define S43 15
+  #define S44 21
+
+! static void MD5Transform(UINT4 state[4], const unsigned char block[64]);
+! static void Encode(unsigned char *output, const UINT4 *input,
+                   unsigned int len);
+! static void Decode(UINT4 *output, const unsigned char *input,
+                   unsigned int len);
+
+  static unsigned char PADDING[64] =
+--- 107,116 ----
+  #define S43 15
+  #define S44 21
+
+! static void MD5Transform(UINT4 state[4], unsigned char block[64]);
+! static void Encode(unsigned char *output, UINT4 *input,
+                   unsigned int len);
+! static void Decode(UINT4 *output, unsigned char *input,
+                   unsigned int len);
+
+  static unsigned char PADDING[64] =
+***************
+*** 173,179 ****
+    context.
+   */
+  void
+! MD5Update(MD5_CTX *context, const unsigned char *input, unsigned int inputLen)
+  {
+      unsigned int i, index, partLen;
+
+--- 173,179 ----
+    context.
+   */
+  void
+! MD5Update(MD5_CTX *context,  unsigned char *input, unsigned int inputLen)
+  {
+      unsigned int i, index, partLen;
+
+***************
+*** 234,240 ****
+
+  /* MD5 basic transformation. Transforms state based on block. */
+  static void
+! MD5Transform(UINT4 state[4], const unsigned char block[64])
+  {
+      UINT4 a = state[0], b = state[1], c = state[2], d = state[3], x[16];
+
+--- 234,240 ----
+
+  /* MD5 basic transformation. Transforms state based on block. */
+  static void
+! MD5Transform(UINT4 state[4],  unsigned char block[64])
+  {
+      UINT4 a = state[0], b = state[1], c = state[2], d = state[3], x[16];
+
+***************
+*** 325,331 ****
+    a multiple of 4.
+   */
+  static void
+! Encode(unsigned char *output, const UINT4 *input, unsigned int len)
+  {
+      unsigned int i, j;
+      UINT4 k;
+--- 325,331 ----
+    a multiple of 4.
+   */
+  static void
+! Encode(unsigned char *output,  UINT4 *input, unsigned int len)
+  {
+      unsigned int i, j;
+      UINT4 k;
+***************
+*** 344,350 ****
+    a multiple of 4.
+   */
+  static void
+! Decode(UINT4 *output, const unsigned char *input, unsigned int len)
+  {
+      unsigned int i, j;
+
+--- 344,350 ----
+    a multiple of 4.
+   */
+  static void
+! Decode(UINT4 *output,  unsigned char *input, unsigned int len)
+  {
+      unsigned int i, j;
+
+*** src/util_date.c     Wed Jan  1 13:10:45 1997
+--- src-work/util_date.c        Wed Jul 30 12:47:01 1997
+***************
+*** 76,82 ****
+   *   * - swallow remaining characters
+   *  <x> - exact match for any other character
+   */
+! int checkmask(const char *data, const char *mask)
+  {
+      int i;
+      char d;
+--- 76,82 ----
+   *   * - swallow remaining characters
+   *  <x> - exact match for any other character
+   */
+! int checkmask( char *data,  char *mask)
+  {
+      int i;
+      char d;
+***************
+*** 116,126 ****
+   *
+   * This routine is intended to be very fast, much faster than mktime().
+   */
+! time_t tm2sec(const struct tm *t)
+  {
+      int  year;
+      time_t days;
+!     const int dayoffset[12] =
+          {306, 337, 0, 31, 61, 92, 122, 153, 184, 214, 245, 275};
+
+      year = t->tm_year;
+--- 116,126 ----
+   *
+   * This routine is intended to be very fast, much faster than mktime().
+   */
+! time_t tm2sec( struct tm *t)
+  {
+      int  year;
+      time_t days;
+!      int dayoffset[12] =
+          {306, 337, 0, 31, 61, 92, 122, 153, 184, 214, 245, 275};
+
+      year = t->tm_year;
+***************
+*** 193,204 ****
+   * but many changes since then.
+   *
+   */
+! time_t parseHTTPdate(const char *date)
+  {
+      struct tm ds;
+      int mint, mon;
+!     const char *monstr, *timstr;
+!     const int months[12] = {
+          ('J' << 16) | ( 'a' << 8) | 'n',  ('F' << 16) | ( 'e' << 8) | 'b',
+          ('M' << 16) | ( 'a' << 8) | 'r',  ('A' << 16) | ( 'p' << 8) | 'r',
+          ('M' << 16) | ( 'a' << 8) | 'y',  ('J' << 16) | ( 'u' << 8) | 'n',
+--- 193,204 ----
+   * but many changes since then.
+   *
+   */
+! time_t parseHTTPdate( char *date)
+  {
+      struct tm ds;
+      int mint, mon;
+!      char *monstr, *timstr;
+!      int months[12] = {
+          ('J' << 16) | ( 'a' << 8) | 'n',  ('F' << 16) | ( 'e' << 8) | 'b',
+          ('M' << 16) | ( 'a' << 8) | 'r',  ('A' << 16) | ( 'p' << 8) | 'r',
+          ('M' << 16) | ( 'a' << 8) | 'y',  ('J' << 16) | ( 'u' << 8) | 'n',
+*** src/util_date.h     Wed Jan  1 13:10:45 1997
+--- src-work/util_date.h        Wed Jul 30 12:46:24 1997
+***************
+*** 58,63 ****
+
+  #define BAD_DATE (time_t)0
+
+! int checkmask (const char *data, const char *mask);
+! time_t tm2sec (const struct tm *t);
+! time_t parseHTTPdate (const char *date);
+--- 58,63 ----
+
+   * but many changes since then.
+   *
+   */
+! time_t parseHTTPdate(const char *date)
+  {
+      struct tm ds;
+      int mint, mon;
+!     const char *monstr, *timstr;
+!     const int months[12] = {
+          ('J' << 16) | ( 'a' << 8) | 'n',  ('F' << 16) | ( 'e' << 8) | 'b',
+          ('M' << 16) | ( 'a' << 8) | 'r',  ('A' << 16) | ( 'p' << 8) | 'r',
+          ('M' << 16) | ( 'a' << 8) | 'y',  ('J' << 16) | ( 'u' << 8) | 'n',
+--- 193,204 ----
+   * but many changes since then.
+   *
+   */
+! time_t parseHTTPdate( char *date)
+  {
+      struct tm ds;
+      int mint, mon;
+!      char *monstr, *timstr;
+!      int months[12] = {
+          ('J' << 16) | ( 'a' << 8) | 'n',  ('F' << 16) | ( 'e' << 8) | 'b',
+          ('M' << 16) | ( 'a' << 8) | 'r',  ('A' << 16) | ( 'p' << 8) | 'r',
+          ('M' << 16) | ( 'a' << 8) | 'y',  ('J' << 16) | ( 'u' << 8) | 'n',
+*** src/util_date.h     Wed Jan  1 13:10:45 1997
+--- src-work/util_date.h        Wed Jul 30 12:46:24 1997
+***************
+*** 58,63 ****
+
+  #define BAD_DATE (time_t)0
+
+! int checkmask (const char *data, const char *mask);
+! time_t tm2sec (const struct tm *t);
+! time_t parseHTTPdate (const char *date);
+--- 58,63 ----
+
+  #define BAD_DATE (time_t)0
+
+! int checkmask ( char *data,  char *mask);
+! time_t tm2sec ( struct tm *t);
+! time_t parseHTTPdate ( char *date);
+
+
+
+with that patch, I get apache to compile..
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: marc
+State-Changed-When: Sat Aug  2 13:58:02 PDT 1997
+State-Changed-Why:
+It appears like SC3 is quite broken.  SC4.x works without
+any such problems.
+
+I am not exactly sure why removing the consts you list helps
+you, because there are a bunch more in other files.  If
+it doesn't understand const, then it is not an ANSI compiler
+and we don't really support such things.
+
+Does it define __SUNPRO_C=0x301 or something similar?  We
+will not make most of the changes you suggest just to deal
+with such a broken compiler, but we may be able to work around
+them if we can detect it.
+State-Changed-From-To: analyzed-feedback
+State-Changed-By: coar
+State-Changed-When: Thu May 28 04:05:39 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Sat Aug  1 03:54:01 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+
+

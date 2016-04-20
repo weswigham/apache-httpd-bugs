@@ -1,0 +1,239 @@
+Received: (qmail 17501 invoked by uid 2012); 7 Sep 1999 06:14:27 -0000
+Message-Id: <19990907061427.17500.qmail@hyperreal.org>
+Date: 7 Sep 1999 06:14:27 -0000
+From: Tomoyuki@hyperreal.org, Kano <tomo@crane-inc.co.jp>
+Reply-To: tomo@crane-inc.co.jp
+To: apbugs@hyperreal.org
+Subject: Can't read from /dev/random
+X-Send-Pr-Version: 3.2
+
+>Number:         4967
+>Category:       mod_auth-any
+>Synopsis:       Can't read from /dev/random
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Sep  6 23:20:02 PDT 1999
+>Last-Modified:  Sun Sep 19 16:48:23 PDT 1999
+>Originator:     tomo@crane-inc.co.jp
+>Organization:
+>Release:        1.3.9
+>Environment:
+ 3.2-RELEASE FreeBSD i386
+>Description:
+auth_digest cant't read from /dev/random.
+When fread() returned 0, program is terminated with erroor.
+
+I think,
+if a return value of fread() is 0 ferror() should be called for
+error check.
+
+By the way, on FreeBSD-3.2 fread() always return 0.
+I dont't know why.
+
+>How-To-Repeat:
+
+>Fix:
+I made a simple work around.
+
+*** apache_1.3.9/src/modules/experimental/mod_auth_digest.c     Mon Aug 16 20:06:14 1999
+--- apache_1.3.9-save/src/modules/experimental/mod_auth_digest.c        Tue Sep  7 14:26:31 1999
+***************
+*** 274,280 ****
+--- 274,284 ----
+  static void initialize_secret(server_rec *s)
+  {
+  #ifdef        DEV_RANDOM
++ #if 0
+      FILE *rnd;
++ #else
++     int rnd;
++ #endif
+      size_t got, tot;
+  #else
+      extern int randbyte(void);        /* from the truerand library */
+***************
+*** 287,292 ****
+--- 291,297 ----
+  #ifdef        DEV_RANDOM
+  #define       XSTR(x) #x
+  #define       STR(x)  XSTR(x)
++ #if 0
+      if ((rnd = fopen(STR(DEV_RANDOM), "rb")) == NULL) {
+        ap_log_error(APLOG_MARK, APLOG_CRIT, s,
+                     "Digest: Couldn't open " STR(DEV_RANDOM));
+***************
+*** 305,310 ****
+--- 310,330 ----
+        }
+      }
+      fclose(rnd);
++ #else
++     if ((rnd = open(STR(DEV_RANDOM), O_RDONLY)) < 0) {
++       ap_log_error(APLOG_MARK, APLOG_CRIT, s,
++                    "Digest: Couldn't open " STR(DEV_RANDOM));
++       exit(EXIT_FAILURE);
++     }
++     for (tot=0; tot<sizeof(secret); tot += got) {
++         if ((got = read(rnd, secret+tot, sizeof(secret)-tot)) < 0) {
++           ap_log_error(APLOG_MARK, APLOG_CRIT, s,
++                        "Digest: Error reading " STR(DEV_RANDOM));
++           exit(EXIT_FAILURE);
++       }
++     }
++     close(rnd);
++ #endif
+  #undef        STR
+  #undef        XSTR
+  #else /* use truerand */
+
+>Audit-Trail:
+
+From: Dirk-Willem van Gulik <dirkx@webweaving.org>
+To: tomo@crane-inc.co.jp
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_auth-any/4967: Can't read from /dev/random
+Date: Tue, 7 Sep 1999 10:35:48 +0200 (CEST)
+
+ On 7 Sep 1999 Tomoyuki@hyperreal.org wrote:
+ 
+ > When fread() returned 0, program is terminated with erroor.
+ > 
+ > I think,
+ > if a return value of fread() is 0 ferror() should be called for
+ > error check.
+ > 
+ > By the way, on FreeBSD-3.2 fread() always return 0.
+ 
+ There is a more complex issue here; random(4), as opposed to urandom(4)
+ only returns as much randomness as there is. 
+ 
+ Which can be '0' bytes quite often when you do not have set the entropy
+ pool to be stirred by lots of IRQ and the likes. I.e. you run out of
+ randomness quite quickly.
+ 
+ The alternative is to either use urandom - and live with the fact that it
+ might not be as random as you want; or use a hardware source.
+ 
+ In this context it might be interesting to look at what randomness is
+ actually required for digest. If I recall correctly the source does not
+ need to be random in a statistic/stochastic sense. 
+ 
+ It just needs to be cryptographically 'unpredictable'. Which is an perhaps
+ an easier requirement to meet, with just a few bytes from random(4) or a
+ MLG on urandom(4). Perhaps someone into crypto could check the exact
+ requirments for the source.
+ 
+ Dw
+ 
+
+From: Dirk-Willem van Gulik <dirkx@webweaving.org>
+To: "Life is hard, and then you die." <ronald@innovation.ch>
+Cc: apbugs@apache.org
+Subject: Re: mod_auth-any/4967: Can't read from /dev/random (fwd)
+Date: Wed, 8 Sep 1999 18:15:34 +0200 (CEST)
+
+ On Wed, 8 Sep 1999, Life is hard, and then you die. wrote:
+ 
+ ...
+ 
+ > I think I got it now. Yes, random(4) seems to be non-blocking, returning
+ > 0 bytes when not enough entropy is available. The problem is that when
+ > you use the stdio stuff fread() interprets a return of 0 as EOF, sets
+ > its internal EOF flag, and then always returns 0 and never goes to the
+ > underlying read() again. Hence the problem.
+ 
+ Yep, that sounds correct.. you worded it better than me. This was what I
+ was trying to convey.
+  
+ > Well, ok, I'll have to change to raw read as suggested in the report.
+ 
+ Hmm.. let's see. You propably are doing a read for _each_ and every child
+ as you are starting up.. whichis propably why the random(4) gets exhausted
+ so quickly during server init.
+ 
+ Now all we require is an unpredictable number. It does not need to be
+ random at all. Perhaps during initial config we can _once_ read the value
+ and then use a one way function, say md5, to seed each child on the second
+ init of the actual forked of processes; just adding a few bits (say the
+ PID) is enough as long as the function is one way enough. MD5 should be.
+ 
+ Dw
+ 
+
+From: "Life is hard, and then you die." <ronald@innovation.ch>
+To: apbugs@apache.org
+Cc:  Subject: Re: mod_auth-any/4967: Can't read from /dev/random
+Date: Mon, 20 Sep 1999 01:05:47 +0200 (MET DST)
+
+ > > Well, ok, I'll have to change to raw read as suggested in the report.
+ > 
+ > Hmm.. let's see. You propably are doing a read for _each_ and every child
+ > as you are starting up.. whichis propably why the random(4) gets exhausted
+ > so quickly during server init.
+ 
+ No, no, no. I only get it once, during module init, the second time it
+ goes through. I ran a simple test program on taz and what I see is
+ always the same:
+ 
+ read 0 bytes
+ read 1 bytes
+ read 0 bytes
+ read 0 bytes
+ read 1 bytes
+ read 0 bytes
+ read 0 bytes
+ read 1 bytes
+ read 0 bytes
+ ...
+ 
+ (this is doing a tight loop around read()). Dunno why I see this
+ behaviour on FreeBSD, but maybe somebody else is using a lot of random
+ numbers (tcp?). In any case, it gets the 20 bytes in a couple seconds,
+ so it's not that bad. A blocking /dev/random (like Linux has) would be
+ more efficient, though.
+ 
+ > Now all we require is an unpredictable number. It does not need to be
+ > random at all. Perhaps during initial config we can _once_ read the value
+ > and then use a one way function, say md5, to seed each child on the second
+ > init of the actual forked of processes; just adding a few bits (say the
+ > PID) is enough as long as the function is one way enough. MD5 should be.
+ 
+ The children don't each need their own generator, and in fact need to
+ all have the same secret, otherwise they can't check the nonce if the
+ request comes back on a different connection/child.
+ 
+ 
+   Cheers,
+ 
+   Ronald
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: ronald@innovation.ch
+State-Changed-When: Sun Sep 19 16:48:21 PDT 1999
+State-Changed-Why:
+The patch has been incorporated (w/o the #if stuff).
+
+Thanx for the report and patch.
+
+- Ronald
+
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

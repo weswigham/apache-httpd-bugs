@@ -1,0 +1,126 @@
+Received: (qmail 21664 invoked by uid 2012); 1 Jun 1998 12:46:45 -0000
+Message-Id: <19980601124645.21663.qmail@hyperreal.org>
+Date: 1 Jun 1998 12:46:45 -0000
+From: Robert Mertens <rmertens@ptc.com>
+Reply-To: rmertens@ptc.com
+To: apbugs@hyperreal.org
+Subject: Environmental variables not passed to scripts - Windows.
+X-Send-Pr-Version: 3.2
+
+>Number:         2331
+>Category:       os-windows
+>Synopsis:       Environmental variables not passed to scripts - Windows.
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jun  1 05:50:00 PDT 1998
+>Last-Modified:  Mon Jun  1 06:05:19 PDT 1998
+>Originator:     rmertens@ptc.com
+>Organization:
+>Release:        1.3b7
+>Environment:
+Windows NT patch 3
+>Description:
+On 1.3b7 CreateProcess is used to create a windows process in place of
+spawnle - the environment array passed to it is invalid for this function - 
+as a consequence NO environmental variables are passed to the cgi script.
+
+CreateProcess can also be passed the directory name that it should use as its
+working directory - this should used as the call to chdir has been removed for
+WIN32
+>How-To-Repeat:
+Adjust this script for the pathname of the perl executable
+
+Note that you can run it from the dos prompt (where it displays 
+the environmental variables), or from the browser - where it doesn't
+
+#!d:/NTRESKIT/Perl/PERL.EXE
+$|=1;  #flush on
+# print the http header
+printf "HTTP/1.0 200: OK\n";
+printf  "Content-Type: text/html \n\n";
+printf "<html><body bgcolor=#FFFFFF>\n";
+#print the environmental variables
+for $key (sort keys %ENV){
+	print "$key=$ENV{$key}<br>\n";
+}
+printf  "</body>\n";
+printf  "</html>\n";
+1;
+>Fix:
+util_script.c
+
+The following will make the utility work correctly and demonstrates the correct
+use of CreateProcess - but does not make use of Apache utilities, that to 
+determine a directory name, and allocate memory.
+
+replace 
+
+	if (CreateProcess(NULL, pCommand, NULL, NULL, TRUE, 0, env, NULL, &si, &pi)) {
+	  pid = pi.dwProcessId;
+	  /*
+	   * We must close the handles to the new process and its main thread
+	   * to prevent handle and memory leaks.
+	   */ 
+	  CloseHandle(pi.hProcess);
+	  CloseHandle(pi.hThread);
+with
+
+    {
+        char *dirname=strdup(r->filename);
+        char *x = strrchr(dirname,'/');
+        char *envblk=0;
+        int j=0;
+        if(x){*x='\0';
+        } else {
+            *dirname=0;
+        }
+        /* calculate length */
+        for (i = 0; env[i]; ++i){
+            j+=strlen(env[i])+1;
+        }
+        envblk=calloc(1,j+4);
+        for (i = 0,j=0; env[i]; ++i){
+            strcpy(envblk+j,env[i]);
+            j+=strlen(env[i])+1;
+        }
+
+
+/*	if (CreateProcess(NULL, pCommand, NULL, NULL, TRUE, 0, env, NULL, &si, &pi)) {*/	
+	if (CreateProcess(NULL, pCommand, NULL, NULL, TRUE, 0, envblk, dirname, &si, &pi)) {
+	  pid = pi.dwProcessId;
+	  /*
+	   * We must close the handles to the new process and its main thread
+	   * to prevent handle and memory leaks.
+	   */ 
+	  CloseHandle(pi.hProcess);
+	  CloseHandle(pi.hThread);
+	}
+    free (dirname);
+    free (envblk);
+    }
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Mon Jun  1 06:05:19 PDT 1998
+State-Changed-Why:
+This has already been addressed, as described in reports
+<http://Bugs.Apache.Org/index/full/2317> and
+<http://Bugs.Apache.Org/index/full/2294>, et alia.
+Thanks for using Apache!
+Category-Changed-From-To: mod_cgi-os-windows
+Category-Changed-By: coar
+Category-Changed-When: Mon Jun  1 06:05:19 PDT 1998
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

@@ -1,0 +1,169 @@
+Received: (qmail 421 invoked by uid 2012); 21 Oct 1999 15:43:09 -0000
+Message-Id: <19991021154309.420.qmail@hyperreal.org>
+Date: 21 Oct 1999 15:43:09 -0000
+From: Chas Honton <chas@secant.com>
+Reply-To: chas@secant.com
+To: apbugs@hyperreal.org
+Subject: non-standard calls for mutli-thread access to passwords
+X-Send-Pr-Version: 3.2
+
+>Number:         5178
+>Category:       mod_auth-any
+>Synopsis:       non-standard calls for mutli-thread access to passwords
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Oct 21 08:50:00 PDT 1999
+>Last-Modified:  Thu Oct 21 09:12:17 PDT 1999
+>Originator:     chas@secant.com
+>Organization:
+>Release:        
+>Environment:
+Linux 2.2.5-15 #1 Mon Apr 19 23:00:46 EDT 1999 i686 unknown
+>Description:
+defining MULTITREADING will cause the following compile errors:
+apxs  -o mod_auth_system.so  -c mod_auth_system.c
+gcc -DLINUX=2 -DUSE_HSREGEX -DUSE_EXPAT -I../lib/expat-lite -fpic -DSHARED_MODULE -I/home/chas/apache/include  -c mod_auth_system.c
+mod_auth_system.c: In function `get_system_pw':
+mod_auth_system.c:130: incompatible type for argument 2 of `getpwnam_r'
+mod_auth_system.c:130: too few arguments to function `getpwnam_r'
+mod_auth_system.c:130: warning: assignment makes pointer from integer without a cast
+apxs:Break: Command failed with rc=65536
+make: *** [mod_auth_system.so] Error 1
+
+defining MULTITREADING and SHADOW will cause the following compile errors:
+apxs  -o mod_auth_system.so  -c mod_auth_system.c
+gcc -DLINUX=2 -DUSE_HSREGEX -DUSE_EXPAT -I../lib/expat-lite -fpic -DSHARED_MODULE -I/home/chas/apache/include  -c mod_auth_system.c
+mod_auth_system.c: In function `get_system_pw':
+mod_auth_system.c:128: warning: assignment makes pointer from integer without a cast
+gcc -shared -o mod_auth_system.so mod_auth_system.o 
+
+>How-To-Repeat:
+#define MULTITREADING and compile mod_auth_system
+>Fix:
+*** /home/chas/vslick/backup/mod_auth_system.c	Mon Jul 12 02:25:04 1999
+--- mod_auth_system.c	Wed Oct 20 17:34:39 1999
+***************
+*** 77,85 ****
+   * take such that it had permission to access the system's shadow
+   * password file.
+   */
+! /* #define SHADOW */
+
+! /* #define MULTITREADING */
+
+
+  #include "httpd.h"
+--- 77,85 ----
+   * take such that it had permission to access the system's shadow
+   * password file.
+   */
+! #define SHADOW
+
+! #define MULTITREADING
+
+
+  #include "httpd.h"
+***************
+*** 120,150 ****
+  static char *get_system_pw(request_rec *r, char *user)
+  {
+      char buff[MAX_STRING_LEN];
+- #ifdef MULTITREADING
+      struct passwd *result;
+      struct passwd tmp;
+
+  #ifdef SHADOW
+!     result=getspnam_r(user,tmp,buff,MAX_STRING_LEN);
+  #else
+!     result=getpwnam_r(user,tmp,buff,MAX_STRING_LEN);
+  #endif
+
+  #else /* !MULTITREADING */
+-     struct passwd *result;
+
+  #ifdef SHADOW
+      result=getspnam(user);
+  #else /* !SHADOW */
+      result=getpwnam(user);
+  #endif /* SHADOW */
+-
+  #endif /* MULTITREADING */
+      /* success ? */
+
+-     if (!result) {
+- 	return NULL;
+-     };
+      if (!result->pw_passwd) {
+  #ifndef SHADOW
+  	sprintf(buff,"no system password for %s; is system using shadow passwords?", user);
+--- 120,151 ----
+  static char *get_system_pw(request_rec *r, char *user)
+  {
+      char buff[MAX_STRING_LEN];
+      struct passwd *result;
++ #ifdef MULTITREADING
+      struct passwd tmp;
+
+  #ifdef SHADOW
+!     if(getspnam_r(user,&tmp,buff,MAX_STRING_LEN,&result)!=0)
+! 		return NULL;
+  #else
+!     if(getpwnam_r(user,&tmp,buff,MAX_STRING_LEN,&result)!=0)
+! 		return NULL;
+  #endif
+
+  #else /* !MULTITREADING */
+
+  #ifdef SHADOW
+      result=getspnam(user);
++     if (!result)
++ 		return NULL;
+  #else /* !SHADOW */
+      result=getpwnam(user);
++     if (!result)
++ 		return NULL;
+  #endif /* SHADOW */
+  #endif /* MULTITREADING */
+      /* success ? */
+
+      if (!result->pw_passwd) {
+  #ifndef SHADOW
+  	sprintf(buff,"no system password for %s; is system using shadow passwords?", user);
+
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Thu Oct 21 09:12:14 PDT 1999
+State-Changed-Why:
+
+mod_auth_system is not a part of the base Apache package,
+but a third-party module.  You need to contact the
+person or people responsible for it for the fix to be
+made.  Thanks for your effort in identifying the problem,
+though, and for using Apache!  Good luck in getting the
+module fixed.
+
+Category-Changed-From-To: other-mod_auth-any
+Category-Changed-By: coar
+Category-Changed-When: Thu Oct 21 09:12:14 PDT 1999
+
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

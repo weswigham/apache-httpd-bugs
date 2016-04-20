@@ -1,0 +1,91 @@
+Received: (qmail 28909 invoked by uid 2012); 16 Jul 1999 10:08:59 -0000
+Message-Id: <19990716100859.28908.qmail@hyperreal.org>
+Date: 16 Jul 1999 10:08:59 -0000
+From: Gerd Knorr <gknorr@berlinonline.de>
+Reply-To: gknorr@berlinonline.de
+To: apbugs@hyperreal.org
+Subject: Trouble with continously writing CGIs (webchat)
+X-Send-Pr-Version: 3.2
+
+>Number:         4733
+>Category:       mod_proxy
+>Synopsis:       Trouble with continously writing CGIs (webchat)
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jul 16 03:10:01 PDT 1999
+>Last-Modified:
+>Originator:     gknorr@berlinonline.de
+>Organization:
+apache
+>Release:        1.3.6
+>Environment:
+redhat linux 5.2, kernel 2.2.x, egcs
+>Description:
+We do load balancing with the proxy module (no caching).
+There are two problems with our chat cgi script:
+
+The first one is that the proxy module buffers the output from the chat
+script, which makes the chat unusable.  There should be a way to turn of
+the buffering in the config file for some URL's.
+
+The second is that the proxy module continues the download from the chat
+server if the client goes away.
+>How-To-Repeat:
+
+>Fix:
+For the first problem we use the following workaround (the chat script is a
+nph script for historical reasons):
+
+--- apache_1.3.6/src/modules/proxy/proxy_http.c Mon Mar  8 16:44:03 1999
++++ apache_1.3.6-bol/src/modules/proxy/proxy_http.c     Thu May 27 16:10:36 1999
+@@ -219,6 +219,11 @@
+        desthost = q;
+     }
+ 
++    if (NULL != strstr(urlptr,"/nph-")) {
++        /* kraxel -- no output buffering please */
++        r->connection->client->flags &= ~B_WR; 
++    }
++
+     strp2 = strchr(desthost, ':');
+     if (strp2 != NULL) {
+        *(strp2++) = '\0';
+
+The following patch should fix the second one:
+
+--- apache_1.3.6/src/modules/proxy/proxy_util.c Wed Mar 10 18:42:46 1999
++++ apache_1.3.6-bol/src/modules/proxy/proxy_util.c     Fri Jul 16 11:13:30 1999
+@@ -600,7 +600,11 @@
+                         unlink(c->tempfile);
+                        c = NULL;
+                     }
+-                }
++                } else {
++                       /* if we don't cache the document anyway, there is
++                        * no point in continuing the download -- kraxel */
++                       ok = 0;
++               }
+                 con->aborted = 1;
+                 break;
+             }
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

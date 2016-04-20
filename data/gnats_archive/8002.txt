@@ -1,0 +1,94 @@
+Received: (qmail 27073 invoked by uid 501); 9 Jul 2001 20:41:07 -0000
+Message-Id: <20010709204107.27072.qmail@apache.org>
+Date: 9 Jul 2001 20:41:07 -0000
+From: Keith Turner <apache_pr@keeff.com>
+Reply-To: apache_pr@keeff.com
+To: submit@bugz.apache.org
+Subject: mod_proxy rejects chunked requests
+X-Send-Pr-Version: 3.110
+
+>Number:         8002
+>Category:       mod_proxy
+>Synopsis:       mod_proxy rejects chunked requests
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Jul 09 13:50:03 PDT 2001
+>Closed-Date:    Wed Jul 11 09:47:20 PDT 2001
+>Last-Modified:  Wed Jul 11 09:47:20 PDT 2001
+>Originator:     apache_pr@keeff.com
+>Release:        1.3
+>Organization:
+>Environment:
+SunOS sserver 5.5.1 Generic sun4u sparc SUNW,Ultra-2
+>Description:
+HTTP/1.1 servers are becoming more and more common.  However, mod_proxy
+returns 411 if asked to forward a chunked request.  Wouldn't it be more
+friendly for the proxy to attempt to stream the chunks and allow the
+upstream server to decide if it can handle chunks?  RFC 2616 sec 3.6.1
+seems to suggest that HTTP/1.1 applications are required to be able to
+suck chunks.  RFC 2616 sec 8.2.3 recommends keeping a cache of the HTTP
+versions of upstream servers for the resolution of the Expect: 100-continue
+protocol backwards-compatibility problem.  That same cache could remember
+whether chunks have been rejected.  It would be forgivable if mod_proxy
+DECLINED to handle chunked requests, so that a module could be added to
+handle them, but it takes it upon itself to ban chunks, which is a shame.
+What is the 
+>How-To-Repeat:
+The following session illustrates the problem, and much to my amusement the
+411 Length Required response does not include a Content-length!  :)
+
+> telnet proxy 80
+PUT /incoming/upload HTTP/1.1
+Host: proxy:80
+Transfer-encoding: chunked
+Connection: close
+
+HTTP/1.0 411 Length Required
+Date: Mon, 09 Jul 2001 19:48:15 GMT
+Server: Apache/1.3.20 (Unix)
+Connection: close
+Content-Type: text/html; charset=iso-8859-1
+
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<HTML><HEAD>
+<TITLE>411 Length Required</TITLE>
+</HEAD><BODY>
+<H1>Length Required</H1>
+A request of the requested method PUT requires a valid Content-length.<P>
+chunked Transfer-Encoding forbidden: /pub/incoming<P>
+</BODY></HTML>
+>Fix:
+Would it be as simple as selecting HTTP/1.1 for the upstream request, forwarding
+Transfer-encoding and using REQUEST_CHUNKED_PASS instead of
+REQUEST_CHUNKED_ERROR?  It can't be that easy, otherwise someone would have
+already done it?  Is all of this fixed by Apache 2?
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Wed Jul 11 09:47:19 PDT 2001
+State-Changed-Why:
+The 1.x proxy is _NOT_ a HTTP/1.1 proxy, it is a HTTP/1.0 proxy.  There is a lot more than chunked encoding that it does not support.  There is work ongoing to make the proxy to be included in 2.x a HTTP/1.1 proxy.
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

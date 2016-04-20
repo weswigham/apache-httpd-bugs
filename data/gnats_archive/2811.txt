@@ -1,0 +1,165 @@
+Received: (qmail 13855 invoked by uid 2012); 7 Aug 1998 23:31:41 -0000
+Message-Id: <19980807233141.13854.qmail@hyperreal.org>
+Date: 7 Aug 1998 23:31:41 -0000
+From: Rob Brown <rob@direct-connect.com>
+Reply-To: rob@direct-connect.com
+To: apbugs@hyperreal.org
+Subject: Authentication Hole
+X-Send-Pr-Version: 3.2
+
+>Number:         2811
+>Category:       config
+>Synopsis:       Authentication Hole
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Aug  7 16:40:00 PDT 1998
+>Last-Modified:  Fri Aug  7 17:10:01 PDT 1998
+>Originator:     rob@direct-connect.com
+>Organization:
+>Release:        1.2b8 to current
+>Environment:
+SunOS 5.6 Generic_105182-06 i86pc i386 i86pc
+version 2.8.0
+I believe the bug exists on many OS and Versions
+>Description:
+Apache web server allows access to CGI execution
+even if under AuthConfig-AuthUserFile-Limit-require
+thing for malicious clients.
+>How-To-Repeat:
+Oh easy, just try my configuration out on our developmental server:
+
+Use any normal browser and try this
+http://dev.direct-connect.com/cgi-bin/private/access.cgi
+
+Notice how it yanks up a Authentication box for
+username and password login.  (I've installed an
+access of user=rob and pass=rob for your testing.)
+That's a good thing.  But now try this from a shell:
+
+% telnet dev.direct-connect.com 80
+Connected to dev.direct-connect.com.
+Escape character is '^]'.
+TEST /cgi-bin/private/access.cgi HTTP/1.0
+
+Do NOT enter any "Authorization: Basic"
+uuencoded garbage.  And bamn! it lets
+you right in if you type any request
+method besides "GET" or "POST"
+
+This is how to make the configuration:
+
+Just have this entry in your access.conf file:
+
+-------------------------
+<Directory /usr/local/etc/httpd/cgi-bin>
+AllowOverride FileInfo AuthConfig
+Options None
+</Directory>
+-------------------------
+
+Put these files into /usr/local/etc/httpd/cgi-bin/private/
+.htpasswd:
+-------------------------
+rob:2H9Qrho1uADlM
+-------------------------
+
+.htaccess:
+-------------------------
+AuthName RESTRICTED
+AuthType Basic
+AuthUserFile /usr/local/etc/httpd/cgi-bin/private/.htpasswd
+<Limit GET POST>
+require valid-user
+</Limit>
+-------------------------
+
+access.cgi:
+-------------------------
+#!/usr/bin/perl
+
+print "Content-type: text/html\n\n";
+print "<h1>Congratulations!</h1>\n";
+print "CGI is running just fine.<pre>\n";
+foreach (keys %ENV)
+{print "ENV[$_]=\"$ENV{$_}\"\n";}
+-------------------------
+and chmod 755 access.cgi of course.
+
+NOTE:
+I found this out accidently from a bug in Netscape 4.5b1
+when I had many windows open and something caused it to
+submit a "HOST" method instead of a "POST" method and it
+gave me total access to a protected site without me using
+any username or password.  I did some debugging on your
+apache server and found out this is what was happening.
+I have since closed all these Netscape windows and
+tried it again and could not duplicate that bug.  But
+I can ALWAYS duplicate this bug on the Apache Server.
+Obviously this security hole is the fault of the
+Apache server, not a client bug.  This made me mad
+because the protected site was on my Apache server
+and I don't want people snooping around on my
+server unless they are authorized.
+>Fix:
+Yes, simply report
+"501 Method not implemented"
+for clients attempting to access a CGI with a method
+that is not exactly either "GET" or "POST"
+DON'T JUST GO EXECUTING THE CGI.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Fri Aug  7 16:48:20 PDT 1998
+State-Changed-Why:
+This is your configuration error.  You are telling Apache
+only to limit GET and POST, then you complain when it does!
+Just leave the Limit directive out if you want to limit
+all methods.  This is described clearly in the docs.
+
+From: Rob Brown <dns@freeservers.com>
+To: marc@hyperreal.org
+Cc: apbugs@Apache.Org
+Subject: Re: config/2811: Authentication Hole
+Date: Fri, 07 Aug 1998 18:16:31 -0400
+
+ Works great if I delete the "Limit" lines.
+ But this is just how I was told to install
+ password protection for apache servers.
+ 
+ oops.   :-)
+ 
+ THANKS!!!!
+ 
+ Rob -- Direct Connect
+ 
+ At 11:48 PM 8/7/98 -0000, you wrote:
+ >Synopsis: Authentication Hole
+ >
+ >State-Changed-From-To: open-closed
+ >State-Changed-By: marc
+ >State-Changed-When: Fri Aug  7 16:48:20 PDT 1998
+ >State-Changed-Why:
+ >This is your configuration error.  You are telling Apache
+ >only to limit GET and POST, then you complain when it does!
+ >Just leave the Limit directive out if you want to limit
+ >all methods.  This is described clearly in the docs.
+ >
+ >
+ >
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

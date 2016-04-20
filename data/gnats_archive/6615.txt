@@ -1,0 +1,83 @@
+Received: (qmail 87625 invoked by uid 501); 2 Oct 2000 09:04:21 -0000
+Message-Id: <20001002090421.87613.qmail@locus.apache.org>
+Date: 2 Oct 2000 09:04:21 -0000
+From: Dave Pickles <davep@hmgcc.gov.uk>
+Reply-To: davep@hmgcc.gov.uk
+To: submit@bugz.apache.org
+Subject: Proxy server errors with MACOS FTP server
+X-Send-Pr-Version: 3.110
+
+>Number:         6615
+>Category:       mod_proxy
+>Synopsis:       Proxy server errors with MACOS FTP server
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Oct 02 02:10:01 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     davep@hmgcc.gov.uk
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+RedHat Linux 6.2
+>Description:
+Attempting to browse an ftp site which uses MACOS Webstar ftp server gives
+either an empty directory or a "invalid gateway" error.
+
+This ftp server has a few unusual behaviours:
+
+- attempting to GET a directory returns a 450 status not 550
+
+- a SIZE operation on a directory succeeds but gives zero size
+
+- MAC filenames can begin with "-" so LIST qualifiers look like filenames.
+>How-To-Repeat:
+connect to ftp://195.243.137.70 with and without a trailing slash.
+>Fix:
+--- proxy_ftp.c.old     Fri Sep 29 14:35:06 2000
++++ proxy_ftp.c Mon Oct  2 09:41:29 2000
+@@ -1024,7 +1024,7 @@
+        if (len != 0)
+            ap_bvputs(f, "LIST ", path, CRLF, NULL);
+        else
+-           ap_bputs("LIST -lag" CRLF, f);
++           ap_bputs("LIST" CRLF, f);
+        Explain1("FTP: LIST %s", (len == 0 ? "" : path));
+     }
+     else {
+@@ -1055,7 +1055,7 @@
+        return ap_proxyerror(r, HTTP_BAD_GATEWAY,
+                             "Error reading from remote server");
+     }
+-    if (rc == 550) {
++    if ((rc == 550) || (rc == 450)) {                          /* MACOS returns 450 here */
+        Explain0("FTP: RETR failed, trying LIST instead");
+        parms = "d";
+        ap_bvputs(f, "CWD ", path, CRLF, NULL);
+
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

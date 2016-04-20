@@ -1,0 +1,101 @@
+Received: (qmail 16628 invoked by uid 2012); 18 Oct 1998 18:21:32 -0000
+Message-Id: <19981018182132.16627.qmail@hyperreal.org>
+Date: 18 Oct 1998 18:21:32 -0000
+From: Andre De Deurwaerder <Andre.DeDeurwaerder@uz.kuleuven.ac.be>
+Reply-To: Andre.DeDeurwaerder@uz.kuleuven.ac.be
+To: apbugs@hyperreal.org
+Subject: Cache garbage collection fails when using cache larger then 2GB
+X-Send-Pr-Version: 3.2
+
+>Number:         3233
+>Category:       mod_proxy
+>Synopsis:       Cache garbage collection fails when using cache larger then 2GB
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Oct 18 11:30:00 PDT 1998
+>Last-Modified:
+>Originator:     Andre.DeDeurwaerder@uz.kuleuven.ac.be
+>Organization:
+apache
+>Release:        1.3.3
+>Environment:
+I am using SunOS odysseus 5.6 Generic_105181-05 sun4m sparc SUNW,S240
+but this problem probably can be reproduced on all platforms.
+>Description:
+If you specify a cache larger than 2GB the garbage collection algorithm will delete
+all files from your cache instead of reducing the size to 2GB.
+>How-To-Repeat:
+Set up an environment with a large cache.
+>Fix:
+This problem is due to the initialisation code of the variable cachesize in
+proxy_cache.c.  The code 
+cachesize.lower = cachesize.upper = 0;
+add_long61(&cachesize, conf->space << 10);
+assumes that the CacheSize parameter has only 20 bits, as the shift operation won't
+shift bits into the 'upper' part of the cachesize variable.
+
+This can be fixed by introducing a 61 bit shift function that can correctly shift 
+the 61 bit variable 10 bits to the left.
+
+*** ,proxy_cache.c      Sun Oct 18 17:42:11 1998
+--- proxy_cache.c       Sun Oct 18 17:42:11 1998
+***************
+*** 171,176 ****
+--- 171,191 ----
+      accu->upper -= (val >> 30) + carry;
+  }
+  
++ static void
++ shiftleft_long61 (long61_t *accu, long count)
++ {
++     while (count > 0) {
++         /* shift both parts 1 bit */
++         accu->lower <<= 1;
++         accu->upper <<= 1;
++         /* handle carry */
++         accu->upper += (accu->lower & ~0x3FFFFFFFL) != 0L;
++         /* Clear carry */
++         accu->lower &= 0x3FFFFFFFL;
++       count --;
++     }
++ }
++ 
+  /* Compare two long61's:
+   * return <0 when left < right
+   * return  0 when left == right
+***************
+*** 276,282 ****
+      cachedir = conf->root;
+      /* configured size is given in kB. Make it bytes, convert to long61_t: */
+      cachesize.lower = cachesize.upper = 0;
+!     add_long61(&cachesize, conf->space << 10);
+      every = conf->gcinterval;
+  
+      if (cachedir == NULL || every == -1)
+--- 291,298 ----
+      cachedir = conf->root;
+      /* configured size is given in kB. Make it bytes, convert to long61_t: */
+      cachesize.lower = cachesize.upper = 0;
+!     add_long61(&cachesize, conf->space);
+!     shiftleft_long61(&cachesize, 10);
+      every = conf->gcinterval;
+  
+      if (cachedir == NULL || every == -1)
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

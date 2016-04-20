@@ -1,0 +1,156 @@
+Received: (qmail 4690 invoked by uid 2012); 14 May 1998 01:25:21 -0000
+Message-Id: <19980514012521.4689.qmail@hyperreal.org>
+Date: 14 May 1998 01:25:21 -0000
+From: Wei Lin <wlin@cnd.org>
+Reply-To: wlin@cnd.org
+To: apbugs@hyperreal.org
+Subject: Some log entries do not have full IP address
+X-Send-Pr-Version: 3.2
+
+>Number:         2229
+>Category:       mod_log-any
+>Synopsis:       Some log entries do not have full IP address
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed May 13 18:30:01 PDT 1998
+>Last-Modified:  Tue Jun 23 12:58:27 PDT 1998
+>Originator:     wlin@cnd.org
+>Organization:
+>Release:        1.3b6
+>Environment:
+SunOS cnd-c 5.6 Generic sun4m sparc SUNW,SPARCstation-20
+
+gcc version 2.8.1
+>Description:
+About 5% of the access log are entries like this:
+
+152 - - [13/May/1998:18:06:08 -0700] "GET / HTTP/1.0" 200 8432
+146 - - [13/May/1998:18:06:14 -0700] "GET / HTTP/1.0" 200 8432
+
+The first number appears to be the first octet of the IP address
+(based on observation of established connections using netstat).
+
+The relevant conf file entries:
+
+HostnameLookups off
+LogFormat "%h %l %u %t \"%r\" %>s %b" common
+CustomLog /var/log/httpd/access_log common
+
+Most of the log entries are perfectly normal like this:
+
+131.216.18.124 - - [13/May/1998:18:18:14 -0700] "GET / HTTP/1.0" 200 8432
+>How-To-Repeat:
+URL is http://www.cnd.org/
+But since only about 5% of the entries are problematic, I am not sure how
+to repeat it. It does not appear to have a pattern in the IP number.
+>Fix:
+Nope. Sorry.
+>Audit-Trail:
+Comment-Added-By: Lars.Eilebrecht@unix-ag.org
+Comment-Added-When: Thu May 21 16:59:46 PDT 1998
+Comment-Added:
+
+I'm maintaining several Solaris 2.6 boxes myself, but
+I've never seen incomplete addresses (just checked
+some hundred Mbytes of logfiles, but all contain
+valid addresses).
+
+Severity-Changed-From-To: serious-non-critical
+Severity-Changed-By: Lars.Eilebrecht@unix-ag.org
+Severity-Changed-When: Thu May 21 16:59:46 PDT 1998
+State-Changed-From-To: open-feedback
+State-Changed-By: brian
+State-Changed-When: Thu May 21 17:15:02 PDT 1998
+State-Changed-Why:
+I, too, just checked about 200 megabytes of old logfiles, from
+both Solaris and FreeBSD platforms, and also didn't see this.
+What name resolver are you using?  My guess at this point
+is that your resolver is buggy.  I would suggest either
+upgrading it (if it isn't recent), using bind 8.1 if you're
+currently not, or if you are using bind 8.x, try going back to
+4.x just to see if it makes a difference.  If there's still
+no difference maybe one of your upstream DNS providers is
+busted, but that seems unlikely.
+
+A good way to test might be to log all IP addresses for now
+and use the "logresolve" program to debug further.  
+
+
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Wei Lin <wlin@cnd.org>
+Cc: apbugs@hyperreal.org
+Subject: Re: mod_log-any/2229: Some log entries do not have full IP address
+Date: Sun, 7 Jun 1998 23:29:40 -0700 (PDT)
+
+ Try this patch.  mod_usertrack was corrupting the hostname. 
+ 
+ Dean
+ 
+ Index: modules/standard/mod_usertrack.c
+ ===================================================================
+ RCS file: /export/home/cvs/apache-1.3/src/modules/standard/mod_usertrack.c,v
+ retrieving revision 1.34
+ diff -u -r1.34 mod_usertrack.c
+ --- mod_usertrack.c	1998/04/11 12:00:53	1.34
+ +++ mod_usertrack.c	1998/06/08 06:08:56
+ @@ -137,13 +137,9 @@
+      /* 1024 == hardcoded constant */
+      char cookiebuf[1024];
+      char *new_cookie;
+ -    char *dot;
+      const char *rname = ap_get_remote_host(r->connection, r->per_dir_config,
+  					REMOTE_NAME);
+  
+ -    if ((dot = strchr(rname, '.')))
+ -        *dot = '\0';            /* First bit of hostname */
+ -
+  #if defined(NO_GETTIMEOFDAY) && !defined(NO_TIMES)
+  /* We lack gettimeofday(), so we must use time() to obtain the epoch
+     seconds, and then times() to obtain CPU clock ticks (milliseconds).
+ @@ -151,7 +147,7 @@
+  
+      mpe_times = times(&mpe_tms);
+  
+ -    ap_snprintf(cookiebuf, sizeof(cookiebuf), "%s%d%ld%ld", rname, (int) getpid(),
+ +    ap_snprintf(cookiebuf, sizeof(cookiebuf), "%s.%d%ld%ld", rname, (int) getpid(),
+                  (long) r->request_time, (long) mpe_tms.tms_utime);
+  #elif defined(WIN32)
+      /*
+ @@ -160,13 +156,13 @@
+       * was started. It should be relatively unique.
+       */
+  
+ -    ap_snprintf(cookiebuf, sizeof(cookiebuf), "%s%d%ld%ld", rname, (int) getpid(),
+ +    ap_snprintf(cookiebuf, sizeof(cookiebuf), "%s.%d%ld%ld", rname, (int) getpid(),
+                  (long) r->request_time, (long) GetTickCount());
+  
+  #else
+      gettimeofday(&tv, &tz);
+  
+ -    ap_snprintf(cookiebuf, sizeof(cookiebuf), "%s%d%ld%d", rname, (int) getpid(),
+ +    ap_snprintf(cookiebuf, sizeof(cookiebuf), "%s.%d%ld%d", rname, (int) getpid(),
+                  (long) tv.tv_sec, (int) tv.tv_usec / 1000);
+  #endif
+  
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: lars
+State-Changed-When: Tue Jun 23 12:58:26 PDT 1998
+State-Changed-Why:
+Fixed by Dean's patch.
+Available in Apache version 1.3.1 and later.
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

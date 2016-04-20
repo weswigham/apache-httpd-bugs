@@ -1,0 +1,105 @@
+Received: (qmail 22810 invoked from network); 3 Sep 1998 04:39:59 -0000
+Message-Id: <Pine.LNX.3.96.980902232228.26994D-100000@serrano.bloomington.in.us>
+Date: Wed, 2 Sep 1998 23:39:49 -0500 (EST)
+From: Scott Hutton <shutton@indiana.edu>
+Reply-To: Scott Hutton <shutton@pobox.com>
+To: Jeffrey Baker <jwb@tamu.edu>, Marc Slemko <marcs@znep.com>
+Cc: apbugs@Apache.Org
+Subject: HTTPD dies complaining "error getting accept lock"
+
+>Number:         2946
+>Category:       other
+>Synopsis:       HTTPD dies complaining "error getting accept lock"
+>Confidential:   yes
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   unknown
+>Arrival-Date:   Wed Sep  2 21:40:01 PDT 1998
+>Last-Modified:  Sun Sep 27 09:02:10 PDT 1998
+>Originator:     
+>Organization:
+>Release:        
+>Environment:
+>Description:
+>How-To-Repeat:
+>Fix:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: coar
+State-Changed-When: Sun Sep 27 09:02:10 PDT 1998
+State-Changed-Why:
+[Incorrectly submitted]
+
+Responsible-Changed-From-To: gnats-admin-apache
+Responsible-Changed-By: coar
+Responsible-Changed-When: Sun Sep 27 09:02:10 PDT 1998
+Responsible-Changed-Why:
+[Attaching to correct PR]
+
+Category-Changed-From-To: pending-other
+Category-Changed-By: coar
+Category-Changed-When: Sun Sep 27 09:02:10 PDT 1998
+
+>Unformatted:
+Hoping this gets added to PR 2723.
+
+My system is experiencing the same problem.  The lock file is *not*
+on an NFS-mounted volume.
+
+  * System is a 4-CPU P6-200 running SMP-aware Linux 2.0.30. 
+  * Apache 1.3.1
+  * Compiled with gcc 2.7.2.1
+  * mod_perl 1.15 and mod_ssl (2.06) have been incorporated.
+  * The optional rewrite, status, and info modules have been enabled.
+
+I wrote a health monitor to help me pinpoint the spot in the error
+log that is closest to the error by tacking some extra entries in
+the error_log immediately when it notices that the parent has died
+(note the '###' lines below).  The health monitor checks when the
+process referenced in httpd.pid disappears, and finally restarts the
+server when a connection to port 80 is refused.
+
+For whatever reason, connections would *continue* to be accepted even
+though the root process died for a short period (presumably until
+children exhaust their request limit), but I haven't investigated
+that aspect of the problem.  However, that masked the time that the
+parent was exiting since loads of the accept() failures would show
+up afterwards until connections were refused.
+
+It appears that the parent is exiting when a child gets a
+LOCK_EX failure on the accept lockfile.  The child exits
+with APEXIT_CHILDFATAL, which triggers the parent to die
+(main/http_main.c:3970).  Since there's a host of things that can
+cause children to die (especially with mod_perl thrown in the mix),
+this seems like inappropriate behavior.
+
+I'll try to dig in a bit more tomorrow to see if I can figure out
+what's up with the accept() problem.  "Bad file number" ain't tellin'
+me much.  I haven't figured out what conditions cause it to show
+up--it exits pretty randomly through the day.  Our entire site is
+delivered via mod_perl content, so I doubt I can test without that.
+
+Jeffrey- If you haven't hacked something up already, I'll send you
+	 my health monitor/keeper-aliver script.  That'll keep you
+	 going until the bug's been fixed.
+
+ -Scott Hutton, Information Technology Security Office
+		Indiana University
+  For PGP Key:  finger shutton@pobox.com ...or...
+                https://www.itso.iu.edu/staff/shutton/
+
+		      ***** BEGIN error_log ENTRIES *****
+
+[Wed Sep  2 17:46:12 1998] [emerg] (9)Bad file number: flock: LOCK_EX: Error getting accept lock. Exiting!
+[Wed Sep  2 17:46:13 1998] [alert] Child 24684 returned a Fatal error...
+Apache is exiting!
+### (check_apache) apache root process died at 09/02/98 17:46:26
+[Wed Sep  2 17:46:44 1998] ctime.pl: Prototype mismatch: sub Apache::ROOTwww_2eitso_2eiu_2eedu::services::itrack::view_2epl::ctime ($;$) vs none at /usr/lib/perl5/ctime.pl line 50.
+[Wed Sep  2 17:48:55 1998] ctime.pl: Prototype mismatch: sub Apache::ROOTwww_2eitso_2eiu_2eedu::services::itrack::view_2epl::ctime ($;$) vs none at /usr/lib/perl5/ctime.pl line 50.
+### (check_apache) restarting apache at 09/02/98 21:26:57
+
+		       ***** END error_log ENTRIES *****
+

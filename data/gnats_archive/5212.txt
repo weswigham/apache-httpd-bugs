@@ -1,0 +1,401 @@
+Received: (qmail 28451 invoked by uid 2012); 28 Oct 1999 16:13:47 -0000
+Message-Id: <19991028161347.28450.qmail@hyperreal.org>
+Date: 28 Oct 1999 16:13:47 -0000
+From: Nicholas Clark <nick@talking.bollo.cx>
+Reply-To: nick@talking.bollo.cx
+To: apbugs@hyperreal.org
+Subject: "satisfy any" in the config file without any related conf lines causes 500 errors but no logging of cause
+X-Send-Pr-Version: 3.2
+
+>Number:         5212
+>Category:       config
+>Synopsis:       "satisfy any" in the config file without any related conf lines causes 500 errors but no logging of cause
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Oct 28 09:20:01 PDT 1999
+>Last-Modified:  Tue Nov  2 05:00:02 PST 1999
+>Originator:     nick@talking.bollo.cx
+>Organization:
+apache
+>Release:        1.3.9
+>Environment:
+SunOS kurt 5.6 Generic_105181-05 sun4u sparc SUNW,Ultra-5_10
+
+gcc 2.8.1
+>Description:
+If you have a conf entry such as
+
+<Directory "/home/nick/apache/htdocs">
+
+#
+# This may also be "None", "All", or any combination of "Indexes",
+# "Includes", "FollowSymLinks", "ExecCGI", or "MultiViews".
+#
+# Note that "MultiViews" must be named *explicitly* --- "Options All"
+# doesn't give it to you.
+#
+    Options Indexes FollowSymLinks
+
+#
+# This controls which options the .htaccess files in directories can
+# override. Can also be "All", or any combination of "Options", "FileInfo", 
+# "AuthConfig", and "Limit"
+#
+    AllowOverride None
+
+#
+# Controls who can get stuff from this server.
+#
+    Order allow,deny
+    Allow from all
+    satisfy any
+</Directory>
+
+then the server gives out 500 errors for every URL, and doen't log what the problem is in any log
+>How-To-Repeat:
+Add that
+
+    satisfy any
+
+to your conf file and restart	
+>Fix:
+Make apache log in a server log why it's issuing 500 errors.
+
+Otherwise it's damn hard to track the cause of the problem
+>Audit-Trail:
+
+From: vsolve apache <vsolve_apache@yahoo.com>
+To: apbugs@hyperreal.org, nick@talking.bollo.cx
+Cc: apbugs@Apache.Org
+Subject: Re: general/5212: "satisfy any" in the config file without any related conf lines causes 500 errors but no logging of cause
+Date: Tue, 2 Nov 1999 04:56:25 -0800 (PST)
+
+ Hi,
+ 
+ We suggest the following changes in the file
+ http_request.c in Apache core  to log the cause in
+ error_log file, when "satisfy any" in the config file
+ without any related conf lines used.
+ 
+ static void process_request_internal(request_rec *r)
+ {      
+        int access_status;
+        ....
+        ....
+        case SATISFY_ANY:
+         if (((access_status = ap_check_access(r)) !=
+ 0) || !ap_auth_type(r)) {
+ -           if (!ap_some_auth_required(r)) {
+ +           if (!ap_some_auth_required(r) &&
+ (((access_status = ap_check_user_id
+ (r)) != 0) || !ap_auth_type(r))) {     
+ 			                 decl_die(access_status,
+ ap_auth_type(r)
+     ? "check access"
+ -   : "perform authentication. AuthType not set!", r);
+ +   : "Satisfy any directive must be used along with
+ both allow and require directives..!",r);
+             return;
+             }
+             ....
+             ....
+             ....
+ }
+ 
+ regards,
+ vsolve_apache.
+ 
+ 
+ >Subject: 
+ >        config/5212: "satisfy any" in the config file
+ without any related conf
+ >        lines causes 500 errors but no logging of
+ cause
+ > Date:  28 Oct 1999 16:13:47 -0000
+ > From: Nicholas Clark <nick@talking.bollo.cx>
+ > To: apbugs@hyperreal.org
+ >
+ >Number:         5212
+ >Category:       config
+ >Synopsis:       "satisfy any" in the config file
+ without any related conf lines causes 500 errors but
+ no logging of cause
+ >Confidential:   no
+ >Severity:       non-critical
+ >Priority:       medium
+ >Responsible:    apache
+ >State:          open
+ >Class:          sw-bug
+ >Submitter-Id:   apache
+ >Arrival-Date:   Thu Oct 28 09:20:01 PDT 1999
+ >Last-Modified:
+ >Originator:     nick@talking.bollo.cx
+ >Organization:
+ apache
+ >Release:        1.3.9
+ >Environment:
+ SunOS kurt 5.6 Generic_105181-05 sun4u sparc
+ SUNW,Ultra-5_10
+ 
+ gcc 2.8.1
+ >Description:
+ If you have a conf entry such as
+ 
+ <Directory "/home/nick/apache/htdocs">
+ 
+ #
+ # This may also be "None", "All", or any combination
+ of "Indexes",
+ # "Includes", "FollowSymLinks", "ExecCGI", or
+ "MultiViews".
+ #
+ # Note that "MultiViews" must be named *explicitly*
+ --- "Options All"
+ # doesn't give it to you.
+ #
+     Options Indexes FollowSymLinks
+ 
+ #
+ # This controls which options the .htaccess files in
+ directories can
+ # override. Can also be "All", or any combination of
+ "Options", "FileInfo", 
+ # "AuthConfig", and "Limit"
+ #
+     AllowOverride None
+ 
+ #
+ # Controls who can get stuff from this server.
+ #
+     Order allow,deny
+     Allow from all
+     satisfy any
+ </Directory>
+ 
+ then the server gives out 500 errors for every URL,
+ and doen't log what the problem is in any log
+ >How-To-Repeat:
+ Add that
+ 
+     satisfy any
+ 
+ to your conf file and restart   
+ >Fix:
+ Make apache log in a server log why it's issuing 500
+ errors.
+ 
+ Otherwise it's damn hard to track the cause of the
+ problem
+ >Audit-Trail:
+ >Unformatted:
+ [In order for any reply to be added to the PR
+ database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and
+ make sure the]
+ [subject line starts with the report component and
+ number, with ]
+ [or without any 'Re:' prefixes (such as
+ "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match
+ this       ]
+ [pattern, your message will be misfiled and ignored. 
+ The       ]
+ ["apbugs" address is not added to the Cc line of
+ messages from  ]
+ [the database automatically because of the potential
+ for mail   ]
+ [loops.  If you do not include this Cc, your reply may
+ be ig-   ]
+ [nored unless you are responding to an explicit
+ request from a  ]
+ [developer.  Reply only with text; DO NOT SEND
+ ATTACHMENTS!     ]
+ 
+ 
+ 
+ 
+ 
+ 
+ =====
+ 
+ __________________________________________________
+ Do You Yahoo!?
+ Bid and sell for free at http://auctions.yahoo.com
+
+From: vsolve apache <vsolve_apache@yahoo.com>
+To: apbugs@hyperreal.org, nick@talking.bollo.cx
+Cc: apbugs@Apache.Org
+Subject: Re: general/5212: "satisfy any" in the config file without any related conf lines causes 500 errors but no logging of cause
+Date: Tue, 2 Nov 1999 04:56:25 -0800 (PST)
+
+ Hi,
+ 
+ We suggest the following changes in the file
+ http_request.c in Apache core  to log the cause in
+ error_log file, when "satisfy any" in the config file
+ without any related conf lines used.
+ 
+ static void process_request_internal(request_rec *r)
+ {      
+        int access_status;
+        ....
+        ....
+        case SATISFY_ANY:
+         if (((access_status = ap_check_access(r)) !=
+ 0) || !ap_auth_type(r)) {
+ -           if (!ap_some_auth_required(r)) {
+ +           if (!ap_some_auth_required(r) &&
+ (((access_status = ap_check_user_id
+ (r)) != 0) || !ap_auth_type(r))) {     
+ 			                 decl_die(access_status,
+ ap_auth_type(r)
+     ? "check access"
+ -   : "perform authentication. AuthType not set!", r);
+ +   : "Satisfy any directive must be used along with
+ both allow and require directives..!",r);
+             return;
+             }
+             ....
+             ....
+             ....
+ }
+ 
+ regards,
+ vsolve_apache.
+ 
+ 
+ >Subject: 
+ >        config/5212: "satisfy any" in the config file
+ without any related conf
+ >        lines causes 500 errors but no logging of
+ cause
+ > Date:  28 Oct 1999 16:13:47 -0000
+ > From: Nicholas Clark <nick@talking.bollo.cx>
+ > To: apbugs@hyperreal.org
+ >
+ >Number:         5212
+ >Category:       config
+ >Synopsis:       "satisfy any" in the config file
+ without any related conf lines causes 500 errors but
+ no logging of cause
+ >Confidential:   no
+ >Severity:       non-critical
+ >Priority:       medium
+ >Responsible:    apache
+ >State:          open
+ >Class:          sw-bug
+ >Submitter-Id:   apache
+ >Arrival-Date:   Thu Oct 28 09:20:01 PDT 1999
+ >Last-Modified:
+ >Originator:     nick@talking.bollo.cx
+ >Organization:
+ apache
+ >Release:        1.3.9
+ >Environment:
+ SunOS kurt 5.6 Generic_105181-05 sun4u sparc
+ SUNW,Ultra-5_10
+ 
+ gcc 2.8.1
+ >Description:
+ If you have a conf entry such as
+ 
+ <Directory "/home/nick/apache/htdocs">
+ 
+ #
+ # This may also be "None", "All", or any combination
+ of "Indexes",
+ # "Includes", "FollowSymLinks", "ExecCGI", or
+ "MultiViews".
+ #
+ # Note that "MultiViews" must be named *explicitly*
+ --- "Options All"
+ # doesn't give it to you.
+ #
+     Options Indexes FollowSymLinks
+ 
+ #
+ # This controls which options the .htaccess files in
+ directories can
+ # override. Can also be "All", or any combination of
+ "Options", "FileInfo", 
+ # "AuthConfig", and "Limit"
+ #
+     AllowOverride None
+ 
+ #
+ # Controls who can get stuff from this server.
+ #
+     Order allow,deny
+     Allow from all
+     satisfy any
+ </Directory>
+ 
+ then the server gives out 500 errors for every URL,
+ and doen't log what the problem is in any log
+ >How-To-Repeat:
+ Add that
+ 
+     satisfy any
+ 
+ to your conf file and restart   
+ >Fix:
+ Make apache log in a server log why it's issuing 500
+ errors.
+ 
+ Otherwise it's damn hard to track the cause of the
+ problem
+ >Audit-Trail:
+ >Unformatted:
+ [In order for any reply to be added to the PR
+ database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and
+ make sure the]
+ [subject line starts with the report component and
+ number, with ]
+ [or without any 'Re:' prefixes (such as
+ "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match
+ this       ]
+ [pattern, your message will be misfiled and ignored. 
+ The       ]
+ ["apbugs" address is not added to the Cc line of
+ messages from  ]
+ [the database automatically because of the potential
+ for mail   ]
+ [loops.  If you do not include this Cc, your reply may
+ be ig-   ]
+ [nored unless you are responding to an explicit
+ request from a  ]
+ [developer.  Reply only with text; DO NOT SEND
+ ATTACHMENTS!     ]
+ 
+ 
+ 
+ 
+ 
+ 
+ =====
+ 
+ __________________________________________________
+ Do You Yahoo!?
+ Bid and sell for free at http://auctions.yahoo.com
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

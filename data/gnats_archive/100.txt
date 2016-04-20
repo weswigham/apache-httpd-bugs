@@ -1,0 +1,114 @@
+From nobody@hyperreal.com  Thu Jan  9 02:08:29 1997
+Received: by taz.hyperreal.com (8.8.3/V2.0) id CAA10169; Thu, 9 Jan 1997 02:08:29 -0800 (PST)
+Message-Id: <199701091008.CAA10169@taz.hyperreal.com>
+Date: Thu, 9 Jan 1997 02:08:29 -0800 (PST)
+From: Rob Heittman <rob@central.worldweb.net>
+Reply-To: rob@central.worldweb.net
+To: apbugs@hyperreal.com
+Subject: Access problems with AOL, proxies, and robots that demand HTTP/1.0 in the header
+X-Send-Pr-Version: 3.2
+
+>Number:         100
+>Category:       protocol
+>Synopsis:       Access problems with AOL, proxies, and robots that demand HTTP/1.0 in the header
+>Confidential:   no
+>Severity:       critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jan  9 02:10:01 1997
+>Last-Modified:  Fri Jan 24 18:00:25 PST 1997
+>Originator:     rob@central.worldweb.net
+>Organization:
+>Release:        1.2b4
+>Environment:
+Any Apache environment
+>Description:
+I figure this is a change request, not a bug, no matter what other people say.
+In order to keep things happy that like to see HTTP/1.0 when they make an
+HTTP/1.0 request, change http_protocol.c to return r->protocol instead of
+SERVER_PROTOCOL, and define SERVER_PROTOCOL to be HTTP/1.0 as a default (for
+all those legacy modules that don't know Jack about HTTP/1.1).  This
+allows all the HTTP/1.1 functionality to work, but doesn't break anything that
+currently is out there.  Apache would no longer "advertise" its HTTP/1.1
+availability, but hey, welcome to life, if you wannit, you gotta ask . . .
+>How-To-Repeat:
+Find an AOL user who is peeved at Apache 1.2 users, or an Apache 1.2 user that is
+peeved at AOL users.  Run Astra or another robotic site mapper.  Sit on the
+other side of a proxy that demands HTTP/1.0.
+>Fix:
+If this context diff is legible, use it.  If not, try the above by hand.
+
+diff -b -c original/http_protocol.c ./http_protocol.c
+*** original/http_protocol.c    Thu Jan  9 04:28:49 1997
+--- ./http_protocol.c   Thu Jan  9 04:30:12 1997
+***************
+*** 881,887 ****
+      if (!r->status_line)
+          r->status_line = status_lines[index_of_response(r->status)];
+      
+!     bvputs(fd, SERVER_PROTOCOL, " ", r->status_line, "\015\012", NULL);
+      bvputs(fd,"Date: ",gm_timestr_822 (r->pool, r->request_time),
+           "\015\012", NULL);
+      bvputs(fd,"Server: ", SERVER_VERSION, "\015\012", NULL);
+--- 881,887 ----
+      if (!r->status_line)
+          r->status_line = status_lines[index_of_response(r->status)];
+      
+!     bvputs(fd, r->protocol, " ", r->status_line, "\015\012", NULL);
+      bvputs(fd,"Date: ",gm_timestr_822 (r->pool, r->request_time),
+           "\015\012", NULL);
+      bvputs(fd,"Server: ", SERVER_VERSION, "\015\012", NULL);
+***************
+*** 1161,1167 ****
+  
+      if (r->proto_num >= 1001) {    /* sending 100 Continue interim response */
+          bvputs(r->connection->client,
+!             SERVER_PROTOCOL, " ", status_lines[0], "\015\012\015\012", NULL);
+          bflush(r->connection->client);
+      }
+  
+--- 1161,1167 ----
+  
+      if (r->proto_num >= 1001) {    /* sending 100 Continue interim response */
+          bvputs(r->connection->client,
+!             r->protocol, " ", status_lines[0], "\015\012\015\012", NULL);
+          bflush(r->connection->client);
+      }
+  
+diff -b -c original/httpd.h ./httpd.h
+*** original/httpd.h    Thu Jan  9 04:28:59 1997
+--- ./httpd.h   Thu Jan  9 04:29:14 1997
+***************
+*** 257,263 ****
+  #define SERVER_VERSION        SERVER_BASEVERSION
+  #endif
+  
+! #define SERVER_PROTOCOL "HTTP/1.1"
+  #define SERVER_SUPPORT "http://www.apache.org/"
+  
+  #define DECLINED -1           /* Module declines to handle */
+--- 257,263 ----
+  #define SERVER_VERSION        SERVER_BASEVERSION
+  #endif
+  
+! #define SERVER_PROTOCOL "HTTP/1.0"
+  #define SERVER_SUPPORT "http://www.apache.org/"
+  
+  #define DECLINED -1           /* Module declines to handle */%0
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Fri Jan 24 18:00:23 PST 1997
+State-Changed-Why:
+A feature to allow you to selectively do this was added in
+revision 1.15 of mod_access.c and 1.89 http_protocol.c, 
+which will be available in 1.2b5 when it comes out.
+
+Doing it for all clients was debated at length, however it
+does break certain things so we decided against it.
+>Unformatted:
+
+

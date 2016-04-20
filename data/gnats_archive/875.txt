@@ -1,0 +1,106 @@
+From nobody@hyperreal.org  Wed Jul 16 12:46:20 1997
+Received: (from nobody@localhost)
+	by hyperreal.org (8.8.5/8.8.5) id MAA29052;
+	Wed, 16 Jul 1997 12:46:20 -0700 (PDT)
+Message-Id: <199707161946.MAA29052@hyperreal.org>
+Date: Wed, 16 Jul 1997 12:46:20 -0700 (PDT)
+From: Mark Herman II <turbodog@cajun.net>
+Reply-To: turbodog@cajun.net
+To: apbugs@hyperreal.org
+Subject: force-response-1.0 bug
+X-Send-Pr-Version: 3.2
+
+>Number:         875
+>Category:       protocol
+>Synopsis:       force-response-1.0 bug
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Jul 16 12:50:01 1997
+>Last-Modified:  Sun Jul 20 15:22:11 PDT 1997
+>Originator:     turbodog@cajun.net
+>Organization:
+>Release:        1.2.X
+>Environment:
+BSDI 3.0.  I believe it will occur on any OS.  I also experience it on Linux.
+>Description:
+I run the JCount Java access counter at http://www.jcount.com/.  We included
+the BrowserMatch lines that were suggested in the FAQ.  This counter works
+properly on all browsers I've tried except Internet Explorer 4.0 Preview Release
+2.  The BrowserMatch lines tell the server to send back HTTP/1.0 response
+headers to IE 4.0 PR 2.  While searching for the cause of this error, I tried
+telnetting directly into the server and typing the http requests myself.  I've
+found that using the force-response-1.0 directive sends back the HTTP/1.0 header, but
+HTTP/1.1 encoded information.  The specific problem that this is causing me is
+that if I call my CGI scripts in IE 4.0 PR 2, it has an extra number before the
+beginning of my program's output.  It would seem that any Java applet that uses
+CGI to communicate with a server runs a chance of running into this problem on
+this browser.  I think I will find a simple fix in my particular case, but I
+still think this should be addressed.
+>How-To-Repeat:
+telnet into www.jcount.com port 80, and type the following:
+GET /cgi-bin/counter2.cgi?secondary_exposure=true&increment=false&counter_id=30 HTTP/1.1
+Host: www.jcount.com
+
+I have set the force-response-1.0 environment variable to help find the problem.
+I will be setting this back to normal soon, but for now, the output will be:
+
+HTTP/1.0 200 OK
+Then what appears to be a HTTP/1.1 header will follow.  After that, there will be
+a blank line, then some hexadecimal number, which is the cause of my problems.
+In my case, my program parses the output based on which line it is on.
+I am assuming that this new number has something to do with the HTTP/1.1 response,
+because it doesn't show up if I request the information using HTTP/1.0.
+>Fix:
+Instead of having the force-response-1.0 directive just change the first line
+of the header sent back, send back a true HTTP/1.0 response
+>Audit-Trail:
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: Mark Herman II <turbodog@cajun.net>
+Subject: Re: protocol/875: force-response-1.0 bug
+Date: Wed, 16 Jul 1997 13:02:06 -0700 (PDT)
+
+ 
+ 
+ 
+ On Wed, 16 Jul 1997, Mark Herman II wrote:
+ 
+ > telnet into www.jcount.com port 80, and type the following:
+ > GET /cgi-bin/counter2.cgi?secondary_exposure=true&increment=false&counter_id=30 HTTP/1.1
+ > Host: www.jcount.com
+ 
+ You are making an HTTP/1.1 request.  If you were truly emulating what the
+ browser was doing then you'd probably be making an HTTP/1.0 request and
+ including the useragent.  The force-response-1.0 does not change the
+ response except for the HTTP/1.0 200 OK piece.  The rest of the response
+ is valid in the dialect that the request was in.
+ 
+ The HTTP/x.y part of the response is NOT an indication of the dialect of
+ the response.
+ 
+ Apache's response to an HTTP/1.0 request is valid HTTP/1.0.  Apache's
+ resposne to an HTTP/1.0 request with force-response-1.0 is valid 1.0.
+ Apache's response to an HTTP/1.1 request with force-response-1.0 is
+ undefined, and as you've pointed out, invalid 1.0.  But I doubt we'll be
+ fixing that, since no 1.1 client should ever need force-resposne-1.0.
+ 
+ Dean
+ 
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Sun Jul 20 15:22:10 PDT 1997
+State-Changed-Why:
+A complete description of two MSIE 4.0b2 problems and a workaround
+is provided at http://www.apache.org/dist/patches/apply_to_1.2.1/msie_4_0b2_fixes.patch
+
+Take care
+Dean
+>Unformatted:
+
+
+

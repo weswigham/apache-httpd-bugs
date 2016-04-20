@@ -1,0 +1,286 @@
+From nobody@hyperreal.com  Fri Jun 20 07:41:14 1997
+Received: (from nobody@localhost)
+	by hyperreal.com (8.8.5/8.8.5) id HAA17517;
+	Fri, 20 Jun 1997 07:41:14 -0700 (PDT)
+Message-Id: <199706201441.HAA17517@hyperreal.com>
+Date: Fri, 20 Jun 1997 07:41:14 -0700 (PDT)
+From: Tim Baverstock <warwick@mmm.co.uk>
+Reply-To: warwick@mmm.co.uk
+To: apbugs@hyperreal.com
+Subject: imap should read <MAP><AREA>*</MAP> too!
+X-Send-Pr-Version: 3.2
+
+>Number:         759
+>Category:       mod_imap
+>Synopsis:       imap should read <MAP><AREA>*</MAP> too!
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    contrib@apache.org
+>State:          suspended
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jun 20 07:50:00 1997
+>Last-Modified:  Mon Feb 23 03:46:59 PST 1998
+>Originator:     warwick@mmm.co.uk
+>Organization:
+>Release:        1.2
+>Environment:
+N/A, but RedHat 4.0/i486
+>Description:
+I just wrote a perlscript to convert .map files to/from <MAP>/<AREA> tags,
+but it would be miles better if mod_imap could. :)
+>How-To-Repeat:
+
+>Fix:
+I'd imagine that if a .map file started with <MAP or <AREA, it should parse
+<AREA> tags, just like a browser. The menu stuff could still happen via
+the ALT tags; this format could also support TARGET="" directly! :) :)
+If I write it before you, I'll send patches :) but I'm very busy. :%2
+>Audit-Trail:
+State-Changed-From-To: open-suspended
+State-Changed-By: marc
+State-Changed-When: Fri Jun 20 08:54:37 PDT 1997
+State-Changed-Why:
+It wasn't entirely clear, but I assume what you mean is
+to allow mod_imap to parse something in the form of a
+HTML client side imagemap but handle it like a server
+side one, ie. avoid the hassle of having to convert and
+just use the same one in the HTML for client side and
+with mod_imap for server side.
+
+Status changed to suspended until some good patches magically
+arrive or (more likely) mod_imap is rewritten or dropped.
+It is something of a mess right now, so before 2.0 it
+will probably be rewritten to be cleaner or dropped in
+favor of going back to using a CGI, perhaps with a handler
+to make it automatic.
+
+From: Marc Slemko <marcs@znep.com>
+To: apbugs@apache.org
+Subject: Re: mod_imap/759: imap should read <MAP><AREA>*</MAP> too! (fwd)
+Date: Fri, 20 Jun 1997 16:20:07 -0600 (MDT)
+
+ 
+ 
+ 
+ ---------- Forwarded message ----------
+ Date: 20 Jun 1997 21:04:24 -0000
+ From: warwick@mmm.co.uk
+ To: marc@hyperreal.com
+ Subject: Re: mod_imap/759: imap should read <MAP><AREA>*</MAP> too!
+ 
+ You wrote:
+ > It wasn't entirely clear, but I assume what you mean is
+ > to allow mod_imap to parse something in the form of a
+ 
+ Sorry, yes. That's exactly what I meant.
+ 
+ > Status changed to suspended until some good patches magically
+ > arrive or (more likely) mod_imap is rewritten or dropped.
+ 
+ I worked out that one-line <AREA> tags translate straight into
+ .map type lines, so it's rather simpler than I'd imagined, and
+ actually faster than writing the wretched Perl script.
+ 
+ Does this qualify as `magic'? :)
+ 
+ .-----------------------------------. mailto:warwick@mmm.co.uk
+ ! Tim Baverstock, Internet SysAdmin !   http://www.mmm.co.uk [/~warwick]
+ `-----------------------------------'   plan:"Level 1 RFC1149 compliance."
+ 
+ 
+ --- mod_imap.c.orig	Fri Jun 20 16:13:14 1997
+ +++ mod_imap.c	Fri Jun 20 21:57:40 1997
+ @@ -84,6 +84,8 @@
+   * Map format and menu concept courtesy Joshua Bell, jsbell@acs.ucalgary.ca.
+   *
+   * Mark Cox, mark@ukweb.com, Allow relative URLs even when no base specified
+ + *
+ + * Tim Baverstock, warwick@mmm.co.uk, Interpreted <AREA> tags to .map format.
+   */
+  
+  #include "httpd.h"
+ @@ -597,6 +599,70 @@
+    kill_timeout(r);
+  }
+  
+ +/* -------------------------------------------------------------- */
+ +
+ +/* Return length of this quotedstring/barevalue, and its startpointer */
+ +
+ +int len_attr ( char *found, char **from ) {
+ +    char rej[]=" \t\n\r>";
+ +    if ( !found || !*found || !from ) return 0;
+ +    if ( *found=='"' || *found=='\'' ) {
+ +		rej[0]=*found; rej[1]=0; *from=found+1;
+ +	}
+ +	else
+ +		*from=found;
+ +	return strcspn(*from,rej);
+ +}
+ +
+ +/* Find *find, with optional =; return something interesting or NULL */
+ +
+ +char *find_attr ( char *from, char *find, char equals ) {
+ +	int findlen=strlen(find);
+ +	while ( *from && !isalpha(*from) ) from++;
+ +    while ( *from && strlen(from)>=findlen ) {
+ +		if ( !strncasecmp(from,find,findlen)
+ +			 && !isalpha(from[findlen]) ) {		/* isalpha's not really right */
+ +			char *p=from+findlen;
+ +			while ( isspace(*p) ) p++;
+ +			if ( equals ) {
+ +				if ( *p == '=' ) {
+ +					p++;
+ +					while ( isspace(*p) ) p++;
+ +					return p;
+ +				}
+ +			}
+ +			else {
+ +				return p;
+ +			}
+ +		}
+ +		if ( *from ) from++;	/* Eat a char (okayed in while(*from)) */
+ +		while ( isalpha(*from) ) from++;
+ +		while ( isspace(*from) ) from++;
+ +		if ( *from == '=' ) {
+ +			int len; char *p;
+ +			from++;
+ +			while ( isspace(*from) ) from++;
+ +			len=len_attr(from,&p);
+ +			if ( ( *from=='"' || *from=='\'' ) && p[len+1] ) len++;
+ +			from=p+len;
+ +		}
+ +		while ( isspace(*from) ) from++;
+ +	}
+ +	return NULL;
+ +}
+ +
+ +/* Find *find after *from; copy its attribute to *to, with <nul> term */
+ +
+ +char *copy_attr ( char *from, char *find, char *to ) {
+ +    char *found=find_attr(from,find,(to?'=':0));
+ +    int len=len_attr(found,&from);
+ +    if ( !len || len>=SMALLBUF ) return NULL;	/* Huh? */
+ +    strncpy(to,from,len); to[len]=0;
+ +    return found;
+ +}
+ +
+ +/* -------------------------------------------------------------- */
+ +
+  int imap_handler(request_rec *r)
+  {
+    char input[LARGEBUF] = {'\0'};
+ @@ -678,6 +744,93 @@
+      } /* blank lines and comments are ignored if we aren't printing a menu */
+  
+  
+ +
+ +	if (input[0]=='<') {	/* Assume it's an AREA tag on one line */
+ +		/* Translate this into a .map format (gets smaller :) */
+ +		if ( ! copy_attr(input,"SHAPE",directive) ) {
+ +			
+ +			/* Define a CONTINUE which breaks out of nested loops, on error */
+ +#define CONTINUE goto AREA_CONTINUE
+ +AREA_CONTINUE:
+ +			continue;
+ +			
+ +		}
+ +		if ( ! copy_attr(input,"HREF",value) ) {
+ +			if ( ! find_attr(input,"NOHREF",0) ) CONTINUE;
+ +			strcpy(value,"nocontent");
+ +		}
+ +		{ char
+ +			*coords=find_attr(input,"COORDS",'='),
+ +			*alt=find_attr(input,"ALT",'=');
+ +			
+ +			if ( alt && alt < coords ) {	/* "alt" coords appeared first  */
+ +				char *p; int len=len_attr(alt,&p);
+ +				input[0]='"';
+ +				memmove(input+1,p,len);
+ +				strcpy(input+len+1,"\" ");
+ +				alt=NULL;
+ +			}
+ +			else
+ +				input[0]=0;	/* Ripe for strcat() */
+ +			string_pos=input+strlen(input);
+ +			if ( coords ) {			/* Coords. Minor surgery for circles */
+ +				char quotes=(*coords=='"' || *coords=='\'');
+ +				char *p=coords+quotes;
+ +				char *p2;
+ +				if ( !strcasecmp(directive,"CIRCLE") ) {
+ +					long x,y,r;
+ +					p2=p; x=strtol(p,&p,10); if ( p2==p ) CONTINUE;
+ +					while ( isspace(*p) ) p++; if ( *p++!=',' ) CONTINUE;
+ +					p2=p; y=strtol(p,&p,10); if ( p2==p ) CONTINUE;
+ +					while ( isspace(*p) ) p++; if ( *p++!=',' ) CONTINUE;
+ +					p2=p; r=strtol(p,&p,10); if ( p2==p ) CONTINUE;
+ +					if ( quotes ) {
+ +						while ( isspace(*p) ) p++;
+ +						if ( *p!=*coords ) CONTINUE;
+ +					}
+ +					else {
+ +						if ( *p!='>' || *p!=' ' ) CONTINUE;
+ +					}
+ +					/* XX This is dodgy in a totally pathological case */
+ +					sprintf(string_pos,"%ld,%ld %ld,%ld ",x,y,x,y+r);
+ +					string_pos+=strlen(string_pos);
+ +				} 
+ +				else {	/* Not circle - take n,n,n,n -> n,n n,n */
+ +					long x,y;
+ +					do {
+ +						p2=p; x=strtol(p,&p,10); if ( p2==p ) CONTINUE;
+ +						while ( isspace(*p) ) p++; if ( *p++!=',' ) CONTINUE;
+ +						p2=p; y=strtol(p,&p,10); if ( p2==p ) CONTINUE;
+ +						while ( isspace(*p) ) p++;
+ +						sprintf(string_pos,"%ld,%ld ",x,y);
+ +						string_pos+=strlen(string_pos);
+ +					} while ( *p++==',' );
+ +					if ( quotes ) {
+ +						while ( isspace(*p) ) p++;
+ +						if ( *p!=*coords ) CONTINUE;
+ +					}
+ +					else {
+ +						if ( *p!='>' || *p!=' ' ) CONTINUE;
+ +					}
+ +				}
+ +			}
+ +			if ( alt ) {		/* coords "alt" */
+ +				char *p; int len=len_attr(alt,&p);
+ +				*string_pos++='"';
+ +				memmove(string_pos,p,len);
+ +				strcpy(string_pos+len,"\"");
+ +			}
+ +		}
+ +		string_pos=input;
+ +		
+ +		/* Don't need this any more */
+ +#undef CONTINUE
+ +    }
+ +
+ +
+ +
+ +    else {
+ +
+      if (sscanf(input, "%255s %255s", directive, value) != 2) {
+        continue;                           /* make sure we read two fields */
+      }
+ @@ -688,6 +841,7 @@
+  	string_pos++;
+      while (!(isspace(*string_pos)))	/* and value... have to watch it */
+  	string_pos++;			/* can have punctuation and stuff */
+ +    }
+      
+      if ( ! strncasecmp(directive, "base", 4 ) ) {       /* base, base_uri */
+        imap_url(r, NULL, value, base);
+ 
+Responsible-Changed-From-To: apache-contrib@apache.org
+Responsible-Changed-By: dgaudet
+Responsible-Changed-When: Mon Feb 23 03:46:59 PST 1998
+Responsible-Changed-Why:
+mark as contrib%0
+>Unformatted:
+
+
+

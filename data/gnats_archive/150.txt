@@ -1,0 +1,80 @@
+From nobody@hyperreal.com  Sun Feb  2 20:08:00 1997
+Received: by taz.hyperreal.com (8.8.4/V2.0) id UAA21882; Sun, 2 Feb 1997 20:08:00 -0800 (PST)
+Message-Id: <199702030408.UAA21882@taz.hyperreal.com>
+Date: Sun, 2 Feb 1997 20:08:00 -0800 (PST)
+From: Jeremy Laidman <Jeremy.Laidman@cit.act.edu.au>
+Reply-To: Jeremy.Laidman@cit.act.edu.au
+To: apbugs@hyperreal.com
+Subject: Proxy fails on incorrect status line format (more info on PR137)
+X-Send-Pr-Version: 3.2
+
+>Number:         150
+>Category:       mod_proxy
+>Synopsis:       Proxy fails on incorrect status line format (more info on PR137)
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Feb  2 20:10:00 1997
+>Last-Modified:  Thu Jan 22 09:15:13 PST 1998
+>Originator:     Jeremy.Laidman@cit.act.edu.au
+>Organization:
+>Release:        1.2b4
+>Environment:
+Linux 2.0.14.
+>Description:
+Problem PR137 described a problem when connecting to the url
+    http://www.stockmaster.com/cgi-bin/graph?sym=intc
+The server at stockmaster.com (Apache 1.1.1) is returning
+a status code of 302 to indicate a temporarily moved page.
+Unfortunately, the status line is not HTTP/1.x compliant
+and does not have a Reason-Phrase.  It returns
+    HTTP/1.0 302
+instead of 
+    HTTP/1.0 302 Moved Temporarily
+
+The proxy module performs a checkmask using the mask of
+"HTTP/#.# ### *" which will only match when there is at
+least a space following the status code.  In this case
+there isn't a space so no headers are recognised (and
+the response is treated as HTTP/0.9), thus the proxy
+module starts inserting its own headers.  The original
+headers then appear in the body and a "Location:" header
+is not processed by the client so no redirection is
+performed as was intended by the broken page.
+>How-To-Repeat:
+Access the url through the proxy module:
+    http://www.stockmaster.com/cgi-bin/graph?sym=intc
+>Fix:
+1) Have the remote site fix their page.
+
+2) The Apache proxy module can be more forgiving in its checkmask
+call, using a mask of "HTTP/#.# ###*" instead of "HTTP/#.# ### *"
+(modules/proxy/proxy_http.c, line 268).
+
+3) Recognise a 1.x status line in a bad format, and display an
+appropriate message (eg 502 Bad Gateway).%0
+>Audit-Trail:
+Responsible-Changed-From-To: gnats-admin (GNATS administrator)-chuck
+Responsible-Changed-By: marc
+Responsible-Changed-When: Mon Feb  3 17:47:21 PST 1997
+Responsible-Changed-Why:
+Chuck's area
+State-Changed-From-To: open-closed
+State-Changed-By: chuck
+State-Changed-When: Wed Feb 19 21:10:05 PST 1997
+State-Changed-Why:
+Right you are, Jeremy. The mask fix is fine; I've seen other
+servers cause the same result. Check mask in proxy_http.c
+changed from "HTTP/#.# ### *" to "HTTP/#.# ###*"
+Responsible-Changed-From-To: chuck-apache
+Responsible-Changed-By: coar
+Responsible-Changed-When: Thu Jan 22 09:15:12 PST 1998
+Responsible-Changed-Why:
+Putting back into mainstream bugdb
+>Unformatted:
+
+

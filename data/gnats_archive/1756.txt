@@ -1,0 +1,244 @@
+Received: (qmail 8893 invoked by uid 2012); 2 Feb 1998 15:07:22 -0000
+Message-Id: <19980202150722.8892.qmail@hyperreal.org>
+Date: 2 Feb 1998 15:07:22 -0000
+From: Jan Wedekind <jan@wedekind.de>
+Reply-To: jan@wedekind.de
+To: apbugs@hyperreal.org
+Subject: accept: (client socket): Operation not supported on t
+X-Send-Pr-Version: 3.2
+
+>Number:         1756
+>Category:       config
+>Synopsis:       accept: (client socket): Operation not supported on t
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Feb  2 07:10:00 PST 1998
+>Last-Modified:  Mon Sep  7 08:30:00 PDT 1998
+>Originator:     jan@wedekind.de
+>Organization:
+>Release:        1.2.4
+>Environment:
+OS: Solaris
+	SunOS star5 5.5.1 Generic_103640-09 sun4u sparc SUNW,Ultra-1
+  and
+	SunOS star4 5.5.1 Generic_103640-12 sun4u sparc SUNW,Ultra-1
+
+Compiler: GCC
+Reading specs from /usr/local/lib/gcc-lib/sparc-sun-solaris2.5/2.7.2/specs
+gcc version 2.7.2
+
+Server:
+	Server version Apache/1.2.4 (FrontPage/3.0.3)
+>Description:
+Since mid of december 97 we caught the following error for about 
+ 7-10 times with three different servers (all Version 1.2.4):
+
+After restarting the server (via -HUP) the server fails to initialize
+some clients, reporting the following message into the error log:
+
+accept: (client socket): Operation not supported on transport endpoint
+
+The server repeats to write this message into the logfile, 
+until restarted (stop & start, not HUP).
+So (of course) the first times of occuring, it killed our free disk space, 
+writing of about 100000 lines of error_log / minute.
+
+This problem may be related to Problem # 872 (already closed),
+but under Solaris compiling with '#define USE_FCNTL_SERIALIZED_ACCEPT'
+is the default since Version 1.2.0 (see CHANGES and conf.h)
+>How-To-Repeat:
+I'm sorry, but the error really rather seldom occured for now.
+We aren't either available to repeat it.
+>Fix:
+Just a workaround (a small sh-skript to detect the error, restart the server
+and complain about per e-mail). Called by cron very often after
+midnight (log rotating) and automatically after reconfiguration of the 
+server.
+
+#!/bin/sh
+ 
+err=/home/www/log/error_log
+start=/home/www/httpd-name/start
+stop=/home/www/httpd-name/stop
+ 
+if tail -1 $err | grep "(client socket): Operation not supported" >/dev/null; th
+en
+        $stop
+        $start 2>&1 >/tmp/checkclient.$$
+        mailx -s "Warning: client socket error (restarted)" \
+                root jw@de.uu.net </tmp/checkclient.$$
+        rm /tmp/checkclient.$$
+fi
+%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Sat Feb  7 03:44:03 PST 1998
+State-Changed-Why:
+You might also want to try defining -DNO_SLACK in EXTRA_CFLAGS
+when you compile the server.  It's possible that there's still a
+really latent bug that our solaris workaround doesn't catch...
+
+Dean
+State-Changed-From-To: analyzed-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Sat Feb 21 03:29:34 PST 1998
+State-Changed-Why:
+As of 1.2.6 this problem shouldn't fill your
+disk with errors, it'll report it once and then the child
+with the problem will die.  I suspect also that it will
+recover from this bug automatically (which looks to be a
+solaris libc/kernel problem).  You can give the prerelease
+a try if you like:
+
+ftp://dev.apache.org/httpd/dist/apache_1.2.6.tar.gz
+
+Tell us if the 1.2.6 server still needs a hard restart when this
+problem happens.
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: config/1756: accept: (client socket): Operation not supported on  t (fwd)
+Date: Wed, 4 Mar 1998 01:52:31 -0800 (PST)
+
+ ---------- Forwarded message ----------
+ X-zyzzy: 90%
+ From: Jan Wedekind <Jan.Wedekind@de.uu.net>
+ To: dgaudet@hyperreal.org
+ Cc: apache-bugdb@apache.org, dgaudet@apache.org, jan@wedekind.de
+ Subject: Re: config/1756: accept: (client socket): Operation not supported =
+ on  t
+ Date: Wed, 04 Mar 1998 10:23:34 +0100
+ 
+ Hello Dean & apache Workers,
+ 
+ thanks for the new version.
+ 
+ One of our server is now up and running with this version,=20
+ but without -DNO_SLACK option (see below).
+ (Alltogether we now discovered this behaviour for about 5 servers.)
+ I will report any problems.
+ 
+ I also tried out the NO_SLACK option (reported on Feb 7th) and
+ the problem doesn't occur on the server with that binary applied
+ for the last 14 days.
+ 
+ Mit freundlichen Gr=FC=DFen / best regards,
+ 
+ UUNET Deutschland GmbH
+ Jan Wedekind
+ (Dipl.-Informatiker)
+ 
+ Web Competence Center             UUNET Deutschland GmbH=09=09
+ Tel. +49 231 972 2280             Emil-Figge-Stra=DFe 80=09=09
+ Fax. +49 231 972 1180             44227 Dortmund, Germany=09=09
+ Jan.Wedekind@de.uu.net            URL: http://www.uunet.de
+ 
+ 
+ 
+Comment-Added-By: dgaudet
+Comment-Added-When: Mon Mar  9 22:06:16 PST 1998
+Comment-Added:
+Do you have any new information on the problem?  Does 1.2.6
+seem to fix it?
+
+Thanks
+Dean
+
+From: Jan Wedekind <Jan.Wedekind@de.uu.net>
+To: dgaudet@hyperreal.org, apache-bugdb@apache.org, dgaudet@apache.org
+Cc: jan@wedekind.de, apbugs@Apache.Org
+Subject: Re: config/1756: accept: (client socket): Operation not supported on 
+ t
+Date: Tue, 10 Mar 1998 08:55:22 +0100
+
+ Hello again,
+ 
+ > > Tell us if the 1.2.6 server still needs a hard restart when this
+ > > problem happens.
+ > =
+ 
+ Sorry, but the answer is yes:
+ 
+ compiled without any changes to the flags (but including =
+ 
+ modules such as Frontpage 3.0.3), esp. without -DNO_SLACK the =
+ 
+ error occured this night after rotating the logfiles:
+ 
+ >head log/error_log
+ [Tue Mar 10 00:00:18 1998] accept: (client socket): Operation not support=
+ ed on =
+ 
+ transport endpoint
+ [Tue Mar 10 00:00:18 1998] Server configured -- resuming normal operation=
+ s
+ [Tue Mar 10 00:00:18 1998] accept: (client socket): Operation not support=
+ ed on =
+ 
+ transport endpoint
+ 
+ It has been written for about 788 times to the error_log when it has
+ been caught be a cron job (which I posted before) at about one minute
+ later. The server then has been stoped and restarted.
+ 
+ What next ?
+ 
+ Jan
+ 
+ 
+Comment-Added-By: coar
+Comment-Added-When: Thu May 28 12:18:43 PDT 1998
+Comment-Added:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Mon Sep  7 06:16:03 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+
+From: jan@wede.de
+To: coar@apache.org
+Cc: apbugs@apache.org, apache-bugdb@apache.org, jan@wede.de
+Subject: Re: config/1756: accept: (client socket): Operation not supported 
+ on t
+Date: Mon, 07 Sep 1998 17:22:05 +0200
+
+ Well,
+ 
+ some of the servers are now running with 1.3.1 for about four =
+ 
+ weeks. (Sorry, but I didn't got the time to try 1.3b)
+ 
+ The problem doesn't occur with 1.3.x so far.
+ 
+ Greetings,
+ 		Jan
+ 
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+ransport endpoint
+
+

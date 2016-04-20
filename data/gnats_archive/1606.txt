@@ -1,0 +1,107 @@
+Received: (qmail 24410 invoked by uid 2012); 30 Dec 1997 00:12:29 -0000
+Message-Id: <19971230001229.24409.qmail@hyperreal.org>
+Date: 30 Dec 1997 00:12:29 -0000
+From: Richard Goerwitz <Richard_Goerwitz@Brown.EDU>
+Reply-To: Richard_Goerwitz@Brown.EDU
+To: apbugs@hyperreal.org
+Subject: ProxyPass ain't useful; but it could be if a ProxyFilter directive were added
+X-Send-Pr-Version: 3.2
+
+>Number:         1606
+>Category:       mod_proxy
+>Synopsis:       ProxyPass ain't useful; but it could be if a ProxyFilter directive were added
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Dec 29 16:20:00 PST 1997
+>Last-Modified:  Wed May 20 19:36:45 PDT 1998
+>Originator:     Richard_Goerwitz@Brown.EDU
+>Organization:
+>Release:        1.2.4
+>Environment:
+all
+>Description:
+ProxyPass does not deal well with links like HREF="/directory/file.html", where
+/directory does not exist on the proxy server.  This has been well documented,
+both in the bug tracking system, and now in the Apache docs.
+
+What is really needed is a ProxyFilter command that allows site administrator to
+run pages through an external filter.  The filter should receive a full set of
+environment variables on the one hand, and the data from the proxied server on
+the other (via stdin).
+
+I have rewritten the proxy module locally to do this, and it works fine.  So far
+I allow ProxyPass only in the virtual host configs.  I should have made it usable
+in per-directory configs as well.
+
+I also strip out content-length headers, so the filter can modify the data stream
+in arbitrary ways (only works for 1.0 proxies, of course - which 1.2.4 is).
+
+Basically I just treat the filter the way the CGI module treats CGI scripts, with
+the exception that 1) I fork twice, and feed the data from the first child to the
+second via stdin (the second child then execs the filter), and 2) the parent process
+gets the first child's stdout fd, which it then uses to send filtered data back
+to the client.  So ProxyFilter doesn't actually do any responding.
+
+I fork twice to avoid deadlock (first child writes from proxied server to filter;
+second child execs filter; parent reads filter's stdout - the filter must write
+to stdout).
+
+What I really should have done (if 1.2.4 were a 1.1 proxy) was to hold off on
+outputting headers until I could put together a new (filtered) content-length,
+then output that new content-length along with the other headers, and finally
+the rest of the data.
+
+What a ProxyFilter directive does is allow people to rewrite incoming data
+arbitrarily, overcoming whatever perceived shortcomings there are in ProxyPass.
+It would also allow site administrators to filter data the way handlers filter
+data on their own site.
+
+We're finding ProxyFilter very useful here at Brown.  Does this seem something
+more broadly useful?
+>How-To-Repeat:
+
+>Fix:
+
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: Lars.Eilebrecht@unix-ag.org
+State-Changed-When: Sat Jan  3 07:06:00 PST 1998
+State-Changed-Why:
+
+Apache 1.3 is currently in feature freeze, but you may
+want to add a patch for your ProxyFilter feature to this
+report by replying to this mail (be sure to include
+apbugs@apache.org) for later review.
+
+Release-Changed-From-To: 1.2+-1.2.4
+Release-Changed-By: Lars.Eilebrecht@unix-ag.org
+Release-Changed-When: Sat Jan  3 07:06:00 PST 1998
+Comment-Added-By: Lars.Eilebrecht@unix-ag.org
+Comment-Added-When: Thu Apr 16 13:37:45 PDT 1998
+Comment-Added:
+
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If we don't
+hear from you, this report will be closed.
+
+State-Changed-From-To: feedback-closed
+State-Changed-By: brian
+State-Changed-When: Wed May 20 19:36:45 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+No response from submitter, assuming issue has been resolved.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

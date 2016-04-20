@@ -1,0 +1,222 @@
+Received: (qmail 6750 invoked by uid 2012); 5 Sep 1999 01:26:14 -0000
+Message-Id: <19990905012614.6749.qmail@hyperreal.org>
+Date: 5 Sep 1999 01:26:14 -0000
+From: Kai Liu <code65536@ktech.hypermart.net>
+Reply-To: code65536@ktech.hypermart.net
+To: apbugs@hyperreal.org
+Subject: Header and readme files are not being added to directory indexes.
+X-Send-Pr-Version: 3.2
+
+>Number:         4961
+>Category:       mod_autoindex
+>Synopsis:       Header and readme files are not being added to directory indexes.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          feedback
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Sep  4 18:30:01 PDT 1999
+>Closed-Date:
+>Last-Modified:  Thu Feb 15 14:56:04 PST 2001
+>Originator:     code65536@ktech.hypermart.net
+>Release:        1.3.9
+>Organization:
+>Environment:
+Windows 95 (4.00.950a)
+>Description:
+The files specified by the HeaderName and ReadmeName directives are not being added to the directory listings. The files specified do exist, and I've even tried reverting back to the default httpd.conf file. I didn't have this problem in 1.3.6, and I'm not sure if this is a problem that exists only on the Windows release.
+>How-To-Repeat:
+Try accessing the /icons directory on Apache for Windows to see what I mean.
+>Fix:
+No idea...
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: stoddard
+State-Changed-When: Tue Sep  7 17:29:15 PDT 1999
+State-Changed-Why:
+Check the arguments to the IndexIgnore config directive. 
+By default, it is set to ignore README* and HEADER* which
+will match the files in /icons/. Furthermore, Win32 is case
+preserving/aware but case insensitive. I.e., Header.html is 
+the same as HeAdEr.HtMl. 
+
+I suspect the code was not working correctly for Win32 
+Apache pre-1.3.9, although I haven't checked.
+ 1.3.9
+
+
+From: "Code65536" <code65536@bigfoot.com>
+To: <stoddard@apache.org>
+Cc: <apbugs@Apache.Org>
+Subject: Re: mod_autoindex/4961: Header and readme files are not being added to directory indexes.
+Date: Tue, 7 Sep 1999 20:24:56 -0500
+
+ If I understood the manual correctly, IndexIgnore only determines which
+ filenames will not be displayed in the directory index.  I'm talking about
+ the HeaderName and ReadmeName directives that append the contents of the
+ header and readme files to the directory index.  They aren't working on
+ Win32.  They worked for Win32 in 1.3.6, but they stopped working once I
+ upgraded to 1.3.9.
+ 
+Comment-Added-By: stoddard
+Comment-Added-When: Thu Sep  9 12:59:55 PDT 1999
+Comment-Added:
+I think I know what the problem is... Apache 1.3.9 requires
+that the arguments to ReadmeName and HeaderName contain an 
+extension recognized by the server, e.g., Readme.html.
+Furthermore, the real file's name must exactly match the
+file name specified in the config directive. This is a
+change from pre 1.3.9 behaviour where the server would intuit the .html extension.  You may be able to enable multiviews in the directory to recover the previous 
+behaviour.
+
+From: <code65536@ktech.hypermart.net>
+To: Cc: <apbugs@Apache.Org>
+Subject: Re: mod_autoindex/4961: Header and readme files are not being added to directory indexes.
+Date: Thu, 9 Sep 1999 17:45:34 -0500
+
+ Thanks a lot.  It works now.  :)
+ 
+ However, I think that a few things should be changed.
+ 
+ 1) the manual still uses for the example...
+ 
+ HeaderName HEADER
+ 
+ 2) the default httpd.conf file still uses...
+ 
+ HeaderName HEADER
+ ReadmeName README
+ 
+ And as I've just seen, it no longer works this way.
+ 
+ 
+
+From: Rodent of Unusual Size <Ken.Coar@Golux.Com>
+To: Apache bug database <apbugs@Apache.Org>
+Cc:  Subject: Re: mod_autoindex/4961: Header and readme files are not being added to directory indexes.
+Date: Thu, 09 Sep 1999 19:11:21 -0400
+
+ code65536@ktech.hypermart.net wrote:
+ > 
+ >  Thanks a lot.  It works now.  :)
+ 
+ Which did you change, multiviews or adding the extension?
+
+From: <code65536@ktech.hypermart.net>
+To: <Ken.Coar@Golux.Com>
+Cc: <apbugs@Apache.Org>
+Subject: Re: mod_autoindex/4961: Header and readme files are not being added to directory indexes.
+Date: Fri, 10 Sep 1999 20:05:05 -0500
+
+ I renamed my header/readme files so that they had an extension and then
+ changed the HeaderName/ReadmeName so that they used an extension.  I didn't
+ try the MultiViews thing.
+ 
+ I read your response to PR 4991, and I noticed that you said, "you ... have
+ to specify the full name".  However, when my config had ReadmeName still
+ pointing to README, the readme file in Apache's icons directory was not
+ being added, even though the filename was exactly README.  However, once I
+ added an extension to the readme file and changed my config to match, it
+ worked.  So I take it that, now, not only do I have to specify the full
+ name, but the file itself must also have an extension?
+ 
+
+From: Jens Stavnstrup <js@ddre.dk>
+To: Ken.Coar@golux.com, code65536@ktech.hypermart.net
+Cc: apbugs@apache.org
+Subject: Re: mod_autoindex/4961: Header and readme files are not being to directory indexes.
+Date: Tue, 14 Sep 1999 08:47:01 +0200 (MET DST)
+
+ Allthough I have followed the discussion in this problem report, I
+ apparently have understood it all. I did read about the Multiview in the
+ release message (Aug 31, 1999), but didn't realise the consequence of it.
+ 
+ However, I do prefere the pre 1.3.9 way of handling README and HEADER
+ files, so I would prefer Ken's way of doing it (i.e using MultiViews).
+ 
+ I did include
+ 
+ <Directory ...>
+ 
+    Options ...  +MultiViews
+ 
+ </Directory>
+ 
+ -but this doesn't seems to work, when I am using virtul hosts. So
+ apparently including Multiviews in the Options directive isn't enough.
+ 
+ When I uses Kai's method, i.e. explicit defining the name of a file, e.g.
+ 
+    HeaderName HEADER.html
+  
+ every thing, works just fine in Win32 as in the pre 1.3.9 days (allthough 
+ all my README.txt files doesn't work).
+ 
+ Help in this would be very much appreciated.
+ 
+ Jens
+ 
+ 
+ 
+
+From: <code65536@ktech.hypermart.net>
+To: "Jens Stavnstrup" <js@ddre.dk>,
+	<Ken.Coar@golux.com>
+Cc: <apbugs@apache.org>
+Subject: Re: mod_autoindex/4961: Header and readme files are not being to directory indexes.
+Date: Tue, 14 Sep 1999 15:35:42 -0500
+
+ Okay, I verified what Jens said.  MultiViews does NOT recover the old
+ ReadmeName/HeaderName behavior.  The only way, as far as I can see, to
+ specify header and footer files is to specify the actual filename and
+ extension.  This is true whether I'm using virtual hosts or not.  I must
+ agree w/ Jens on that it could be a pain now because either all your
+ header/readme files use the same extension, or you have to make different
+ settings for each directory.
+ 
+ -Kai
+ 
+Comment-Added-By: wrowe
+Comment-Added-When: Thu Feb 15 14:56:04 PST 2001
+Comment-Added:
+
+Apache 1.3.18-dev - HEAD of cvs tree on 2/15/01:
+
+Scenario: rename index.html.* in htdocs/manual/
+
+Default httpd.conf file contains:
+
+    IndexOptions FancyIndexing
+    ReadmeName README
+    HeaderName HEADER
+    IndexIgnore .??* *~ *# HEADER* README* RCS CVS *,v *,t
+
+Simple existing header.html file - is served.
+Renamed to HEADER.html - is _NOT_ served (!?!)
+
+I'm continuing to review
+
+Severity-Changed-From-To: critical-serious
+Severity-Changed-By: wrowe
+Severity-Changed-When: Thu Feb 15 14:56:04 PST 2001
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

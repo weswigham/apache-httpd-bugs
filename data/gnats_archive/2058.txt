@@ -1,0 +1,110 @@
+Received: (qmail 15763 invoked by uid 2012); 11 Apr 1998 17:09:43 -0000
+Message-Id: <19980411170943.15762.qmail@hyperreal.org>
+Date: 11 Apr 1998 17:09:43 -0000
+From: Quinton Dolan <q@fan.net.au>
+Reply-To: q@fan.net.au
+To: apbugs@hyperreal.org
+Subject: Wildcard VirtualHost address generates a reverse dns error
+X-Send-Pr-Version: 3.2
+
+>Number:         2058
+>Category:       general
+>Synopsis:       Wildcard VirtualHost address generates a reverse dns error
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Apr 11 10:10:00 PDT 1998
+>Last-Modified:  Sat Sep 26 10:21:52 PDT 1998
+>Originator:     q@fan.net.au
+>Organization:
+>Release:        1.2.6
+>Environment:
+FreeBSD 2.2.2-RELEASE
+>Description:
+When you specify a wildcard virtual host like <VirtualHost *:8080> the error:
+'Failed to resolve server name for 0.0.0.0 (check DNS)' is reported, and the
+hostname is set to 'bogus_host_without_reverse_dns:8080'
+
+This is non critical, but is annoying as it isn't an error, INADDR_ANY isn't 
+supposed to resolve to anything useful. The hostname should really stay 
+as '*', but more importantly there shouldn't be an error.
+>How-To-Repeat:
+<VirtualHost *:8080>
+</VirtualHost>
+>Fix:
+I have a simple patch I will paste below. If you have trouble with it, I can 
+mail it to you. There may be a better place for this check but this works for 
+me.
+
+*** http_main.c Tue Feb 17 11:45:58 1998
+--- http_main.c Sat Apr 11 03:20:40 1998
+***************
+*** 1597,1608 ****
+                } else {
+                    /* again, what can we do?  They didn't specify a
+                        ServerName, and their DNS isn't working. -djg */
+!                   if (s->addrs) {
+                        fprintf(stderr, "Failed to resolve server name "
+                            "for %s (check DNS)\n",
+                            inet_ntoa(s->addrs->host_addr));
+                    }
+!                   s->server_hostname = "bogus_host_without_reverse_dns";
+                }
+            }
+        }
+--- 1597,1612 ----
+                } else {
+                    /* again, what can we do?  They didn't specify a
+                        ServerName, and their DNS isn't working. -djg */
+!                   if (s->addrs && (s->addrs->host_addr.s_addr != htonl(INADDR_AN
+Y))) {
+                        fprintf(stderr, "Failed to resolve server name "
+                            "for %s (check DNS)\n",
+                            inet_ntoa(s->addrs->host_addr));
+                    }
+!                   if (s->addrs && (s->addrs->host_addr.s_addr == htonl(INADDR_AN
+Y))) {
+!                     s->server_hostname = "*";
+!                   } else {
+!                     s->server_hostname = "bogus_host_without_reverse_dns";
+!                   }
+                }
+            }
+        }
+
+%0
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: lars
+State-Changed-When: Sat Jul 18 13:12:23 PDT 1998
+State-Changed-Why:
+[This is a standard response.]
+This Apache problem report has not been updated recently.
+Please reply to this message if you have any additional
+information about this issue, or if you have answers to
+any questions that have been posed to you.  If there are
+no outstanding questions, please consider this a request
+to try to reproduce the problem with the latest software
+release, if one has been made since last contact.  If we
+don't hear from you, this report will be closed.
+State-Changed-From-To: feedback-closed
+State-Changed-By: coar
+State-Changed-When: Sat Sep 26 10:21:52 PDT 1998
+State-Changed-Why:
+
+Wildcards are not permitted in this context; use the
+documented _default_ pseudo-hostname instead.  But thanks
+for the report and for using Apache!
+
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

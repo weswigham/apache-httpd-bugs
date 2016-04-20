@@ -1,0 +1,124 @@
+Received: (qmail 24013 invoked by uid 2012); 8 Jul 1999 20:29:55 -0000
+Message-Id: <19990708202955.24012.qmail@hyperreal.org>
+Date: 8 Jul 1999 20:29:55 -0000
+From: David Jones <vman+@osu.edu>
+Reply-To: vman+@osu.edu
+To: apbugs@hyperreal.org
+Subject: Server send invalid response if chunked transfer has chunk larger than 4095 bytes.
+X-Send-Pr-Version: 3.2
+
+>Number:         4716
+>Category:       protocol
+>Synopsis:       Server send invalid response if chunked transfer has chunk larger than 4095 bytes.
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Jul  8 13:40:01 PDT 1999
+>Closed-Date:    Mon Oct 30 19:19:05 PST 2000
+>Last-Modified:  Mon Oct 30 19:19:05 PST 2000
+>Originator:     vman+@osu.edu
+>Release:        1.3.6
+>Organization:
+>Environment:
+OpenVMS 7.1-1h2, DEC C 6.0 C compiler (ALPACRTL08), TCP/IP serv. for VMS 4.2ECO2
+>Description:
+In porting Apache to OpenVMS, limitations in the stat() function require
+some files to be transferred using chunked transfer encoding rather than
+via a content-length header.  When transferring files ap_bwrite gets called
+with buffers larger than 4095 (0x0fff), which buff.c tries to convert to
+a data chunk.  The bug is that CHUNK_HEADER_SIZE is only 5, for a 4 digit
+hex number this causes the chunk header to overflow into data section and
+gets the bytes counts out of sync.  The 1.1 client (e.g. IE5) hangs when
+it tries to download this file.
+>How-To-Repeat:
+Remove the set_content_length call from default_handerl() function in 
+http_core.c to force it to use chunked transfer mode.
+>Fix:
+Changing the value of CHUNK_HEADER_SIZE from 5 to 6 apparently fixes the
+problem.  The real error may be that ap_bwrite() isn't breaking up the
+buffer to write into smaller pieces for the chunk encapsulation - I don't
+know enough about how the buffering is implemented.
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: dgaudet
+State-Changed-When: Thu Aug 12 13:00:19 PDT 1999
+State-Changed-Why:
+hmm, i can't reproduce the problem with the method you gave --
+i created a few files, one size 4096, one size 32768, i removed
+set_content_length() from default_handler... and the chunked
+responses were correct.
+
+i've gone through this code a few times... it's possible there's
+still a bug... if you can get me a working test case though
+that'd be great.
+
+Dean
+Comment-Added-By: dgaudet
+Comment-Added-When: Thu Aug 12 19:05:23 PDT 1999
+Comment-Added:
+user error.  DEFAULT_BUFSIZE was set to 8192 without changing
+the CHUNK_HEADER_SIZE define as documented in buff.c.
+
+yeah maybe there should be an assertion, however people playing
+with constants in the code should read the comments...
+
+Dean
+
+From: Dean Gaudet <dgaudet@arctic.org>
+To: apbugs@apache.org
+Cc:  Subject: Re: protocol/4716: Server send invalid response if chunked transfer has chunk larger than 4095 bytes. (fwd)
+Date: Thu, 12 Aug 1999 19:01:16 -0700 (PDT)
+
+ ---------- Forwarded message ----------
+ Date: Thu, 12 Aug 1999 21:57:33 -0400 (EDT)
+ From: Dave Jones <JONESD@er6s1.eng.ohio-state.edu>
+ Subject: Re: protocol/4716: Server send invalid response if chunked transfer has chunk larger than 4095 bytes.
+ To: dgaudet@arctic.org
+ X-VMS-To: IN%"dgaudet@arctic.org"
+ X-VMS-Cc: JONESD
+ 
+ >I just used modules/test/mod_rndchunk to test things again... it calls
+ >into ab_bwrite with lots of different sizes, and I cranked it way up past
+ >the 4096 limit... 
+ 
+ Th ap_config.h file I was using (inherited) set DEFAULT_BUFSIZE to 8192, so 
+ the end_chunk code was seeing buffers larger than 4096.  Letting 
+ DEFAULT_BUFSIZE be 4096 lets all the chunk headers fit in 5 bytes.  There is 
+ a nice comment in buff.c explaining CHUNK_HEADER_SIZE's dependance on 
+ DEFAULT_BUFSIZE, shouldn't there be an assertion to catch this misconfiguration
+ at compile-time?
+ 
+ ----------------------------------------------------------------------------
+ David L. Jones               |      Phone:    (614) 292-6929
+ Ohio State University        |      Internet:
+ 140 W. 19th St. Rm. 231a     |               jonesd@er6s1.eng.ohio-state.edu
+ Columbus, OH 43210           |               vman+@osu.edu
+ 
+State-Changed-From-To: feedback-closed
+State-Changed-By: slive
+State-Changed-When: Mon Oct 30 19:19:04 PST 2000
+State-Changed-Why:
+Problem resolved long ago.
+>Unformatted:
+[In order for any reply to be added to the PR database, you need]
+[to include <apbugs@Apache.Org> in the Cc line and make sure the]
+[subject line starts with the report component and number, with ]
+[or without any 'Re:' prefixes (such as "general/1098:" or      ]
+["Re: general/1098:").  If the subject doesn't match this       ]
+[pattern, your message will be misfiled and ignored.  The       ]
+["apbugs" address is not added to the Cc line of messages from  ]
+[the database automatically because of the potential for mail   ]
+[loops.  If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request from a  ]
+[developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+
+
+

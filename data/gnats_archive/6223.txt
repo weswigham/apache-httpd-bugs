@@ -1,0 +1,79 @@
+Received: (qmail 24377 invoked by uid 501); 23 Jun 2000 21:16:21 -0000
+Message-Id: <20000623211621.24375.qmail@locus.apache.org>
+Date: 23 Jun 2000 21:16:21 -0000
+From: jean-marc beroud <jean-marc.beroud@ubs.com>
+Reply-To: jean-marc.beroud@ubs.com
+To: submit@bugz.apache.org
+Subject: CONNECT gets the wrong URL from mod_rewrite
+X-Send-Pr-Version: 3.110
+
+>Number:         6223
+>Category:       mod_proxy
+>Synopsis:       CONNECT gets the wrong URL from mod_rewrite
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Jun 23 14:20:02 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     jean-marc.beroud@ubs.com
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+SunOS bilbo 5.7 Generic_106541-08 sun4u sparc SUNW,Ultra-1
+gcc 2.95.2
+>Description:
+See example:
+
+- When 'NoProxy .foo.com' is active (no proxy chaining), rewriting works ok.
+- When 'NoProxy .foo.com' is unactive (proxy chaining), http rewriting works,
+  but CONNECT not (Apache sends 'CONNECT a.foo.com:443 HTTP/1.0' intead of
+  'CONNECT b.foo.com:443 HTTP/1.0' to the next proxy.
+>How-To-Repeat:
+   ProxyRequests    On
+   ProxyRemote      * http://proxy.foo.com:8080
+   ##NoProxy        .foo.com
+
+   <Directory proxy:*>
+      RewriteEngine On
+      RewriteRule   ^proxy:a.foo.com:443    proxy:b.foo.com:443    [L]
+      RewriteRule   ^proxy:http://a.foo.com proxy:http://b.foo.com [L]
+   </Directory>
+>Fix:
+here is the fix:
+
+--- proxy_connect.c.ori Fri Jun 23 22:47:43 2000
++++ proxy_connect.c     Fri Jun 23 22:48:38 2000
+@@ -224,8 +224,8 @@
+         * a HTTP/1.0 request to keep things simple.
+         */
+        Explain0("Sending the CONNECT request to the remote proxy");
+-       ap_snprintf(buffer, sizeof(buffer), "CONNECT %s HTTP/1.0" CRLF,
+-                   r->uri);
++       ap_snprintf(buffer, sizeof(buffer), "CONNECT %s:%d HTTP/1.0" CRLF,
++                   host, port);
+        write(sock, buffer, strlen(buffer));
+        ap_snprintf(buffer, sizeof(buffer),
+                    "Proxy-agent: %s" CRLF CRLF, ap_get_server_version());
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

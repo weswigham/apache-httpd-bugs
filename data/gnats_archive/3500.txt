@@ -1,0 +1,160 @@
+Received: (qmail 25816 invoked by uid 2012); 7 Dec 1998 15:08:00 -0000
+Message-Id: <19981207150800.25815.qmail@hyperreal.org>
+Date: 7 Dec 1998 15:08:00 -0000
+From: Todd Vierling <tv@pobox.com>
+Reply-To: tv@pobox.com
+To: apbugs@hyperreal.org
+Subject: mod_include unconditionally disallows parent directories
+X-Send-Pr-Version: 3.2
+
+>Number:         3500
+>Category:       mod_include
+>Synopsis:       mod_include unconditionally disallows parent directories
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Dec  7 07:10:00 PST 1998
+>Last-Modified:  Fri Dec 11 13:50:01 PST 1998
+>Originator:     tv@pobox.com
+>Organization:
+>Release:        1.3.3
+>Environment:
+Any
+>Description:
+Apache's mod_include calls ap_getparents() when doing an <!--#include--> directive.
+This is not just for `IncludesNOEXEC' pages, but also for `Includes' pages.
+It's trivial to come up with a way around this bogus restriction in shtml files
+if execution of programs is allowed ("cat filename" comes to mind).
+>How-To-Repeat:
+<!--#include file="../hi.txt"-->
+>Fix:
+Only call ap_getparents on `IncludesNOEXEC'.  Allow parent directories otherwise
+(i.e., for pages with full `Includes' privileges).
+Ideally, mod_include should have some way to figure out if a relative path
+with `../' in it is within the user's allowed web tree, but that solution is
+pipe dream at best.
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Mon Dec  7 11:27:34 PST 1998
+State-Changed-Why:
+include file is not really recommended and has this limitation
+on purpose.
+
+Use include virtual instead.
+
+From: Todd Vierling <tv@pobox.com>
+To: apbugs@hyperreal.org
+Cc:  Subject: Re: mod_include/3500: mod_include unconditionally disallows parent
+ directories
+Date: Fri, 11 Dec 1998 15:11:36 -0500 (EST)
+
+ : State-Changed-From-To: open-closed
+ : State-Changed-By: marc
+ : State-Changed-When: Mon Dec  7 11:27:34 PST 1998
+ : State-Changed-Why:
+ : include file is not really recommended and has this limitation
+ : on purpose.
+ 
+ I expected this answer.  Before I resubmit the PR, I'll offer a full
+ explanation and hope someone will see this addendum.
+ 
+ If I want to do so, if IncludesNOEXEC is not set, I can <!--#exec
+ cmd="/bin/cat /etc/passwd"--> just as easily as I could #include the file.
+ 
+ So, this isn't a justification for disallowing access to arbitrary files.  I
+ *want* #include file="" to work for parent directories and arbitrary files
+ wien the permissions are there, to avoid the extra overhead implied by
+ #include virtual="".  What the PR-closing comment didn't say is *why* that
+ should be disallowed even for the `Includes' (with exec) case.
+ 
+ In any case, Apache as packaged by the NetBSD pkgsrc system does not have
+ this restriction.
+ 
+ -- 
+ -- Todd Vierling (Personal tv@pobox.com; Bus. todd_vierling@xn.xerox.com)
+ 
+
+From: Marc Slemko <marcs@znep.com>
+To: Todd Vierling <tv@pobox.com>
+Cc: Apache bugs database <apbugs@apache.org>
+Subject: Re: mod_include/3500: mod_include unconditionally disallows parent
+ directories
+Date: Fri, 11 Dec 1998 13:42:49 -0800 (PST)
+
+ On 11 Dec 1998, Todd Vierling wrote:
+ 
+ > The following reply was made to PR mod_include/3500; it has been noted by GNATS.
+ > 
+ > From: Todd Vierling <tv@pobox.com>
+ > To: apbugs@hyperreal.org
+ > Cc:  Subject: Re: mod_include/3500: mod_include unconditionally disallows parent
+ >  directories
+ > Date: Fri, 11 Dec 1998 15:11:36 -0500 (EST)
+ > 
+ >  : State-Changed-From-To: open-closed
+ >  : State-Changed-By: marc
+ >  : State-Changed-When: Mon Dec  7 11:27:34 PST 1998
+ >  : State-Changed-Why:
+ >  : include file is not really recommended and has this limitation
+ >  : on purpose.
+ >  
+ >  I expected this answer.  Before I resubmit the PR, I'll offer a full
+ 
+ Huh?  Do you really think that submitting the PR over and over will do
+ anything except piss people off?
+ 
+ >  explanation and hope someone will see this addendum.
+ >  
+ >  If I want to do so, if IncludesNOEXEC is not set, I can <!--#exec
+ >  cmd="/bin/cat /etc/passwd"--> just as easily as I could #include the file.
+ 
+ So?
+ 
+ First, it is an extremely poor design to have a directive called
+ IncludesNOEXEC that also disables including other sorts of files.  If you
+ want to do it for your personal use, then great.  But remember that you
+ aren't the one having to support people who get confused by this BS.
+ 
+ Second, I'm not sure what you mean by "extra overhead implied by include
+ virtual" and can't see how that could make any difference worth bothering
+ about.  Have you actually gone through and understood what overhead there
+ is and isn't and how it fits into the big picture?
+ 
+ >  
+ >  So, this isn't a justification for disallowing access to arbitrary files.  I
+ >  *want* #include file="" to work for parent directories and arbitrary files
+ >  wien the permissions are there, to avoid the extra overhead implied by
+ >  #include virtual="".  What the PR-closing comment didn't say is *why* that
+ >  should be disallowed even for the `Includes' (with exec) case.
+ >  
+ >  In any case, Apache as packaged by the NetBSD pkgsrc system does not have
+ >  this restriction.
+ 
+ It is unfortunate that you think the role of someone building packages for
+ an OS is to use that position to make incompatible and unwanted changes to
+ that program to suit their own likings.  It introduces needless
+ incompatibilities and just makes life more difficult for everyone.  
+ Please do not change things to fit your whims.
+ 
+ Crap like this is one of the reasons that, time after time, I have to
+ recommend that people just download Apache and install it themself because
+ their vendor has gone and stupidly messed around with the one that comes
+ with their OS.
+ 
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

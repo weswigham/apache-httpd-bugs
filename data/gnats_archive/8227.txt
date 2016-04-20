@@ -1,0 +1,108 @@
+Received: (qmail 19426 invoked by uid 501); 22 Aug 2001 22:00:56 -0000
+Message-Id: <20010822220056.19424.qmail@apache.org>
+Date: 22 Aug 2001 22:00:56 -0000
+From: Matt Hackett <mhackett@ese.ogi.edu>
+Reply-To: mhackett@ese.ogi.edu
+To: submit@bugz.apache.org
+Subject: mod_status (somethimes) causes DNS lookup despite HostnameLookups directive
+X-Send-Pr-Version: 3.110
+
+>Number:         8227
+>Category:       mod_status
+>Synopsis:       mod_status (somethimes) causes DNS lookup despite HostnameLookups directive
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:  
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Aug 22 15:10:00 PDT 2001
+>Closed-Date:    Wed Aug 22 15:17:52 PDT 2001
+>Last-Modified:  Wed Aug 22 15:20:00 PDT 2001
+>Originator:     mhackett@ese.ogi.edu
+>Release:        1.3.20
+>Organization:
+>Environment:
+Windows 2000 Professional, Service Pack 2 (with several pre-SP3 fixes as prescribed by Windows Update)
+>Description:
+I have the /stats/server-status location set to the mod_status (server-status) handler. DNS lookups are disabled, and don't occur in any other instances except when I request the server status page. It tends not to lookup the first request, but subsequent almost always get looked up.
+
+I've been able to replicate this on another server with both remote and local (same computer as server) requests for the page. I've also replicated the problem with the HTTP authentication directives commented out.
+
+This isn't a major problem, it just trips up my (and others', I assume) statistics gatherers.
+
+
+Clipping from httpd.conf:
+   [...]
+   HostnameLookups Off
+   ExtendedStatus On
+   [...]
+   <Location /stats/server-status>
+     SetHandler server-status
+     Order deny,allow
+     Deny from all
+     Allow from ese.ogi.edu
+     AuthType Basic
+     AuthName "Web Stats"
+     Require user admin
+   </Location>
+>How-To-Repeat:
+If you setup the server status location and refresh a few times on a server with HostnameLookups disabled, it will become apparent.
+>Fix:
+
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: marc
+State-Changed-When: Wed Aug 22 15:17:51 PDT 2001
+State-Changed-Why:
+Erm... you explicitly put a requirement that users be accessing the server from *.ese.ogi.edu in your config.  So of course Apache has to do a DNS lookup to see if that requirement is satisfied...
+
+The hostnamelookups directive just controls if lookups will be done when they are not otherwise required.  If they are required for access control, etc. then Apache has to do them.
+
+From: Cliff Woolley <jwoolley@apache.org>
+To: <mhackett@ese.ogi.edu>
+Cc: <apbugs@apache.org>
+Subject: Re: mod_status/8227: mod_status (somethimes) causes DNS lookup
+ despite HostnameLookups directive
+Date: Wed, 22 Aug 2001 18:15:53 -0400 (EDT)
+
+ >    <Location /stats/server-status>
+ >      SetHandler server-status
+ >      Order deny,allow
+ >      Deny from all
+ >      Allow from ese.ogi.edu
+ >      AuthType Basic
+ >      AuthName "Web Stats"
+ >      Require user admin
+ >    </Location>
+ 
+ That's because of your "Allow from ese.ogi.edu".  When you have a
+ DNS-based access directive like this, mod_access is forced to do a
+ DNS lookup even if you've turned them off for the general case.
+ Without performing a DNS lookup, it has no way to know whether the client
+ is in the "ese.ogi.edu" domain or not.  You should change to the
+ "Allow from 123.456." form, where 123.456. is your IP subnet.
+ 
+ --Cliff
+ 
+ 
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

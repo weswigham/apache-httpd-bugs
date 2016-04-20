@@ -1,0 +1,112 @@
+Received: (qmail 16271 invoked by uid 2012); 24 Dec 1997 05:55:25 -0000
+Message-Id: <19971224055525.16270.qmail@hyperreal.org>
+Date: 24 Dec 1997 05:55:25 -0000
+From: Ronald Tschalaer <Ronald.Tschalaer@psi.ch>
+Reply-To: Ronald.Tschalaer@psi.ch
+To: apbugs@hyperreal.org
+Subject: proxy authentication using the digest auth scheme never succeeds
+X-Send-Pr-Version: 3.2
+
+>Number:         1599
+>Category:       mod_digest
+>Synopsis:       proxy authentication using the digest auth scheme never succeeds
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Dec 23 23:10:00 PST 1997
+>Last-Modified:  Fri Jan  2 15:59:10 PST 1998
+>Originator:     Ronald.Tschalaer@psi.ch
+>Organization:
+>Release:        1.3b3
+>Environment:
+SunOS mithrandir 5.5 Generic_103093-14 sun4m sparc SUNW,SPARCstation-LX
+>Description:
+Using the digest Authentication scheme for proxy authentication, authorization
+never succeeds because mod_digest always looks at the Authorization header,
+never at the Proxy-Authorization header.
+
+Also, the scheme in the auth header is compared to "Digest" using a case-
+sensitive comparison, instead of a case-insensitive comparison.
+>How-To-Repeat:
+Configure with
+
+<Directory proxy:*>
+AuthType Digest
+AuthName digest_proxy
+AuthDigestFile proxy_pw
+
+require valid-user
+</Directory>
+
+If you need more info, let me know.
+>Fix:
+Here is the patch that fixes both problems:
+
+mithrandir[src] diff -c modules/standard/mod_digest.c{,.orig}
+*** modules/standard/mod_digest.c       Wed Dec 24 06:09:05 1997
+--- modules/standard/mod_digest.c.orig  Sun Oct 26 21:20:04 1997
+***************
+*** 132,140 ****
+  
+  int get_digest_rec(request_rec *r, digest_header_rec * response)
+  {
+!     const char *auth_line = table_get(r->headers_in,
+!                                     r->proxyreq ? "Proxy-Authorization"
+!                                     : "Authorization");
+      int l;
+      int s = 0, vk = 0, vv = 0;
+      char *t, *key, *value;
+--- 132,138 ----
+  
+  int get_digest_rec(request_rec *r, digest_header_rec * response)
+  {
+!     const char *auth_line = table_get(r->headers_in, "Authorization");
+      int l;
+      int s = 0, vk = 0, vv = 0;
+      char *t, *key, *value;
+***************
+*** 153,159 ****
+        return AUTH_REQUIRED;
+      }
+  
+!     if (strcasecmp(getword(r->pool, &auth_line, ' '), "Digest")) {
+        /* Client tried to authenticate using wrong auth scheme */
+        aplog_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+                    "client used wrong authentication scheme: %s", r->uri);
+--- 151,157 ----
+        return AUTH_REQUIRED;
+      }
+  
+!     if (strcmp(getword(r->pool, &auth_line, ' '), "Digest")) {
+        /* Client tried to authenticate using wrong auth scheme */
+        aplog_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r->server,
+                    "client used wrong authentication scheme: %s", r->uri);
+%0
+>Audit-Trail:
+State-Changed-From-To: open-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Thu Dec 25 18:46:39 PST 1997
+State-Changed-Why:
+Thanks for the patch, it looks right.  I've submitted it to the
+group so others can vote.
+
+Dean
+State-Changed-From-To: analyzed-closed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Jan  2 15:59:10 PST 1998
+State-Changed-Why:
+Your patch was committed, thanks.
+
+Dean
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

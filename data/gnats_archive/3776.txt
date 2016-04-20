@@ -1,0 +1,121 @@
+Received: (qmail 11293 invoked by uid 2012); 27 Jan 1999 00:23:48 -0000
+Message-Id: <19990127002348.11292.qmail@hyperreal.org>
+Date: 27 Jan 1999 00:23:48 -0000
+From: Ian Daniel <ian@mirkwood.demon.co.uk>
+Reply-To: ian@mirkwood.demon.co.uk
+To: apbugs@hyperreal.org
+Subject: Proxy Authentication appears to be broken
+X-Send-Pr-Version: 3.2
+
+>Number:         3776
+>Category:       mod_proxy
+>Synopsis:       Proxy Authentication appears to be broken
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          analyzed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Tue Jan 26 16:30:01 PST 1999
+>Last-Modified:  Wed Apr 28 08:16:49 PDT 1999
+>Originator:     ian@mirkwood.demon.co.uk
+>Organization:
+>Release:        1.3.3
+>Environment:
+HPUX 10.2, fully patched, gcc compiler.
+>Description:
+Hi,
+
+Basically, we want to use Apache as a local server for our intranet and as a proxy, via another proxy server
+to the internet. The internet proxy uses basic authentication and works fine with the CERN server, but we'd 
+rather use Apache as it's got other features we want to use.
+
+When using Apache a browser connecting to an internet site will request authentication, as it should do, the
+problem is that authentication always fails. I can't give you any more information on the problem as you don't 
+seem to have much in the way of debug output (the CERN server can be set to output headers etc. so you see 
+what's going on e.g. Proxy-Authorize headers (are you ignoring these?)). If there's a way I can get detailed 
+output I'd be interested in looking at it.
+>How-To-Repeat:
+Set up apache to use an authenticating proxy server.
+
+e.g. Server_A ---------- Server_B (Basic Auth) ------ Internet
+
+Server_A is set to send all external http requests on to Server_B who requests authentication
+when first accessed.
+
+>Fix:
+No
+>Audit-Trail:
+
+From: Ian Daniel <ian@mirkwood.demon.co.uk>
+To: apbugs@hyperreal.org, apache-bugdb@apache.org
+Cc:  Subject: Re: mod_proxy/3776: Proxy Authentication appears to be broken
+Date: Sun, 31 Jan 1999 17:33:35 GMT
+
+ The workaround seems to be to modify proxy_http.c to force it to forward =
+ =20
+ Proxy-Authorization headers (it fixes for our problem).
+ 
+ ------------------------------- Cut Here -------------------------------
+ *** proxy_http.c.orig   Sun Jan 31 17:21:33 1999
+ --- proxy_http.c        Sun Jan 31 17:32:33 1999
+ ***************
+ *** 344,351 ****
+             /* XXX: @@@ FIXME: "Proxy-Authorization" should *only* be=20
+              * suppressed if THIS server requested the authentication,
+              * not when a frontend proxy requested it!
+              */
+ !           || !strcasecmp(reqhdrs[i].key, "Proxy-Authorization"))
+             continue;
+         ap_bvputs(f, reqhdrs[i].key, ": ", reqhdrs[i].val, CRLF, NULL);
+       }
+ --- 344,356 ----
+             /* XXX: @@@ FIXME: "Proxy-Authorization" should *only* be=20
+              * suppressed if THIS server requested the authentication,
+              * not when a frontend proxy requested it!
+ +            * ---------------------------------------------------
+ +            * Removed the line below as it causes a problem with
+ +            * authentication and front end proxy servers -- Ian Daniel
+ +            *
+ +            * || !strcasecmp(reqhdrs[i].key, "Proxy-Authorization")=20
+              */
+ !            )
+             continue;
+         ap_bvputs(f, reqhdrs[i].key, ": ", reqhdrs[i].val, CRLF, NULL);
+       }
+ ------------------------------- Cut Here -------------------------------
+ 
+ Regards,
+ 
+ Ian Daniel
+State-Changed-From-To: open-analyzed
+State-Changed-By: martin
+State-Changed-When: Wed Apr 28 08:16:48 PDT 1999
+State-Changed-Why:
+The line which ignores Proxy-Auth at this place is intentional.
+We don't want to pass the auth information to any server
+further down the chain (the assumption here is that it was
+our own proxy authentication).
+
+The error is the fact that we don't check if *WE* requested
+and used the proxy authentication, or if it was another
+server further down. We should only strip out the proxy
+auth info if we requested and used it ourselves.
+
+This test is indeed currently missing, and therefore
+we always strip the Proxy-Auth header to be on the safe side.
+
+It's somewhere on my TODO list...
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

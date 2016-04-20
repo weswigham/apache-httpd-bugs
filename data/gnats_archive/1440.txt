@@ -1,0 +1,160 @@
+Received: (qmail 20320 invoked by uid 2012); 20 Nov 1997 19:07:19 -0000
+Message-Id: <19971120190719.20319.qmail@hyperreal.org>
+Date: 20 Nov 1997 19:07:19 -0000
+From: Philip Hallstrom <philip@sierra.com>
+Reply-To: philip@sierra.com
+To: apbugs@hyperreal.org
+Subject: Rewrite has problems with urls such as "http://foo/bar//goo.html" (double //'s)
+X-Send-Pr-Version: 3.2
+
+>Number:         1440
+>Category:       mod_rewrite
+>Synopsis:       Rewrite has problems with urls such as "http://foo/bar//goo.html" (double //'s)
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Nov 20 11:10:00 PST 1997
+>Last-Modified:  Sun Nov 23 03:32:27 PST 1997
+>Originator:     philip@sierra.com
+>Organization:
+>Release:        1.2.4
+>Environment:
+philip@eddie:/sierra/www/bin% uname -a
+SunOS eddie 5.5.1 Generic_103640-09 sun4u sparc SUNW,Ultra-1
+philip@eddie:/sierra/www/bin% ./httpd -v
+Server version Apache/1.2.4.
+philip@eddie:/sierra/www/bin% ./httpd -l
+Compiled-in modules:
+  http_core.c
+  mod_env.c
+  mod_log_config.c
+  mod_mime.c
+  mod_negotiation.c
+  mod_status.c
+  mod_include.c
+  mod_dir.c
+  mod_cgi.c
+  mod_asis.c
+  mod_imap.c
+  mod_actions.c
+  mod_userdir.c
+  mod_alias.c
+  mod_rewrite.c
+  mod_access.c
+  mod_auth.c
+  mod_auth_dbm.c
+  mod_browser.c
+  mod_bandwidth.c
+philip@eddie:/sierra/www/bin% 
+>Description:
+I have a pretty normal setup, with the following RewriteRule entries in httpd.conf:
+
+RewriteEngine on
+RewriteRule ^/img/(.*) http://www.sierra.com/img/$1
+
+(Basically, anything in the top level 'img' directory should be pulled from our
+live server).
+
+However, when I request <http://eddie.sierra.com//img> I get a directory listing
+of the top level img directory on eddie instead of getting forwarded to the top
+level img directory on www.sierra.com.
+
+So it seems that the Rewrite stuff is being called before the server cleans up
+the URL -- such as replacing // with /.
+
+Not that big of a deal, since people shouldn't put // in their URLs anyway, but
+it happened at least once.
+>How-To-Repeat:
+http://eddie.sierra.com//img is an example how it goes wrong.
+
+http://eddie.sierra.com/img gets redirected to http://www.sierra.com/img
+>Fix:
+Re-arrange the order of how the modules get called... clean up the URL first
+and then pass it on to the modules. 
+
+Honestly I haven't looked at the src much so I'm not sure if this is possible...
+
+Let me know if I can help out in any way
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Nov 21 02:19:28 PST 1997
+State-Changed-Why:
+mod_rewrite is doing what you're asking it to.  The
+url "http://eddie.sierra.com//img" doesn't have a trailing
+/, so it can't match "^/img/(.*)".  Try this:
+
+RewriteRule ^/*img(.*) http://www.sierra.com/img$1
+
+Dean
+State-Changed-From-To: closed-analyzed
+State-Changed-By: dgaudet
+State-Changed-When: Fri Nov 21 11:36:39 PST 1997
+State-Changed-Why:
+User made error in problem report...
+
+Dean
+
+From: Marc Slemko <marcs@znep.com>
+To: Apache bugs database <apbugs@apache.org>
+Cc:  Subject: Re: mod_rewrite/1440: Rewrite has problems with urls such as "http://foo/bar//goo.html" (double //'s) (fwd)
+Date: Sat, 22 Nov 1997 17:57:26 -0700 (MST)
+
+ ---------- Forwarded message ----------
+ Date: Fri, 21 Nov 1997 08:57:47 -0800 (PST)
+ From: Philip Hallstrom <philip@sierra.com>
+ To: dgaudet@hyperreal.org
+ Cc: apache-bugdb@apache.org, dgaudet@apache.org
+ Subject: Re: mod_rewrite/1440: Rewrite has problems with urls such as "http://foo/bar//goo.html" (double //'s)
+ Resent-Date: Sat, 22 Nov 1997 16:57:47 -0800 (PST)
+ Resent-From: Marc Slemko <marc@hyperreal.org>
+ Resent-To: marcs@znep.com
+ 
+ Dean - 
+ 
+ I made a typo in my url...  even when I try http://stage.sierra.com//img/
+ it still doesn't get remapped.  (eddie has been replaced by stage).
+ 
+ Sorry my example was off....
+ 
+ -- 
+ Philip Hallstrom                 Sierra On-Line Services
+ philip.hallstrom@sierra.com      http://www.sierra.com/
+ 
+ 
+State-Changed-From-To: analyzed-closed
+State-Changed-By: rse
+State-Changed-When: Sun Nov 23 03:32:26 PST 1997
+State-Changed-Why:
+The user really has to problems. First as Dean said /img
+cannot match ^/img/(.*) and second //img also cannot
+match ^/img/(.*). So 
+
+1. mod_rewrite is correct because it does what the
+   has configured. There is no way and no need to
+   any automatic "slash-cleanups". mod_rewrite matches
+   against the given URL as is (as long it still is not 
+   rewritten by a another rewrite rule) 
+2. When double slashed can occur the user had to
+   change its rewrite rule to ^/+img... as Dean said.
+3. When he wants cleanup any double slashes he has
+   to do so explicitly, for instance via 
+   RewriteRule (.*)//+(.*)  $1/$2  [next]
+
+So, this is not a problem of mod_rewrite. 
+Its a matter of correct configuration of the 
+rewrite rules. The URL Rewriting Engine can only do
+what it is configured to do. And it does not more
+and not less...
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+

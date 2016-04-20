@@ -1,0 +1,124 @@
+Received: (qmail 32517 invoked by uid 501); 10 Nov 2000 20:08:37 -0000
+Message-Id: <20001110200837.32516.qmail@locus.apache.org>
+Date: 10 Nov 2000 20:08:37 -0000
+From: Steve VanDevender <stevev@darkwing.uoregon.edu>
+Reply-To: stevev@darkwing.uoregon.edu
+To: submit@bugz.apache.org
+Subject: mod_vhost_alias treats /cgi-bin/ specially even if VirtualScriptAlias is unset
+X-Send-Pr-Version: 3.110
+
+>Number:         6829
+>Category:       other
+>Synopsis:       mod_vhost_alias treats /cgi-bin/ specially even if VirtualScriptAlias is unset
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Fri Nov 10 12:10:00 PST 2000
+>Closed-Date:    Tue Nov 14 18:56:59 PST 2000
+>Last-Modified:  Tue Nov 14 18:56:59 PST 2000
+>Originator:     stevev@darkwing.uoregon.edu
+>Release:        1.3.14
+>Organization:
+>Environment:
+Solaris 2.7 with current recommended patches
+Apache 1.3.14 compiled with gcc 2.8.1 (-O3 -fschedule-insns -pipe)
+features enabled: suexec, mod_status, mod_info, mod_vhost_alias
+>Description:
+When mod_vhost_alias is used for mass virtual hosting, leaving
+VirtualScriptAlias unset results in all accesses to anything in a virtual host
+/cgi-bin/ being denied.  This differs from the behavior of regular virtual hosts
+when ScriptAlias is unset, where instead /cgi-bin/ acts like any other
+subdirectory.
+
+Examining the code for mva_translate() in mod_vhost_alias.c shows that it always
+attempts to handle /cgi-bin/ specially even if
+conf->cgi_root_mode == VHOST_ALIAS_UNSET, resulting in those accesses being
+denied in that case.
+>How-To-Repeat:
+Enable mod_vhost_alias in an Apache server.  Leave VirtualScriptAlias and
+VirtualScriptAliasIP unset when configuring mass virtual hosting.  Configure a
+mass virtual host that contains a cgi-bin directory under its document root, and
+place a CGI program or document in it.  Attempt to access that CGI program or
+document.  Compare the behavior with that of a regular VirtualHost when
+ScriptAlias is unset and the virtual host contains a cgi-bin directory under its
+document root.
+>Fix:
+I am testing the patch to mod_vhost_alias.c included below, which modifies the
+mva_translate() function so that if VirtualScriptAlias is unset, URI
+translation is done according to the VirtualDocumentRoot setting without special
+handling of /cgi-bin/.
+
+===================================================================
+RCS file: RCS/mod_vhost_alias.c,v
+retrieving revision 1.1
+diff -u -r1.1 mod_vhost_alias.c
+--- mod_vhost_alias.c   2000/11/10 01:34:25     1.1
++++ mod_vhost_alias.c   2000/11/10 19:28:24
+@@ -412,26 +412,25 @@
+     mva_sconf_t *conf;
+     const char *name, *map, *uri;
+     mva_mode_e mode;
+-    const char *cgi;
++    int cgi;
+   
+     conf = (mva_sconf_t *) ap_get_module_config(r->server->module_config,
+                                              &vhost_alias_module);
+-    cgi = strstr(r->uri, "cgi-bin/");
+-    if (cgi && cgi - r->uri != strspn(r->uri, "/")) {
+-        cgi = NULL;
++    cgi = 0;
++    if (r->uri[0] != '/') {
++       return DECLINED;
+     }
+-    if (cgi) {
++    if (conf->cgi_root_mode != VHOST_ALIAS_UNSET &&
++       strncmp(r->uri + strspn(r->uri, "/"), "cgi-bin/", 8) == 0) {
++       cgi = 1;
+        mode = conf->cgi_root_mode;
+        map = conf->cgi_root;
+-       uri = cgi + strlen("cgi-bin");
++       uri = r->uri + strspn(r->uri, "/") + strlen("cgi-bin");
+     }
+-    else if (r->uri[0] == '/') {
++    else {
+        mode = conf->doc_root_mode;
+        map = conf->doc_root;
+        uri = r->uri;
+-    }
+-    else {
+-       return DECLINED;
+     }
+   
+     if (mode == VHOST_ALIAS_NAME) {
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: fanf
+State-Changed-When: Tue Nov 14 18:56:59 PST 2000
+State-Changed-Why:
+Thanks for the patch. I have committed a different fix
+because yours contained some errors (it looks like your
+fix is based on 1.3.12 which has a bug). Thanks for using
+Apache!
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

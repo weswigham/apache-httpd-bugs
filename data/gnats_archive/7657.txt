@@ -1,0 +1,145 @@
+Received: (qmail 28824 invoked by uid 501); 30 Apr 2001 16:06:46 -0000
+Message-Id: <20010430160646.28820.qmail@apache.org>
+Date: 30 Apr 2001 16:06:46 -0000
+From: Rob McMahon <Rob.McMahon@warwick.ac.uk>
+Reply-To: Rob.McMahon@warwick.ac.uk
+To: submit@bugz.apache.org
+Subject: Closing too many descriptors in ap_cleanup_for_exec
+X-Send-Pr-Version: 3.110
+
+>Number:         7657
+>Category:       general
+>Synopsis:       Closing too many descriptors in ap_cleanup_for_exec
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Apr 30 09:10:00 PDT 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     Rob.McMahon@warwick.ac.uk
+>Release:        1.3.19
+>Organization:
+apache
+>Environment:
+> uname -a
+SunOS crocus 5.7 Generic_106541-14 sun4u sparc
+> cc -V
+cc: Sun WorkShop 6 2000/04/07 C 5.1
+
+Here's the config.status
+
+CC="cc -mt" \
+CFLAGS="-O" \
+EAPI_MM="/usr/local" \
+SSL_BASE="/usr/local/openssl" \
+./configure \
+"--with-layout=Apache" \
+"--enable-module=auth_anon" \
+"--enable-module=auth_dbm" \
+"--enable-module=auth_digest" \
+"--enable-module=cern_meta" \
+"--enable-module=example" \
+"--enable-module=expires" \
+"--enable-module=headers" \
+"--enable-module=info" \
+"--enable-module=log_agent" \
+"--enable-module=log_referer" \
+"--enable-module=mime_magic" \
+"--enable-module=mmap_static" \
+"--enable-module=proxy" \
+"--enable-module=rewrite" \
+"--enable-module=so" \
+"--enable-module=speling" \
+"--enable-module=unique_id" \
+"--enable-module=usertrack" \
+"--enable-module=vhost_alias" \
+"--server-uid=http" \
+"--server-gid=http" \
+"--enable-suexec" \
+"--suexec-caller=http" \
+"--suexec-uidmin=50" \
+"--suexec-gidmin=10" \
+"--enable-module=ssl" \
+"--enable-shared=ssl" \
+"--activate-module=src/modules/perl/libperl.a" \
+"$@"
+
+>Description:
+Moving from 1.3.14 to 1.3.19, CGI programs stopped working, returning immediately.  `truss'ing the running apache showed the child manipulating the file descriptors from the pipe onto descriptors 1, 0, and 2, closing a bunch of files in the 7-40 range, and then, critically, closing fd 0, so the child never got the data from the parent.
+
+A bit of dbx'ing later, showed this fd 0 was being closed in fd_cleanup, the fd being noted in child_main: ap_note_cleanups_for_fd(ptrans, csd), with csd being the descriptor from the ap_accept.
+
+I don't know what I've done differently such that I'm having this trouble where others aren't, but it doesn't seem to be an error for this to be 0 (or indeed <= 2), and the code looks dangerous.
+>How-To-Repeat:
+Tough to say, since I can't *not* repeat it ...
+>Fix:
+My solution, which seems to work fine, is to insert an ap_kill_cleanups_for_fd before each `dup', and change ap_kill_cleanups_for_fd to descend into sub pools as cleanup_for_exec does.  I'm obviously nervous about this latter change, but killing the cleanups before the dups surely has to be right.  (That, or change the logic to cleanup_for_exec before the dups.)
+
+Anyway, here's my patch for what it's worth, no doubt mangled by this form ...
+
+diff -c3 -r1.1 alloc.c
+*** alloc.c     2001/04/26 16:37:33     1.1
+--- alloc.c     2001/04/30 13:18:53
+***************
+*** 2008,2013 ****
+--- 2008,2015 ----
+API_EXPORT(void) ap_kill_cleanups_for_fd(pool *p, int fd)
+{
+ap_kill_cleanup(p, (void *) (long) fd, fd_cleanup);
++     for (p = p->sub_pools; p; p = p->sub_next)
++       ap_kill_cleanups_for_fd(p, fd);
+}
+
+API_EXPORT(int) ap_popenf(pool *a, const char *name, int flg, int mode)
+***************
+*** 2522,2539 ****
+--- 2524,2544 ----
+
+if (pipe_out) {
+close(out_fds[0]);
++           ap_kill_cleanups_for_fd(permanent_pool, STDOUT_FILENO);
+dup2(out_fds[1], STDOUT_FILENO);
+close(out_fds[1]);
+}
+
+if (pipe_in) {
+close(in_fds[1]);
++           ap_kill_cleanups_for_fd(permanent_pool, STDIN_FILENO);
+dup2(in_fds[0], STDIN_FILENO);
+close(in_fds[0]);
+}
+
+if (pipe_err) {
+close(err_fds[0]);
++           ap_kill_cleanups_for_fd(permanent_pool, STDERR_FILENO);
+dup2(err_fds[1], STDERR_FILENO);
+close(err_fds[1]);
+}
+
+I guess similar things should be done for other OSes.
+
+
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

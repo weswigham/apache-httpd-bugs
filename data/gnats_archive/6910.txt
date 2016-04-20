@@ -1,0 +1,122 @@
+Received: (qmail 56504 invoked by uid 501); 29 Nov 2000 20:18:15 -0000
+Message-Id: <20001129201815.56481.qmail@locus.apache.org>
+Date: 29 Nov 2000 20:18:15 -0000
+From: Tim Bishop <tbishop@netspace.org>
+Reply-To: tbishop@netspace.org
+To: submit@bugz.apache.org
+Subject: Vary header not always set with [ORed] RewriteCond directives
+X-Send-Pr-Version: 3.110
+
+>Number:         6910
+>Category:       mod_rewrite
+>Synopsis:       Vary header not always set with [ORed] RewriteCond directives
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Wed Nov 29 12:20:04 PST 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     tbishop@netspace.org
+>Release:        1.3.14
+>Organization:
+apache
+>Environment:
+Linux web2.activespace.com 2.2.14 #3 Fri Feb 18 11:55:09 PST 2000 i686 unknown
+$ gcc -v
+Reading specs from /usr/lib/gcc-lib/i386-redhat-linux/egcs-2.91.66/specs
+gcc version egcs-2.91.66 19990314/Linux (egcs-1.1.2 release)
+$ /usr/sbin/httpd -V
+Server version: Apache/1.3.12 (Unix)
+Server built:   Jul 11 2000 16:18:51
+Server's Module Magic Number: 19990320:7
+Server compiled with....
+ -D EAPI
+ -D HAVE_MMAP
+ -D HAVE_SHMGET
+ -D USE_SHMGET_SCOREBOARD
+ -D USE_MMAP_FILES
+ -D USE_FCNTL_SERIALIZED_ACCEPT
+ -D HTTPD_ROOT="/usr"
+ -D SUEXEC_BIN="/usr/sbin/suexec"
+ -D DEFAULT_PIDLOG="/var/run/httpd.pid"
+ -D DEFAULT_SCOREBOARD="/var/run/httpd.scoreboard"
+ -D DEFAULT_LOCKFILE="/var/run/httpd.lock"
+ -D DEFAULT_XFERLOG="/var/log/httpd/access_log"
+ -D DEFAULT_ERRORLOG="/var/log/httpd/error_log"
+ -D TYPES_CONFIG_FILE="/etc/httpd/conf/mime.types"
+ -D SERVER_CONFIG_FILE="/etc/httpd/conf/httpd.conf"
+ -D ACCESS_CONFIG_FILE="/etc/httpd/conf/access.conf"
+ -D RESOURCE_CONFIG_FILE="/etc/httpd/conf/srm.conf"
+$ /usr/sbin/httpd -l
+Compiled-in modules:
+  http_core.c
+  mod_so.c
+  mod_perl.c
+suexec: disabled; invalid wrapper /usr/sbin/suexec
+>Description:
+mod_rewrite will automatically add to the Vary header if it performs some
+RewriteRule based on the contents of an incoming header.
+
+I found that the Vary header was not appropriately updated if the
+RewriteRule was triggered by short-circuiting OR RewriteCond conditions.
+
+>How-To-Repeat:
+To replicate the bug, try this formulation:
+
+RewriteEngine  On
+RewriteLogLevel  10
+RewriteCond %{HTTP:FOO}   ^(alice)$       [OR]
+RewriteCond %{HTTP:FOO}   ^(bob)$
+RewriteRule ^/             -              [E=CRYPTO_NAMES:%1] 
+
+Currently, The 'Vary: Foo' header is only set if 'Foo: bob' is sent by the client.  
+The patch fixes things so that the 'Vary: Foo' header is set in either
+case.
+
+>Fix:
+diff -cw apache_1.3.14_orig_mod_rewrite.c
+apache_1.3.14_new_mod_rewrite.c
+*** apache_1.3.14_orig_mod_rewrite.c    Fri Nov 17 21:33:54 2000
+--- apache_1.3.14_new_mod_rewrite.c     Fri Nov 17 21:35:18 2000
+***************
+*** 1843,1848 ****
+--- 1843,1856 ----
+                      i++;
+                      c = &conds[i];
+                  }
++ 
++                 /* Propogate Vary info from satisfied OR case before
+continuing */
++                 vary = ap_table_get(r->notes, VARY_KEY_THIS);
++                 if (vary != NULL) {
++                     ap_table_merge(r->notes, VARY_KEY, vary);
++                     ap_table_unset(r->notes, VARY_KEY_THIS);
++                 }
++ 
+                  continue;
+              }
+          }
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

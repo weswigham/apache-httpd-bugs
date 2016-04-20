@@ -1,0 +1,219 @@
+Received: (qmail 6584 invoked by uid 501); 14 Sep 2000 13:35:17 -0000
+Message-Id: <20000914133517.6582.qmail@locus.apache.org>
+Date: 14 Sep 2000 13:35:17 -0000
+From: Donald Cowart <dcowart@exchange.acld.lib.fl.us>
+Reply-To: dcowart@exchange.acld.lib.fl.us
+To: submit@bugz.apache.org
+Subject: Request to include a ProxyAllow directive
+X-Send-Pr-Version: 3.110
+
+>Number:         6533
+>Category:       mod_proxy
+>Synopsis:       Request to include a ProxyAllow directive
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Thu Sep 14 06:40:01 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     dcowart@exchange.acld.lib.fl.us
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+I386-Linux-Slackware-gcc
+>Description:
+Here is a patch for suggestion to be included into the next release of the
+1.3 series of Apache.  It implements a ProxyAllow directive.  This takes a
+list of host names and ONLY allows connections to those hosts.  I needed
+this feature for some of the public access computers at our library system.
+These patches only affect the proxy system.  I have tested them with the
+1.3.9 and 1.3.12 apache releases and they work well with both of them.  It
+only affects http and connect proxying at this point.
+>How-To-Repeat:
+
+>Fix:
+--- mod_proxy.h.orig	Wed Sep 13 17:20:04 2000
++++ mod_proxy.h	Wed Sep 13 21:25:37 2000
+@@ -166,6 +166,11 @@
+     int (*matcher) (struct dirconn_entry * This, request_rec *r);
+ };
+ 
++struct allowproxy_entry {
++    char *name;
++    struct in_addr addr;
++};
++
+ struct noproxy_entry {
+     char *name;
+     struct in_addr addr;
+@@ -208,6 +213,7 @@
+     array_header *proxies;
+     array_header *aliases;
+     array_header *raliases;
++    array_header *allowproxies;
+     array_header *noproxies;
+     array_header *dirconn;
+     array_header *nocaches;
+--- mod_proxy.c.orig	Wed Sep 13 17:19:57 2000
++++ mod_proxy.c	Wed Sep 13 22:24:48 2000
+@@ -411,6 +411,7 @@
+     ps->proxies = ap_make_array(p, 10, sizeof(struct proxy_remote));
+     ps->aliases = ap_make_array(p, 10, sizeof(struct proxy_alias));
+     ps->raliases = ap_make_array(p, 10, sizeof(struct proxy_alias));
++    ps->allowproxies = ap_make_array(p, 10, sizeof(struct allowproxy_entry));
+     ps->noproxies = ap_make_array(p, 10, sizeof(struct noproxy_entry));
+     ps->dirconn = ap_make_array(p, 10, sizeof(struct dirconn_entry));
+     ps->nocaches = ap_make_array(p, 10, sizeof(struct nocache_entry));
+@@ -456,6 +457,7 @@
+     ps->proxies = ap_append_arrays(p, base->proxies, overrides->proxies);
+     ps->aliases = ap_append_arrays(p, base->aliases, overrides->aliases);
+     ps->raliases = ap_append_arrays(p, base->raliases, overrides->raliases);
++    ps->allowproxies = ap_append_arrays(p, base->allowproxies, overrides->allowproxies);
+     ps->noproxies = ap_append_arrays(p, base->noproxies, overrides->noproxies);
+     ps->dirconn = ap_append_arrays(p, base->dirconn, overrides->dirconn);
+     ps->nocaches = ap_append_arrays(p, base->nocaches, overrides->nocaches);
+@@ -551,6 +553,40 @@
+     return NULL;
+ }
+ 
++/*DZC Addition
++ This routine adds to the list of sites that
++ proxy clients are allowed access to.*/
++
++static const char *
++     set_proxy_allow(cmd_parms *parms, void *dummy, char *arg)
++{
++    server_rec *s = parms->server;
++    proxy_server_conf *conf =
++      ap_get_module_config(s->module_config, &proxy_module);
++    struct allowproxy_entry *new;
++    struct allowproxy_entry *list = (struct allowproxy_entry *) conf->allowproxies->elts;
++    struct hostent hp;
++    int found = 0;
++    int i;
++    /* Don't duplicate entries */
++    for (i = 0; i < conf->allowproxies->nelts; i++) {
++      if (strcasecmp(arg, list[i].name) == 0) /* ignore case for host names */
++        found = 1;
++    }
++    
++    if (!found) {
++      new = ap_push_array(conf->allowproxies);
++      new->name = arg;
++      /* Don't do name lookups on things that aren't dotted */
++      if (strchr(arg, '.') != NULL && ap_proxy_host2addr(new->name, &hp) == NULL)
++        /*@@@FIXME: This copies only the first of (possibly many) IP addrs */
++        memcpy(&new->addr, hp.h_addr, sizeof(struct in_addr));
++      else
++        new->addr.s_addr = 0;
++    }
++    return NULL;
++}
++
+ static const char *
+      set_proxy_exclude(cmd_parms *parms, void *dummy, char *arg)
+ {
+@@ -900,6 +936,8 @@
+      "a virtual path and a URL for reverse proxy behaviour"},
+     {"ProxyBlock", set_proxy_exclude, NULL, RSRC_CONF, ITERATE,
+      "A list of names, hosts or domains to which the proxy will not connect"},
++    {"ProxyAllow", set_proxy_allow, NULL, RSRC_CONF, ITERATE,
++     "A list of names, hosts or domains to which the proxy will ONLY connect to"},
+     {"ProxyReceiveBufferSize", set_recv_buffer_size, NULL, RSRC_CONF, TAKE1,
+      "Receive buffer size for outgoing HTTP and FTP connections in bytes"},
+     {"NoProxy", set_proxy_dirconn, NULL, RSRC_CONF, ITERATE,
+--- proxy_http.c.orig	Wed Sep 13 17:20:52 2000
++++ proxy_http.c	Wed Sep 13 21:58:31 2000
+@@ -196,6 +196,8 @@
+     struct noproxy_entry *npent = (struct noproxy_entry *) conf->noproxies->elts;
+     struct nocache_entry *ncent = (struct nocache_entry *) conf->nocaches->elts;
+     int nocache = 0;
++    struct allowproxy_entry *alpent = (struct allowproxy_entry *) conf->allowproxies->elts;
++    int allow_found = 0;
+ 
+     memset(&server, '\0', sizeof(server));
+     server.sin_family = AF_INET;
+@@ -229,11 +231,22 @@
+ 	}
+     }
+ 
+-/* check if ProxyBlock directive on this host */
++    /* check if ProxyAllow directive is active for this host */
+     destaddr.s_addr = ap_inet_addr(desthost);
++    for (i = 0; i < conf->allowproxies->nelts; i++) {
++      if (( alpent[i].name != NULL && strstr(desthost, alpent[i].name) != NULL)
++          || destaddr.s_addr == alpent[i].addr.s_addr )
++        allow_found = 1;
++    }
++    if ( allow_found == 0 && conf->allowproxies->nelts != 0 )
++      return ap_proxyerror(r, HTTP_FORBIDDEN, "Connect to remote machine not all
++owed");
++
++    /* check if ProxyBlock directive on this host */
+     for (i = 0; i < conf->noproxies->nelts; i++) {
+ 	if ((npent[i].name != NULL && strstr(desthost, npent[i].name) != NULL)
+-	    || destaddr.s_addr == npent[i].addr.s_addr || npent[i].name[0] == '*')
++	    || destaddr.s_addr == npent[i].addr.s_addr 
++            || (npent[i].name[0] == '*' && allow_found == 0 ))
+ 	    return ap_proxyerror(r, HTTP_FORBIDDEN,
+ 				 "Connect to remote machine blocked");
+     }
+--- proxy_connect.c.orig	Wed Sep 13 22:44:53 2000
++++ proxy_connect.c	Wed Sep 13 22:35:40 2000
+@@ -128,6 +128,8 @@
+     proxy_server_conf *conf =
+     (proxy_server_conf *) ap_get_module_config(sconf, &proxy_module);
+     struct noproxy_entry *npent = (struct noproxy_entry *) conf->noproxies->elts;
++    struct allowproxy_entry *alpent = (struct allowproxy_entry *) conf->allowproxies->elts;
++    int allow_found=0;
+ 
+     memset(&server, '\0', sizeof(server));
+     server.sin_family = AF_INET;
+@@ -143,11 +145,20 @@
+ 	*p = '\0';
+     }
+ 
+-/* check if ProxyBlock directive on this host */
++/* check if ProxyBlock or ProxyAllow directive on this host */
+     destaddr.s_addr = ap_inet_addr(host);
++    for (i = 0; i < conf->allowproxies->nelts; i++) {
++      if (( alpent[i].name != NULL && strstr(host, alpent[i].name) != NULL)
++          || destaddr.s_addr == alpent[i].addr.s_addr )
++        allow_found = 1;
++    }
++    if ( allow_found == 0 && conf->allowproxies->nelts != 0 )
++      return ap_proxyerror(r, HTTP_FORBIDDEN, "Connect to remote machine not all
++owed");
+     for (i = 0; i < conf->noproxies->nelts; i++) {
+ 	if ((npent[i].name != NULL && strstr(host, npent[i].name) != NULL)
+-	    || destaddr.s_addr == npent[i].addr.s_addr || npent[i].name[0] == '*')
++	    || destaddr.s_addr == npent[i].addr.s_addr 
++            || (npent[i].name[0] == '*' && allow_found==0))
+ 	    return ap_proxyerror(r, HTTP_FORBIDDEN,
+ 				 "Connect to remote machine blocked");
+     }
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

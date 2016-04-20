@@ -1,0 +1,178 @@
+Received: (qmail 1494 invoked by uid 2012); 19 Oct 1998 18:47:01 -0000
+Message-Id: <19981019184701.1493.qmail@hyperreal.org>
+Date: 19 Oct 1998 18:47:01 -0000
+From: Juan Gallego <juan@physics.mcgill.ca>
+Reply-To: juan@physics.mcgill.ca
+To: apbugs@hyperreal.org
+Subject: A patch to allow csh-style modifiers in variable substitutions
+X-Send-Pr-Version: 3.2
+
+>Number:         3246
+>Category:       mod_include
+>Synopsis:       A patch to allow csh-style modifiers in variable substitutions
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Oct 19 11:50:00 PDT 1998
+>Last-Modified:
+>Originator:     juan@physics.mcgill.ca
+>Organization:
+apache
+>Release:        1.3.3
+>Environment:
+AIX 4.1.4, but that's irrelevant (hopefully)
+>Description:
+I've written a simple patch that allows csh-style modifiers (actually, 
+only :h, :r, :t and :e) in variable subtitutions. I wrote it for 1.2.6
+(the version I'm running), but I've retro-fitted the patch for 1.3.3. 
+
+[ NOTE: tabbing might not have been preserved as I've cut and pasted the patch.
+  If this is the case, you can find the patch at:
+
+  http://www.physics.mcgill.ca/~juan/mod_include.patch
+]
+>How-To-Repeat:
+Apply the following patch against 1.3.3:
+
+*** mod_include.c.orig  Thu Sep 24 10:06:42 1998
+--- mod_include.c       Mon Oct 19 14:25:46 1998
+***************
+*** 471,476 ****
+--- 471,516 ----
+  }
+  
+  /*
++  * csh style variable modifiers
++  */
++ 
++ char *cshmod_h(char *var)
++ {             /* up to the rightmost / */
++     char *s;
++     if ((s = strrchr (var, '/'))) {
++       *s = '\0';
++     }
++     return var;
++ }
++ 
++ char *cshmod_r(char *var)
++ {             /* remove trailing suffix */
++     char *s;
++     if ((s = strrchr (var, '.'))) {
++       *s = '\0';
++     }
++     return var;
++ }
++ 
++ char *cshmod_e(char *var)
++ {
++     char *s;
++     if ((s = strrchr (var, '.'))) {
++       return s+1;
++     }
++     return var+(strlen (var));
++ }
++ 
++ char *cshmod_t(char *var)
++ {
++     char *s;
++     if ((s = strrchr (var, '/'))) {
++       return s+1;
++     }
++     return var;
++ }
++ 
++ /*
+   * Do variable substitution on strings
+   */
+  static void parse_string(request_rec *r, const char *in, char *out,
+***************
+*** 506,511 ****
+--- 546,552 ----
+                const char *expansion;
+                const char *val;
+                size_t l;
++               char *c; /* colons? */
+  
+                /* guess that the expansion won't happen */
+                expansion = in - 1;
+***************
+*** 525,531 ****
+                }
+                else {
+                    start_of_var_name = in;
+!                   while (ap_isalnum(*in) || *in == '_') {
+                        ++in;
+                    }
+                    end_of_var_name = in;
+--- 566,572 ----
+                }
+                else {
+                    start_of_var_name = in;
+!                   while (ap_isalnum(*in) || *in == '_' || *in == ':') {
+                        ++in;
+                    }
+                    end_of_var_name = in;
+***************
+*** 538,543 ****
+--- 579,588 ----
+                    memcpy(var, start_of_var_name, l);
+                    var[l] = '\0';
+  
++                   if ((c = strchr(var, ':'))) {
++                     *c = '\0';
++                     c++;
++                   }
+                    val = ap_table_get(r->subprocess_env, var);
+                    if (val) {
+                        expansion = val;
+***************
+*** 548,553 ****
+--- 593,621 ----
+                    }
+                    else {
+                        break;  /* no expansion to be done */
++                   }
++                   if (c) {
++                       /* Assumption: strlen(val) < MAX_STRING_LEN */
++                       char b[MAX_STRING_LEN];
++                       char *p = b;
++                       memcpy (b, expansion, (l < sizeof b)? l+1: sizeof b);
++                       b[(sizeof b)-1] = '\0';
++                       while (*c) {
++                           switch (*c) {
++                           case ':': c++; break;
++                           case 'h': p = cshmod_h(p); break;
++                           case 'r': p = cshmod_r(p); break;
++                           case 'e': p = cshmod_e(p); break;
++                           case 't': p = cshmod_t(p); break;
++                           default:
++                               log_printf(r->server,
++                                          "unknown modifier `%c' on variable \"%s\" in %s",
++                                          *c, var, r->filename);
++                           }
++                           c++;
++                       }
++                       expansion = p;
++                       l = strlen(p);
+                    }
+                }
+                else {
+>Fix:
+
+>Audit-Trail:
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+[If you do not include this Cc, your reply may be ig-   ]
+[nored unless you are responding to an explicit request ]
+[from a developer.                                      ]
+[Reply only with text; DO NOT SEND ATTACHMENTS!         ]
+
+
+

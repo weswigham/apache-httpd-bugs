@@ -1,0 +1,133 @@
+Received: (qmail 41214 invoked by uid 501); 26 Nov 2000 02:48:05 -0000
+Message-Id: <20001126024805.41213.qmail@locus.apache.org>
+Date: 26 Nov 2000 02:48:05 -0000
+From: Jim Patterson <Jim.Patterson@Cognos.COM>
+Reply-To: Jim.Patterson@Cognos.COM
+To: submit@bugz.apache.org
+Subject: Apache faults with certain CGIs
+X-Send-Pr-Version: 3.110
+
+>Number:         6890
+>Category:       general
+>Synopsis:       Apache faults with certain CGIs
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Quarter:        
+>Keywords:       
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Nov 25 18:50:00 PST 2000
+>Closed-Date:
+>Last-Modified:  Sat Feb 24 19:45:00 PST 2001
+>Originator:     Jim.Patterson@Cognos.COM
+>Release:        2.0a8
+>Organization:
+>Environment:
+Windows 2000 SP1
+Visual C++ 5.0 SP3
+>Description:
+Here's the traceback:
+
+ap_http_filter(ap_filter_t * 0x00cc4ef0, ap_bucket_brigade * 0x00cbd228, int 0) line 965 + 17 bytes
+ap_get_brigade(ap_filter_t * 0x00cc4ef0, ap_bucket_brigade * 0x00cbd228, int 0) line 211 + 20 bytes
+ap_get_client_block(request_rec * 0x00cbcaf8, char * 0x016bded4, int 8192) line 2807 + 21 bytes
+cgi_handler(request_rec * 0x00cbcaf8) line 605 + 21 bytes
+ap_invoke_handler(request_rec * 0x00cbcaf8) line 358 + 10 bytes
+process_request_internal(request_rec * 0x00cbcaf8) line 1335 + 9 bytes
+ap_process_request(request_rec * 0x00cbcaf8) line 1362 + 9 bytes
+ap_process_http_connection(conn_rec * 0x00cc4cd8) line 251 + 9 bytes
+ap_run_process_connection(conn_rec * 0x00cc4cd8) line 85 + 78 bytes
+ap_process_connection(conn_rec * 0x00cc4cd8) line 225
+worker_main(int 0) line 1152
+_threadstartex(void * 0x00412260) line 212 + 13 bytes
+KERNEL32! 77e837cd()
+
+The failing line is this one:
+
+            if ((rv = ap_bucket_read(e, &ignore, &len, AP_BLOCK_READ)) != APR_SUCCESS) {
+
+ap_bucket_read is a macro which calls through a function pointer in the struct pointed to by "e". In this case "e" has the value 0xdddddddd which I think indicates that it was fetched from free'd memory. (This is a "Debug" build).
+
+Problem appears to be use of a deleted struct. The pointer "e" iterates over the buckets in the bucket brigade. At the end of the loop 'e' is advanced to the next bucket via 
+  e = AP_BUCKET_NEXT(e)
+but in some cases, 'e' is destroyed before this point e.g.
+	AP_BUCKET_REMOVE(e)
+	ap_bucket_destroy(e)
+Because the debug malloc library overwrites deleted data, this bug is more likely to show up in a debug build (one reason overwriting is done), but it is almost certain to occur in release builds occasionally in a multi-threaded environment. Therefore, I think it is important to correct this defect.
+>How-To-Repeat:
+Please review my fix. If you're not convinced I will attempt to create a consistent test case (it happened when working with a large product which I cannot send to you).
+>Fix:
+Recommended fix: retrieve the "next" pointer before destroying 'e'
+
+Here's a patch:
+
+*** http_protocol.c-orig Sat Nov 25 20:31:48 2000
+--- http_protocol.c Sat Nov 25 20:34:26 2000
+***************
+*** 960,965 ****
+--- 960,966 ----
+      if (f->c->remain) {
+          e = AP_BRIGADE_FIRST(ctx->b);
+          while (e != AP_BRIGADE_SENTINEL(ctx->b)) {
++             ap_bucket *next_e = AP_BUCKET_NEXT(e); // In case we destruct 'e'
+              const char *ignore;
+  
+              if ((rv = ap_bucket_read(e, &ignore, &len, AP_BLOCK_READ)) != APR_SUCCESS) {
+***************
+*** 986,992 ****
+                  AP_BUCKET_REMOVE(e);
+                  ap_bucket_destroy(e);
+              }
+!             e = AP_BUCKET_NEXT(e);
+          }
+          if (f->c->remain == 0) {
+              ap_bucket *eos = ap_bucket_create_eos();
+--- 987,993 ----
+                  AP_BUCKET_REMOVE(e);
+                  ap_bucket_destroy(e);
+              }
+!             e = next_e;
+          }
+          if (f->c->remain == 0) {
+              ap_bucket *eos = ap_bucket_create_eos();
+>Release-Note:
+>Audit-Trail:
+State-Changed-From-To: open-closed
+State-Changed-By: abagchi
+State-Changed-When: Fri Feb 23 21:32:42 PST 2001
+State-Changed-Why:
+This bug should have been fixed in the latest CVS tree.  This
+should be available in the next released version of Apache 2.0.
+
+Please test this and let us know if it does not solve your problem.
+
+Thank you for using Apache.
+Comment-Added-By: wrowe
+Comment-Added-When: Sat Feb 24 19:44:59 PST 2001
+Comment-Added:
+
+Reporter adds;
+
+... appears to be resolved. I tested several CGI POST requests that were
+causing faults before and they are working fine now (even with a Debug
+build). I checked the source of http_protocol.c as well, and the recoded
+version looks like it's guarding against references to deleted memory now
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

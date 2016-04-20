@@ -1,0 +1,148 @@
+Received: (qmail 25501 invoked by uid 501); 28 Jan 2001 18:21:55 -0000
+Message-Id: <20010128182155.25500.qmail@apache.org>
+Date: 28 Jan 2001 18:21:55 -0000
+From: Alan Post <apost@interwoven.com>
+Reply-To: apost@interwoven.com
+To: submit@bugz.apache.org
+Subject: patch to fix PR 3489, NoProxy/mod_rewrite problem
+X-Send-Pr-Version: 3.110
+
+>Number:         7143
+>Category:       mod_proxy
+>Synopsis:       patch to fix PR 3489, NoProxy/mod_rewrite problem
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          change-request
+>Submitter-Id:   apache
+>Arrival-Date:   Sun Jan 28 10:30:01 PST 2001
+>Closed-Date:
+>Last-Modified:
+>Originator:     apost@interwoven.com
+>Release:        apache-1.3_20010127111201
+>Organization:
+apache
+>Environment:
+uname -a: SunOS oiler 5.6 Generic_105181-07 sun4u sparc SUNW,UltraSPARC-IIi-Engine
+
+gcc 2.8.1
+>Description:
+NoProxy doesn't work properly with RewriteRule [P].  This is filed as PR 3489.
+
+I believe there are two problems with NoProxy and mod_rewrite:
+
+1.  NoProxy looks at r->hostname, which is set from the original request, and may not be correct after the RewriteRule.  I propose fixing this by invalidating r->hostname on RewriteRule [P], and on ProxyPass (for the same reason).
+2.  If r->hostname is NULL, NoProxy looks at r->uri to extract the hostname of the destination of the request.  However, r->filename is what is actually used to make the proxy request, and r->filename is what RewriteRule [P] sets.  I propose changing the NoProxy logic to use r->filename instead of r->uri.
+>How-To-Repeat:
+I used a setup very similar to the one in PR 3489.
+>Fix:
+Here are diff -C3 outputs:
+
+*** mod_proxy.c.orig    Sun Jan 28 08:35:10 2001
+--- mod_proxy.c Sun Jan 28 09:27:05 2001
+***************
+*** 195,206 ****
+      for (i = 0; i < conf->aliases->nelts; i++) {
+          len = alias_match(r->uri, ent[i].fake);
+            
+!        if (len > 0) {
+!            r->filename = ap_pstrcat(r->pool, "proxy:", ent[i].real,
+!                                  r->uri + len, NULL);
+!            r->handler = "proxy-server";
+!            r->proxyreq = PROXY_PASS;
+!            return OK;
+        }
+      }
+      return DECLINED;
+--- 195,207 ----
+      for (i = 0; i < conf->aliases->nelts; i++) {
+          len = alias_match(r->uri, ent[i].fake);
+            
+!         if (len > 0) {
+!             r->filename = ap_pstrcat(r->pool, "proxy:", ent[i].real,
+!                                      r->uri + len, NULL);
+!             r->handler = "proxy-server";
+!             r->proxyreq = PROXY_PASS;
+!             r->hostname = NULL;
+!             return OK;
+        }
+      }
+      return DECLINED;
+*** proxy_util.c.orig   Sun Jan 28 08:35:26 2001
+--- proxy_util.c        Sun Jan 28 08:40:56 2001
+***************
+*** 906,915 ****
+      if (r->hostname != NULL)
+        return r->hostname;
+  
+!     /* Set url to the first char after "scheme://" */
+!     if ((url = strchr(r->uri, ':')) == NULL
+!       || url[1] != '/' || url[2] != '/')
+!       return NULL;
+  
+      url = ap_pstrdup(r->pool, &url[1]);       /* make it point to "//", which is what proxy_canon_netloc expects */
+  
+--- 906,916 ----
+      if (r->hostname != NULL)
+        return r->hostname;
+  
+!     /* Set url to the first char after "proxy:scheme://" */
+!     if ((url = strchr(r->filename, ':')) == NULL
+!         || (url = strchr(&url[1], ':')) == NULL
+!         || url[1] != '/' || url[2] != '/') 
+!         return NULL; 
+  
+      url = ap_pstrdup(r->pool, &url[1]);       /* make it point to "//", which is what proxy_canon_netloc expects */
+  
+*** mod_rewrite.c.orig  Sun Jan 28 08:35:39 2001
+--- mod_rewrite.c       Sun Jan 28 08:38:11 2001
+***************
+*** 1963,1969 ****
+       *  URL-to-filename handler to be sure mod_proxy is triggered
+       *  for this URL later in the Apache API. But make sure it is
+       *  a fully-qualified URL. (If not it is qualified with
+!      *  ourself).
+       */
+      if (p->flags & RULEFLAG_PROXY) {
+          fully_qualify_uri(r);
+--- 1963,1970 ----
+       *  URL-to-filename handler to be sure mod_proxy is triggered
+       *  for this URL later in the Apache API. But make sure it is
+       *  a fully-qualified URL. (If not it is qualified with
+!      *  ourself). Invalidate the hostname field of the request,
+!      *  since we may be heading to a different host.
+       */
+      if (p->flags & RULEFLAG_PROXY) {
+          fully_qualify_uri(r);
+***************
+*** 1975,1980 ****
+--- 1976,1982 ----
+                         perdir, r->filename);
+          }
+          r->filename = ap_pstrcat(r->pool, "proxy:", r->filename, NULL);
++         r->hostname = NULL;
+          return 1;
+      }
+  
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

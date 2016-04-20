@@ -1,0 +1,96 @@
+Received: (qmail 86292 invoked by uid 501); 29 Jul 2000 13:16:27 -0000
+Message-Id: <20000729131627.86291.qmail@locus.apache.org>
+Date: 29 Jul 2000 13:16:27 -0000
+From: "Bjørn" Mork <bjorn@mork.no>
+Reply-To: bjorn@mork.no
+To: submit@bugz.apache.org
+Subject: customised 302 errordocuments miss the location header
+X-Send-Pr-Version: 3.110
+
+>Number:         6348
+>Category:       general
+>Synopsis:       customised 302 errordocuments miss the location header
+>Confidential:   no
+>Severity:       non-critical
+>Priority:       medium
+>Responsible:    apache
+>State:          open
+>Quarter:
+>Keywords:
+>Date-Required:
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Sat Jul 29 06:20:00 PDT 2000
+>Closed-Date:
+>Last-Modified:
+>Originator:     bjorn@mork.no
+>Release:        1.3.12
+>Organization:
+apache
+>Environment:
+Linux canardo 2.2.16 #36 Mon Jun 12 01:42:03 CEST 2000 i486 unknown
+>Description:
+Customised errordocuments for 302 errorcode (i.e. documents that should 
+redirect the client to a new location) does not include a Location
+header and does therefore not work. The new location is not provided in
+an environment variable either, making it impossible to write scripts to
+handle the redirection message.
+>How-To-Repeat:
+In httpd.conf:
+ErrorDocument 302 /errors/code302.html
+
+/cgi-bin/redirect.cgi:
+#!/bin/sh
+echo "Location: /index.html
+echo
+echo
+
+/errors/code302.html:
+<html><head><title>redir</title></head>
+<body><h1>redir</h1></body></html>
+
+Then try http://server/cgi-bin/redirect.cgi and weep
+>Fix:
+This patch seems to fix it:
+
+--- apache_1.3.12.orig/src/main/http_request.c  Tue Jan 11 15:13:41 2000
++++ apache_1.3.12/src/main/http_request.c       Sat Jul 29 13:49:33 2000
+@@ -1269,6 +1269,7 @@
+ {
+     int access_status;
+     request_rec *new = (request_rec *) ap_pcalloc(r->pool, sizeof(request_rec));
++    const char *location = ap_table_get(r->headers_out, "Location");
+ 
+     new->connection = r->connection;
+     new->server     = r->server;
+@@ -1319,6 +1320,13 @@
+ 
+     ap_table_setn(new->subprocess_env, "REDIRECT_STATUS",
+        ap_psprintf(r->pool, "%d", r->status));
++
++    /* Necessary for customized 30x documents */
++    if ((location != NULL) && *location) {
++        ap_table_setn(new->headers_out, "Location", location);
++        ap_table_setn(new->subprocess_env, "REDIRECT_LOCATION",
++           ap_psprintf(r->pool, "%s", location));
++    }
+ 
+     /*
+      * XXX: hmm.  This is because mod_setenvif and mod_unique_id really need
+>Release-Note:
+>Audit-Trail:
+>Unformatted:
+ [In order for any reply to be added to the PR database, you need]
+ [to include <apbugs@Apache.Org> in the Cc line and make sure the]
+ [subject line starts with the report component and number, with ]
+ [or without any 'Re:' prefixes (such as "general/1098:" or      ]
+ ["Re: general/1098:").  If the subject doesn't match this       ]
+ [pattern, your message will be misfiled and ignored.  The       ]
+ ["apbugs" address is not added to the Cc line of messages from  ]
+ [the database automatically because of the potential for mail   ]
+ [loops.  If you do not include this Cc, your reply may be ig-   ]
+ [nored unless you are responding to an explicit request from a  ]
+ [developer.  Reply only with text; DO NOT SEND ATTACHMENTS!     ]
+ 
+ 
+

@@ -1,0 +1,147 @@
+Received: (qmail 14053 invoked by uid 2012); 2 Feb 1998 15:41:38 -0000
+Message-Id: <19980202154138.14052.qmail@hyperreal.org>
+Date: 2 Feb 1998 15:41:38 -0000
+From: Mike Brudenell <pmb1@york.ac.uk>
+Reply-To: pmb1@york.ac.uk
+To: apbugs@hyperreal.org
+Subject: A HUP signal to Apache 1.2.5 can leave hung children on multi-processor Suns
+X-Send-Pr-Version: 3.2
+
+>Number:         1757
+>Category:       os-solaris
+>Synopsis:       A HUP signal to Apache 1.2.5 can leave hung children on multi-processor Suns
+>Confidential:   no
+>Severity:       serious
+>Priority:       medium
+>Responsible:    apache
+>State:          closed
+>Class:          sw-bug
+>Submitter-Id:   apache
+>Arrival-Date:   Mon Feb  2 07:50:00 PST 1998
+>Last-Modified:  Mon Feb  2 10:04:08 PST 1998
+>Originator:     pmb1@york.ac.uk
+>Organization:
+>Release:        1.2.5
+>Environment:
+uname -a gives:
+SunOS pump1.york.ac.uk 5.5.1 Generic_103640-08 sun4u sparc SUNW,Ultra-2
+
+Compiler: Sun's "cc" ( /opt/SUNWspro/bin/cc )
+          cc -V gives: cc: SC4.0 18 Oct 1995 C 4.0
+>Description:
+There appears to be an obscure, possibly race-condition, bug present in
+Apache 1.2.5 under Solaris 2.5.1 on multi-processor Suns where NFS is
+involved.
+
+The symptoms are that approximately 10% of the time a HUP signal sent to
+the master Apache process results in one or more of the children being
+left in a totally hung state.  Once hung the child cannot be killed (eg,
+kill -9) and the only way I have so far found of getting rid of them is
+to reboot the machine.
+
+The hung child continues to hold its port open, thereby preventing the
+master Apache process from restarting, as it could not bind to the port.
+This renders it impossible to use Apache 1.2.5 on such a platform to
+offer a mainstream Web service: after a child hangs one cannot restart
+the service on the port (eg, the standard port 80) without first
+rebooting the machine and disrupting its other services.
+
+The hung child also appears to keep one or both of the access_log and
+error_log files open.
+
+I have done some extensive testing to isolate the cause...
+
+1.  If PidFile, Logfiles, httpd executable, and configuration files are
+all on a filestore mounted over NFS from our Network Appliance filer
+then the problem manifests itself.
+
+2.  If PidFile, Logfiles, httpd executable, and configuration files are
+all on a disk local to the Sun the problem does not occur.
+
+3.  By a tedious process of elimination (and to cut a long story short)
+a necessary and sufficient condition for the problem to occur is to have
+the configuration files on the NFS-mounted filestore.  The location of
+PidFile, httpd executable and logfiles appears to be irrelevant.
+
+That is, if...
+
+*  httpd.conf, srm.conf and access.conf are placed on a local disk, and
+*  httpd.conf configured to put the PidFile and logfiles on the NFS
+   filestore, and
+*  the httpd executable is on the NFS filestore, and
+*  the server is started: /path/to/httpd -d /var/tmp/apache
+
+...then the server can be reliably HUP-ed (tested every 3 seconds for 5
+minutes).
+
+However if the (unaltered) configuration files are copied onto the
+NFS-mounted filestore and the server restarted:
+	/path/to/httpd -d /path/to/configdir
+	
+Then the server fails to restart in response to about 10% of HUP signals
+sent to it.
+
+However the interesting things don't stop there.  Using the above
+"problem setup" on...
+
+*  a single processor Sun Ultra 5 does NOT manifest the problem.
+*  our dual processor Ultra 2 DOES manifest the problem.
+*  our dual processor Ultra 2 with one processor turned off (using
+   "psradm -f -v 1") does NOT manifest the problem.
+  
+There _definitely_ seems to be timing involved here: if I run the Ultra
+2 on just one processor I can HUP Apache until the cows come home
+(tested every 3 seconds for 5 minutes). Whilst continuing to HUP Apache
+every 3 seconds I then re-enable the second processor and, within 30
+seconds or so, see the "hung child" problem occur.
+>How-To-Repeat:
+On a multi-processor Sun (eg, Ultra 2) set up Apache 1.2.5 on an NFS-mounted
+filestore (ours is from a Network Appliance filer).  Be sure to place the
+configuration files' directory on the NFS server.
+
+Start the server, and send it a sequence of HUP signals.
+
+About 10% of the time one or more child processes don't get killed.  Instead
+they are left totally hung and unkillable, with the server's port still in
+use.  (The master Apache process fails to restart, and the problem is logged
+in the error_log.)
+>Fix:
+As I mentioned above, I have a kludgy workaround: namely to copy the
+{httpd,srm,access}.conf files onto local disk store.  However I would
+_really_ prefer them to be kept on our central NFS filer for back-up and
+service-switching (eg, moving the Web server to another machine should
+the primary one fail) purposes.
+
+Whether the real problem is a timing/race condition which is simply
+_more likely_ to be seen on a dual processor machine, or whether there
+is some peculiarity with Solaris 2.5.1 specifically on such a machine, I
+don't know.
+
+Does anyone have any insight into this problem, please?  (And ideally a
+fix, of course! :-)
+
+[I'm happy to try any changes you suggest and/or provide you with
+further information if required.%5
+>Audit-Trail:
+State-Changed-From-To: open-feedback
+State-Changed-By: Lars.Eilebrecht@unix-ag.org
+State-Changed-When: Mon Feb  2 08:09:57 PST 1998
+State-Changed-Why:
+
+What about the lockfile? It MUST be located a local
+filesystem. 
+See the LockFile directive for details.
+
+State-Changed-From-To: feedback-closed
+State-Changed-By: marc
+State-Changed-When: Mon Feb  2 10:04:08 PST 1998
+State-Changed-Why:
+Yet another NFS-locking-pretends-to-but-doesn't problem.
+>Unformatted:
+[In order for any reply to be added to the PR database, ]
+[you need to include <apbugs@Apache.Org> in the Cc line ]
+[and leave the subject line UNCHANGED.  This is not done]
+[automatically because of the potential for mail loops. ]
+
+
+
