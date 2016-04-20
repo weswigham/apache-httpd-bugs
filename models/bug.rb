@@ -1,8 +1,12 @@
 class Bug
-    attr_accessor :id, :product, :component, :assignee, :status, :resolution, :summary, :changed, :alias, :assignee_real_name, :hardware, :keywords, :num_comments, :opened, :os, :priority, :reporter, :reporter_real_name, :severity, :version, :target_milestone, :tags, :url
-    
+    attr_accessor :uid, :id_old?, :id, :product, :component, :assignee, :status, :resolution, :summary, :changed, :alias, :assignee_real_name, :hardware, :keywords, :num_comments, :opened, :os, :priority, :reporter, :reporter_real_name, :severity, :version, :target_milestone, :tags, :url
+    @@uid = 0
+
     def self.fromCSVRow(row)
+        @@uid = @@uid + 1
         bug = self.new
+        bug.uid = @@uid
+        bug.is_old? = false
         bug.id = row[0]
         bug.product = row[1]
         bug.component = row[2]
@@ -26,6 +30,29 @@ class Bug
         bug.target_milestone = row[20]
         bug.tags = row[21]
         bug.url = row[22]
+        return bug
+    end
+    
+    def self.fromGNATS(id)
+        @@uid = @@uid + 1
+        bug = self.new
+        bug.uid = @@uid
+        bug.is_old? = true
+        bug.id = id
+
+        File.each_line("../data/gnats_archive/#{id}.txt") do |line|
+            if line =~ /^>Arrival-Date:\s+(.*)$/i
+                bug.opened = $1
+            elsif line =~ /^>Severity:\s+(.*)$/i
+                bug.severity = $1
+            elsif line =~ /^>Priority:\s+(.*)$/i
+                bug.priority = $1
+            elsif line =~ /^>Category:\s+(.*)$/i
+                bug.component = $1
+            elsif line =~ /^>Release:\s+(.*)$/i
+                bug.version = $1
+            end
+        end
         return bug
     end
 end

@@ -142,11 +142,103 @@ def count_sloc(releases, tag)
     puts "Done."
 end
 
+oldbugs = {}
+
+def matches(s, re)
+    start_at = 0
+    matches = []
+    while(m = s.match(re, start_at))
+        matches.push(m)
+        yield m
+        start_at = m.end(0)
+    end
+    matches
+end
+
+def contains_bug_references(bugs, c)
+    results = {}
+    git_svn_id_regexp = /^git-svn-id:/
+    #Trim git-svn lines out of commit messages
+    trimmed = c.message.lines.reject{|m| m.match(git_svn_id_regexp) }.join('\n')
+    
+    #FIRST - Look at the date, there are three ranges of interest - pre 2002, 2002, and 2002+
+    if c.epoch_time < Time.new(2002, 3, 16, 0, 0, 0, "utc").to_i # Bug DB change happened midmarch
+        # pre 2002 - old bug db, anywhere between 1 and 5 digit long numbers
+        
+        # I looked over all 1400 commit messages before 2.0, and this looks like it matches everything with no false positives - in fact, I couldn't find a link it didn't match
+        trimmed.scan(/PR:?\s+(\d+)(,\s*(\d+)(\(\?\))?)*/i) do |str|
+            # Strip potential leading PR:, then split the resulting comma seperated list
+            str.slice! 'PR'
+            str.slice! 'pr' # This may never actually occur in this time range
+            str.slice! ':'
+            str.split.each do |cap|
+                num = cap.to_i # to_i is very flexible - it skips leading whitespace, and ignore trailing non-int characters
+                if !num.nil?
+                    if 1 <= num && num <= 10295
+                        oldbugs[num] ||= Bug.fromGNATS(num)
+                        results[oldbugs[num].uid] = oldbugs[num]
+                    end
+                end
+            end
+        end
+    elsif c.epoch_time < Time.new(2003, 7, 16, 0, 0, 0, "utc").to_i # Give a ~4 month transition period
+        # 2002 - new bug db is only values between 7180 and 10844 (values > 7180 are ambiguous as to which bug they mean)
+        trimmed.scan(/PR:?\s+(\d+)(,\s*(\d+)(\(\?\))?)*/i) do |str|
+            # Strip potential leading PR:, then split the resulting comma seperated list
+            str.slice! 'PR'
+            str.slice! 'pr' # this may never actually occur in this time range
+            str.slice! ':'
+            str.split.each do |cap|
+                num = cap.to_i # to_i is very flexible - it skips leading whitespace, and ignore trailing non-int characters
+                if !num.nil?
+                    if 1 <= num && num < 7180
+                        # has to be old bug db
+                        oldbugs[num] ||= Bug.fromGNATS(num)
+                        results[oldbugs[num].uid] = oldbugs[num]
+                    elsif num > 10295
+                        # must be new bug db
+                        if bugs[num]
+                            results[bugs[num].uid] = bugs[num]
+                        end
+                    else
+                        sha = c.oid
+                        if bugs[num]
+                            puts "Ambiguous pr reference #{num} at commit sha #{sha}, assuming new bug db..."
+                            results[bugs[num].uid] = bugs[num]
+                        else
+                            puts "Ambiguous pr reference #{num} at commit sha #{sha}, however new bug db has no entry for that - must be old bug db?"
+                            oldbugs[num] ||= Bug.fromGNATS(num)
+                            results[oldbugs[num].uid] = oldbugs[num]
+                        end
+                    end
+                end
+            end
+        end
+    else
+        # 2002 onward - 4 (>7000) or 5 digit numbers in the new bug db - the same regex can be used, but the term `bz` comes into vogue later on
+        # Additionally, many authors started omitting the space and colon between the abbreviation and the number
+        trimmed.scan(/((PR|BZ):?\s+)(\d\d\d\d\d?)(,\s*(\d\d\d\d\d?)(\(\?\))?)*|(PR|BZ)(\d\d\d\d\d?)/i) do |str|
+            str.slice! 'PR'
+            str.slice! 'pr'
+            str.slice! 'BZ'
+            str.slice! 'bz'
+            str.split.each do |cap|
+                num = cap.to_i
+                if !num.nil?
+                    if bugs[num]
+                        results[bugs[num].uid] = bugs[num]
+                    end
+                end
+            end
+        end
+    end
+    return results
+end
+
 def walk_repo_between(releases, bugs, start_tag, end_tag, should_churn)
     # We expect httpd to be checked out at ../httpd
     repo = Rugged::Repository.new('../httpd')
-    bugid_regexp = /\s+(\d\d\d\d\d?)|PR(\d\d\d\d\d?)|Fix(?:es)?(\d\d\d\d\d?)|Bug(\d\d\d\d\d?)/i
-    git_svn_id_regexp = /^git-svn-id:/
+
     releases[end_tag] ||= FileTable.new(end_tag)
     walker = Rugged::Walker.new(repo)
     walker.sorting(Rugged::SORT_TOPO | Rugged::SORT_REVERSE)
@@ -169,20 +261,9 @@ def walk_repo_between(releases, bugs, start_tag, end_tag, should_churn)
             print "."
         end
         shas.push(c.oid)
-        #Trim git-svn lines out of commit messages
-        trimmed = c.message.lines.reject{|m| m.match(git_svn_id_regexp) }.join('\n')
-        #Then match against our bug id regex
-        matches = trimmed.scan(bugid_regexp)
-        if matches
-            matches.each do |cap|
-                cap.each do |num|
-                    if !num.nil?
-                        if bugs[num]
-                            update_file_bugs(releases[end_tag], bugs[num], c)
-                        end
-                    end
-                end
-            end
+        candidate_bugs = contains_bug_references(bugs, c)
+        candidate_bugs.each do |uid, bug|
+            update_file_bugs(releases[end_tag], bug, c)
         end 
     end
     puts ""
@@ -209,11 +290,11 @@ end
 
 # Generate bug data
 count_sloc(releases, $FIRST_VERSION)
-walk_repo_between(releases, bugs, :tail, $FIRST_VERSION, true)
+walk_repo_between(releases, bugs, :tail, $FIRST_VERSION, false)
 count_sloc(releases, $SECOND_VERSION)
-walk_repo_between(releases, bugs, $FIRST_VERSION, $SECOND_VERSION, true)
+walk_repo_between(releases, bugs, $FIRST_VERSION, $SECOND_VERSION, false)
 count_sloc(releases, $THIRD_VERSION)
-walk_repo_between(releases, bugs, $SECOND_VERSION, $THIRD_VERSION, true)
+walk_repo_between(releases, bugs, $SECOND_VERSION, $THIRD_VERSION, false)
 
 repo = Rugged::Repository.new('../httpd');
 # Add in the vulnerability data
