@@ -67,7 +67,6 @@ def update_file_bugs(files, bug, c)
                 if sev
                     file.send("#{sev}=", file.send(sev) + 1)
                 end
-                file.save
             end
         end
     end
@@ -91,8 +90,6 @@ def update_file_churn(files, c)
                     churn = patch.additions + patch.deletions
                     file.churn += churn
                     file.num_commits += 1
-                    #file.sloc
-                    file.save
                 end
             end
         end
@@ -114,7 +111,6 @@ def update_file_vulnerabilities(files, c)
                 # Then update that file's status with more churn and bug data
                 file = files.get_file(filepath)
                 file.vulnerabilities += 1
-                file.save
             end
         end
     end
@@ -139,7 +135,6 @@ def count_sloc(releases, tag)
                 if !should_ignore_file(path)
                     file = releases[tag].get_file(path)
                     file.sloc = sloc
-                    file.save
                 end
             end
         end
