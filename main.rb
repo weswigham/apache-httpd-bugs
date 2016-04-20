@@ -143,7 +143,7 @@ def count_sloc(releases, tag)
     puts "Done."
 end
 
-def walk_repo_between(releases, bugs, start_tag, end_tag)
+def walk_repo_between(releases, bugs, start_tag, end_tag, should_churn)
     # We expect httpd to be checked out at ../httpd
     repo = Rugged::Repository.new('../httpd')
     bugid_regexp = /\s+(\d\d\d\d\d?)|PR(\d\d\d\d\d?)|Fix(?:es)?(\d\d\d\d\d?)|Bug(\d\d\d\d\d?)/i
@@ -153,6 +153,8 @@ def walk_repo_between(releases, bugs, start_tag, end_tag)
     walker.sorting(Rugged::SORT_TOPO | Rugged::SORT_REVERSE)
     if start_tag == :head
         walker.push(repo.branches['trunk'].target)
+    elsif start_tag == :tail
+        walker.push(repo.lookup('5dbf830701af760e37e1e2c26212c34220516d85')) # This is the httpd initial commit
     else
         walker.push(repo.tags[start_tag.to_s].target)
     end
@@ -186,32 +188,34 @@ def walk_repo_between(releases, bugs, start_tag, end_tag)
     end
     puts ""
     walker.reset
-    count = 0
-    puts "Collecting churn data for #{end_tag}"
-    shas.each do |sha|
-        count = count + 1
-        # Print some status indicator dots
-        if count % 100 == 0
-            print "."
+    if should_churn
+        count = 0
+        puts "Collecting churn data for #{end_tag}"
+        shas.each do |sha|
+            count = count + 1
+            # Print some status indicator dots
+            if count % 100 == 0
+                print "."
+            end
+            # Forcibly close the repo every so often to relieve memory pressure
+            if count % 1000 == 0
+                repo.close()
+                repo = Rugged::Repository.new('../httpd');
+            end
+            update_file_churn(releases[end_tag], repo.lookup(sha))
         end
-        # Forcibly close the repo every so often to relieve memory pressure
-        if count % 1000 == 0
-            repo.close()
-            repo = Rugged::Repository.new('../httpd');
-        end
-        update_file_churn(releases[end_tag], repo.lookup(sha))
+        puts ""
     end
-    puts ""
 end
 
 
 # Generate bug data
 count_sloc(releases, :"2.0.1")
-walk_repo_between(releases, bugs, :"2.2.1", :"2.0.1")
+walk_repo_between(releases, bugs, :tail, :"2.0.1", false)
 count_sloc(releases, :"2.2.1")
-walk_repo_between(releases, bugs, :"2.4.1", :"2.2.1")
+walk_repo_between(releases, bugs, :"2.0.1", :"2.2.0", false)
 count_sloc(releases, :"2.4.1")
-walk_repo_between(releases, bugs, :head, :"2.4.1")
+walk_repo_between(releases, bugs, :"2.2.0", :"2.4.0", false)
 
 repo = Rugged::Repository.new('../httpd');
 # Add in the vulnerability data
