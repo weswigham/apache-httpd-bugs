@@ -120,7 +120,7 @@ def count_sloc(releases, tag)
     repo = Rugged::Repository.new('../httpd');
     releases[tag] ||= FileTable.new(tag)
     puts "Checking out tag #{tag} to calculate sloc..."
-    repo.checkout(repo.tags[tag.to_s].target.oid)
+    repo.checkout(repo.tags[tag.to_s].target.oid, :strategy => :force)
     cmd = "cloc --by-file --progress-rate=0 --quiet --json --skip-uniqueness ."
     puts "Done. Running `#{cmd}`..."
     Open3.popen3(cmd, :chdir=>"../httpd") do |stdin, stdout, stderr, wait_thr|
@@ -151,14 +151,14 @@ def walk_repo_between(releases, bugs, start_tag, end_tag, should_churn)
     releases[end_tag] ||= FileTable.new(end_tag)
     walker = Rugged::Walker.new(repo)
     walker.sorting(Rugged::SORT_TOPO | Rugged::SORT_REVERSE)
+    walker.push(repo.tags[end_tag.to_s].target)
     if start_tag == :head
-        walker.push(repo.branches['trunk'].target)
+        walker.hide(repo.branches['trunk'].target)
     elsif start_tag == :tail
-        walker.push(repo.lookup('5dbf830701af760e37e1e2c26212c34220516d85')) # This is the httpd initial commit
+        walker.hide(repo.lookup('5dbf830701af760e37e1e2c26212c34220516d85')) # This is the httpd initial commit
     else
-        walker.push(repo.tags[start_tag.to_s].target)
+        walker.hide(repo.tags[start_tag.to_s].target)
     end
-    walker.hide(repo.tags[end_tag.to_s].target)
     count = 0
     $stdout.sync = true
     shas = []
@@ -212,9 +212,9 @@ end
 # Generate bug data
 count_sloc(releases, :"2.0.1")
 walk_repo_between(releases, bugs, :tail, :"2.0.1", false)
-count_sloc(releases, :"2.2.1")
+count_sloc(releases, :"2.2.0")
 walk_repo_between(releases, bugs, :"2.0.1", :"2.2.0", false)
-count_sloc(releases, :"2.4.1")
+count_sloc(releases, :"2.4.0")
 walk_repo_between(releases, bugs, :"2.2.0", :"2.4.0", false)
 
 repo = Rugged::Repository.new('../httpd');
