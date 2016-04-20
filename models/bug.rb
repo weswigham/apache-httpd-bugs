@@ -1,12 +1,12 @@
 class Bug
-    attr_accessor :uid, :id_old?, :id, :product, :component, :assignee, :status, :resolution, :summary, :changed, :alias, :assignee_real_name, :hardware, :keywords, :num_comments, :opened, :os, :priority, :reporter, :reporter_real_name, :severity, :version, :target_milestone, :tags, :url
+    attr_accessor :uid, :is_old, :id, :product, :component, :assignee, :status, :resolution, :summary, :changed, :alias, :assignee_real_name, :hardware, :keywords, :num_comments, :opened, :os, :priority, :reporter, :reporter_real_name, :severity, :version, :target_milestone, :tags, :url
     @@uid = 0
 
     def self.fromCSVRow(row)
         @@uid = @@uid + 1
         bug = self.new
         bug.uid = @@uid
-        bug.is_old? = false
+        bug.is_old = false
         bug.id = row[0]
         bug.product = row[1]
         bug.component = row[2]
@@ -37,10 +37,10 @@ class Bug
         @@uid = @@uid + 1
         bug = self.new
         bug.uid = @@uid
-        bug.is_old? = true
+        bug.is_old = true
         bug.id = id
 
-        File.each_line("../data/gnats_archive/#{id}.txt") do |line|
+        File.new("./data/gnats_archive/#{id}.txt").each do |line|
             if line =~ /^>Arrival-Date:\s+(.*)$/i
                 bug.opened = $1
             elsif line =~ /^>Severity:\s+(.*)$/i
@@ -51,6 +51,8 @@ class Bug
                 bug.component = $1
             elsif line =~ /^>Release:\s+(.*)$/i
                 bug.version = $1
+            elsif line =~ /^>Synopsis:\s+(.*)$/i
+                bug.summary = $1
             end
         end
         return bug

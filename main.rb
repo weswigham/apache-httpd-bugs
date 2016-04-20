@@ -52,20 +52,24 @@ def update_file_bugs(files, bug, c)
                 # Then update that file's status with more churn and bug data
                 file = files.get_file(filepath)
                 file.bugs += 1
-                sev = case bug.severity.downcase
-                    when "enhancement" then "enhancements"
-                    when "blocker" then "blocker_sev_bugs"
-                    when "major" then "major_sev_bugs"
-                    when "minor" then "minor_sev_bugs"
-                    when "normal" then "normal_sev_bugs"
-                    when "critical" then "critical_sev_bugs"
-                    when "trivial" then "trivial_sev_bugs"
-                    when "regression" then "regressions"
-                    # An unknown severity - print it, for reference, then return nil
-                    else puts bug.severity.downcase
-                end
-                if sev
-                    file.send("#{sev}=", file.send(sev) + 1)
+                if bug.severity # Some old DB bugs may not have a severity
+                    sev = case bug.severity.downcase
+                        when "enhancement" then "enhancements"
+                        when "blocker" then "blocker_sev_bugs"
+                        when "major" then "major_sev_bugs"
+                        when "minor" then "minor_sev_bugs"
+                        when "normal" then "normal_sev_bugs"
+                        when "serious" then "critical_sev_bugs" # From old bug db
+                        when "critical" then "critical_sev_bugs"
+                        when "non-critical" then "trivial_sev_bugs" # From old bug db
+                        when "trivial" then "trivial_sev_bugs"
+                        when "regression" then "regressions"
+                        # An unknown severity - print it, for reference, then return nil
+                        else puts bug.severity.downcase
+                    end
+                    if sev
+                        file.send("#{sev}=", file.send(sev) + 1)
+                    end
                 end
             end
         end
@@ -155,18 +159,19 @@ def matches(s, re)
     matches
 end
 
-def contains_bug_references(bugs, c)
+def contains_bug_references(bugs, oldbugs, c)
     results = {}
     git_svn_id_regexp = /^git-svn-id:/
     #Trim git-svn lines out of commit messages
     trimmed = c.message.lines.reject{|m| m.match(git_svn_id_regexp) }.join('\n')
     
     #FIRST - Look at the date, there are three ranges of interest - pre 2002, 2002, and 2002+
-    if c.epoch_time < Time.new(2002, 3, 16, 0, 0, 0, "utc").to_i # Bug DB change happened midmarch
+    if c.epoch_time < Time.new(2002, 3, 16, 0, 0, 0, "+00:00").to_i # Bug DB change happened midmarch
         # pre 2002 - old bug db, anywhere between 1 and 5 digit long numbers
         
-        # I looked over all 1400 commit messages before 2.0, and this looks like it matches everything with no false positives - in fact, I couldn't find a link it didn't match
-        trimmed.scan(/PR:?\s+(\d+)(,\s*(\d+)(\(\?\))?)*/i) do |str|
+        # I looked over all ~1400 commit messages before 2.0, and this looks like it matches everything with no false positives - in fact, I couldn't find a link it didn't match
+        matches(trimmed, /PR:?\s+(\d+)(,\s*(\d+)(\(\?\))?)*/i) do |match|
+            str = match[0]
             # Strip potential leading PR:, then split the resulting comma seperated list
             str.slice! 'PR'
             str.slice! 'pr' # This may never actually occur in this time range
@@ -181,9 +186,10 @@ def contains_bug_references(bugs, c)
                 end
             end
         end
-    elsif c.epoch_time < Time.new(2003, 7, 16, 0, 0, 0, "utc").to_i # Give a ~4 month transition period
+    elsif c.epoch_time < Time.new(2003, 7, 16, 0, 0, 0, "+00:00").to_i # Give a ~4 month transition period
         # 2002 - new bug db is only values between 7180 and 10844 (values > 7180 are ambiguous as to which bug they mean)
-        trimmed.scan(/PR:?\s+(\d+)(,\s*(\d+)(\(\?\))?)*/i) do |str|
+        matches(trimmed, /PR:?\s+(\d+)(,\s*(\d+)(\(\?\))?)*/i) do |match|
+            str = match[0]
             # Strip potential leading PR:, then split the resulting comma seperated list
             str.slice! 'PR'
             str.slice! 'pr' # this may never actually occur in this time range
@@ -206,7 +212,7 @@ def contains_bug_references(bugs, c)
                             puts "Ambiguous pr reference #{num} at commit sha #{sha}, assuming new bug db..."
                             results[bugs[num].uid] = bugs[num]
                         else
-                            puts "Ambiguous pr reference #{num} at commit sha #{sha}, however new bug db has no entry for that - must be old bug db?"
+                            #"Ambiguous pr reference #{num} at commit sha #{sha}, however new bug db has no entry for that - must be old bug db?"
                             oldbugs[num] ||= Bug.fromGNATS(num)
                             results[oldbugs[num].uid] = oldbugs[num]
                         end
@@ -217,7 +223,8 @@ def contains_bug_references(bugs, c)
     else
         # 2002 onward - 4 (>7000) or 5 digit numbers in the new bug db - the same regex can be used, but the term `bz` comes into vogue later on
         # Additionally, many authors started omitting the space and colon between the abbreviation and the number
-        trimmed.scan(/((PR|BZ):?\s+)(\d\d\d\d\d?)(,\s*(\d\d\d\d\d?)(\(\?\))?)*|(PR|BZ)(\d\d\d\d\d?)/i) do |str|
+        matches(trimmed, /((PR|BZ):?\s+)(\d\d\d\d\d?)(,\s*(\d\d\d\d\d?)(\(\?\))?)*|(PR|BZ)(\d\d\d\d\d?)/i) do |match|
+            str = match[0]
             str.slice! 'PR'
             str.slice! 'pr'
             str.slice! 'BZ'
@@ -235,7 +242,7 @@ def contains_bug_references(bugs, c)
     return results
 end
 
-def walk_repo_between(releases, bugs, start_tag, end_tag, should_churn)
+def walk_repo_between(releases, bugs, oldbugs, start_tag, end_tag, should_churn)
     # We expect httpd to be checked out at ../httpd
     repo = Rugged::Repository.new('../httpd')
 
@@ -261,7 +268,7 @@ def walk_repo_between(releases, bugs, start_tag, end_tag, should_churn)
             print "."
         end
         shas.push(c.oid)
-        candidate_bugs = contains_bug_references(bugs, c)
+        candidate_bugs = contains_bug_references(bugs, oldbugs, c)
         candidate_bugs.each do |uid, bug|
             update_file_bugs(releases[end_tag], bug, c)
         end 
@@ -290,11 +297,11 @@ end
 
 # Generate bug data
 count_sloc(releases, $FIRST_VERSION)
-walk_repo_between(releases, bugs, :tail, $FIRST_VERSION, false)
+walk_repo_between(releases, bugs, oldbugs, :tail, $FIRST_VERSION, false)
 count_sloc(releases, $SECOND_VERSION)
-walk_repo_between(releases, bugs, $FIRST_VERSION, $SECOND_VERSION, false)
+walk_repo_between(releases, bugs, oldbugs, $FIRST_VERSION, $SECOND_VERSION, false)
 count_sloc(releases, $THIRD_VERSION)
-walk_repo_between(releases, bugs, $SECOND_VERSION, $THIRD_VERSION, false)
+walk_repo_between(releases, bugs, oldbugs, $SECOND_VERSION, $THIRD_VERSION, false)
 
 repo = Rugged::Repository.new('../httpd');
 # Add in the vulnerability data
