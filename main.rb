@@ -1,7 +1,3 @@
-$FIRST_VERSION = :"2.0.1"
-$SECOND_VERSION = :"2.2.0"
-$THIRD_VERSION = :"2.4.0"
-
 require './models/bug.rb'
 require './models/release_file.rb'
 require './models/vulnerability.rb'
@@ -9,20 +5,73 @@ require 'rugged'
 require 'csv'
 require 'open3'
 require 'json'
+require 'optparse'
+
+# This is lazy
+churn = false
+$FIRST_VERSION = :"2.0.1"
+$SECOND_VERSION = :"2.2.0"
+$THIRD_VERSION = :"2.4.0"
+$repo_location = '../httpd'
+bug_data_location = './data/bugs-2016-04-20.csv'
+$gnats_data_location = './data/gnats_archive'
+cve_data_location = './data/HTTPD Vulnerabilities - CVEs.csv'
+cve_to_fix_data_location = './data/HTTPD Vulnerabilities - CVEs to Fixes.csv'
+output_folder = './data'
+
+OptionParser.new do |opts|
+  opts.banner = "Usage: main.rb [options]"
+
+  opts.on("-c", "--[no-]churn", "Calculate churn (this takes awhile), defaults to off") do |c|
+    churn = c
+  end
+  opts.on("-1TAG", "--first=TAG", "Set first tag, defaults to #{$FIRST_VERSION}") do |t|
+    $FIRST_VERSION = t.intern
+  end
+  opts.on("-2TAG", "--second=TAG", "Set second tag, defaults to #{$SECOND_VERSION}") do |t|
+    $SECOND_VERSION = t.intern
+  end
+  opts.on("-3TAG", "--third=TAG", "Set third tag, defaults to #{$THIRD_VERSION}") do |t|
+    $THIRD_VERSION = t.intern
+  end
+  opts.on("-rLOC", "--repo_location=LOC", "Set the repo location, defaults to #{$repo_location}") do |t|
+    $repo_location = t
+  end
+  opts.on("-bLOC", "--bug_data_location=LOC", "Set the bug data location, defaults to #{bug_data_location}") do |t|
+    bug_data_location = t
+  end
+  opts.on("-gLOC", "--gnats_data_location=LOC", "Set the old bug data location, defaults to #{$gnats_data_location}") do |t|
+    bug_data_location = t
+  end
+  opts.on("-vLOC", "--cve_data_location=LOC", "Set the cve data location, defaults to #{cve_data_location}") do |t|
+    cve_data_location = t
+  end
+  opts.on("-xLOC", "--cve_fix_data_location=LOC", "Set the cve-to-fix data location, defaults to #{cve_to_fix_data_location}") do |t|
+    cve_to_fix_data_location = t
+  end
+  opts.on("-oLOC", "--output=LOC", "Set the output folder, defaults to #{output_folder}") do |t|
+    output_folder = t
+  end
+
+  opts.on("-h", "--help", "Prints this help") do
+    puts opts
+    exit
+  end
+end.parse!
 
 #Load in bug data
 bugs = {}
-CSV.foreach("./data/bugs-2016-04-20.csv", headers: true) do |row|
+CSV.foreach(bug_data_location, headers: true) do |row|
     bugs[row[0]] = Bug.fromCSVRow(row)
 end
 
 #Load in vulnerability data
 vulnerabilities = {}
-CSV.foreach("./data/HTTPD Vulnerabilities - CVEs.csv", headers: true) do |row|
+CSV.foreach(cve_data_location, headers: true) do |row|
     vulnerabilities[row[0]] = Vulnerability.fromCSVRow(row)
 end
 
-CSV.foreach("./data/HTTPD Vulnerabilities - CVEs to Fixes.csv", headers: true) do |row|
+CSV.foreach(cve_to_fix_data_location, headers: true) do |row|
     if vulnerabilities[row[0]] && row[4]
         vulnerabilities[row[0]].fix_hashes.push(row[4])
     end
@@ -121,13 +170,13 @@ def update_file_vulnerabilities(files, c)
 end
 
 def count_sloc(releases, tag)
-    repo = Rugged::Repository.new('../httpd');
+    repo = Rugged::Repository.new($repo_location);
     releases[tag] ||= FileTable.new(tag)
     puts "Checking out tag #{tag} to calculate sloc..."
     repo.checkout(repo.tags[tag.to_s].target.oid, :strategy => :force)
     cmd = "cloc --by-file --progress-rate=0 --quiet --json --skip-uniqueness ."
     puts "Done. Running `#{cmd}`..."
-    Open3.popen3(cmd, :chdir=>"../httpd") do |stdin, stdout, stderr, wait_thr|
+    Open3.popen3(cmd, :chdir=>$repo_location) do |stdin, stdout, stderr, wait_thr|
         results = JSON.parse(stdout.read)
         results["SUM"] = nil
         results["header"] = nil
@@ -173,9 +222,7 @@ def contains_bug_references(bugs, oldbugs, c)
         matches(trimmed, /PR:?\s+(\d+)(,\s*(\d+)(\(\?\))?)*/i) do |match|
             str = match[0]
             # Strip potential leading PR:, then split the resulting comma seperated list
-            str.slice! 'PR'
-            str.slice! 'pr' # This may never actually occur in this time range
-            str.slice! ':'
+            str.slice! /PR:?/i
             str.split.each do |cap|
                 num = cap.to_i # to_i is very flexible - it skips leading whitespace, and ignore trailing non-int characters
                 if !num.nil?
@@ -191,9 +238,7 @@ def contains_bug_references(bugs, oldbugs, c)
         matches(trimmed, /PR:?\s+(\d+)(,\s*(\d+)(\(\?\))?)*/i) do |match|
             str = match[0]
             # Strip potential leading PR:, then split the resulting comma seperated list
-            str.slice! 'PR'
-            str.slice! 'pr' # this may never actually occur in this time range
-            str.slice! ':'
+            str.slice! /PR:?/i
             str.split.each do |cap|
                 num = cap.to_i # to_i is very flexible - it skips leading whitespace, and ignore trailing non-int characters
                 if !num.nil?
@@ -225,10 +270,7 @@ def contains_bug_references(bugs, oldbugs, c)
         # Additionally, many authors started omitting the space and colon between the abbreviation and the number
         matches(trimmed, /((PR|BZ):?\s+)(\d\d\d\d\d?)(,\s*(\d\d\d\d\d?)(\(\?\))?)*|(PR|BZ)(\d\d\d\d\d?)/i) do |match|
             str = match[0]
-            str.slice! 'PR'
-            str.slice! 'pr'
-            str.slice! 'BZ'
-            str.slice! 'bz'
+            str.slice! /(PR|BZ):?/i
             str.split.each do |cap|
                 num = cap.to_i
                 if !num.nil?
@@ -243,8 +285,8 @@ def contains_bug_references(bugs, oldbugs, c)
 end
 
 def walk_repo_between(releases, bugs, oldbugs, start_tag, end_tag, should_churn)
-    # We expect httpd to be checked out at ../httpd
-    repo = Rugged::Repository.new('../httpd')
+    # We expect httpd to be checked out at $repo_location
+    repo = Rugged::Repository.new($repo_location)
 
     releases[end_tag] ||= FileTable.new(end_tag)
     walker = Rugged::Walker.new(repo)
@@ -287,7 +329,7 @@ def walk_repo_between(releases, bugs, oldbugs, start_tag, end_tag, should_churn)
             # Forcibly close the repo every so often to relieve memory pressure
             if count % 1000 == 0
                 repo.close()
-                repo = Rugged::Repository.new('../httpd');
+                repo = Rugged::Repository.new($repo_location);
             end
             update_file_churn(releases[end_tag], repo.lookup(sha))
         end
@@ -297,13 +339,13 @@ end
 
 # Generate bug data
 count_sloc(releases, $FIRST_VERSION)
-walk_repo_between(releases, bugs, oldbugs, :tail, $FIRST_VERSION, false)
+walk_repo_between(releases, bugs, oldbugs, :tail, $FIRST_VERSION, churn)
 count_sloc(releases, $SECOND_VERSION)
-walk_repo_between(releases, bugs, oldbugs, $FIRST_VERSION, $SECOND_VERSION, false)
+walk_repo_between(releases, bugs, oldbugs, $FIRST_VERSION, $SECOND_VERSION, churn)
 count_sloc(releases, $THIRD_VERSION)
-walk_repo_between(releases, bugs, oldbugs, $SECOND_VERSION, $THIRD_VERSION, false)
+walk_repo_between(releases, bugs, oldbugs, $SECOND_VERSION, $THIRD_VERSION, churn)
 
-repo = Rugged::Repository.new('../httpd');
+repo = Rugged::Repository.new($repo_location);
 # Add in the vulnerability data
 vulnerabilities.each do |cve, vulnerability|
     vulnerability.fix_hashes.each do |sha|
@@ -326,10 +368,12 @@ end
 
 releases.each do |version, files|
     #write out CSV result
-    CSV.open("./data/results-v#{version}.csv", "wb") do |csv|
+    filename = "#{output_folder}/results-v#{version}.csv"
+    CSV.open(filename, "wb") do |csv|
         csv << [:filepath, :churn, :num_commits, :sloc, :bugs, :enhancements, :blocker_sev_bugs, :major_sev_bugs, :minor_sev_bugs, :critical_sev_bugs, :normal_sev_bugs, :trivial_sev_bugs, :regressions, :vulnerabilities]
         files.each do |file|
             csv << [file.filepath, file.churn, file.num_commits, file.sloc, file.bugs, file.enhancements, file.blocker_sev_bugs, file.major_sev_bugs, file.minor_sev_bugs, file.critical_sev_bugs, file.normal_sev_bugs, file.trivial_sev_bugs, file.regressions, file.vulnerabilities]
         end
     end
+    puts "Wrote '#{filename}'."
 end
