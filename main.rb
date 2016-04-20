@@ -209,11 +209,11 @@ end
 
 # Generate bug data
 count_sloc(releases, $FIRST_VERSION)
-walk_repo_between(releases, bugs, :tail, $FIRST_VERSION, false)
+walk_repo_between(releases, bugs, :tail, $FIRST_VERSION, true)
 count_sloc(releases, $SECOND_VERSION)
-walk_repo_between(releases, bugs, $FIRST_VERSION, $SECOND_VERSION, false)
+walk_repo_between(releases, bugs, $FIRST_VERSION, $SECOND_VERSION, true)
 count_sloc(releases, $THIRD_VERSION)
-walk_repo_between(releases, bugs, $SECOND_VERSION, $THIRD_VERSION, false)
+walk_repo_between(releases, bugs, $SECOND_VERSION, $THIRD_VERSION, true)
 
 repo = Rugged::Repository.new('../httpd');
 # Add in the vulnerability data
