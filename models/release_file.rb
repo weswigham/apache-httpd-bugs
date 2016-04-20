@@ -15,9 +15,9 @@ class FileTable
 
     def initialize(release)
         @release = case release
-            when :"2.0.1" then "Release20Files"
-            when :"2.2.1" then "Release22Files"
-            when :"2.4.1" then "Release24Files"
+            when $FIRST_RELEASE then "Release20Files"
+            when $SECOND_RELEASE then "Release22Files"
+            when $THIRD_RELEASE then "Release24Files"
         end
 
         if $FILEDATA_IN_SQLITE
