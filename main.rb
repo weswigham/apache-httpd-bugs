@@ -52,16 +52,16 @@ def update_file_bugs(files, bug, c)
                 # Then update that file's status with more churn and bug data
                 file = files.get_file(filepath)
                 file.bugs += 1
-                if bug.severity # Some old DB bugs may not have a severity
+                if bug.severity # Some old DB bugs may not have a severity (Or - more likely - are a 404, so all we have is a number)
                     sev = case bug.severity.downcase
                         when "enhancement" then "enhancements"
                         when "blocker" then "blocker_sev_bugs"
                         when "major" then "major_sev_bugs"
+                        when "serious" then "major_sev_bugs" # Mapped from old bug db
                         when "minor" then "minor_sev_bugs"
                         when "normal" then "normal_sev_bugs"
-                        when "serious" then "critical_sev_bugs" # From old bug db
-                        when "critical" then "critical_sev_bugs"
-                        when "non-critical" then "trivial_sev_bugs" # From old bug db
+                        when "critical" then "critical_sev_bugs" # Shared on old and new bug db
+                        when "non-critical" then "trivial_sev_bugs" # Mapped from old bug db
                         when "trivial" then "trivial_sev_bugs"
                         when "regression" then "regressions"
                         # An unknown severity - print it, for reference, then return nil
